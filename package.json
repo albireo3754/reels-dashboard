@@ -1,0 +1,78 @@
+{
+  "name": "reels-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first PhotosIndex workspace with Electron and a shared React dashboard",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build:web": "vite build",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "build": "npm run build:web && npm run build:desktop",
+    "build:native": "node scripts/build-native.mjs",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/unit/*.test.ts",
+    "test:web": "playwright test --config playwright.web.config.ts",
+    "test:electron": "playwright test --config playwright.electron.config.ts",
+    "test:native": "swift test --package-path native/photosindex",
+    "package:mac": "npm run build && npm run build:native && electron-builder --mac dir",
+    "audit:public": "node scripts/audit-public.mjs",
+    "verify:spec": "node scripts/verify-spec.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "vite": "8.3.5"
+  },
+  "build": {
+    "appId": "io.github.reelsdashboard.desktop",
+    "productName": "Reels Dashboard",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "native/photosindex/.build/PhotosIndex.app",
+        "to": "native/PhotosIndex.app"
+      },
+      {
+        "from": "native/photosindex/.build/photosindex",
+        "to": "native/photosindex"
+      },
+      {
+        "from": "native/photosindex/LICENSE",
+        "to": "native/PhotosIndex-LICENSE"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.photography",
+      "identity": null
+    },
+    "asar": true
+  }
+}
