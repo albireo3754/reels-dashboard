@@ -23,7 +23,7 @@ Verified on 2026-10-27:
 - Development signing was attempted and failed with exit 78 because no Apple Development identity was available. No identity was silently substituted.
 - Explicit `PHOTOSINDEX_SIGNING_MODE=adhoc node scripts/build-native.mjs`: succeeded; `plutil` and `codesign --verify --deep --strict` passed for the disposable QA helper.
 - The freshly built CLI launched the bundled app using a separate QA socket. Process inspection verified the executable was inside this repository's built helper, not an installed PhotosIndex application.
-- Live `status --format json` returned protocol 1, app version 0.1.0 and **permission `not-determined`**. The helper was stopped after this check. Photos authorization, live library indexing and system permission UI remain unverified; no personal asset was exported or deleted.
+- At the initial migration check, live `status --format json` returned protocol 1, app version 0.1.0 and **permission `not-determined`**; the helper was stopped afterward. The later user-authorized packaged-app metadata and preview checks passed; see [current Electron QA](electron-qa.md). No personal original was exported or deleted.
 
 Ad-hoc signing is suitable for explicit local QA, not evidence of stable TCC identity or notarized distribution. Packaged Electron QA must still verify its own embedded helper location and actual permission state.
 

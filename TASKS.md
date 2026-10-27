@@ -1,6 +1,6 @@
 # Reels Dashboard 진행 상태
 
-기준일: 2026-10-27. 현재 목표는 Electron·React 공통 화면과 PhotosIndex 대체 기능을 구현하고, 별도 웹·Electron QA 후 공개 저장소에 올리는 것이에요.
+기준일: 2026-10-27. 요청한 구현·검증·공개를 완료했어요. 이번 목표는 Electron·React 공통 화면과 PhotosIndex 대체 기능을 구현하고, 별도 웹·Electron QA 후 공개 저장소에 올리는 것이에요.
 
 ## 구현·검증 완료
 
@@ -25,7 +25,7 @@
 
 - [x] 사용자 허용 후 `authorized` 확인, 실제 날짜 색인·그룹 상세·한 자산 미리보기·Vision 분석·JPEG 디코딩 검증. 개인 라이브러리 정보와 이미지는 공개하지 않았어요.
 - [x] 실제 미리보기에서 발견한 경로 표현 차이의 접근 거부를 수정 전 실패·수정 후 성공으로 확인하고, 허용되지 않은 파일과 최종 심볼릭 링크 거부도 유지했어요.
-- [x] GitHub 공개 원격 push, PUBLIC·로컬/원격 HEAD 일치 확인. 구현 커밋의 [GitHub CI](https://github.com/albireo3754/reels-dashboard/actions/runs/40512046668) 전체 통과.
+- [x] GitHub 공개 원격 push, PUBLIC·로컬/원격 HEAD 일치 확인. 구현 커밋의 [GitHub CI](https://github.com/albireo3754/reels-dashboard/actions/runs/40518829999) 전체 통과.
 
 ## 검증 범위
 
@@ -34,5 +34,7 @@
 이 기기에는 Apple Development 인증서가 없어 명시적인 ad-hoc 서명으로 QA했어요. 안정적인 개발 서명과 공증된 배포용 서명은 별도 인증서 설정이 필요해요. 실제 Sites 프로젝트 배포·수신 저장소 구축은 이번 연결 가능한 공통화와 구분해요.
 
 ## 이후 확장
+
+- [ ] WebView 기반 모바일 앱 지원: 기존 React 대시보드 화면을 재사용하고, Capacitor 등 모바일 패키징 방식을 검토해요. 모바일 현황 조회를 우선하며 데이터 동기화·로그인·설치 방식은 구현 시 정해요. Mac 전용 PhotosIndex·영상 편집 기능의 모바일 이식은 별도 범위예요. (2026-10-27 사용자 요청: TODO만 기록, 구현은 추후 진행.)
 
 영상 편집 UI·기존 Python FFmpeg 연결, 여러 날짜의 Photos 색인 영속화, 실제 Sites 배포는 다음 확장으로 관리해요. 기존 PhotosIndex의 단일 날짜 메모리 색인 동작을 영속 색인 완료로 표현하지 않아요.
