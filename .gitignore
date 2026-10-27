@@ -16,3 +16,6 @@ native/**/.swiftpm/
 native/**/.local-run/
 .openai/
 public/snapshot.json
+__pycache__/
+*.py[cod]
+.pytest_cache/

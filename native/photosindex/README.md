@@ -51,3 +51,14 @@ After building, run `zsh native/photosindex/scripts/install-cli.sh` from the rep
 The launcher locates its paired helper without an external `PHOTOSINDEX_APP_PATH`, honors an explicit override, and preserves spaces and Unicode in installation paths and arguments. Installation stages and verifies both signed binaries, atomically exchanges the complete pair, then atomically publishes the launcher. Reinstallation does not overwrite a running helper's Mach-O inode.
 
 `node scripts/test-native-install.mjs` validates this flow under a temporary installation prefix. It never changes `HOME` or writes to the user's real installation, and it makes only status requests.
+
+
+## Desktop editor source preparation
+
+The direct native bridge additionally supports `editor.materialize` with exactly three string arguments: `id` (group ID), `index-run`, and `asset-id` (public asset ID). It requires current Photos permission, a current index run, membership in the selected group, and a video asset. It does not add or alter the existing CLI commands.
+
+The command uses the existing PhotoKit original materializer to prepare one video under `<supportRoot>/editor-sources/<UUID>/`. The request cannot choose an output directory. Cache directories use mode `0700`, and the resulting regular file uses `0600`; returned paths are checked against the allocated directory. The response is `{assetID, sourcePath, originalFilename?}` and includes no PhotoKit local identifier or location metadata. `originalFilename` is the already-sanitized public filename, when present. Failed preparation removes its partial UUID cache. Existing successful caches remain available for editor jobs; deleting a cache is separate from deleting a Photos asset.
+
+Preparation can download an iCloud original and uses the materializer's existing 300-second request deadline. It never invokes PhotoKit deletion, export-to-iCloud, or move operations. Desktop and Sites sharing policies must keep the returned local path private.
+
+Verification: the additional editor tests use synthetic local files and a fake materializer. They cover group membership, stale runs, Photos permission, photo rejection, output-argument rejection, private output confinement, symlink refusal, failed-cache cleanup, unique repeated preparation, and preservation of the original fixture. The full Swift suite passes **95 tests**. This does not claim that a live Photos video was materialized in this change.

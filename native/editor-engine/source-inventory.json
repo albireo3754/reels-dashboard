@@ -1,0 +1,85 @@
+{
+  "origin": "reels/scripts/reels_editor",
+  "files": [
+    {
+      "path": "reels_editor/__init__.py",
+      "sourceSha256": "8266c8134dc101fcffa9d2cc18f6b4c6a5562a3c8695da7a0b046f8fcd9b8aa4"
+    },
+    {
+      "path": "reels_editor/app/__init__.py",
+      "sourceSha256": "9035985ad399b426fcf4a6379d1f4bb6c994a58dd134efa70547967948388468"
+    },
+    {
+      "path": "reels_editor/app/cli.py",
+      "sourceSha256": "0082fd9b4a0f2f9b85d94cbb4aad5ed99fdb5c517c219314f83cf64e37f25c30"
+    },
+    {
+      "path": "reels_editor/app/presets.py",
+      "sourceSha256": "377185b3a9e9bf76c3eb4ed4efb3f72e334514883387036573627ae9e05d2269"
+    },
+    {
+      "path": "reels_editor/entities/__init__.py",
+      "sourceSha256": "8266c8134dc101fcffa9d2cc18f6b4c6a5562a3c8695da7a0b046f8fcd9b8aa4"
+    },
+    {
+      "path": "reels_editor/entities/overlay/__init__.py",
+      "sourceSha256": "716ecde53e4f23e7313a9f56951650a3f1e4ba8b0b13567f16b522d586039b82"
+    },
+    {
+      "path": "reels_editor/entities/overlay/cli.py",
+      "sourceSha256": "1abb6777619a6de129e7b883fd0900db175195ed0ceb78183911123f9d3652a3"
+    },
+    {
+      "path": "reels_editor/entities/overlay/config.py",
+      "sourceSha256": "caf9a1c1309d4c6f1bbc022d992d545e0ab38e880412d5b199540cd472c0e3a9"
+    },
+    {
+      "path": "reels_editor/entities/overlay/model.py",
+      "sourceSha256": "9677e5cbb826b8b72fb847f383f747a9880a193c833ef273c09a3f6b08751c8b"
+    },
+    {
+      "path": "reels_editor/entities/overlay/render.py",
+      "sourceSha256": "8828f27255e8f333306435836cc44b64973d060d51304f609914aae0488868c3"
+    },
+    {
+      "path": "reels_editor/features/__init__.py",
+      "sourceSha256": "8266c8134dc101fcffa9d2cc18f6b4c6a5562a3c8695da7a0b046f8fcd9b8aa4"
+    },
+    {
+      "path": "reels_editor/features/thumbnail/__init__.py",
+      "sourceSha256": "c072ca0a20540415457fb02a99afd18254149830ade2c85bf0c1faafc1eb6b10"
+    },
+    {
+      "path": "reels_editor/features/thumbnail/cli.py",
+      "sourceSha256": "f7d3b5ea9cec5240049c9eb95bdb7f1ce84c44c1b66758313b9eb01d887abb93"
+    },
+    {
+      "path": "reels_editor/features/thumbnail/model.py",
+      "sourceSha256": "d048daf827daf0b7e212660a68cc75e33687c9a2940f4d92629e5534b34c9ef7"
+    },
+    {
+      "path": "reels_editor/features/video_overlay/__init__.py",
+      "sourceSha256": "aaa791ce6a723d06d9842e839c71ebdb4c8a56b69b48853476a09acd191ddcce"
+    },
+    {
+      "path": "reels_editor/features/video_overlay/cli.py",
+      "sourceSha256": "044feb806ed93774ebbba34f727fe3a7de31d301073384ba91c4c8da9711a7e9"
+    },
+    {
+      "path": "reels_editor/features/video_overlay/model.py",
+      "sourceSha256": "e926b43206d87b66ec8467258771495b050664b90de09bdc4d9630eab815aac9"
+    },
+    {
+      "path": "reels_editor/shared/__init__.py",
+      "sourceSha256": "8266c8134dc101fcffa9d2cc18f6b4c6a5562a3c8695da7a0b046f8fcd9b8aa4"
+    },
+    {
+      "path": "reels_editor/shared/cli.py",
+      "sourceSha256": "df9ce1bf92b9963a6d37823ac5390798ed68fc15314ef671fdcaba458abbf6b2"
+    },
+    {
+      "path": "reels_editor/shared/media.py",
+      "sourceSha256": "0cf139610a49c2a5a99e0ca9dec7adb252cf1bc4de9c50ac91af8cf9b7bd1e5d"
+    }
+  ]
+}

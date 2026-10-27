@@ -48,7 +48,8 @@ final class AppContainer: ObservableObject {
                     page: page
                 )
             },
-            exportService: exportService
+            exportService: exportService,
+            editorSourceService: EditorSourceService(supportRoot: configuration.supportRoot)
         )
         do {
             let commandRouter = router

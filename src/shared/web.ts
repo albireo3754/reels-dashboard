@@ -14,6 +14,22 @@ export function createWebBridge(): DashboardBridge {
   };
   return {
     mode: "web",
+    editor: {
+      runtime: async () => ({
+        available: false,
+        message: "영상 편집은 데스크톱 앱에서 사용할 수 있어요.",
+      }),
+      chooseVideo: desktopOnly,
+      fromPhotos: desktopOnly,
+      list: desktopOnly,
+      load: desktopOnly,
+      save: desktopOnly,
+      preview: desktopOnly,
+      export: desktopOnly,
+      job: desktopOnly,
+      cancel: desktopOnly,
+      reveal: desktopOnly,
+    },
     request: desktopOnly,
     saveDocument: desktopOnly,
     openDocument: desktopOnly,

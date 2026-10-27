@@ -1,5 +1,17 @@
 # Reels Dashboard
 
+## Workspace routing
+
+The development checkout belongs at `~/side/reels-dashboard`, in a dedicated **Reels Dashboard** local project. `work` denotes KakaoWork-related work; this side project belongs under `side`.
+
+- App features, bugs, Electron/React/Swift code, the bundled editor, tests, packaging and shared-web development: this repository. Start with [AGENTS.md](AGENTS.md) and [TASKS.md](TASKS.md).
+- Reel concepts, scripts, captions, account strategy and production history: [the Obsidian reels workspace](~/Obsidian/side/reels/README.md), following its [AGENTS.md](~/Obsidian/side/reels/AGENTS.md).
+- Original media and completed exports: their existing Photos/iCloud locations. Keep personal media and production data out of this public source repository.
+
+The existing Obsidian editing CLI and the bundled app engine have separate source ownership. Consult [the engine documentation](docs/editor-engine.md) for app changes; do not silently update both implementations. Cross-workspace links are local navigation aids, not runtime dependencies.
+
+Transition status (2026-10-27): the entire checkout was moved to the new path, preserving Git history, uncommitted changes and source files. The previous path contains redirect documentation only. This move does not establish build or runtime validation at the new path.
+
 A local-first **Electron + React** workspace for Apple Photos discovery, evidence review, verified export/move, and production tracking. The same React dashboard runs as a read-only web build for ChatGPT Sites.
 
 ![Synthetic demo of the shared dashboard](docs/images/dashboard-demo.png)

@@ -13,8 +13,10 @@ import type {
   Status,
 } from "../shared/contracts";
 import { emptyDashboard } from "../shared/contracts";
+import type { EditorProject } from "../shared/editor";
+import { Editor } from "./Editor";
 
-type Tab = "dashboard" | "library" | "transfers" | "settings";
+type Tab = "dashboard" | "library" | "editor" | "transfers" | "settings";
 type Choice = "undecided" | "included" | "excluded";
 type ActivePlan = {
   kind: "export" | "move";
@@ -55,6 +57,7 @@ function Icon({ name }: { name: string }) {
     dashboard: "M3 3h7v7H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 14h7v7H3z",
     library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
     transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
+    editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
     settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     arrow: "M5 12h14 M13 6l6 6-6 6",
     plus: "M12 5v14 M5 12h14",
@@ -110,6 +113,10 @@ function Empty({
 
 export function App({ bridge }: { bridge: DashboardBridge }) {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [editorProject, setEditorProject] = useState<EditorProject | null>(
+    null,
+  );
+  const [editorRendering, setEditorRendering] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -193,6 +200,24 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       active = false;
     };
   }, [bridge, readOnly]);
+  const refreshDashboard = useCallback(() => {
+    void bridge
+      .loadDashboard()
+      .then(setDashboard)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [bridge]);
+  const editPhotosVideo = (assetID: string) =>
+    run("Photos 원본과 재생 영상 준비", async () => {
+      if (!detail || editorRendering) return;
+      const project = await bridge.editor.fromPhotos({
+        groupID: detail.group.id,
+        indexRunID: detail.indexRunID,
+        assetID,
+      });
+      setEditorProject(project);
+      setTab("editor");
+      refreshDashboard();
+    });
   const invalidate = () => {
     setValidated(false);
     setDecisionPath("");
@@ -590,6 +615,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const titles: Record<Tab, string> = {
     dashboard: "작업의 흐름을 한눈에",
     library: "다음 이야기를 골라요",
+    editor: "선택한 장면을 완성해요",
     transfers: "확인하고, 안전하게 옮겨요",
     settings: "내 작업 환경",
   };
@@ -598,6 +624,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     library:
       "Apple Photos에서 날짜별 촬영본을 찾고 콘텐츠에 사용할 장면을 골라요.",
     transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
+    editor:
+      "장소 안내 묶음과 본문 자막을 더하고, 선택한 시점으로 표지를 만들어요.",
     settings: "로컬 연결과 모바일에서 볼 현황의 공유 범위를 관리해요.",
   };
   return (
@@ -624,6 +652,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             [
               ["dashboard", "대시보드"],
               ["library", "촬영 보관함"],
+              ["editor", "영상 편집"],
               ["transfers", "내보내기"],
               ["settings", "설정"],
             ] as [Tab, string][]
@@ -635,6 +664,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               aria-current={tab === key ? "page" : undefined}
               onClick={() => {
                 setTab(key);
+                if (key === "dashboard") refreshDashboard();
                 setError("");
                 setNotice("");
               }}
@@ -672,6 +702,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               {
                 dashboard: "대시보드",
                 library: "촬영 보관함",
+                editor: "영상 편집",
                 transfers: "내보내기",
                 settings: "설정",
               }[tab]
@@ -698,9 +729,11 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                 ? "YOUR CREATIVE FLOW"
                 : tab === "library"
                   ? "FROM YOUR CAMERA"
-                  : tab === "transfers"
-                    ? "REVIEW & TRANSFER"
-                    : "WORKSPACE SETTINGS"}
+                  : tab === "editor"
+                    ? "MAKE YOUR REEL"
+                    : tab === "transfers"
+                      ? "REVIEW & TRANSFER"
+                      : "WORKSPACE SETTINGS"}
             </span>
             <h1>{titles[tab]}</h1>
             <p>{descriptions[tab]}</p>
@@ -1113,6 +1146,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                                 asset={asset}
                                 choice={choices[asset.id] || "undecided"}
                                 disabled={!!busy}
+                                editingDisabled={!!busy || editorRendering}
+                                onEdit={() => editPhotosVideo(asset.id)}
                                 onChange={(value) => {
                                   setChoices((p) => ({
                                     ...p,
@@ -1258,6 +1293,16 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               )}
             </>
           ))}
+        <div hidden={tab !== "editor"}>
+          <Editor
+            bridge={bridge.editor}
+            mode={bridge.mode}
+            incoming={editorProject}
+            active={tab === "editor"}
+            onRenderingChange={setEditorRendering}
+            onDashboardChange={refreshDashboard}
+          />
+        </div>
         {tab === "transfers" &&
           (readOnly ? (
             nativeNotice
@@ -1702,11 +1747,15 @@ function AssetRow({
   choice,
   onChange,
   disabled,
+  editingDisabled,
+  onEdit,
 }: {
   asset: Asset;
   choice: Choice;
   onChange: (v: Choice) => void;
   disabled: boolean;
+  editingDisabled: boolean;
+  onEdit: () => void;
 }) {
   return (
     <div className={`asset-row ${choice}`}>
@@ -1724,6 +1773,16 @@ function AssetRow({
         </span>
         <small>{readableTime(asset.capturedAt)}</small>
       </div>
+      {asset.mediaKind === "video" && (
+        <button
+          className="asset-edit-button"
+          aria-label={`이 영상 편집 ${asset.publicFilename || asset.id}`}
+          onClick={onEdit}
+          disabled={editingDisabled}
+        >
+          이 영상 편집
+        </button>
+      )}
       <select
         aria-label={`자산 분류 ${asset.publicFilename || asset.id}`}
         value={choice}

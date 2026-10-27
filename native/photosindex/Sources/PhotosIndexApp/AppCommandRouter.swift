@@ -22,6 +22,7 @@ final class AppCommandRouter: @unchecked Sendable {
         EvidencePage
     ) throws -> EvidenceInspectionPayload
     private let exportService: ExportCommandService
+    private let editorSourceService: EditorSourceService?
 
     init(
         runtime: IndexRuntime,
@@ -37,8 +38,10 @@ final class AppCommandRouter: @unchecked Sendable {
         ) throws -> EvidenceInspectionPayload = { _, _, _, _, _, _ in
             throw AppCommandRouterError.evidenceInspectorUnavailable
         },
-        exportService: ExportCommandService? = nil
+        exportService: ExportCommandService? = nil,
+        editorSourceService: EditorSourceService? = nil
     ) {
+        self.editorSourceService = editorSourceService
         self.runtime = runtime
         self.permission = permission
         self.requestAuthorization = requestAuthorization
@@ -120,6 +123,39 @@ final class AppCommandRouter: @unchecked Sendable {
                         assets: detail.assets.map(\.evidenceAsset)
                     )
                 )
+            case "editor.materialize":
+                guard ["authorized", "limited"].contains(permission()) else {
+                    return .failure(id: request.id, error: CommandFailure(
+                        code: "photos-permission-required",
+                        message: "Photos access is required before preparing an editor source.",
+                        recovery: "Request Photos access before selecting a video."
+                    ))
+                }
+                guard Set(request.arguments.keys) == Set(["id", "index-run", "asset-id"]),
+                      let id = request.arguments["id"], !id.isEmpty,
+                      let expectedRunID = request.arguments["index-run"], !expectedRunID.isEmpty,
+                      let assetID = request.arguments["asset-id"], !assetID.isEmpty else {
+                    return invalidArguments(request.id, "editor.materialize requires only id, index-run and asset-id")
+                }
+                let detail = try runtime.group(id: id)
+                guard detail.runID == expectedRunID else { return staleIndexRun(request.id) }
+                guard detail.group.assetIDs.contains(assetID),
+                      let asset = detail.assets.first(where: { $0.id == assetID }) else {
+                    return .failure(id: request.id, error: CommandFailure(
+                        code: "editor-asset-not-in-group", message: "Select an asset from the current group."
+                    ))
+                }
+                guard asset.mediaKind == .video else {
+                    return .failure(id: request.id, error: CommandFailure(
+                        code: "editor-video-required", message: "The video editor requires a video asset."
+                    ))
+                }
+                guard let editorSourceService else {
+                    return .failure(id: request.id, error: CommandFailure(
+                        code: "editor-unavailable", message: "This helper has no configured editor source cache."
+                    ))
+                }
+                return try .success(id: request.id, payload: editorSourceService.materialize(asset: asset))
             case "groups.inspect":
                 guard let id = request.arguments["id"],
                       let expectedRunID = request.arguments["index-run"],

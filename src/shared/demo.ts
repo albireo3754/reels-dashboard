@@ -1,3 +1,4 @@
+import { createDemoEditor } from "./editor-demo";
 import type {
   Arguments,
   Asset,
@@ -301,6 +302,29 @@ export function createDemoBridge(
   }
   return {
     mode: "demo",
+    editor: createDemoEditor(storage, search, (project, stage) => {
+      const dashboard = loadDashboard();
+      const previous = dashboard.projects.find(
+        (item) => item.id === project.id,
+      );
+      const item = {
+        id: project.id,
+        title: previous?.title ?? project.source.name,
+        date: previous?.date ?? new Date().toLocaleDateString("en-CA"),
+        stage,
+        nextAction:
+          stage === "review"
+            ? "내보낸 영상과 표지를 확인해요."
+            : "자막과 장소 안내를 편집해요.",
+        publicURL: previous?.publicURL ?? "",
+        shared: previous?.shared ?? false,
+      };
+      dashboard.projects = previous
+        ? dashboard.projects.map((p) => (p.id === item.id ? item : p))
+        : [...dashboard.projects, item];
+      dashboard.updatedAt = new Date().toISOString();
+      storage?.setItem(key, JSON.stringify(validateDashboard(dashboard)));
+    }),
     request: request as DashboardBridge["request"],
     async saveDocument(name, data) {
       const path = `/demo/documents/${Date.now()}-${name}.json`;

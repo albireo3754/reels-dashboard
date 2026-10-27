@@ -21,11 +21,12 @@
     "test:web": "playwright test --config playwright.web.config.ts",
     "test:electron": "playwright test --config playwright.electron.config.ts",
     "test:native": "swift test --package-path native/photosindex",
-    "package:mac": "npm run build && npm run build:native && electron-builder --mac dir",
+    "package:mac": "npm run build && npm run build:native && npm run build:editor && electron-builder --mac dir",
     "audit:public": "node scripts/audit-public.mjs",
     "verify:spec": "node scripts/verify-spec.mjs",
     "test:native-rebuild": "node scripts/test-native-rebuild.mjs",
-    "test:native-install": "node --import tsx scripts/test-native-install.mjs"
+    "test:native-install": "node --import tsx scripts/test-native-install.mjs",
+    "build:editor": "node scripts/build-editor.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -69,11 +70,16 @@
       {
         "from": "native/photosindex/LICENSE",
         "to": "native/PhotosIndex-LICENSE"
+      },
+      {
+        "from": "native/editor-engine/.build/runtime",
+        "to": "editor-runtime"
       }
     ],
     "mac": {
       "category": "public.app-category.photography",
-      "identity": null
+      "identity": null,
+      "minimumSystemVersion": "15.0"
     },
     "asar": true
   }
