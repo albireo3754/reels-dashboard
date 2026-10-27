@@ -70,6 +70,7 @@ Current local results: **85 Swift tests, 8 TypeScript tests, 42 Chromium UI test
 - [Architecture and data boundaries](docs/architecture.md)
 - [Reusable delegated migration workflow](docs/migration-workflow.md)
 - [Native migration](docs/native-migration.md)
+- [Acceptance matrix](docs/acceptance-matrix.md) and [release audit](docs/release-audit.md)
 - [Progress and remaining work](TASKS.md)
 
 This milestone replaces the PhotosIndex workflow and adds the reusable dashboard. Video timeline editing and a deployed live Sites receiver are not included in this milestone. Public source contains no personal media, production snapshots, credentials, or runtime databases.

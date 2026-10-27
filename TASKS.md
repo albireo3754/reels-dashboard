@@ -22,7 +22,7 @@
 ## 완료 확인 대기
 
 - [ ] 실제 Photos 접근 권한 허용 후 작은 범위의 read-only 색인 확인. 현재 권한은 `not-determined`이고 Mac이 잠겨 있어 사용자 잠금 해제·OS 허용이 필요해요.
-- [ ] GitHub 공개 원격에 최종 코드 push 후 visibility·HEAD·CI 확인.
+- [x] GitHub 공개 원격 push, PUBLIC·로컬/원격 HEAD 일치 확인. 구현 커밋의 [GitHub CI](https://github.com/albireo3754/reels-dashboard/actions/runs/40508791211) 전체 통과.
 
 ## 검증 범위
 
