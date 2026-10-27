@@ -1,6 +1,6 @@
 # Agent interface and module boundaries
 
-Status: design and implementation in progress. This contract is derived from repeated editing workflows, not from exposing every Electron IPC method.
+Status: implemented and locally verified; PR checks and merge state are tracked separately. This contract is derived from repeated editing workflows, not from exposing every Electron IPC method.
 
 ## Workflow evidence
 
