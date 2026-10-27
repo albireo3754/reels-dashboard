@@ -10,7 +10,7 @@ const files = execFileSync(
 const failures = [];
 for (const file of new Set(files)) {
   if (
-    /(^|\/)(\.env(?:\.|$)|\.local-run|\.build|node_modules|artifacts|test-results|release|\.codex-workflows\/runs)/.test(
+    /(^|\/)(\.env(?:\.[^/]+)?|\.local-run|\.build|node_modules|artifacts|test-results|release|\.codex-workflows\/runs)(\/|$)/.test(
       file,
     )
   ) {
