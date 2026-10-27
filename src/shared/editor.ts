@@ -60,6 +60,7 @@ export interface RenderJob {
   error?: string;
   outputPath?: string;
   coverPath?: string;
+  manifestPaths?: string[];
 }
 export interface EditorBridge {
   runtime(): Promise<{ available: boolean; message: string }>;
@@ -71,7 +72,7 @@ export interface EditorBridge {
   }): Promise<EditorProject>;
   list(): Promise<EditorSummary[]>;
   load(id: string): Promise<EditorProject>;
-  save(project: EditorProject): Promise<void>;
+  save(project: EditorProject): Promise<EditorProject>;
   preview(
     project: EditorProject,
     time: number,
@@ -107,4 +108,17 @@ export function defaultEditSettings(duration: number): EditSettings {
       placeY: 0.21,
     },
   };
+}
+
+export interface AgentUiBridge {
+  reportContext(context: {
+    projectId: string | null;
+    dirty: boolean;
+    time: number;
+    active: boolean;
+    busy: boolean;
+  }): Promise<void>;
+  onProjectChanged(callback: (project: EditorProject) => void): () => void;
+  onProjectOpened(callback: (project: EditorProject) => void): () => void;
+  onRenderStarted(callback: (job: RenderJob) => void): () => void;
 }

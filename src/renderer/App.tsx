@@ -117,6 +117,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     null,
   );
   const [editorRendering, setEditorRendering] = useState(false);
+  useEffect(
+    () =>
+      bridge.agent?.onProjectOpened((project) => {
+        setEditorProject(project);
+        setTab("editor");
+      }),
+    [bridge],
+  );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -1296,6 +1304,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div hidden={tab !== "editor"}>
           <Editor
             bridge={bridge.editor}
+            agent={bridge.agent}
             mode={bridge.mode}
             incoming={editorProject}
             active={tab === "editor"}

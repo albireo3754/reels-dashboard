@@ -27,7 +27,10 @@
     "test:native-rebuild": "node scripts/test-native-rebuild.mjs",
     "test:native-install": "node --import tsx scripts/test-native-install.mjs",
     "build:editor": "node scripts/build-editor.mjs",
-    "check:architecture": "node scripts/check-architecture.mjs"
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "test:editor-engine": "EDITOR_RUNTIME=\"$PWD/native/editor-engine/.build/runtime/reels-editor\" EDITOR_TEST_HDR=1 native/editor-engine/.build/venv/bin/python -m unittest discover -s native/editor-engine -p test_editor.py -v",
+    "start:mcp": "node dist-mcp/server.mjs",
+    "test:mcp": "REELS_EDITOR_QA=1 playwright test --config playwright.electron.config.ts tests/electron/mcp.spec.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
