@@ -18,6 +18,7 @@ This matrix maps the requested replacement to implemented production paths and o
 | Persistent dashboard | private atomic local JSON through main | Unit persistence/corruption + browser edit/reload + packaged restart | Native multi-date index persistence is not part of upstream parity |
 | Web UI QA | separate Playwright Chromium configuration | 42 tests passed; desktop/mobile screenshots reviewed | Synthetic Photos fixtures labeled |
 | Electron QA | separate agent, configuration, app launches and real main IPC | Final packaged 7/7, none skipped/flaky | Consent-dependent PhotoKit reading pending |
+| Signed rebuild and CLI installation | Staged signature verification, atomic app/CLI replacement, paired standalone install | Live rebuild/install scripts, unchanged running PID, fresh launch, Korean-path production lifecycle red→green | Actual user install untouched |
 | Public repository | allowlisted source, licenses, ignore rules, source audit | GitHub PUBLIC and pushed code commit `00c92d69dc5222293448ff5a2740e88356d671da` | CI result tracked in release audit |
 
 The retained 75 original tests are covered individually by [the test specification](photosindex-test-spec.md). The additional native tests raise the migrated total to 85. The production adapter calls the real bundled Swift implementation; the demo adapter is selected explicitly and never silently replaces a missing native service.

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, chmodSync } from "node:fs";
+import { copyFileSync, chmodSync, renameSync, rmSync, constants } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -22,8 +23,17 @@ const binaryDirectory = execFileSync(
   },
 ).trim();
 const destination = path.join(native, ".build", "photosindex");
-copyFileSync(path.join(binaryDirectory, "photosindex"), destination);
-chmodSync(destination, 0o755);
+// A signed Mach-O must never be overwritten in place: macOS can retain a
+// signature/vnode cache for a running or previously executed binary.
+const staged = path.join(native, ".build", `.photosindex-stage-${randomUUID()}`);
+try {
+  copyFileSync(path.join(binaryDirectory, "photosindex"), staged, constants.COPYFILE_EXCL);
+  chmodSync(staged, 0o755);
+  execFileSync("/usr/bin/codesign", ["--verify", "--strict", staged], { stdio: "inherit" });
+  renameSync(staged, destination);
+} finally {
+  rmSync(staged, { force: true });
+}
 console.log(
   "Built native/photosindex/.build/PhotosIndex.app and .build/photosindex",
 );

@@ -53,6 +53,8 @@ npm run verify:spec
 npm run typecheck
 npm test
 npm run test:native
+PHOTOSINDEX_SIGNING_MODE=adhoc npm run test:native-rebuild
+npm run test:native-install
 npm run build
 npx playwright install chromium
 npm run test:web

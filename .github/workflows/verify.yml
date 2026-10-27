@@ -23,6 +23,8 @@ jobs:
       - run: npm test
       - run: npm run test:native
       - run: npm run build:native
+      - run: npm run test:native-rebuild
+      - run: npm run test:native-install
       - run: npm run build
       - run: npm run test:web
       - run: npm run test:electron

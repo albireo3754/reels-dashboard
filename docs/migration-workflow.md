@@ -80,3 +80,7 @@ npm run audit:public
 테스트 통과만으로 전체 완료를 선언하지 않아요. `docs/acceptance-matrix.md`에 명세 항목별 구현·테스트·수동 확인 결과를 연결하고, `docs/release-audit.md`에 실제 검증 범위와 남은 항목을 기록해요. 필요한 동작이 mock에서만 성공하거나 패키징 앱의 helper·권한 동작이 확인되지 않았다면 해당 항목은 완료가 아니에요.
 
 공개 단계에서는 저장소 루트가 현재 프로젝트인지, 검토한 commit과 원격 commit이 일치하는지, GitHub에서 PUBLIC으로 보이는지 확인해요. 공개 URL이나 성공 메시지 하나만으로 모든 기능·테스트·배포가 완료됐다고 판단하지 않아요.
+
+## 네이티브 재빌드·설치 회귀 게이트
+
+`test:native-rebuild`와 `test:native-install`도 완료 검사에 포함해요. 실행 중인 helper의 응답·PID를 유지한 채 서명된 파일을 교체하고 새 CLI를 실행하며, 임시 한글·공백 설치 경로에서 실제 production NativeClient의 종료를 확인해요. 디스크의 codesign 검사만으로 실행 가능성을 판정하지 않아요. 테스트용 임시 설치를 사용하고 실제 사용자 설치를 변경하지 않아요. 개발 서명 인증서가 없는 QA 환경은 실행 시 `PHOTOSINDEX_SIGNING_MODE=adhoc`를 명시해요.

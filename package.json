@@ -23,7 +23,9 @@
     "test:native": "swift test --package-path native/photosindex",
     "package:mac": "npm run build && npm run build:native && electron-builder --mac dir",
     "audit:public": "node scripts/audit-public.mjs",
-    "verify:spec": "node scripts/verify-spec.mjs"
+    "verify:spec": "node scripts/verify-spec.mjs",
+    "test:native-rebuild": "node scripts/test-native-rebuild.mjs",
+    "test:native-install": "node --import tsx scripts/test-native-install.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
