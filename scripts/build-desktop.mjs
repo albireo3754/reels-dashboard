@@ -10,3 +10,14 @@ await build({
   outExtension: { ".js": ".cjs" },
   sourcemap: true,
 });
+
+await build({
+  entryPoints: ["src/app/mcp/main.ts"],
+  outfile: "dist-mcp/server.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  packages: "external",
+  sourcemap: true,
+});

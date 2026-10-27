@@ -27,6 +27,10 @@ A local-first **Electron + React** workspace for Apple Photos discovery, evidenc
 
 All **26 upstream test files / 75 tests** are preserved byte-for-byte. The native component does not depend on a separately installed PhotosIndex app. Apple Photos functionality remains macOS-specific.
 
+## Agent integration
+
+The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
+
 ## Run locally
 
 Requires macOS 14+, Swift 6 and Node 22.12+.

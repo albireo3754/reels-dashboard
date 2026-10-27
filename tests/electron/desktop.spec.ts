@@ -55,6 +55,7 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
   expect(await page.evaluate(() => Object.keys(window.reels!).sort())).toEqual(
     [
       "chooseDestination",
+      "agent",
       "editor",
       "exportSnapshot",
       "imageURL",

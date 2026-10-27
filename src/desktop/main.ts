@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, protocol } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  protocol,
+  nativeImage,
+} from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -11,10 +19,16 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { connectAgent } from "../app/automation";
+import { AgentSession } from "../entities/agent-session";
 import { EditorService } from "../features/reel-editing";
 import type { EditorBridge } from "../shared/editor";
 import { NativeClient, validateRequest } from "./native";
-import { LocalStore, resolveGrantedFile, safeDocumentName } from "../shared/lib/storage";
+import {
+  LocalStore,
+  resolveGrantedFile,
+  safeDocumentName,
+} from "../shared/lib/storage";
 import { toSnapshot, validateDashboard } from "../shared/data";
 import type { Arguments, CommandMethod, Inspection } from "../shared/contracts";
 import { createDemoBridge } from "../shared/demo";
@@ -73,6 +87,11 @@ async function awaitReady() {
     exportRoot: process.env.PHOTOSINDEX_EXPORT_ROOT,
   });
   const demo = createDemoBridge();
+  const agentSession = new AgentSession();
+  let closeAgent: (() => Promise<void>) | undefined;
+  const emit = (name: string, value: unknown) => {
+    if (window && !window.isDestroyed()) window.webContents.send(name, value);
+  };
   const editorService = new EditorService({
     root,
     store,
@@ -100,6 +119,8 @@ async function awaitReady() {
         "asset-id": selection.assetID,
       })) as { sourcePath: string },
     reveal: (file) => shell.showItemInFolder(file),
+    changed: (project) => emit("agent:project-changed", project),
+    renderStarted: (job) => emit("agent:render-started", job),
   });
   const editor: EditorBridge = fixture ? demo.editor : editorService;
   protocol.handle("reels-media", (request) => editorService.media(request));
@@ -120,6 +141,7 @@ async function awaitReady() {
     quitting = true;
     void editorService
       .dispose()
+      .then(() => closeAgent?.())
       .then(() => native.dispose())
       .finally(() => app.quit());
   });
@@ -149,7 +171,7 @@ async function awaitReady() {
       (editor[method] as (...values: unknown[]) => unknown).apply(editor, args),
     );
   }
-  handle("request", async (method: unknown, args: unknown = {}) => {
+  const requestPhotos = async (method: unknown, args: unknown = {}) => {
     validateRequest(method, args);
     const input = { ...(args as Arguments) };
     const work = async () => {
@@ -201,7 +223,9 @@ async function awaitReady() {
     });
     queue = result.catch(() => {});
     return result;
-  });
+  };
+  handle("request", requestPhotos);
+  handle("agent:context", (context) => agentSession.update(context));
   handle("saveDocument", async (name: string, data: unknown) => {
     safeDocumentName(name);
     const file = await store.document(name, data);
@@ -326,6 +350,33 @@ async function awaitReady() {
     void window.loadFile(path.join(app.getAppPath(), "dist/index.html"));
   };
   createWindow();
+  if (!fixture)
+    closeAgent = await connectAgent(root, {
+      editor: editorService,
+      session: agentSession,
+      dashboard: () => store.load(),
+      preview: async (project, time, kind) => {
+        const artifact = await editorService.previewArtifact(
+          project,
+          time,
+          kind,
+        );
+        let image = nativeImage.createFromDataURL(artifact.image);
+        if (image.isEmpty()) throw new Error("미리보기 PNG를 읽지 못했어요.");
+        const size = image.getSize();
+        if (Math.max(size.width, size.height) > 1280)
+          image = image.resize(
+            size.width >= size.height ? { width: 1280 } : { height: 1280 },
+          );
+        return {
+          image: image.toDataURL(),
+          manifest: artifact.manifest,
+          displaySize: image.getSize(),
+        };
+      },
+      open: (project) => emit("agent:project-opened", project),
+      photos: requestPhotos,
+    });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

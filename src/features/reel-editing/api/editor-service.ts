@@ -42,6 +42,8 @@ interface Options {
     assetID: string;
   }) => Promise<{ sourcePath: string }>;
   reveal: (file: string) => void;
+  changed?: (project: EditorProject) => void;
+  renderStarted?: (job: RenderJob) => void;
 }
 const safeID = (id: unknown) => {
   if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))
@@ -227,6 +229,10 @@ export class EditorService implements EditorBridge {
     if (!project || project.schemaVersion !== 1)
       throw new Error("편집 기록 형식이 올바르지 않아요.");
     const record = await this.record(project.id);
+    if (project.updatedAt !== record.project.updatedAt)
+      throw new Error(
+        "STALE_PROJECT: 편집 설정이 변경됐어요. 프로젝트를 다시 조회해주세요.",
+      );
     const info = await stat(record.sourcePath);
     if (
       info.size !== record.size ||
@@ -243,7 +249,9 @@ export class EditorService implements EditorBridge {
       project: {
         ...record.project,
         settings,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date(
+          Math.max(Date.now(), Date.parse(record.project.updatedAt) + 1),
+        ).toISOString(),
       },
     };
   }
@@ -371,17 +379,55 @@ export class EditorService implements EditorBridge {
     return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
   async load(id: string) {
-    return (await this.record(id)).project;
+    return structuredClone((await this.record(id)).project);
   }
   async save(project: EditorProject) {
-    const { record, project: valid } = await this.trusted(project, "draft");
-    const changed =
-      JSON.stringify(record.project.settings) !==
-      JSON.stringify(valid.settings);
-    await this.saveRecord({ ...record, project: valid });
-    if (changed) await this.updateStage(valid, "editing");
+    return this.exclusive(async () => {
+      const { record, project: valid } = await this.trusted(project, "draft");
+      const changed =
+        JSON.stringify(record.project.settings) !==
+        JSON.stringify(valid.settings);
+      await this.saveRecord({ ...record, project: valid });
+      if (changed) await this.updateStage(valid, "editing");
+      this.options.changed?.(structuredClone(valid));
+      return structuredClone(valid);
+    });
+  }
+  async importVideo(input: string, settings?: EditorProject["settings"]) {
+    return this.exclusive(async () => {
+      if (typeof input !== "string" || !path.isAbsolute(input))
+        throw new Error("절대 영상 경로를 지정해주세요.");
+      // Validate reused settings against the new duration before creating a project.
+      if (settings) {
+        const probe = await this.invoke(["probe", await realpath(input)]);
+        validateEditSettings(settings, probe.duration);
+      }
+      const created = await this.importFile(input);
+      if (!settings) return created;
+      const record = await this.record(created.id);
+      const project = {
+        ...created,
+        settings: validateEditSettings(settings, created.source.duration),
+      };
+      await this.saveRecord({ ...record, project });
+      return structuredClone(project);
+    });
+  }
+  activeJobs() {
+    return [...this.jobs.values()].map((job) =>
+      this.activeJob === job && job.state !== "running"
+        ? { ...job, state: "running" as const, phase: "작업 정리 중" }
+        : { ...job },
+    );
   }
   async preview(project: EditorProject, time: number, kind: "video" | "cover") {
+    return (await this.previewArtifact(project, time, kind)).image;
+  }
+  async previewArtifact(
+    project: EditorProject,
+    time: number,
+    kind: "video" | "cover",
+  ) {
     return this.exclusive(async () => {
       if (!["video", "cover"].includes(kind))
         throw new Error("미리보기 종류를 확인해주세요.");
@@ -402,40 +448,64 @@ export class EditorService implements EditorBridge {
         const bytes = await readFile(out);
         if (bytes.length > 40 * 1024 * 1024)
           throw new Error("미리보기가 너무 커요.");
-        return `data:image/png;base64,${bytes.toString("base64")}`;
+        const manifest = JSON.parse(
+          await readFile(out.replace(/\.png$/, ".style.json"), "utf8"),
+        );
+        return {
+          image: `data:image/png;base64,${bytes.toString("base64")}`,
+          manifest,
+        };
       } finally {
         await rm(task.dir, { recursive: true, force: true });
       }
     });
   }
   async export(project: EditorProject): Promise<RenderJob | null> {
+    return this.render(project, undefined, "both");
+  }
+  async render(
+    project: EditorProject,
+    destination?: string,
+    target: "video" | "cover" | "both" = "both",
+  ): Promise<RenderJob | null> {
     return this.exclusive(async () => {
-      const task = await this.stage(project, "export");
+      const task = await this.stage(
+        project,
+        target === "both" ? "export" : target,
+      );
       try {
-        const selected = await this.options.chooseOutput(
-          path.parse(task.project.source.name).name + "_reel.mov",
-        );
+        const selected =
+          destination ??
+          (await this.options.chooseOutput(
+            path.parse(task.project.source.name).name + "_reel.mov",
+          ));
         if (!selected) {
           await rm(task.dir, { recursive: true, force: true });
           return null;
         }
+        if (!path.isAbsolute(selected))
+          throw new Error("절대 출력 경로를 지정해주세요.");
         const output = path.resolve(selected),
-          cover = path.join(
-            path.dirname(output),
-            path.parse(output).name + "_cover.png",
-          ),
+          cover =
+            target === "cover"
+              ? output
+              : path.join(
+                  path.dirname(output),
+                  path.parse(output).name + "_cover.png",
+                ),
           manifest = output.replace(/\.[^.]+$/, ".style.json");
         if (
-          ![".mov", ".mp4"].includes(path.extname(output).toLowerCase()) ||
+          !(target === "cover" ? [".png"] : [".mov", ".mp4"]).includes(
+            path.extname(output).toLowerCase(),
+          ) ||
           [output, cover, manifest].includes(task.record.sourcePath)
         )
           throw new Error("원본과 다른 MOV 또는 MP4 출력 경로를 선택해주세요.");
-        for (const file of [
-          output,
-          cover,
-          manifest,
-          cover.replace(/\.png$/, ".style.json"),
-        ])
+        const outputFiles =
+          target === "both"
+            ? [output, cover, manifest, cover.replace(/\.png$/, ".style.json")]
+            : [output, manifest];
+        for (const file of outputFiles)
           if (await exists(file))
             throw new Error(
               "같은 이름의 결과가 있어요. 새 파일 이름을 선택해주세요.",
@@ -455,25 +525,26 @@ export class EditorService implements EditorBridge {
           const tempCover = path.join(task.dir, "cover.png");
           const published: string[] = [];
           try {
-            await this.invoke(
-              ["render", task.request, tempVideo],
-              (percent) => (job.progress = percent * 0.9),
-              true,
-            );
+            if (target !== "cover")
+              await this.invoke(
+                ["render", task.request, tempVideo],
+                (percent) => (job.progress = percent * 0.9),
+                true,
+              );
             if ((job as RenderJob).state === "cancelled") return;
             job.phase = "표지 만들기";
             job.progress = 92;
-            await this.invoke(
-              ["cover", task.request, tempCover],
-              undefined,
-              true,
-            );
+            if (target !== "video")
+              await this.invoke(
+                ["cover", task.request, tempCover],
+                undefined,
+                true,
+              );
             if ((job as RenderJob).state === "cancelled") return;
             job.phase = "결과 저장";
-            const pairs: [[string, string], [string, string]] = [
-              [tempVideo, output],
-              [tempCover, cover],
-            ];
+            const pairs: [string, string][] = [];
+            if (target !== "cover") pairs.push([tempVideo, output]);
+            if (target !== "video") pairs.push([tempCover, cover]);
             for (const [from, to] of pairs) {
               await import("node:fs/promises").then((fs) =>
                 fs.copyFile(from, to, 1),
@@ -489,7 +560,10 @@ export class EditorService implements EditorBridge {
               }
             }
             job.outputPath = output;
-            job.coverPath = cover;
+            if (target !== "video") job.coverPath = cover;
+            job.manifestPaths = published.filter((file) =>
+              file.endsWith(".style.json"),
+            );
             await this.updateStage(task.project, "review");
             job.progress = 100;
             job.phase = "내보내기 완료";
@@ -506,6 +580,8 @@ export class EditorService implements EditorBridge {
             if (this.activeJob === job) this.activeJob = undefined;
           }
         })();
+        this.options.changed?.(structuredClone(task.project));
+        this.options.renderStarted?.({ ...job });
         this.completions.set(job.id, completion);
         return { ...job };
       } catch (error) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DashboardBridge } from "../shared/contracts";
 import type {
+  AgentUiBridge,
   CaptionCue,
   EditSettings,
   EditorBridge,
@@ -13,6 +14,7 @@ import { validateEditSettings } from "../shared/editor-model";
 
 type EditorProps = {
   bridge: EditorBridge;
+  agent?: AgentUiBridge;
   mode: DashboardBridge["mode"];
   incoming: EditorProject | null;
   active: boolean;
@@ -39,6 +41,7 @@ function validate(project: EditorProject, kind: "video" | "cover" | "export") {
 
 export function Editor({
   bridge,
+  agent,
   mode,
   incoming,
   active,
@@ -55,6 +58,7 @@ export function Editor({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const [time, setTime] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [job, setJob] = useState<RenderJob | null>(null);
@@ -70,6 +74,42 @@ export function Editor({
   const rendering = job?.state === "running";
   const unavailable = !runtime?.available;
   const refreshRecent = async () => setRecent(await bridge.list());
+  useEffect(() => {
+    void agent
+      ?.reportContext({
+        projectId: project?.id ?? null,
+        dirty,
+        time,
+        active,
+        busy: Boolean(busy) || Boolean(rendering),
+      })
+      .catch((e) => setError(message(e)));
+  }, [agent, project?.id, dirty, time, active, busy, rendering]);
+  useEffect(() => {
+    if (!agent) return;
+    const changed = agent.onProjectChanged((next) => {
+      void refreshRecent().catch((e) => setError(message(e)));
+      onDashboardChange();
+      if (projectRef.current?.id !== next.id) return;
+      if (dirtyRef.current && !busyRef.current) {
+        setConflict(true);
+        setNotice(
+          "다른 연결에서 설정이 바뀌었어요. 현재 편집은 보존했으며 저장 전 다시 열어 확인해주세요.",
+        );
+        return;
+      }
+      setProject(next);
+      setPreview(null);
+    });
+    const started = agent.onRenderStarted((next) => {
+      setJob(next);
+      setNotice("내보내기를 시작했어요.");
+    });
+    return () => {
+      changed();
+      started();
+    };
+  }, [agent, bridge]);
   async function run(name: string, operation: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -79,6 +119,7 @@ export function Editor({
     try {
       await operation();
     } catch (e) {
+      if (message(e).includes("STALE_PROJECT")) setConflict(true);
       setError(message(e));
     } finally {
       busyRef.current = false;
@@ -86,11 +127,14 @@ export function Editor({
     }
   }
   async function adopt(next: EditorProject) {
-    if (projectRef.current && dirtyRef.current)
-      await bridge.save(projectRef.current);
+    if (projectRef.current && dirtyRef.current) {
+      const saved = await bridge.save(projectRef.current);
+      if (saved.id === next.id) next = saved;
+    }
     videoRef.current?.pause();
     setProject(next);
     setDirty(false);
+    setConflict(false);
     setPreview(null);
     setTime(0);
     setMediaError("");
@@ -122,9 +166,14 @@ export function Editor({
     };
   }, [active, bridge, readonly]);
   useEffect(() => {
-    if (!incoming || incomingRef.current === incoming.id || busy || rendering)
+    if (
+      !incoming ||
+      incomingRef.current === `${incoming.id}:${incoming.updatedAt}` ||
+      busy ||
+      rendering
+    )
       return;
-    incomingRef.current = incoming.id;
+    incomingRef.current = `${incoming.id}:${incoming.updatedAt}`;
     void run("Photos 영상 준비", () => adopt(incoming));
   }, [incoming, busy, rendering]);
   useEffect(() => {
@@ -177,7 +226,6 @@ export function Editor({
     setProject({
       ...project,
       settings: update(project.settings),
-      updatedAt: new Date().toISOString(),
     });
     setDirty(true);
     setPreview(null);
@@ -215,14 +263,13 @@ export function Editor({
     });
   const load = (id: string) =>
     run("편집 기록 열기", async () => {
-      if (projectRef.current && dirtyRef.current)
-        await bridge.save(projectRef.current);
       await adopt(await bridge.load(id));
     });
   const save = () =>
     run("편집 설정 저장", async () => {
       if (!project) return;
-      await bridge.save(project);
+      const saved = await bridge.save(project);
+      setProject(saved);
       setDirty(false);
       await refreshRecent();
       onDashboardChange();
@@ -243,11 +290,12 @@ export function Editor({
     run("내보내기 준비", async () => {
       if (!project) return;
       validate(project, "export");
-      await bridge.save(project);
+      const saved = await bridge.save(project);
+      setProject(saved);
       setDirty(false);
       await refreshRecent();
       onDashboardChange();
-      const result = await bridge.export(project);
+      const result = await bridge.export(saved);
       if (result) {
         setJob(result);
         setNotice("선택한 설정으로 내보내기를 시작했어요.");
@@ -304,6 +352,25 @@ export function Editor({
       {notice && (
         <div className="alert success" role="status">
           {notice}
+        </div>
+      )}
+      {conflict && project && (
+        <div className="alert" role="alert">
+          저장된 설정이 바뀌었어요. 현재 입력은 그대로 남아 있어요.
+          <button
+            disabled={!!busy || rendering}
+            onClick={() =>
+              void run("저장본 다시 열기", async () => {
+                const latest = await bridge.load(project.id);
+                setProject(latest);
+                setDirty(false);
+                setConflict(false);
+                setPreview(null);
+              })
+            }
+          >
+            내 변경을 버리고 저장본 열기
+          </button>
         </div>
       )}
       {busy && (

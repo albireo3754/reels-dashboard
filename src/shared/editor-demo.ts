@@ -114,6 +114,7 @@ export function createDemoEditor(
       projects.set(project.id, clone(project));
       persist();
       onStage?.(project, "editing");
+      return clone(project);
     },
     async preview(project, time, kind) {
       validate(project, kind);
