@@ -31,3 +31,7 @@ The follow-up implementation commit `2dd56d634534eecbfc6495020dbda318417841c3` p
 ## Authorized preview correction
 
 The first real preview revealed that the native response and Node canonical grant can represent the same macOS file through different parent aliases. The production file reader now resolves the path before checking the existing canonical grant, while still rejecting ungranted files and symlinks at the file itself. A focused unit test and the real preview test failed before this correction and passed afterward. The corrected packaged app passed all eight tests; a stricter single-preview check also confirmed the Vision warning-free path. The manually started authorization helper was stopped after its request finished, without revoking the user's Photos permission.
+
+## Final publication verification
+
+The final production correction and opt-in live test are in commit `0f5c446866fe8a9fc451c65fa80144127bc3f3e5`. [GitHub CI run 40518829999](https://github.com/albireo3754/reels-dashboard/actions/runs/40518829999) completed successfully in 3m22s, including original-test preservation, unit/native tests, live-process rebuild/install regressions, web/Electron fixture checks, packaging and public audit. The separate authorized local packaged suite passed 8/8, and the stricter live Vision check passed 1/1. All requirements of the PhotosIndex replacement, shared Sites-ready renderer, delegated workflow, testing and public-source publication milestone have supporting evidence.
