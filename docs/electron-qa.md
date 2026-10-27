@@ -70,3 +70,36 @@ REELS_ELECTRON_EXECUTABLE="$PWD/release/mac-arm64/Reels Dashboard.app/Contents/M
 최종 재검증에는 evidence reference 변경 시 계획 무효화를 반영한 frontend 빌드를 사용했어요. 보존한 패키징 화면은 `artifacts/preview/reels-dashboard-electron.png`예요.
 
 이 QA는 root가 별도 소켓으로 실행한 실제 권한 확인용 helper를 종료하거나 변경하지 않았어요. 실제 Photos 권한 확인은 Mac 잠금 상태로 아직 완료되지 않았어요.
+
+## 후속 회귀: 실행 중인 native 파일 재빌드
+
+앞선 Electron 7개 테스트는 이미 만들어진 앱을 실행하는 범위였어요. 이후 반복 native 빌드에서 서명된 CLI·helper 실행 파일을 같은 inode에 덮어써 macOS가 실행을 거부하거나 실행 중 helper를 종료하는 문제가 확인됐어요. 디스크의 `codesign --verify` 성공만으로 이 동작을 검증할 수 없어요.
+
+이 회귀의 완료 기준은 서명 검증에 더해 **실행 중 helper가 재빌드 동안 동일 PID·instance로 응답하고, 새 CLI 실행과 helper 재시작이 모두 성공하는 것**이에요. native installer의 staging·원자적 교체 변경과 회귀 스크립트를 독립 검토하고, 수정 파일을 포함한 패키징 앱 QA를 다시 수행해요. 이 절의 후속 결과가 기록되기 전까지 위 최초 패키징 결과만으로 재빌드 안정성을 주장하지 않아요.
+
+2026-10-27 독립 native 회귀 검증:
+
+- 검토 대상: helper bundle을 별도 디렉터리에 구성·서명·검증한 후 `RENAME_SWAP`으로 교체하는 설치 코드와, CLI를 새 inode에 복사·검증한 후 rename하는 설치 코드.
+- 검토 중 테스트의 premature EOF 처리 누락을 발견했어요. native 종료가 socket EOF를 보내면 테스트가 실패하도록 수정했고, 새 CLI가 기존 helper를 자동 재실행해 결함을 숨기지 못하도록 새 CLI 호출 후에도 동일 PID·instance를 확인하도록 보강했어요.
+- `node scripts/test-native-rebuild.mjs`: **exit 0**. 의도한 서명 실패 시 기존 파일 유지, 재빌드 도중 **36회 실제 socket 상태 응답**, 기존 helper PID·instance 유지, 두 실행 파일 inode 교체, 새 CLI `--help`·`status`, 새 helper 시작·종료를 확인했어요.
+- 이 검증은 고유 QA socket과 임시 support 경로에서 status만 호출했어요. Photos 권한 요청이나 개인 자산 작업을 실행하지 않았어요.
+- 수정본을 포함한 패키징 앱 QA는 아래 후속 결과로 별도 기록해요.
+
+수정된 native 산출물로 재패키징한 앱의 후속 QA:
+
+- `REELS_ELECTRON_EXECUTABLE="…/Reels Dashboard.app/Contents/MacOS/Reels Dashboard" REELS_NATIVE_QA=1 npm run test:electron`: **7/7 통과**, skipped 0, flaky 0, **7.3초**.
+- 최종 JSON 리포트와 보존 screenshot은 위와 같은 경로에 이 실행 결과로 갱신했어요. packaged helper의 protocol 1 응답·실제 실행 파일/PID/socket 귀속·권한 오류 후 종료 정리를 다시 확인했어요.
+- 권한 상태는 여전히 `not-determined`예요. 앞선 실제 권한 요청 프로세스는 서명 crash로 종료된 상태였으며, 그 요청이 계속 살아 있다거나 승인이 완료됐다고 취급하지 않아요. 이 QA에서는 새 권한 요청을 실행하지 않았어요.
+
+## 후속 회귀: 한글 설치 경로의 production 종료
+
+CLI 설치 스크립트는 CLI와 helper를 한 쌍으로 staging·검증·교체하도록 수정됐어요. QA는 실제 사용자 설치 경로 대신 임시 `PHOTOSINDEX_INSTALL_ROOT`의 한글·공백 경로를 사용해 기본 helper 탐색과 재설치를 검증해요.
+
+추가로 QA 전용 종료 함수만 성공하는 것으로 충분하지 않아, `tests/electron/native-client-install-runner.ts`에서 실제 `src/desktop/native.ts`를 `node --import tsx`로 불러 실행했어요. C locale에서 production `NativeClient.request`로 helper를 시작하고, 자산을 조회하지 않는 실패 명령 뒤 `dispose`를 호출해 PID·socket·identity 파일이 없어지는지 확인해요.
+
+- **수정 전 실패:** `Production NativeClient.dispose must stop its Korean/spaced-path helper after a command error` assertion 실패. metadata 경로의 Unicode 표현 차이와 `ps`의 locale별 비ASCII 출력 때문에 소유한 프로세스의 종료를 건너뛰었어요. 독립 cleanup으로 해당 QA helper와 임시 설치 경로를 정리했어요.
+- **수정 후 성공:** realpath의 NFC 정규화, UTF-8 locale의 `ps -ww`, `comm`으로 확인한 정확한 실행 파일 비교, 원래 metadata 재확인 조건을 적용한 뒤 `node scripts/test-native-install.mjs`가 **exit 0**으로 통과했어요.
+- 같은 실행에서 임시 설치 기본 탐색, 재설치 중 **5회 실제 status 응답**, 기존 PID·instance 유지, 실행 파일 inode 교체, 새 CLI/helper 시작, 명시적 app override도 확인했어요.
+- 실제 사용자 설치와 Photos 권한·개인 자산은 변경하지 않았어요. helper 소유권 검사를 제거해서 테스트를 통과시킨 것이 아니에요.
+
+Unicode 종료 수정까지 포함한 최종 패키징 앱에서 **7/7 통과**, skipped 0, flaky 0, **7.2초**로 재검증했어요. actual packaged helper의 상태 응답·소유권·종료를 다시 확인했고 권한은 `not-determined`였어요. 최종 JSON 리포트와 보존 screenshot도 이 실행 결과로 갱신했어요. 별도 실제 권한 확인용 helper는 종료하거나 변경하지 않았어요.

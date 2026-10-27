@@ -37,3 +37,43 @@ Additional verification on 2026-10-27:
 - Rebuilt the explicit ad-hoc QA helper after the lifecycle change.
 - A live test launched the bundled helper on a unique QA socket and temporary support root, verified record mode `0600`, directory mode `0700`, process executable and socket arguments, sent SIGTERM, and observed both metadata and socket removal.
 - Relaunched the same helper, verified a fresh instance UUID, terminated it again and observed cleanup. No authorization request or Photos asset operation was run.
+
+## Safe native rebuild publication
+
+A subsequent live authorization run exposed a macOS code-signing failure after a rebuild: copying over the already published CLI executable and signing the helper bundle in place could invalidate cached/mapped signed Mach-O pages. Signature verification on disk alone did not detect the runtime failure.
+
+The native build now prepares a new helper bundle in a unique sibling staging directory, signs it, and verifies its signature before publication. On macOS, `renamex_np(RENAME_SWAP)` exchanges the complete new and previous bundles atomically. The previous bundle is then unlinked without modifying its executable inode. If signing, verification or the swap fails, the current published helper remains untouched. The CLI likewise uses an exclusive new temporary file, verifies it, and atomically renames it into place; it never writes over the old inode.
+
+Run the regression from the repository root:
+
+```sh
+node scripts/test-native-rebuild.mjs
+```
+
+This script explicitly uses disposable ad-hoc signing unless a signing mode is supplied. It creates a unique socket and temporary support directory and makes only `status` requests; it never requests Photos consent or operates on assets.
+
+Verified on 2026-10-27:
+
+- Intentionally failed signing left both published executable inodes and the live helper identity unchanged.
+- A successful rebuild completed while the old helper served **35 direct status responses**. Its PID/instance metadata remained unchanged, and its socket still responded after publication.
+- Published CLI and helper executable inodes both changed.
+- The new CLI successfully executed `--help` and `status`, avoiding the prior exit-137 signature-cache failure.
+- After graceful shutdown, the newly published helper launched with a new instance identity and returned status successfully; cleanup passed again.
+- Signing-script regression tests, Node syntax checks, shell syntax check and `git diff --check` passed.
+
+The staged installer fixes runtime-safe local publication; it does not establish trusted distribution signing, notarization, Photos authorization or live asset-operation coverage.
+
+## Standalone installer parity
+
+The migrated standalone installer had two related defects: it still copied signed executables in place, and its separate CLI/app destinations no longer matched the bundled-only helper discovery contract. It now installs a staged, signature-verified CLI/helper pair under `<prefix>/lib/reels-dashboard` and a small atomically published launcher under `<prefix>/bin`. The default prefix is `~/.local`; `PHOTOSINDEX_INSTALL_ROOT` supports a separate absolute destination. The launcher defaults `PHOTOSINDEX_APP_PATH` to the paired helper and honors an explicit override.
+
+Verified with `node scripts/test-native-install.mjs` on 2026-10-27:
+
+- Installation used only a temporary prefix containing spaces and Korean text; `HOME` was not changed and the user's installation was untouched.
+- Installed `--help` and `status` worked with `PHOTOSINDEX_APP_PATH` absent.
+- Reinstallation atomically replaced CLI, helper and launcher inodes while the same helper PID/instance served **5 status responses** and remained alive.
+- The new launcher/CLI returned status without silently restarting the helper.
+- A later helper restart resolved the newly installed paired app; an explicit app-path override also selected the requested helper.
+- Helper processes and the temporary installation were cleaned up; no Photos permission request or asset operation ran.
+
+macOS can report filesystem paths using `/var` aliases and decomposed Unicode, so the test compares canonical filesystem paths normalized to NFC and requests UTF-8 process output when checking process ownership.

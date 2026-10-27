@@ -43,3 +43,11 @@ After the socket host starts, the helper atomically publishes `helper-instance.j
 ```
 
 Electron may use this to terminate its own helper only after validating the current executable and socket arguments of that PID. A PID or metadata file alone is not proof of process identity. The record may appear a few milliseconds after the first status response. SIGTERM and SIGINT trigger normal AppKit termination, which removes the matching record before releasing the socket. Cleanup never removes a replacement instance's record. A force-killed process can leave stale metadata; validate process identity before acting on it.
+
+## Optional standalone CLI installation
+
+After building, run `zsh native/photosindex/scripts/install-cli.sh` from the repository root. The default destination is `~/.local`; set `PHOTOSINDEX_INSTALL_ROOT` to another absolute prefix to install elsewhere. The installer keeps the CLI and helper together in `<prefix>/lib/reels-dashboard/` and places a small launcher at `<prefix>/bin/photosindex`. It does not overwrite an app in `~/Applications`.
+
+The launcher locates its paired helper without an external `PHOTOSINDEX_APP_PATH`, honors an explicit override, and preserves spaces and Unicode in installation paths and arguments. Installation stages and verifies both signed binaries, atomically exchanges the complete pair, then atomically publishes the launcher. Reinstallation does not overwrite a running helper's Mach-O inode.
+
+`node scripts/test-native-install.mjs` validates this flow under a temporary installation prefix. It never changes `HOME` or writes to the user's real installation, and it makes only status requests.

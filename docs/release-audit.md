@@ -21,3 +21,7 @@ The QA Mac is locked, and the new helper's Photos authorization is `not-determin
 Actual personal media deletion is intentionally not an automated QA step. Verified-move contracts use the preserved Swift tests and synthetic UI/IPC tests. No live Site receiver was deployed; the requested common renderer and connection adapter are available with a documented hosting contract.
 
 The broader goal remains open for the consent-dependent live check. Publishing the repository and passing fixture tests do not erase that remaining verification item.
+
+## Follow-up correction
+
+Fresh-build QA did not initially catch in-place signed executable replacement during a live rebuild. That defect was reproduced from macOS crash evidence and corrected with staged, verified, atomic publication. The provided standalone installer was also corrected to keep its CLI and helper together and avoid in-place replacement. Live rebuild/install regression scripts are now CI and workflow gates. A Korean-path/C-locale production lifecycle failure was reproduced, fixed, and retested. See the follow-up in [verification](verification.md). The final updated local package passed 7/7 Electron tests; the replacement Photos consent request remains pending.

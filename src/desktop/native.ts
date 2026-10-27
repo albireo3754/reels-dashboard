@@ -114,26 +114,34 @@ export class NativeClient {
       const metadata = path.join(this.options.support, "helper-instance.json");
       const original = await readFile(metadata, "utf8");
       const record = JSON.parse(original);
-      const expected = await realpath(
-        path.join(this.options.app, "Contents/MacOS/PhotosIndex"),
-      );
+      const expected = (
+        await realpath(path.join(this.options.app, "Contents/MacOS/PhotosIndex"))
+      ).normalize("NFC");
       if (
         record.schemaVersion !== 1 ||
         !Number.isInteger(record.pid) ||
         record.pid <= 1 ||
         record.socketPath !== this.options.socket ||
-        (await realpath(record.executablePath)) !== expected
+        (await realpath(record.executablePath)).normalize("NFC") !== expected
       )
         return;
-      const { stdout } = await execFileAsync("/bin/ps", [
-        "-p",
-        String(record.pid),
-        "-o",
-        "command=",
-      ]);
+      // macOS ps escapes non-ASCII paths in the C locale. Read the executable
+      // separately so spaces and /var aliases cannot weaken the identity check.
+      const processEnvironment = { ...process.env, LC_ALL: "en_US.UTF-8" };
+      const executable = await execFileAsync(
+        "/bin/ps",
+        ["-ww", "-p", String(record.pid), "-o", "comm="],
+        { env: processEnvironment },
+      );
+      if ((await realpath(executable.stdout.trim())).normalize("NFC") !== expected)
+        return;
+      const { stdout } = await execFileAsync(
+        "/bin/ps",
+        ["-ww", "-p", String(record.pid), "-o", "command="],
+        { env: processEnvironment },
+      );
       if (
-        !stdout.trim().startsWith(record.executablePath) ||
-        !stdout.includes(this.options.socket)
+        !stdout.normalize("NFC").includes(this.options.socket.normalize("NFC"))
       )
         return;
       if ((await readFile(metadata, "utf8")) !== original) return;

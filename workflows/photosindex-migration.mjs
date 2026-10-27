@@ -168,6 +168,8 @@ Produce docs/release-audit.md with explicit verified/unverified coverage, origin
 and publication scope. A failing or unverified required feature is a failed report, never a waiver.`);
   const checks = [
     ['swift', ['test', '--package-path', 'native/photosindex']],
+    ['npm', ['run', 'test:native-rebuild']],
+    ['npm', ['run', 'test:native-install']],
     ['npm', ['run', 'typecheck']],
     ['npm', ['test']],
     ['npm', ['run', 'build']],
