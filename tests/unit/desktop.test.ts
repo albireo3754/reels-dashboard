@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readFile,
+  symlink,
+  writeFile,
+  mkdir,
+  realpath,
+} from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createServer } from "node:net";
@@ -35,6 +43,33 @@ test("private storage persists and refuses unsafe documents or ungranted file ac
     await assert.rejects(resolveGrantedFile(link, new Set([link])));
     await writeFile(path.join(root, "dashboard.json"), "broken");
     await assert.rejects(store.load());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test("granted files remain readable through canonical parent aliases without granting other files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "reels-alias-"));
+  try {
+    const directory = path.join(root, "evidence");
+    await mkdir(directory);
+    const file = path.join(directory, "preview.jpg");
+    await writeFile(file, "synthetic-preview");
+    const canonical = await realpath(file);
+    const alias = path.join(root, "alias");
+    await symlink(directory, alias, "dir");
+    const grants = new Set([canonical]);
+    assert.equal(
+      await resolveGrantedFile(path.join(alias, "preview.jpg"), grants),
+      canonical,
+    );
+    const other = path.join(directory, "ungranted.jpg");
+    await writeFile(other, "ungranted");
+    await assert.rejects(
+      resolveGrantedFile(path.join(alias, "ungranted.jpg"), grants),
+    );
+    const directLink = path.join(directory, "link.jpg");
+    await symlink(canonical, directLink);
+    await assert.rejects(resolveGrantedFile(directLink, grants));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -6,10 +6,10 @@ This matrix maps the requested replacement to implemented production paths and o
 | --- | --- | --- | --- |
 | Specification before migration | test inventory + UI spec, initial documentation commit | 26 files / 75 methods; `verify:spec` | None for source inventory |
 | Delegated workflow | `workflows/photosindex-migration.mjs` | Syntax and runtime dry-run; actual implementation used separate spec/native/React/web-QA/Electron-QA/audit agents | Reusable full script was not rerun over the completed project |
-| status / authorize | React connection controls → preload → main → native socket → AppCommandRouter | Native packaged status + web six permission states + Electron authorize fixture | Real OS consent pending locked QA Mac |
-| sync | Date control → native IndexRuntime | Original Swift and synthetic UI/IPC; real unauthorized call rejection | Live authorized read-only date test pending |
-| groups.list / groups.show | Date/level/group UI → native router/runtime | Swift grouping/router, Chromium, packaged IPC | Live library contents pending consent |
-| groups.inspect | Private output allocation → native evidence service; granted preview files | Swift evidence paging/redaction + web first/middle/last/partial/error + packaged IPC | Real PhotoKit/Vision samples pending consent |
+| status / authorize | React connection controls → preload → main → native socket → AppCommandRouter | Native packaged status + web six permission states + Electron authorize fixture | User consent confirmed; packaged helper authorized |
+| sync | Date control → native IndexRuntime | Original Swift and synthetic UI/IPC; real unauthorized call rejection | Authorized empty and nonempty date reads passed |
+| groups.list / groups.show | Date/level/group UI → native router/runtime | Swift grouping/router, Chromium, packaged IPC | Live list/detail identity and count consistency passed |
+| groups.inspect | Private output allocation → native evidence service; granted preview files | Swift evidence paging/redaction + web first/middle/last/partial/error + packaged IPC | One real preview decoded; no analysis/sample/partial failure warnings |
 | decisions.validate | Native validation of saved/imported original JSON | Swift partition/integrity tests + web invalid/import/selection tests | No fixture-only production validation |
 | export.plan / export.apply | Reviewed plan/digest → native export service | Swift planner/applier + web and packaged IPC copy scenarios | Real personal exports not performed in QA |
 | move.plan / move.apply | Separate destructive confirmation → native move service | Swift post-upload rehash, failure and journal recovery; web/IPC confirm/cancel/recovery | Actual personal deletion deliberately excluded from automated QA |
@@ -17,7 +17,7 @@ This matrix maps the requested replacement to implemented production paths and o
 | Common React / Sites | shared contracts, web adapter, allowlisted snapshot and HTTPS adapter | Web read-only/mobile/schema cases; unit PUT/credential/redirect/error contract; packaged export allowlist | No particular Site receiver deployed |
 | Persistent dashboard | private atomic local JSON through main | Unit persistence/corruption + browser edit/reload + packaged restart | Native multi-date index persistence is not part of upstream parity |
 | Web UI QA | separate Playwright Chromium configuration | 42 tests passed; desktop/mobile screenshots reviewed | Synthetic Photos fixtures labeled |
-| Electron QA | separate agent, configuration, app launches and real main IPC | Final packaged 7/7, none skipped/flaky | Consent-dependent PhotoKit reading pending |
+| Electron QA | separate agent, configuration, app launches and real main IPC | Final packaged 8/8, none skipped/flaky; stricter live Vision check passed | Authorized read-only live check passed |
 | Signed rebuild and CLI installation | Staged signature verification, atomic app/CLI replacement, paired standalone install | Live rebuild/install scripts, unchanged running PID, fresh launch, Korean-path production lifecycle red→green | Actual user install untouched |
 | Public repository | allowlisted source, licenses, ignore rules, source audit | GitHub PUBLIC and pushed code commit `00c92d69dc5222293448ff5a2740e88356d671da` | CI result tracked in release audit |
 

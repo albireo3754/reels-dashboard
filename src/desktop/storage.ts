@@ -1,4 +1,11 @@
-import { mkdir, readFile, writeFile, rename, realpath } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  writeFile,
+  rename,
+  realpath,
+  lstat,
+} from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { emptyDashboard, type Dashboard } from "../shared/contracts";
@@ -64,9 +71,25 @@ export async function resolveGrantedFile(
   file: unknown,
   grants: Set<string>,
 ): Promise<string> {
-  if (typeof file !== "string" || !grants.has(file))
+  if (typeof file !== "string" || !path.isAbsolute(file))
     throw new Error("File access was not granted");
-  const resolved = await realpath(file);
-  if (resolved !== file) throw new Error("Symbolic file access refused");
+  let resolved: string;
+  try {
+    // Parent aliases such as /var and /private/var can name the same evidence
+    // file. Reject symlinks at the file itself, then check the canonical grant.
+    const info = await lstat(file);
+    if (!info.isFile() || info.isSymbolicLink())
+      throw new Error("Not a regular file");
+    resolved = await realpath(file);
+  } catch {
+    throw new Error("File access was not granted");
+  }
+  const granted = [...grants].some(
+    (candidate) =>
+      candidate === resolved ||
+      (process.platform === "darwin" &&
+        candidate.normalize("NFC") === resolved.normalize("NFC")),
+  );
+  if (!granted) throw new Error("File access was not granted");
   return resolved;
 }
