@@ -15,15 +15,16 @@
 - [x] 로컬 대시보드 영속 저장과 공유 항목 선택.
 - [x] Sites용 공통 웹 화면·snapshot 계약·HTTPS 수신 API 연동 adapter.
 - [x] 별도 Chromium 웹 UI 테스트42개와 데스크톱/모바일 화면 확인.
-- [x] 패키징 앱 Electron QA7개와 라이선스 포함 확인.
-- [x] TypeScript 단위 테스트8개·타입 검사·공개 소스 검사.
+- [x] 패키징 앱 Electron QA8개와 라이선스 포함 확인.
+- [x] TypeScript 단위 테스트9개·타입 검사·공개 소스 검사.
 - [x] macOS 로컬 QA용 앱 번들 생성.
 - [x] 실행 중 서명 바이너리 덮어쓰기 오류 수정 및 실제 재빌드 회귀 검증.
 - [x] 단독 CLI의 paired helper 설치·재설치와 한글/공백 경로 종료 검증.
 
-## 완료 확인 대기
+## 최종 확인
 
-- [ ] 실제 Photos 접근 권한 허용 후 작은 범위의 read-only 색인 확인. 현재 권한은 `not-determined`이고 Mac이 잠겨 있어 사용자 잠금 해제·OS 허용이 필요해요.
+- [x] 사용자 허용 후 `authorized` 확인, 실제 날짜 색인·그룹 상세·한 자산 미리보기·Vision 분석·JPEG 디코딩 검증. 개인 라이브러리 정보와 이미지는 공개하지 않았어요.
+- [x] 실제 미리보기에서 발견한 경로 표현 차이의 접근 거부를 수정 전 실패·수정 후 성공으로 확인하고, 허용되지 않은 파일과 최종 심볼릭 링크 거부도 유지했어요.
 - [x] GitHub 공개 원격 push, PUBLIC·로컬/원격 HEAD 일치 확인. 구현 커밋의 [GitHub CI](https://github.com/albireo3754/reels-dashboard/actions/runs/40512046668) 전체 통과.
 
 ## 검증 범위

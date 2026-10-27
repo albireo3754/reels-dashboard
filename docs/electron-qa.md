@@ -2,6 +2,8 @@
 
 Electron QA는 공통 React 화면의 웹 테스트와 별도로 실행해요. fixture 테스트와 실제 native helper 테스트를 구분하며, fixture 성공을 Photos 권한·실제 라이브러리 접근의 증거로 사용하지 않아요.
 
+**최신 상태:** 사용자 권한 허용 후 패키징 앱의 `authorized` 상태를 확인했고, 실제 Electron bridge에서 빈 날짜 조회, 승인된 촬영일의 색인·그룹 목록·상세 메타데이터, 한 자산의 PhotoKit/Vision evidence 및 JPEG 미리보기 디코딩을 검증했어요. 최종 패키징 앱은 **8/8 테스트 통과**, skipped 0, flaky 0이에요. 아래의 `not-determined` 기록은 권한 허용 전의 이력이에요. 실제 원본 복사·이동·삭제는 실행하지 않았으며 해당 기능은 synthetic/Swift 테스트로 검증한 범위를 구분해요.
+
 ## 재현 명령
 
 ```sh
@@ -103,3 +105,20 @@ CLI 설치 스크립트는 CLI와 helper를 한 쌍으로 staging·검증·교�
 - 실제 사용자 설치와 Photos 권한·개인 자산은 변경하지 않았어요. helper 소유권 검사를 제거해서 테스트를 통과시킨 것이 아니에요.
 
 Unicode 종료 수정까지 포함한 최종 패키징 앱에서 **7/7 통과**, skipped 0, flaky 0, **7.2초**로 재검증했어요. actual packaged helper의 상태 응답·소유권·종료를 다시 확인했고 권한은 `not-determined`였어요. 최종 JSON 리포트와 보존 screenshot도 이 실행 결과로 갱신했어요. 별도 실제 권한 확인용 helper는 종료하거나 변경하지 않았어요.
+
+## 사용자 권한 허용 후 실제 메타데이터 검증
+
+- 기존 packaged `native.spec.ts`: **1/1 통과**. actual bundled helper에서 `authorized`를 확인하고 빈 날짜 조회, 프로세스 귀속, 종료 후 정리를 검증했어요.
+- opt-in `live-library.spec.ts`: **1/1 통과**. 실제 packaged Electron의 `window.reels` bridge에서 승인된 날짜만 `sync → groups.list → 첫 그룹 groups.show → 한 자산 groups.inspect → imageURL` 순서로 호출했어요. 첫 날짜에서 결과를 확인해 추가 날짜 조회는 필요하지 않았어요.
+- 현재 index run 일치, native가 반환한 그룹 수와 목록 길이, 그룹별 자산 ID의 전체 개수·중복 여부, 상세 자산 ID와 선택한 그룹 ID 집합의 일치를 확인했어요.
+- 실제 촬영일·자산 수·그룹 수·식별자는 공개 문서에 기록하지 않아요. private aggregate 결과는 gitignored `artifacts/electron-live/`에만 남기며, 원본 이름·경로·개별 자산 메타데이터는 보고서에 저장하지 않아요.
+- `groups.inspect`는 첫 페이지·페이지 크기 1·sample 1로 제한했어요. PhotoKit/Vision으로 만든 evidence의 index/group 일치를 확인하고 `imageURL`에서 반환한 비어 있지 않은 JPEG data URI를 browser `Image.decode()`로 검증했어요. 이미지를 DOM에 표시하거나 screenshot으로 남기지 않았고, 파일명·OCR·privacy flags·이미지 내용은 보고서에 기록하지 않았어요. 생성 evidence는 임시 test profile 정리와 함께 제거했어요.
+- JPEG 생성 성공만으로 Vision 성공을 추정하지 않아요. evidence packet에 `analysis-failed`, `sample-generation-failed`, `partial-evidence` 경고가 없다는 조건을 추가하고 변경한 실제 테스트만 다시 실행해 **1/1 통과, 2.3초**를 확인했어요. private 보고서에는 `analysisSucceeded: true`만 반환하며 실제 warning 문자열·식별자를 기록하지 않아요.
+- 기존 fixture 6개 및 Swift 계약 테스트와 이 실제 읽기 검증을 구분해요. 이 작업에서 export/move/delete, 원본 materialization, 새로운 Photos 권한 요청은 수행하지 않았어요.
+- 별도 권한 확인용 helper는 건드리지 않고, 이 테스트가 만든 독립 helper와 임시 user data만 정리했어요.
+
+이 실제 라이브러리 테스트는 기본 테스트 실행에서 건너뛰며, 명시적인 허용과 환경변수로 전달한 날짜가 있어야 실행돼요. 재현 시 `REELS_LIVE_LIBRARY_QA=1`, `REELS_LIVE_LIBRARY_DATE`를 지정하고 `tests/electron/live-library.spec.ts`만 실행해요. 필요할 때만 두 번째 승인 날짜를 `REELS_LIVE_LIBRARY_FALLBACK_DATE`로 전달해요. 임의 날짜 범위나 전체 라이브러리를 순회하지 않아요.
+
+실제 미리보기 연결에서 native가 반환한 경로의 부모 alias와 저장된 canonical grant가 달라 `imageURL`이 정당한 evidence 파일을 거부하는 결함을 발견했어요. 원본 경로를 무조건 허용하지 않고, 최종 symlink·비파일을 거부한 뒤 realpath로 부모 alias를 해소하여 기존 grant와 비교하도록 수정했어요. 변경한 실제 preview 테스트 **1/1 통과** 후 전체 패키징 테스트를 재실행해 **8/8 통과, 7.8초**를 확인했어요. 문서 선택·내보내기의 기존 grant 경계와 임의 경로 거부도 함께 통과했어요.
+
+최종 전체 8개 테스트의 private 리포트는 `artifacts/electron-live/full-suite-results.json`으로 보존했어요. 이후 Vision warning 검증을 강화한 단일 테스트 결과는 `artifacts/electron-live/results.json`과 같은 디렉터리의 HTML report에 있어요. 공유 가능한 fixture 대시보드 screenshot만 `artifacts/preview/reels-dashboard-electron.png`로 보존했어요.

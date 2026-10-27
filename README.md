@@ -63,7 +63,7 @@ REELS_NATIVE_QA=1 npm run test:electron -- tests/electron/native.spec.ts
 npm run audit:public
 ```
 
-Current local results: **85 Swift tests, 8 TypeScript tests, 42 Chromium UI tests, and 7 packaged Electron tests passed**. See [verification](docs/verification.md), [web QA](docs/web-qa.md), and [Electron QA](docs/electron-qa.md) for coverage and limits. Photos authorization is currently ungranted on the QA host; live asset access remains unverified. No personal photos were moved or deleted by automated QA.
+Current local results: **85 Swift tests, 9 TypeScript tests, 42 Chromium UI tests, and 8 packaged Electron tests passed**. See [verification](docs/verification.md), [web QA](docs/web-qa.md), and [Electron QA](docs/electron-qa.md) for coverage and limits. After explicit user consent, live Photos metadata, a bounded one-asset PhotoKit/Vision preview and JPEG decoding passed through the packaged Electron bridge. No personal photos were moved or deleted by automated QA.
 
 ## Specification and migration
 
