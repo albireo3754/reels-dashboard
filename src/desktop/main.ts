@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  protocol,
+  nativeImage,
+} from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -11,14 +19,34 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { connectAgent } from "../app/automation";
+import { AgentSession } from "../entities/agent-session";
+import { EditorService } from "../features/reel-editing";
+import type { EditorBridge } from "../shared/editor";
 import { NativeClient, validateRequest } from "./native";
-import { LocalStore, resolveGrantedFile, safeDocumentName } from "./storage";
+import {
+  LocalStore,
+  resolveGrantedFile,
+  safeDocumentName,
+} from "../shared/lib/storage";
 import { toSnapshot, validateDashboard } from "../shared/data";
 import type { Arguments, CommandMethod, Inspection } from "../shared/contracts";
 import { createDemoBridge } from "../shared/demo";
 if (process.env.REELS_USER_DATA)
   app.setPath("userData", path.resolve(process.env.REELS_USER_DATA));
 app.setName("Reels Dashboard");
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "reels-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 let window: BrowserWindow;
 const fixture = process.env.REELS_DEMO === "1";
 const grants = new Set<string>();
@@ -59,6 +87,43 @@ async function awaitReady() {
     exportRoot: process.env.PHOTOSINDEX_EXPORT_ROOT,
   });
   const demo = createDemoBridge();
+  const agentSession = new AgentSession();
+  let closeAgent: (() => Promise<void>) | undefined;
+  const emit = (name: string, value: unknown) => {
+    if (window && !window.isDestroyed()) window.webContents.send(name, value);
+  };
+  const editorService = new EditorService({
+    root,
+    store,
+    runtime: app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    chooseVideo: async () => {
+      const result = await dialog.showOpenDialog(window, {
+        properties: ["openFile"],
+        filters: [{ name: "영상", extensions: ["mov", "mp4", "m4v"] }],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+    chooseOutput: async (name) => {
+      const result = await dialog.showSaveDialog(window, {
+        defaultPath: name,
+        filters: [{ name: "영상", extensions: ["mov", "mp4"] }],
+      });
+      return result.canceled ? null : (result.filePath ?? null);
+    },
+    materialize: async (selection) =>
+      (await native.request("editor.materialize", {
+        id: selection.groupID,
+        "index-run": selection.indexRunID,
+        "asset-id": selection.assetID,
+      })) as { sourcePath: string },
+    reveal: (file) => shell.showItemInFolder(file),
+    changed: (project) => emit("agent:project-changed", project),
+    renderStarted: (job) => emit("agent:render-started", job),
+  });
+  const editor: EditorBridge = fixture ? demo.editor : editorService;
+  protocol.handle("reels-media", (request) => editorService.media(request));
   const demoDocuments = new Map<string, string>();
   let queue: Promise<unknown> = Promise.resolve();
   let activeOperations = 0;
@@ -66,15 +131,19 @@ async function awaitReady() {
   app.on("before-quit", (event) => {
     if (quitting) return;
     event.preventDefault();
-    if (activeOperations > 0) {
+    if (activeOperations > 0 || editorService.busy) {
       dialog.showMessageBoxSync(window, {
         type: "info",
-        message: "진행 중인 Photos 작업이 끝난 뒤 종료해주세요.",
+        message: "진행 중인 작업이 끝난 뒤 종료해주세요.",
       });
       return;
     }
     quitting = true;
-    void native.dispose().finally(() => app.quit());
+    void editorService
+      .dispose()
+      .then(() => closeAgent?.())
+      .then(() => native.dispose())
+      .finally(() => app.quit());
   });
   const handle = (name: string, fn: (...args: any[]) => unknown) =>
     ipcMain.handle(`reels:${name}`, async (event, ...args) => {
@@ -85,7 +154,24 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
-  handle("request", async (method: unknown, args: unknown = {}) => {
+  for (const method of [
+    "runtime",
+    "chooseVideo",
+    "fromPhotos",
+    "list",
+    "load",
+    "save",
+    "preview",
+    "export",
+    "job",
+    "cancel",
+    "reveal",
+  ] as const) {
+    handle(`editor:${method}`, (...args: unknown[]) =>
+      (editor[method] as (...values: unknown[]) => unknown).apply(editor, args),
+    );
+  }
+  const requestPhotos = async (method: unknown, args: unknown = {}) => {
     validateRequest(method, args);
     const input = { ...(args as Arguments) };
     const work = async () => {
@@ -137,7 +223,9 @@ async function awaitReady() {
     });
     queue = result.catch(() => {});
     return result;
-  });
+  };
+  handle("request", requestPhotos);
+  handle("agent:context", (context) => agentSession.update(context));
   handle("saveDocument", async (name: string, data: unknown) => {
     safeDocumentName(name);
     const file = await store.document(name, data);
@@ -251,17 +339,44 @@ async function awaitReady() {
       (_webContents, _permission, callback) => callback(false),
     );
     window.on("close", (event) => {
-      if (activeOperations > 0 && !quitting) {
+      if ((activeOperations > 0 || editorService.busy) && !quitting) {
         event.preventDefault();
         dialog.showMessageBoxSync(window, {
           type: "info",
-          message: "진행 중인 Photos 작업이 끝난 뒤 닫아주세요.",
+          message: "진행 중인 작업이 끝난 뒤 닫아주세요.",
         });
       }
     });
     void window.loadFile(path.join(app.getAppPath(), "dist/index.html"));
   };
   createWindow();
+  if (!fixture)
+    closeAgent = await connectAgent(root, {
+      editor: editorService,
+      session: agentSession,
+      dashboard: () => store.load(),
+      preview: async (project, time, kind) => {
+        const artifact = await editorService.previewArtifact(
+          project,
+          time,
+          kind,
+        );
+        let image = nativeImage.createFromDataURL(artifact.image);
+        if (image.isEmpty()) throw new Error("미리보기 PNG를 읽지 못했어요.");
+        const size = image.getSize();
+        if (Math.max(size.width, size.height) > 1280)
+          image = image.resize(
+            size.width >= size.height ? { width: 1280 } : { height: 1280 },
+          );
+        return {
+          image: image.toDataURL(),
+          manifest: artifact.manifest,
+          displaySize: image.getSize(),
+        };
+      },
+      open: (project) => emit("agent:project-opened", project),
+      photos: requestPhotos,
+    });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
