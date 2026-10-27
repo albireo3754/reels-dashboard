@@ -19,10 +19,10 @@ import type {
   EditorProject,
   EditorSource,
   RenderJob,
-} from "../shared/editor";
-import { defaultEditSettings } from "../shared/editor";
-import { validateEditSettings } from "../shared/editor-model";
-import type { LocalStore } from "./storage";
+} from "../../../shared/editor";
+import { defaultEditSettings } from "../../../shared/editor";
+import { validateEditSettings } from "../../../shared/editor-model";
+import type { LocalStore } from "../../../shared/lib/storage";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -375,7 +375,11 @@ export class EditorService implements EditorBridge {
   }
   async save(project: EditorProject) {
     const { record, project: valid } = await this.trusted(project, "draft");
+    const changed =
+      JSON.stringify(record.project.settings) !==
+      JSON.stringify(valid.settings);
     await this.saveRecord({ ...record, project: valid });
+    if (changed) await this.updateStage(valid, "editing");
   }
   async preview(project: EditorProject, time: number, kind: "video" | "cover") {
     return this.exclusive(async () => {

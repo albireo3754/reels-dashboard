@@ -16,7 +16,7 @@ import {
   LocalStore,
   safeDocumentName,
   resolveGrantedFile,
-} from "../../src/desktop/storage";
+} from "../../src/shared/lib/storage";
 import { validateRequest, sendNative } from "../../src/desktop/native";
 test("request validation rejects arbitrary methods, flags, NUL and untyped args", () => {
   assert.throws(() => validateRequest("shell", {}));

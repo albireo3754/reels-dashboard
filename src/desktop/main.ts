@@ -11,10 +11,10 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
-import { EditorService } from "./editor";
+import { EditorService } from "../features/reel-editing";
 import type { EditorBridge } from "../shared/editor";
 import { NativeClient, validateRequest } from "./native";
-import { LocalStore, resolveGrantedFile, safeDocumentName } from "./storage";
+import { LocalStore, resolveGrantedFile, safeDocumentName } from "../shared/lib/storage";
 import { toSnapshot, validateDashboard } from "../shared/data";
 import type { Arguments, CommandMethod, Inspection } from "../shared/contracts";
 import { createDemoBridge } from "../shared/demo";
