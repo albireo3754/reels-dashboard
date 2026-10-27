@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultEditSettings } from "../../src/shared/editor";
 import { validateEditSettings } from "../../src/shared/editor-model";
-import { parseRange } from "../../src/desktop/editor";
+import { parseRange } from "../../src/features/reel-editing";
 const settings = () => {
   const s = defaultEditSettings(10);
   s.place.name = "서울";

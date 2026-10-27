@@ -8,8 +8,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { emptyDashboard, type Dashboard } from "../shared/contracts";
-import { validateDashboard } from "../shared/data";
+import { emptyDashboard, type Dashboard } from "../contracts";
+import { validateDashboard } from "../data";
 export function safeDocumentName(name: unknown): string {
   if (
     typeof name !== "string" ||
