@@ -115,7 +115,9 @@ export class NativeClient {
       const original = await readFile(metadata, "utf8");
       const record = JSON.parse(original);
       const expected = (
-        await realpath(path.join(this.options.app, "Contents/MacOS/PhotosIndex"))
+        await realpath(
+          path.join(this.options.app, "Contents/MacOS/PhotosIndex"),
+        )
       ).normalize("NFC");
       if (
         record.schemaVersion !== 1 ||
@@ -133,7 +135,9 @@ export class NativeClient {
         ["-ww", "-p", String(record.pid), "-o", "comm="],
         { env: processEnvironment },
       );
-      if ((await realpath(executable.stdout.trim())).normalize("NFC") !== expected)
+      if (
+        (await realpath(executable.stdout.trim())).normalize("NFC") !== expected
+      )
         return;
       const { stdout } = await execFileAsync(
         "/bin/ps",
@@ -158,7 +162,10 @@ export class NativeClient {
       /* Already stopped or no verified ownership: never kill a guessed process. */
     }
   }
-  async request(method: CommandMethod, args: Arguments): Promise<unknown> {
+  async request(
+    method: CommandMethod | "editor.materialize",
+    args: Arguments,
+  ): Promise<unknown> {
     await this.ensureReady();
     try {
       return await sendNative(this.options.socket, method, args);
@@ -170,7 +177,7 @@ export class NativeClient {
 }
 export function sendNative(
   socketPath: string,
-  method: CommandMethod,
+  method: CommandMethod | "editor.materialize",
   args: Arguments,
   timeout = 3_700_000,
 ): Promise<unknown> {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, protocol } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -11,6 +11,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { EditorService } from "./editor";
+import type { EditorBridge } from "../shared/editor";
 import { NativeClient, validateRequest } from "./native";
 import { LocalStore, resolveGrantedFile, safeDocumentName } from "./storage";
 import { toSnapshot, validateDashboard } from "../shared/data";
@@ -19,6 +21,18 @@ import { createDemoBridge } from "../shared/demo";
 if (process.env.REELS_USER_DATA)
   app.setPath("userData", path.resolve(process.env.REELS_USER_DATA));
 app.setName("Reels Dashboard");
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "reels-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 let window: BrowserWindow;
 const fixture = process.env.REELS_DEMO === "1";
 const grants = new Set<string>();
@@ -59,6 +73,36 @@ async function awaitReady() {
     exportRoot: process.env.PHOTOSINDEX_EXPORT_ROOT,
   });
   const demo = createDemoBridge();
+  const editorService = new EditorService({
+    root,
+    store,
+    runtime: app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    chooseVideo: async () => {
+      const result = await dialog.showOpenDialog(window, {
+        properties: ["openFile"],
+        filters: [{ name: "영상", extensions: ["mov", "mp4", "m4v"] }],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+    chooseOutput: async (name) => {
+      const result = await dialog.showSaveDialog(window, {
+        defaultPath: name,
+        filters: [{ name: "영상", extensions: ["mov", "mp4"] }],
+      });
+      return result.canceled ? null : (result.filePath ?? null);
+    },
+    materialize: async (selection) =>
+      (await native.request("editor.materialize", {
+        id: selection.groupID,
+        "index-run": selection.indexRunID,
+        "asset-id": selection.assetID,
+      })) as { sourcePath: string },
+    reveal: (file) => shell.showItemInFolder(file),
+  });
+  const editor: EditorBridge = fixture ? demo.editor : editorService;
+  protocol.handle("reels-media", (request) => editorService.media(request));
   const demoDocuments = new Map<string, string>();
   let queue: Promise<unknown> = Promise.resolve();
   let activeOperations = 0;
@@ -66,15 +110,18 @@ async function awaitReady() {
   app.on("before-quit", (event) => {
     if (quitting) return;
     event.preventDefault();
-    if (activeOperations > 0) {
+    if (activeOperations > 0 || editorService.busy) {
       dialog.showMessageBoxSync(window, {
         type: "info",
-        message: "진행 중인 Photos 작업이 끝난 뒤 종료해주세요.",
+        message: "진행 중인 작업이 끝난 뒤 종료해주세요.",
       });
       return;
     }
     quitting = true;
-    void native.dispose().finally(() => app.quit());
+    void editorService
+      .dispose()
+      .then(() => native.dispose())
+      .finally(() => app.quit());
   });
   const handle = (name: string, fn: (...args: any[]) => unknown) =>
     ipcMain.handle(`reels:${name}`, async (event, ...args) => {
@@ -85,6 +132,23 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  for (const method of [
+    "runtime",
+    "chooseVideo",
+    "fromPhotos",
+    "list",
+    "load",
+    "save",
+    "preview",
+    "export",
+    "job",
+    "cancel",
+    "reveal",
+  ] as const) {
+    handle(`editor:${method}`, (...args: unknown[]) =>
+      (editor[method] as (...values: unknown[]) => unknown).apply(editor, args),
+    );
+  }
   handle("request", async (method: unknown, args: unknown = {}) => {
     validateRequest(method, args);
     const input = { ...(args as Arguments) };
@@ -251,11 +315,11 @@ async function awaitReady() {
       (_webContents, _permission, callback) => callback(false),
     );
     window.on("close", (event) => {
-      if (activeOperations > 0 && !quitting) {
+      if ((activeOperations > 0 || editorService.busy) && !quitting) {
         event.preventDefault();
         dialog.showMessageBoxSync(window, {
           type: "info",
-          message: "진행 중인 Photos 작업이 끝난 뒤 닫아주세요.",
+          message: "진행 중인 작업이 끝난 뒤 닫아주세요.",
         });
       }
     });

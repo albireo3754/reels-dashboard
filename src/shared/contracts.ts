@@ -1,3 +1,4 @@
+import type { EditorBridge } from "./editor";
 export const commandMethods = [
   "status",
   "authorize",
@@ -38,6 +39,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly editor: EditorBridge;
   readonly mode: "desktop" | "demo" | "web";
   request<T = unknown>(method: CommandMethod, args?: Arguments): Promise<T>;
   saveDocument(name: string, data: unknown): Promise<string>;
