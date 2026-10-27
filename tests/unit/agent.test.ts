@@ -6,6 +6,11 @@ import path from "node:path";
 import { createConnection } from "node:net";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import {
+  createAgentDispatch,
+  type AgentPorts,
+} from "../../src/features/agent-tools";
+import { validateRequest } from "../../src/desktop/native";
 import { AgentSession, patchProject } from "../../src/entities/agent-session";
 import {
   defaultEditSettings,
@@ -166,4 +171,49 @@ test("real stdio MCP lists typed tools, forwards calls and reports app-offline e
     await close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Photos tools preserve required native evidence arguments and do not expose arbitrary native commands", async () => {
+  const calls: { method: string; args: Record<string, string> }[] = [];
+  const dispatch = createAgentDispatch({
+    session: new AgentSession(),
+    photos: async (method, args) => {
+      validateRequest(method, args);
+      calls.push({ method, args });
+      return { ok: true };
+    },
+  } as AgentPorts);
+  await dispatch("reels_photos_inspect", {
+    groupId: "group",
+    indexRunId: "run",
+    page: 2,
+    pageSize: 10,
+  });
+  assert.deepEqual(calls[0], {
+    method: "groups.inspect",
+    args: {
+      id: "group",
+      "index-run": "run",
+      page: "2",
+      "page-size": "10",
+      samples: "10",
+    },
+  });
+  await assert.rejects(
+    dispatch("reels_photos_inspect", {
+      groupId: "group",
+      indexRunId: "run",
+      page: 1,
+      pageSize: 11,
+    }),
+  );
+  await assert.rejects(dispatch("move.apply", {}), /UNKNOWN_TOOL/);
+  await assert.rejects(
+    dispatch("reels_photos_group", {
+      groupId: "group",
+      indexRunId: "run",
+      output: "/untrusted",
+    }),
+  );
+  assert.equal(calls.length, 1);
 });

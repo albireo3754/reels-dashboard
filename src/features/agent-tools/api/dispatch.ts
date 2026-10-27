@@ -73,7 +73,10 @@ export function createAgentDispatch(ports: AgentPorts) {
         return editor.load(input.projectId);
       case "reels_open_project": {
         session.assertWritable();
-        if (editor.busy) throw new Error("EDITOR_BUSY: 진행 중인 편집 작업을 마친 뒤 열어주세요.");
+        if (editor.busy)
+          throw new Error(
+            "EDITOR_BUSY: 진행 중인 편집 작업을 마친 뒤 열어주세요.",
+          );
         const project = await editor.load(input.projectId);
         ports.open(project);
         return project;
@@ -152,6 +155,7 @@ export function createAgentDispatch(ports: AgentPorts) {
           "index-run": input.indexRunId,
           page: String(input.page),
           "page-size": String(input.pageSize),
+          samples: String(input.pageSize),
         });
       case "reels_import_photos_video":
         return editor.fromPhotos({
