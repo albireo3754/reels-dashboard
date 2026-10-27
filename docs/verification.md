@@ -21,6 +21,6 @@ The final packaged tests ran after the renderer's final evidence-reference inval
 - Existing Swift export/move tests use controlled materializers, upload verification and deletion stubs. Actual user photos were not exported, moved or deleted during QA.
 - Only explicit ad-hoc native signing was possible on this host. `codesign --verify` checks that artifact; it does not establish Developer ID signing or notarization. The outer Electron package is unsigned for local QA.
 - The common Sites renderer and snapshot transport contract are implemented. No particular Site or hosted receiver has been deployed, and synthetic sync results are not evidence of a live hosted database update.
-- GitHub Actions runs source/build/test/package checks on macOS. Its result is available in the repository Actions tab; local verification does not imply a remote run has already passed.
+- [GitHub Actions run 40508791211](https://github.com/albireo3754/reels-dashboard/actions/runs/40508791211) passed all checks for implementation commit `00c92d69dc5222293448ff5a2740e88356d671da` in 3m1s, including fresh install, Swift tests, web tests, Electron fixture tests and app packaging. The real permission-dependent local QA remains separately pending.
 
 Private test profiles, logs, screenshots with runtime paths, helper records and generated app bundles are excluded from Git. Only explicitly reviewed synthetic screenshots are published.
