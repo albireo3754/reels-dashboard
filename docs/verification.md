@@ -34,3 +34,5 @@ A later live check exposed a native build defect that the original fresh-start t
 - The installation test also reproduced a production `NativeClient.dispose` failure under the C locale before the fix. Canonical Unicode paths, a UTF-8 `ps` environment and an exact executable identity check fixed it; the same real-process test passed afterward.
 - The final repackaged app passed all 7 Electron tests again in 7.2 seconds. Type checking, the 8 TypeScript tests, original-test preservation and public source audit passed. The Swift test sources and application service implementation were unchanged by these build/lifecycle fixes.
 - The old authorization request ended when its helper crashed. A new request from the corrected packaged helper is waiting for macOS consent; its independent status still reports `not-determined`.
+
+Remote follow-up verification: [run 40512046668](https://github.com/albireo3754/reels-dashboard/actions/runs/40512046668) completed successfully for `2dd56d634534eecbfc6495020dbda318417841c3`, including both new live-process regression scripts. This CI run does not replace the pending local Photos consent/read check.
