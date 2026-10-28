@@ -19,6 +19,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { Workbench, PREVIEW_URL } from "./workbench";
+import { readMobileBriefingStatus } from "./mobile-briefing";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { EditorService } from "../features/reel-editing";
@@ -92,6 +94,11 @@ async function awaitReady() {
   const emit = (name: string, value: unknown) => {
     if (window && !window.isDestroyed()) window.webContents.send(name, value);
   };
+  const workbench = new Workbench(root, (event) => emit("workbench:event", event));
+  let workbenchError: unknown;
+  try {
+    await workbench.initialize(app.isPackaged ? path.join(os.homedir(), "side/reels-dashboard") : app.getAppPath());
+  } catch (error) { workbenchError = error; }
   const editorService = new EditorService({
     root,
     store,
@@ -139,6 +146,7 @@ async function awaitReady() {
       return;
     }
     quitting = true;
+    workbench.dispose();
     void editorService
       .dispose()
       .then(() => closeAgent?.())
@@ -154,6 +162,20 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  for (const method of ["state", "start", "snapshot", "write", "resize", "stop", "remove"] as const) {
+    handle(`workbench:${method}`, (...args: unknown[]) => {
+      if (workbenchError) throw new Error("개발 작업공간 설정을 읽지 못했어요. 소스 폴더를 다시 연결해주세요.");
+      return (workbench[method] as (...values: unknown[]) => unknown).apply(workbench, args);
+    });
+  }
+  handle("workbench:chooseWorkspace", async () => {
+    const result = await dialog.showOpenDialog(window, { title: "Reels Dashboard 소스 폴더", properties: ["openDirectory"] });
+    if (result.canceled) return workbench.state();
+    const state = await workbench.chooseWorkspace(result.filePaths[0]);
+    workbenchError = undefined;
+    return state;
+  });
+  handle("workbench:openPreview", () => shell.openExternal(PREVIEW_URL));
   for (const method of [
     "runtime",
     "chooseVideo",
@@ -288,6 +310,12 @@ async function awaitReady() {
     return `data:image/jpeg;base64,${image.toString("base64")}`;
   });
   handle("loadDashboard", () => store.load());
+  handle("mobileBriefing:status", () => readMobileBriefingStatus(root));
+  handle("mobileBriefing:open", async () => {
+    const status = await readMobileBriefingStatus(root);
+    if (!status.siteUrl) throw new Error("브리핑 사이트 연결 정보를 확인해주세요.");
+    await shell.openExternal(status.siteUrl);
+  });
   handle("saveDashboard", (value: unknown) => store.save(value));
   handle("exportSnapshot", async () => {
     const snapshot = toSnapshot(await store.load());

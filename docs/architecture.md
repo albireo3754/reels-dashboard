@@ -16,7 +16,7 @@ The renderer receives a `DashboardBridge` with these operations. It never import
 - `exportSnapshot()`: export an explicitly shared, allowlisted dashboard snapshot for the web build.
 - `syncSnapshot(endpoint, token)`: send that snapshot to a configured HTTPS endpoint; credentials remain transient.
 
-The Electron host validates methods and arguments, launches only its bundled helper and CLI, and isolates the native socket from a separately installed PhotosIndex application. The bridge does not expose arbitrary shell execution or unrestricted file reads.
+The Photos/editor Electron host validates methods and arguments, launches its bundled helper and CLI, and isolates the native socket from a separately installed PhotosIndex application. Its media bridge does not expose arbitrary shell execution or unrestricted file reads. The separate desktop-only [development workspace](development-workspace.md) owns explicitly started local terminal sessions for Codex, Claude Code, a shell, preview and checks. Terminal input runs with the user's local privileges; it is not part of the Photos MCP or web snapshot bridge.
 
 ## Renderer modes
 

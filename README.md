@@ -29,6 +29,8 @@ All **26 upstream test files / 75 tests** are preserved byte-for-byte. The nativ
 
 ## Agent integration
 
+The desktop **개발 작업공간** connects this source checkout to Codex/Claude Code PTY sessions, a local web preview, verification commands and the existing briefing site. Design → implement → review → fix prompts support a user-directed improvement loop. See [architecture, usage and validation](docs/development-workspace.md).
+
 The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
 
 ## Run locally

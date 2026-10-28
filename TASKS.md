@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## 개발 작업공간 — 2026-10-28
+
+- [x] Workdesk 구조를 참고한 호스트 PTY 관리자·공통 계약·FSD 화면 분리.
+- [x] Codex·Claude Code·일반 터미널, 세션 전환·출력 복원·종료·소스 폴더 연결.
+- [x] 설계·구현·리뷰·수정 프롬프트와 검증 실행, 로컬 웹 미리보기·기존 운영 사이트 열기.
+- [x] 통합 개발 checkout 단위41·패키징 Electron4개. 푸시 대상만 분리한 snapshot 단위21·Electron4·타입·FSD·빌드·공개 소스 검사 통과.
+
+사용자가 단계 결과를 전달하는 개선 루프이며 자동 배포나 무인 반복 실행은 포함하지 않아요. [설계·사용법·리뷰 기록](docs/development-workspace.md). 새 앱: `release/workbench/mac-arm64/Reels Dashboard.app`.
+
 기준일: 2026-10-27. 요청한 구현·검증·공개를 완료했어요. 이번 목표는 Electron·React 공통 화면과 PhotosIndex 대체 기능을 구현하고, 별도 웹·Electron QA 후 공개 저장소에 올리는 것이에요.
 
 ## 구현·검증 완료

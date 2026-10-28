@@ -11,6 +11,23 @@ const subscribe = (name: string, callback: (value: any) => void) => {
   };
 };
 const bridge: DashboardBridge = {
+  workbench: {
+    state: () => invoke("workbench:state"),
+    chooseWorkspace: () => invoke("workbench:chooseWorkspace"),
+    start: (input) => invoke("workbench:start", input),
+    snapshot: (id) => invoke("workbench:snapshot", id),
+    write: (id, data) => invoke("workbench:write", id, data),
+    resize: (id, cols, rows) => invoke("workbench:resize", id, cols, rows),
+    stop: (id) => invoke("workbench:stop", id),
+    remove: (id) => invoke("workbench:remove", id),
+    openPreview: () => invoke("workbench:openPreview"),
+    onEvent: (callback) => subscribe("workbench:event", callback),
+  },
+  mobileBriefing: {
+    status: () => invoke("mobileBriefing:status"),
+    open: () => invoke("mobileBriefing:open"),
+  },
+
   mode: process.argv.includes("--reels-demo") ? "demo" : "desktop",
   request: (method, args = {}) => invoke("request", method, args),
   editor: {

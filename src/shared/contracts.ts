@@ -39,6 +39,11 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly workbench?: import("./workbench").WorkbenchBridge;
+  readonly mobileBriefing?: {
+    status(): Promise<import("./mobile-briefing").MobileBriefingStatus>;
+    open(): Promise<void>;
+  };
   readonly editor: EditorBridge;
   readonly agent?: AgentUiBridge;
   readonly mode: "desktop" | "demo" | "web";
