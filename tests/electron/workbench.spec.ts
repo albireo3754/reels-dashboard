@@ -120,13 +120,24 @@ test("preview server shows real dashboard without desktop bridge and stops clean
       async () => (await window.reels!.workbench!.state()).sessions[0],
     );
     await expect
-      .poll(() =>
-        page.evaluate(
-          async (id) => (await window.reels!.workbench!.snapshot(id)).output,
-          session.id,
-        ),
-      )
-      .toContain("127.0.0.1:4183");
+      .poll(async () => {
+        try {
+          const response = await fetch("http://127.0.0.1:4183", {
+            signal: AbortSignal.timeout(1000),
+          });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      })
+      .toBe(true);
+    expect(
+      await page.evaluate(
+        async (id) =>
+          (await window.reels!.workbench!.snapshot(id)).session.state,
+        session.id,
+      ),
+    ).toBe("running");
     await page.getByRole("button", { name: "미리보기 나란히 보기" }).click();
     const frame = page.frameLocator('iframe[title="로컬 대시보드 미리보기"]');
     await expect(
@@ -236,13 +247,24 @@ test("quitting the app stops its preview process", async () => {
       window.reels!.workbench!.start({ kind: "preview" }),
     );
     await expect
-      .poll(() =>
-        page.evaluate(
-          async (id) => (await window.reels!.workbench!.snapshot(id)).output,
-          session.id,
-        ),
-      )
-      .toContain("127.0.0.1:4183");
+      .poll(async () => {
+        try {
+          const response = await fetch("http://127.0.0.1:4183", {
+            signal: AbortSignal.timeout(1000),
+          });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      })
+      .toBe(true);
+    expect(
+      await page.evaluate(
+        async (id) =>
+          (await window.reels!.workbench!.snapshot(id)).session.state,
+        session.id,
+      ),
+    ).toBe("running");
     await closeApp(app);
     app = undefined;
     await expect
