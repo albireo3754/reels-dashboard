@@ -73,3 +73,60 @@ npm run test:mcp
 MCP integration tests launch a real non-demo Electron app with an isolated temporary profile and generated synthetic media. They exercise stdio discovery, live UI updates, revision/dirty-state protection, actual PNG decoding, real video/audio/cover output, cancellation, disconnect and restart. They do not access or delete personal Photos media.
 
 See [interface design](agent-interface.md) and [verification record](mcp-verification.md).
+
+## Photos location and OCR search — 2026-10-31
+
+`reels_photos_search` accepts `location: {latitude, longitude, radiusMeters}`,
+`text`, or both. Dates are optional (`startDate`, `endDate`, inclusive local
+Asia/Seoul dates). Without dates the helper reads library metadata across the
+available time range. GPS-less assets are excluded only for a location filter;
+`missingLocationCount` reports their count in the date scope. Place-name geocoding
+is not included: resolve the intended public place to coordinates first.
+
+A search keeps a private in-memory candidate snapshot, newest first, independent
+of the current date index. `pageSize` is 1–10 (default 5). For text queries it is
+**candidates examined**, not matching results. Continue with
+`reels_photos_search_page({searchId, offset: nextOffset, pageSize})` even when a
+page has no matches. `nextOffset: null` means that snapshot was exhausted. At most
+four snapshots are retained, for 30 minutes; helper restart/eviction requires a
+new search. No Photos content is modified, exported, or deleted.
+
+OCR uses Vision on a bounded high-quality 1600px Photos preview (including the representative
+preview of a video), not all frames or Apple's private semantic search index.
+Korean/English text is normalized for Unicode, case and whitespace. Per-asset
+image/OCR failures are returned in `failures`, separately from nonmatches. The
+page may be retried while its snapshot is live. Low-resolution previews, unusual
+fonts and video-only signage can cause misses. A match returns safe asset
+metadata, local capture date, distance when applicable, and matching OCR text;
+use the existing date-index/group/inspection tools to inspect adjacent captures.
+Text-only library discovery omits filenames to avoid expensive per-asset resource
+lookups; use the returned local date and asset ID with date indexing for filenames.
+Geographic discovery filters GPS before looking up candidate resources.
+
+Examples:
+```json
+{"location":{"latitude":35.2,"longitude":129.09,"radiusMeters":300},"text":"간판 글자","pageSize":5}
+```
+```json
+{"text":"메뉴","startDate":"2026-01-01","endDate":"2026-10-31","pageSize":5}
+```
+
+Validation: Swift search tests cover distance filtering, missing GPS, stable
+pagination, Korean OCR matching, failures, inclusive dates, invalid inputs,
+snapshot eviction, permission denial and preservation of the current date index.
+TypeScript tests cover schemas and MCP-to-native argument forwarding. Opt-in
+`tests/electron/photos-search.spec.ts` exercises real stdio MCP → Electron →
+PhotoKit/Vision in an isolated background profile; set `REELS_PHOTOS_SEARCH_LIVE=1`
+only for authorized personal-library QA. `REELS_PHOTOS_SEARCH_AUTHORIZE=1` requests
+macOS permission only when explicitly authorized. Reports must stay outside the
+public repository (`REELS_PHOTOS_SEARCH_REPORT`).
+
+Verification on 2026-10-31: 100 native tests passed (including actual Vision OCR
+of synthetic Korean signage), followed by the added snapshot-expiry regression;
+76 TypeScript unit tests, typecheck, architecture boundaries and diff whitespace
+checks passed. Live stdio MCP → background Electron → PhotoKit/Vision passed on
+an authorized library, with real location candidates and real Korean OCR matches;
+image timeouts were returned separately. Personal evidence is kept in the content
+workspace, not this repository. Packaged output: `release/photos-search/mac-arm64/Reels Dashboard.app`.
+The packaged helper hash was checked against the tested release helper. Existing
+running app sessions are not automatically replaced by building this artifact.

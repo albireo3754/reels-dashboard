@@ -119,6 +119,17 @@ public protocol PhotoLibraryReading: Sendable {
     func authorizationStatus() -> PhotoAuthorizationStatus
     func requestAuthorization() async -> PhotoAuthorizationStatus
     func assets(from start: Date, to end: Date) throws -> [PhotoAsset]
+    func searchAssets(from start: Date, to end: Date, center: GeoPoint?, radius: Double) throws -> (assets: [PhotoAsset], missingLocationCount: Int)
+}
+
+public extension PhotoLibraryReading {
+    func searchAssets(from start: Date, to end: Date, center: GeoPoint?, radius: Double) throws -> (assets: [PhotoAsset], missingLocationCount: Int) {
+        let all = try assets(from: start, to: end)
+        return (all.filter { asset in
+            guard let center else { return true }
+            return asset.coordinate.map { center.distanceMeters(to: $0) <= radius } ?? false
+        }, all.filter { $0.coordinate == nil }.count)
+    }
 }
 
 public protocol PhotoAssetDeleting: Sendable {

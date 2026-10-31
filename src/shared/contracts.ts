@@ -3,6 +3,8 @@ export const commandMethods = [
   "status",
   "authorize",
   "sync",
+  "photos.search",
+  "photos.search.page",
   "groups.list",
   "groups.show",
   "groups.inspect",

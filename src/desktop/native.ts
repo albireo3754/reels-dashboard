@@ -14,6 +14,8 @@ const allowed: Record<CommandMethod, readonly string[]> = {
   status: [],
   authorize: [],
   sync: ["date"],
+  "photos.search": ["text", "latitude", "longitude", "radius-meters", "start-date", "end-date", "page-size"],
+  "photos.search.page": ["search-id", "offset", "page-size"],
   "groups.list": ["date", "level"],
   "groups.show": ["id", "index-run"],
   "groups.inspect": ["id", "index-run", "page", "page-size", "samples"],

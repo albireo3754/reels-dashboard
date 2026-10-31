@@ -109,6 +109,22 @@ export const toolDefinitions = {
     input: z.strictObject({}),
     readOnly: true,
   },
+  reels_photos_search: {
+    description: "Search Photos without knowing a capture date. Filter by GPS center/radius, OCR text, or both. Optional inclusive dates narrow the library. Creates a temporary candidate snapshot without replacing the current date index. OCR examines photo/video preview images, not every video frame; misses are possible. Returns scanned count, failures and nextOffset; continue pages even when matches is empty. No Photos changes.",
+    input: z.strictObject({
+      text: z.string().trim().min(1).max(100).optional(),
+      location: z.strictObject({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), radiusMeters: z.number().min(1).max(100000) }).optional(),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      pageSize: z.number().int().min(1).max(10).default(5),
+    }).refine(value => !!value.text || !!value.location, "Provide OCR text or location"),
+    readOnly: true,
+  },
+  reels_photos_search_page: {
+    description: "Continue a Photos search snapshot using its searchId and nextOffset. Offset counts candidates scanned, not matches. Snapshots expire after 30 minutes or helper restart. OCR failures are reported separately. Does not change the current date index.",
+    input: z.strictObject({ searchId: nativeID, offset: z.number().int().min(0), pageSize: z.number().int().min(1).max(10).default(5) }),
+    readOnly: true,
+  },
   reels_photos_index: {
     description:
       "Index an explicitly requested local capture date through the Photos helper. Requires existing Photos permission and returns index-run identifiers used by subsequent tools.",

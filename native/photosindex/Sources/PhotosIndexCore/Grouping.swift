@@ -5,6 +5,12 @@ public struct GeoPoint: Equatable, Sendable {
     public let latitude: Double
     public let longitude: Double
 
+    public func distanceMeters(to other: GeoPoint) -> Double {
+        let p = Double.pi / 180
+        let h = pow(sin((other.latitude-latitude)*p/2),2) + cos(latitude*p)*cos(other.latitude*p)*pow(sin((other.longitude-longitude)*p/2),2)
+        return 6371000 * 2 * asin(sqrt(min(1, max(0, h))))
+    }
+
     public init(latitude: Double, longitude: Double) {
         self.latitude = latitude
         self.longitude = longitude
