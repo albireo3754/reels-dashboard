@@ -48,25 +48,17 @@ npm run build
 npm start
 ```
 
-The normal native build requires an Apple Development signing identity for stable Photos permissions. For a local QA build without that certificate, explicitly opt into ad-hoc signing:
-
-```sh
-PHOTOSINDEX_SIGNING_MODE=adhoc npm run build:native
-npm run build
-npm start
-```
-
-Ad-hoc signing is a development option; it is not a notarized distribution. Grant Photos access through the app before indexing. Rebuilds can require renewed macOS permission.
+Local builds use **Developer ID Application** signing for the PhotosIndex helper, with the existing `dev.pray.PhotosIndex` identifier. The signer discovers one unique valid identity or uses `PHOTOSINDEX_SIGNING_IDENTITY` to select one by its complete name. Missing or ambiguous identities fail the build; there is no local ad-hoc fallback. See [stable Photos permissions and signing](docs/native-signing.md).
 
 Browser development: `npm run dev`; open `http://127.0.0.1:4173/?demo=1` for explicitly synthetic data. The normal web mode reads `public/snapshot.json` and has no local Photos capabilities. See [Sites integration](docs/sites-integration.md).
 
 Create a local macOS app bundle:
 
 ```sh
-PHOTOSINDEX_SIGNING_MODE=adhoc npm run package:mac
+npm run package:mac
 ```
 
-Output: `release/mac-arm64/Reels Dashboard.app` on Apple Silicon. The current package configuration leaves the outer Electron app unsigned and includes the ad-hoc signed native helper for QA. Public signed/notarized distribution needs separately configured certificates.
+Output: `release/mac-arm64/Reels Dashboard.app` on Apple Silicon. The outer Electron package remains unsigned; its PhotosIndex helper uses Developer ID signing. This is a local build, not a notarized public distribution.
 
 ## Verification
 
@@ -75,7 +67,7 @@ npm run verify:spec
 npm run typecheck
 npm test
 npm run test:native
-PHOTOSINDEX_SIGNING_MODE=adhoc npm run test:native-rebuild
+npm run test:native-rebuild
 npm run test:native-install
 npm run build
 npx playwright install chromium

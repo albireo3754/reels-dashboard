@@ -8,39 +8,42 @@ fi
 
 app_path=$1
 entitlements_path=$2
-signing_mode=${PHOTOSINDEX_SIGNING_MODE:-development}
+signing_mode=${PHOTOSINDEX_SIGNING_MODE:-developer-id}
 codesign_command=${PHOTOSINDEX_CODESIGN_COMMAND:-/usr/bin/codesign}
 security_command=${PHOTOSINDEX_SECURITY_COMMAND:-/usr/bin/security}
 signing_identifier=dev.pray.PhotosIndex
 
 case "$signing_mode" in
-  development)
-    signing_identity=${PHOTOSINDEX_DEVELOPMENT_IDENTITY:-}
-    if [[ -z "$signing_identity" ]]; then
-      signing_identity=$(
-        "$security_command" find-identity -v -p codesigning \
-          | awk -F '"' '$2 ~ /^Apple Development:/ { print $2; exit }'
-      )
-    fi
-    if [[ -z "$signing_identity" ]]; then
-      print -u2 -r -- \
-        "No Apple Development signing identity found. Create one in Xcode Settings > Accounts > Manage Certificates, or set PHOTOSINDEX_DEVELOPMENT_IDENTITY."
-      exit 78
-    fi
-    if [[ "$signing_identity" != "Apple Development:"* ]]; then
-      print -u2 -r -- \
-        "PHOTOSINDEX_DEVELOPMENT_IDENTITY must start with 'Apple Development:'."
+  developer-id)
+    signing_identity=${PHOTOSINDEX_SIGNING_IDENTITY:-}
+    if [[ -n "$signing_identity" && "$signing_identity" != "Developer ID Application:"* ]]; then
+      print -u2 -r -- "PHOTOSINDEX_SIGNING_IDENTITY must start with 'Developer ID Application:'."
       exit 64
     fi
+    # Deduplicate the same certificate exposed by multiple keychains. Never
+    # silently select a different team when more than one identity is available.
+    identities=$("$security_command" find-identity -v -p codesigning)
+    candidates=$(print -r -- "$identities" | awk -F '"' '$2 ~ /^Developer ID Application:/ { split($1, parts, " "); print parts[2] "\t" $2 }' | sort -u)
+    if [[ -n "$signing_identity" ]]; then
+      candidates=$(print -r -- "$candidates" | awk -F '\t' -v name="$signing_identity" '$2 == name')
+    fi
+    count=$(print -r -- "$candidates" | awk 'NF { n++ } END { print n+0 }')
+    if [[ "$count" != 1 ]]; then
+      print -u2 -r -- "Expected one valid Developer ID Application identity; found $count. Install a certificate with its private key, or select one with PHOTOSINDEX_SIGNING_IDENTITY. No ad-hoc fallback is used."
+      exit 78
+    fi
+    # Sign by fingerprint so an ambiguous certificate name cannot change identity.
+    signing_identity=${candidates%%$'\t'*}
     ;;
-  adhoc)
+  ci-adhoc)
+    if [[ "${CI:-}" != true ]]; then
+      print -u2 -r -- "ci-adhoc signing is restricted to disposable CI artifacts (CI=true). Local builds require Developer ID Application signing."
+      exit 64
+    fi
     signing_identity=-
-    print -u2 -r -- \
-      "warning: ad-hoc signing is intended for disposable CI artifacts; rebuilding can reset macOS TCC grants"
     ;;
   *)
-    print -u2 -r -- \
-      "Unsupported PHOTOSINDEX_SIGNING_MODE '$signing_mode'; expected 'development' or 'adhoc'."
+    print -u2 -r -- "Unsupported PHOTOSINDEX_SIGNING_MODE '$signing_mode'; use developer-id (default), or ci-adhoc only in CI."
     exit 64
     ;;
 esac

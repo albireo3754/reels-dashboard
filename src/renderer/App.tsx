@@ -1600,10 +1600,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             </section>
           </>
         )}
-        <footer className="page-footer">
-          <span>작은 장면을, 오래 남을 이야기로.</span>
-          <span>Reels Dashboard</span>
-        </footer>
       </main>
       {editingProject && (
         <div

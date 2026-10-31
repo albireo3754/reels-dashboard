@@ -21,6 +21,7 @@
     "test:web": "playwright test --config playwright.web.config.ts",
     "test:electron": "playwright test --config playwright.electron.config.ts",
     "test:native": "swift test --package-path native/photosindex",
+    "test:native-signing": "node scripts/test-native-signing.mjs",
     "package:mac": "npm run build && npm run build:native && npm run build:editor && electron-builder --mac dir",
     "audit:public": "node scripts/audit-public.mjs",
     "verify:spec": "node scripts/verify-spec.mjs",
