@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, lstatSync, existsSync } from "node:fs";
 const git = (...args) =>
   execFileSync("git", args, { maxBuffer: 128 * 1024 * 1024 });
+// User-approved public authorship. This is not a whole-file or secret exemption.
+const publicAuthorAccounts = new Set(["albireo3754"]);
 const mode = process.argv[2] ?? "--worktree";
 const limit = 2 * 1024 * 1024,
   failures = new Set();
@@ -33,10 +35,6 @@ function inspect(file, data, size = data.length) {
       "private briefing deployment",
       /https:\/\/(?!example\.)[a-z0-9.-]+\.chatgpt\.site\b/i,
     ],
-    [
-      "personal email",
-      /[a-z0-9._%+-]+@(?:gmail\.com|naver\.com|daum\.net|hanmail\.net|kakao\.com|icloud\.com|outlook\.com)\b/i,
-    ],
     ["personal phone", /(?<!\d)010[- .]?\d{4}[- .]?\d{4}(?!\d)/],
   ];
   for (const [label, pattern] of patterns) {
@@ -50,9 +48,16 @@ function inspect(file, data, size = data.length) {
       failures.add(`${file}: ${label}`);
   }
   for (const match of text.matchAll(
-    /(?:signature|BYLINE_TEXT|서명)[^\n]{0,80}@([a-z0-9_.]+)/gi,
+    /([a-z0-9._%+-]+)@(?:gmail\.com|naver\.com|daum\.net|hanmail\.net|kakao\.com|icloud\.com|outlook\.com)\b/gi,
+  )) {
+    if (!publicAuthorAccounts.has(match[1].toLowerCase()))
+      failures.add(`${file}: personal email`);
+  }
+  for (const match of text.matchAll(
+    /(?:signature|BYLINE_TEXT|서명)[^\n@]{0,80}(?<![a-z0-9_.+%-])@([a-z0-9_.-]+)/gi,
   )) {
     if (
+      !publicAuthorAccounts.has(match[1].toLowerCase()) &&
       ![
         "your_account",
         "example",

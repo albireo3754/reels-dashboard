@@ -72,7 +72,7 @@ run_sign() {
 default_log="$test_root/default.log"
 run_sign "$default_log" "$fake_security"
 assert_argument_pair "$default_log" --sign "Apple Development: Local Developer (TEAM123)"
-assert_argument_pair "$default_log" --identifier "io.github.reelsdashboard.PhotosIndex"
+assert_argument_pair "$default_log" --identifier "dev.pray.PhotosIndex"
 assert_argument_pair "$default_log" --entitlements "$entitlements_path"
 
 override_log="$test_root/override.log"

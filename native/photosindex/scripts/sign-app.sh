@@ -11,7 +11,7 @@ entitlements_path=$2
 signing_mode=${PHOTOSINDEX_SIGNING_MODE:-development}
 codesign_command=${PHOTOSINDEX_CODESIGN_COMMAND:-/usr/bin/codesign}
 security_command=${PHOTOSINDEX_SECURITY_COMMAND:-/usr/bin/security}
-signing_identifier=io.github.reelsdashboard.PhotosIndex
+signing_identifier=dev.pray.PhotosIndex
 
 case "$signing_mode" in
   development)
