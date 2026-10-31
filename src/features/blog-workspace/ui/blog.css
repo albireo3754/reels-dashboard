@@ -1,0 +1,27 @@
+.blog-workspace {padding: 20px;}
+.blog-workspace label {display:inline-flex;gap:8px;align-items:center;margin:8px;}
+.blog-workspace button {margin:4px;}
+.blog-columns {display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}
+.blog-columns > div {min-width:0;}
+.blog-workspace textarea {display:block;width:100%;height:240px;white-space:pre;}
+.blog-media {display:flex;flex-wrap:wrap;max-height:180px;overflow:auto;}
+.blog-block {display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #ddd;padding:8px;}
+.blog-block span {overflow-wrap:anywhere;}
+.blog-preview {margin:20px auto;padding:30px;background:white;color:#222;max-width:900px;min-height:100px;}
+.blog-preview-mobile {max-width:390px;}
+.blog-preview p {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:0 0 24px;}
+.blog-preview img {display:block;width:100%;height:auto;margin:24px 0;}
+@media(max-width:800px){.blog-columns{grid-template-columns:1fr;}}
+.blog-import-review {border:1px solid #aaa;padding:12px;margin:12px 0;}
+.blog-import-review ol {max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;}
+.blog-preview .blog-heading {font-size:var(--blog-heading-size,19px);color:var(--blog-heading-color,#85613f);border-left:4px solid #d5d5d5;padding-left:20px;margin:40px 0 24px;text-align:left;}
+.blog-preview .blog-info {font-family:var(--blog-info-font,sans-serif);border:1px solid #d5d5d5;padding:14px;text-align:center;}
+.blog-preview .blog-source,.blog-preview .blog-tags {font-size:.82em;color:#777;}
+.blog-preview .blog-native {border:1px solid #ddd;background:#fafafa;padding:20px;margin:24px 0;}
+.blog-preview .blog-info-card {border:4px solid #d5d5d5;padding:26px;margin:32px 0 40px;}
+.blog-preview .blog-info-card .blog-info {border:0;padding:0;margin:0 0 12px;}
+.blog-preview p {line-height:inherit;}
+.blog-preview .blog-heading {font-weight:var(--blog-heading-weight,700);}
+.blog-preview img {border-radius:var(--blog-image-radius,0);}
+.blog-preview .blog-title {font-size:28px;font-weight:400;line-height:1.5;text-align:left;border-bottom:1px solid #eee;padding-bottom:28px;margin:0 0 48px;}
+.blog-preview-mobile .blog-title {font-size:25px;}

@@ -32,6 +32,7 @@ import {
   selectBoardProjects,
   type BoardQuery,
 } from "../features/content-board";
+import { BlogWorkspace } from "../features/blog-workspace";
 import { ContentRouteMap } from "../features/route-map";
 import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
@@ -48,6 +49,7 @@ type Tab =
   | "library"
   | "editor"
   | "cards"
+  | "blog"
   | "transfers"
   | "settings";
 type Choice = "undecided" | "included" | "excluded";
@@ -697,12 +699,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     library: "다음 이야기를 골라요",
     editor: "선택한 장면을 완성해요",
     cards: "읽는 속도에 맞춰 이야기를 전해요",
+    blog: "원고와 사진을 함께 살펴봐요",
     transfers: "확인하고, 안전하게 옮겨요",
     settings: "내 작업 환경",
   };
   const descriptions: Record<Tab, string> = {
     dashboard: "촬영부터 게시까지, 지금 필요한 다음 작업을 확인해요.",
     cards: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
+    blog: "원고와 사진의 순서를 정하고 미리 확인해요.",
     library:
       "Apple Photos에서 날짜별 촬영본을 찾고 콘텐츠에 사용할 장면을 골라요.",
     transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
@@ -715,6 +719,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     ["library", "촬영 보관함"],
     ["editor", "영상 편집"],
     ["cards", "카드뉴스 릴스"],
+    ["blog", "블로그"],
     ["transfers", "내보내기"],
   ];
   const navigateTo = (key: Tab) => {
@@ -792,9 +797,11 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     ? "MAKE YOUR REEL"
                     : tab === "cards"
                       ? "CARD NEWS · TIMING & MUSIC"
-                      : tab === "transfers"
-                        ? "REVIEW & TRANSFER"
-                        : "WORKSPACE SETTINGS"}
+                      : tab === "blog"
+                        ? "BLOG WORKSPACE"
+                        : tab === "transfers"
+                          ? "REVIEW & TRANSFER"
+                          : "WORKSPACE SETTINGS"}
             </span>
             <h1>{titles[tab]}</h1>
             <p>{descriptions[tab]}</p>
@@ -1504,6 +1511,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div hidden={tab !== "cards"}>
           <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
+        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}/></div>
         {tab === "transfers" &&
           (readOnly ? (
             nativeNotice
