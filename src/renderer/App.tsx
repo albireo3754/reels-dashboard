@@ -15,6 +15,7 @@ import type {
 import { emptyDashboard } from "../shared/contracts";
 import type { EditorProject } from "../shared/editor";
 import { Editor } from "./Editor";
+import type { DrawerMode } from "../features/dev-workspace";
 const DevWorkspace = lazy(() => import("../features/dev-workspace").then(m => ({ default: m.DevWorkspace })));
 
 type Tab = "dashboard" | "library" | "editor" | "transfers" | "settings" | "develop";
@@ -115,6 +116,7 @@ function Empty({
 
 export function App({ bridge }: { bridge: DashboardBridge }) {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
     null,
   );
@@ -640,6 +642,24 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     develop: "설계부터 구현·미리보기·리뷰까지, 코딩 도구와 함께 이어가요.",
     settings: "로컬 연결과 모바일에서 볼 현황의 공유 범위를 관리해요.",
   };
+  const navigationItems: [Tab, string][] = [
+    ["dashboard", "대시보드"],
+    ["library", "촬영 보관함"],
+    ["editor", "영상 편집"],
+    ["transfers", "내보내기"],
+    ["settings", "설정"],
+    ...(bridge.workbench ? [["develop", "개발 작업공간"] as [Tab, string]] : []),
+  ];
+  const navigateTo = (key: Tab) => {
+    if (key === "develop") {
+      setDrawerMode("open");
+      return;
+    }
+    setTab(key);
+    if (key === "dashboard") refreshDashboard();
+    setError("");
+    setNotice("");
+  };
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -660,27 +680,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         </a>
         <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
-          {(
-            [
-              ["dashboard", "대시보드"],
-              ["library", "촬영 보관함"],
-              ["editor", "영상 편집"],
-              ["transfers", "내보내기"],
-              ["settings", "설정"],
-              ...(bridge.workbench ? [["develop", "개발 작업공간"] as [Tab, string]] : []),
-            ] as [Tab, string][]
-          ).map(([key, text]) => (
+          {navigationItems.map(([key, text]) => (
             <button
               key={key}
               aria-label={text}
               className={`nav-item ${tab === key ? "active" : ""}`}
               aria-current={tab === key ? "page" : undefined}
-              onClick={() => {
-                setTab(key);
-                if (key === "dashboard") refreshDashboard();
-                setError("");
-                setNotice("");
-              }}
+              aria-expanded={key === "develop" ? drawerMode === "open" : undefined}
+              onClick={() => navigateTo(key)}
             >
               <Icon name={key} />
               <span>{text}</span>
@@ -1307,9 +1314,20 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               )}
             </>
           ))}
-        {bridge.workbench && <div hidden={tab !== "develop"}>
-          <Suspense fallback={<p>개발 작업공간을 여는 중이에요…</p>}><DevWorkspace api={bridge.workbench} active={tab === "develop"} openSite={bridge.mobileBriefing?.open} /></Suspense>
-        </div>}
+        {bridge.workbench && (
+          <Suspense fallback={null}>
+            <DevWorkspace
+              api={bridge.workbench}
+              mode={drawerMode}
+              onModeChange={setDrawerMode}
+              onNavigate={(index) => {
+                const item = navigationItems[index];
+                if (item) navigateTo(item[0]);
+              }}
+              openSite={bridge.mobileBriefing?.open}
+            />
+          </Suspense>
+        )}
         <div hidden={tab !== "editor"}>
           <Editor
             bridge={bridge.editor}

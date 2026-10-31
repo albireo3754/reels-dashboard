@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## 개발모드·작업공간 탭 — 2026-10-31
+
+- [x] `REELS_DEV_MODE=1`에서만 관리자·IPC·preload API 활성화. Codex 기본, Claude 확장 경계 분리.
+- [x] 기존 화면을 유지하는 하단 패널·고정 탭바·Cmd+N/T/W/1–9. 탭 전환·접기 시 터미널 유지, 종료 확인 후 탭 제거.
+- [x] 공통 키 정의와 Electron 입력 처리로 미리보기 iframe 포커스 지원. IME·반복 입력·일반모드 분리.
+- [x] 독립 리뷰의 iframe 단축키 누락 수정, 통합 개발 Electron13개·패키징4개 검증.
+
+[사용법·검증 범위](docs/development-workspace.md). PR 전용 checkout에서 타입/FSD·명세보존·단위28개·빌드·Electron13개·공개소스 검사를 통과했다.
+
 ## 개발 작업공간 — 2026-10-28
 
 - [x] Workdesk 구조를 참고한 호스트 PTY 관리자·공통 계약·FSD 화면 분리.
