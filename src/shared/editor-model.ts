@@ -1,4 +1,4 @@
-import type { EditSettings } from "./editor";
+import { followCoverDefaults, type EditSettings } from "./editor";
 const obj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown, max = 2000) => {
@@ -32,7 +32,7 @@ export function validateEditSettings(
     h = value.cover;
   if (
     !["none", "tape", "rectangle"].includes(String(p.material)) ||
-    !["rosy-auto", "rosy-large"].includes(String(h.template))
+    !["rosy-auto", "rosy-large", "rosy-follow"].includes(String(h.template))
   )
     throw new Error("알 수 없는 편집 템플릿이에요.");
   if (!Array.isArray(c.items) || c.items.length > 300)
@@ -45,6 +45,7 @@ export function validateEditSettings(
       material: p.material as EditSettings["place"]["material"],
       x: num(p.x, 0, 1),
       y: num(p.y, 0, 1),
+      ...optionalOffsets(p, ["offsetX", "offsetY"]),
       size: num(p.size, 0.005, 0.2),
       persistent: bool(p.persistent),
       showDuring: str(p.showDuring, 400),
@@ -71,13 +72,30 @@ export function validateEditSettings(
       y: num(h.y, 0, 1),
       placeX: num(h.placeX, 0, 1),
       placeY: num(h.placeY, 0, 1),
-      ...(h.hookSize === undefined
+      ...optionalOffsets(h, [
+        "hookOffsetX",
+        "hookOffsetY",
+        "placeOffsetX",
+        "placeOffsetY",
+      ]),
+      ...(h.hookSize === undefined ? {} : { hookSize: hookSize(h.hookSize) }),
+      ...(h.followCta === undefined
         ? {}
-        : { hookSize: num(h.hookSize, 1, 400) }),
+        : { followCta: str(h.followCta, 100) }),
+      ...(h.followSignature === undefined
+        ? {}
+        : { followSignature: str(h.followSignature, 80) }),
+      ...(h.followDarkness === undefined
+        ? {}
+        : { followDarkness: num(h.followDarkness, 0, 0.85) }),
     },
   };
   if (mode !== "draft") {
-    if (!result.place.name.trim()) throw new Error("장소명을 입력해주세요.");
+    if (
+      (mode !== "cover" || result.cover.template !== "rosy-follow") &&
+      !result.place.name.trim()
+    )
+      throw new Error("장소명을 입력해주세요.");
     if (mode === "video" || mode === "export") {
       if (result.place.material !== "none" && !result.place.description.trim())
         throw new Error("장소 설명을 입력해주세요.");
@@ -96,7 +114,32 @@ export function validateEditSettings(
       const lines = result.cover.hook.replaceAll("|", "\n").split("\n");
       if (lines.length !== 2 || lines.some((v) => !v.trim()))
         throw new Error("표지 훅을 두 줄로 입력해주세요.");
+      if (result.cover.template === "rosy-follow") {
+        const cta = result.cover.followCta ?? followCoverDefaults.cta;
+        const signature =
+          result.cover.followSignature ?? followCoverDefaults.signature;
+        if (!cta.trim() || /[\r\n]/.test(cta))
+          throw new Error("팔로우 문구는 한 줄로 입력해주세요.");
+        if (!/^@?[A-Za-z0-9_.]{1,30}(?: 🌹)?$/.test(signature))
+          throw new Error(
+            "서명은 영문 계정명으로 입력해주세요. 끝에 🌹를 붙일 수 있어요.",
+          );
+      }
     }
   }
   return result;
+}
+
+function optionalOffsets(value: Record<string, unknown>, keys: string[]) {
+  return Object.fromEntries(
+    keys
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, num(value[key], -1, 1)]),
+  );
+}
+function hookSize(value: unknown) {
+  const size = num(value, 1, 185);
+  if (!Number.isInteger(size))
+    throw new Error("표지 글자 크기는 1~185 사이 정수로 입력해주세요.");
+  return size;
 }

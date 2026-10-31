@@ -1,4 +1,5 @@
-import { createDemoEditor } from "./editor-demo";
+import { demoRouteMap } from "./route-map-demo";
+import { createDemoEditor, demoVideo } from "./editor-demo";
 import type {
   Arguments,
   Asset,
@@ -278,6 +279,12 @@ export function createDemoBridge(
       projects: [
         {
           id: "demo-project-1",
+          resources: [
+            { role: "document", path: "/demo/route-map-data.json", label: "촬영 지도" },
+            { role: "draft", path: "/demo/walk.mp4", label: "산책 편집 시안" },
+            { role: "cover", path: "/demo/cover.png", label: "산책 표지" },
+            { role: "folder", path: "/demo/footage", label: "촬영 원본" },
+          ],
           title: "도쿄의 오후 산책",
           date: "2026-10-27",
           stage: "editing",
@@ -302,6 +309,52 @@ export function createDemoBridge(
   }
   return {
     mode: "demo",
+    routeMap: { async load(id) { return id === "demo-project-1" ? structuredClone(demoRouteMap) : null; } },
+    contentMedia: {
+      async list(id, folder, offset = 0) {
+        const project = loadDashboard().projects.find((p) => p.id === id);
+        const items = folder
+          ? [
+              {
+                path: "/demo/footage/scene.mp4",
+                label: "산책 장면.mp4",
+                role: "footage" as const,
+                kind: "video" as const,
+                available: true,
+              },
+            ]
+          : (project?.resources ?? []).map((r) => ({
+              ...r,
+              kind:
+                r.role === "document"
+                  ? ("document" as const)
+                  : r.role === "folder"
+                  ? ("folder" as const)
+                  : r.path.endsWith(".png")
+                    ? ("image" as const)
+                    : ("video" as const),
+              available: true,
+            }));
+        return {
+          items: items.slice(offset, offset + 24),
+          total: items.length,
+          nextOffset: null,
+        };
+      },
+      async thumbnail() {
+        return (
+          "data:image/svg+xml," +
+          encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="500"><rect width="360" height="500" fill="#6b8070"/><circle cx="270" cy="100" r="45" fill="#f0dfa9"/><path d="M0 350 L180 180 L360 400 V500 H0" fill="#9eb495"/><text x="30" y="440" fill="white" font-size="24">산책 · 예시 미디어</text></svg>',
+          )
+        );
+      },
+      async open(_id, file) {
+        return file.endsWith(".png")
+          ? { kind: "image", url: await this.thumbnail(_id, file) }
+          : { kind: "video", url: demoVideo };
+      },
+    },
     editor: createDemoEditor(storage, search, (project, stage) => {
       const dashboard = loadDashboard();
       const previous = dashboard.projects.find(

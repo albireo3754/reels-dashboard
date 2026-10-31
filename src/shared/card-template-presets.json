@@ -1,0 +1,39 @@
+{
+  "templates": {
+    "hook": {
+      "size": 86,
+      "top": 900
+    },
+    "body": {
+      "size": 78,
+      "top": 650
+    },
+    "summary": {
+      "size": 98,
+      "top": 760
+    },
+    "comparison": {
+      "size": 77,
+      "top": 400
+    },
+    "follow": {
+      "size": 78,
+      "top": 220
+    }
+  },
+  "roles": {
+    "tableHeader": 40,
+    "tableBody": 46,
+    "notes": 38,
+    "signature": 120
+  },
+  "comparisonLayout": {
+    "titleGap": 40,
+    "headerHeight": 80,
+    "rowHeight": 76,
+    "padding": 24,
+    "notesGap": 32
+  },
+  "lineHeight": 1.5,
+  "bodyNotesGap": 32
+}

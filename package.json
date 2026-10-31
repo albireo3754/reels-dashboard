@@ -2,7 +2,7 @@
   "name": "reels-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first PhotosIndex workspace with Electron and a shared React dashboard",
+  "description": "촬영본을 고르고, 영상과 표지를 편집하며, 게시까지의 진행을 관리하는 릴스 제작 앱",
   "license": "MIT",
   "type": "module",
   "main": "dist-electron/main.cjs",
@@ -13,6 +13,7 @@
     "dev": "vite --host 127.0.0.1",
     "build:web": "vite build",
     "build:desktop": "node scripts/build-desktop.mjs",
+    "build:icons": "node scripts/build-icons.mjs",
     "build": "npm run build:web && npm run build:desktop",
     "build:native": "node scripts/build-native.mjs",
     "start": "electron .",
@@ -66,6 +67,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "resources/branding/*.png",
       "package.json",
       "LICENSE",
       "THIRD_PARTY_NOTICES.md"
@@ -89,6 +91,7 @@
       }
     ],
     "mac": {
+      "icon": "resources/branding/app.icns",
       "category": "public.app-category.photography",
       "identity": null,
       "minimumSystemVersion": "15.0"

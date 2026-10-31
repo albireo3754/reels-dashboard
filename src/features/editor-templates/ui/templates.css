@@ -1,0 +1,177 @@
+.template-panel {
+  margin-bottom: 22px;
+  padding: 22px;
+}
+.template-panel h2 {
+  margin: 4px 0 10px;
+}
+.template-catalog {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  margin: 20px 0 12px;
+}
+.template-panel fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.template-panel legend {
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 12px;
+}
+.template-cards {
+  display: flex;
+  gap: 10px;
+}
+.template-card {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+  border: 1px solid #dce4d4;
+  border-radius: 12px;
+  background: #fff;
+  color: #37462f;
+}
+.template-card[aria-pressed="true"] {
+  border-color: #728d52;
+  background: #edf3e6;
+  box-shadow: 0 0 0 1px #728d52;
+}
+.template-card strong,
+.template-card > small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.template-card > small {
+  color: #738268;
+  font-size: 10px;
+  font-weight: 400;
+}
+.template-sample {
+  width: 100%;
+  height: 138px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 8px 10px;
+  border-radius: 6px;
+  background: linear-gradient(165deg, #6d8074, #35473f);
+  color: white;
+  overflow: hidden;
+}
+.sample-pin {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sample-description {
+  font-size: 9px;
+  background: #181d19;
+  padding: 5px 7px;
+  margin-top: 7px;
+  white-space: nowrap;
+}
+.sample-2 .sample-description {
+  background: #efe7d5;
+  color: #33382e;
+  font-family: serif;
+  transform: rotate(-1deg);
+}
+.sample-hook {
+  width: 100%;
+  margin-top: 21px;
+  padding-left: 5%;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.sample-5 .sample-hook {
+  font-size: 17px;
+}
+.sample-hook small {
+  display: block;
+  font-size: 8px;
+  color: #ffb8cd;
+  margin-top: 5px;
+}
+.template-adjustments {
+  border-top: 1px solid #e5ebdf;
+  padding-top: 14px;
+  margin-top: 16px;
+}
+.template-adjustments summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.template-adjustment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 20px 0 12px;
+}
+.template-adjustment-grid p {
+  color: #738268;
+  font-size: 11px;
+  line-height: 1.6;
+  min-height: 36px;
+  margin: 0 0 12px;
+}
+.template-adjustment-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.template-adjustment-grid .checkbox-row {
+  flex-direction: row;
+  align-items: center;
+}
+.template-panel input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .template-adjustment-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 800px) {
+  .template-catalog {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .template-adjustment-grid {
+    grid-template-columns: 1fr;
+  }
+  .template-card {
+    display: block;
+    padding: 5px;
+  }
+  .template-sample {
+    height: 120px;
+  }
+}
+
+.sample-6 {
+  background: linear-gradient(165deg, #51443e, #17252c);
+  align-items: flex-start;
+}
+.sample-6 .sample-hook {
+  margin-top: 20px;
+  font-size: 14px;
+}
+.sample-6 .sample-hook small {
+  font-family: "Bradley Hand", cursive;
+  font-size: 11px;
+  margin-top: 12px;
+}

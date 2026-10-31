@@ -1,3 +1,5 @@
+import type { MergeProjectsInput, LinkEditInput } from "../../../shared/production-project";
+import type { ContentInput } from "../../../shared/local-resources";
 import type {
   EditorBridge,
   EditorProject,
@@ -31,6 +33,18 @@ export interface AgentPorts {
   editor: AgentEditorPort;
   session: AgentSession;
   dashboard(): Promise<Dashboard>;
+  content: {
+    merge?(input: MergeProjectsInput): Promise<unknown>;
+    linkEdit?(input: LinkEditInput): Promise<unknown>;
+    listEdits?(): Promise<unknown>;
+    get(projectId: string): Promise<unknown>;
+    upsert(content: ContentInput, expectedUpdatedAt: string): Promise<unknown>;
+    listFolder(
+      directory: string,
+      offset: number,
+      limit: number,
+    ): Promise<unknown>;
+  };
   preview(
     project: EditorProject,
     time: number,
@@ -57,6 +71,30 @@ export function createAgentDispatch(ports: AgentPorts) {
       throw new Error("UNKNOWN_TOOL: 지원하지 않는 도구예요.");
     const input = toolDefinitions[name as ToolName].input.parse(args) as any;
     switch (name as ToolName) {
+      case "reels_merge_projects":
+        session.assertWritable();
+        if (editor.busy) throw new Error("BUSY");
+        if (!ports.content.merge) throw new Error("UNSUPPORTED");
+        return ports.content.merge(input);
+      case "reels_link_project_edit":
+        session.assertWritable();
+        if (editor.busy) throw new Error("BUSY");
+        if (!ports.content.linkEdit) throw new Error("UNSUPPORTED");
+        return ports.content.linkEdit(input);
+      case "reels_list_project_edits":
+        if (!ports.content.listEdits) throw new Error("UNSUPPORTED");
+        return ports.content.listEdits();
+      case "reels_get_content":
+        return ports.content.get(input.projectId);
+      case "reels_upsert_content":
+        session.assertWritable();
+        return ports.content.upsert(input.content, input.expectedUpdatedAt);
+      case "reels_list_local_media":
+        return ports.content.listFolder(
+          input.directory,
+          input.offset,
+          input.limit,
+        );
       case "reels_get_app_state":
         return {
           context: session.context,
@@ -128,6 +166,19 @@ export function createAgentDispatch(ports: AgentPorts) {
               referenceWidth: 2160,
               alignment: "left",
               x: 0.07,
+            },
+            {
+              id: "rosy-follow",
+              alignment: "left",
+              outputSize: [1080, 1920],
+              signature: "editable English account and optional rose",
+              fields: [
+                "hook",
+                "followCta",
+                "followSignature",
+                "followDarkness",
+              ],
+              output: "standalone closing-card PNG; no automatic append",
             },
           ],
           place: {

@@ -1,0 +1,40 @@
+.subtitle-file-tools {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border, #dfe5dc);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.subtitle-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+}
+.subtitle-import-review {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #dfe5dc;
+}
+.subtitle-import-review ol {
+  max-height: 240px;
+  overflow: auto;
+  padding-left: 1.5rem;
+  margin: 0.7rem 0;
+}
+.subtitle-import-review li {
+  margin-bottom: 0.6rem;
+}
+.subtitle-import-review li p {
+  white-space: pre-wrap;
+  margin: 0.15rem 0;
+  overflow-wrap: anywhere;
+}
+.subtitle-file-error {
+  color: #a13232;
+}
+.subtitle-file-tools .button-row {
+  flex-wrap: wrap;
+}

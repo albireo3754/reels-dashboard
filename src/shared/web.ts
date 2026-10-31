@@ -1,12 +1,8 @@
 import type { DashboardBridge, Snapshot } from "./contracts";
-import { fromSnapshot } from "./data";
+import { fromSnapshot, toSnapshot } from "./data";
 export function parseSnapshot(value: unknown): Snapshot {
   const dashboard = fromSnapshot(value);
-  return {
-    schemaVersion: 1,
-    generatedAt: dashboard.updatedAt,
-    projects: dashboard.projects.map(({ shared, ...project }) => project),
-  };
+  return toSnapshot(dashboard, dashboard.updatedAt);
 }
 export function createWebBridge(): DashboardBridge {
   const desktopOnly = async (): Promise<never> => {

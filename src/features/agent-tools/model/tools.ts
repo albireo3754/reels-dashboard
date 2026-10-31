@@ -1,4 +1,9 @@
+import { mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
+import {
+  contentInputSchema,
+  localPathSchema,
+} from "../../../shared/local-resources";
 import { settingsPatchSchema } from "../../../entities/agent-session";
 
 const id = z.string().uuid();
@@ -18,6 +23,46 @@ const nativeID = z
   .max(500)
   .refine((v) => !v.includes("\0"));
 export const toolDefinitions = {
+  reels_merge_projects: {
+    description: "Merge explicit source dashboard cards into one target production project. Preserves files and edit bindings, creates a full pre-merge backup, and rejects stale revisions. Target title, stage, date and sharing win; differing publication URLs are rejected.",
+    input: mergeProjectsSchema,
+    readOnly: false,
+  },
+  reels_link_project_edit: {
+    description: "Attach an existing saved video or card-news edit to a production project so future outputs stay on that card. Rejects another owner; merge its card first.",
+    input: linkEditSchema,
+    readOnly: false,
+  },
+  reels_list_project_edits: {
+    description: "List saved video/card-news edits and their owning dashboard project IDs.",
+    input: z.strictObject({}),
+    readOnly: true,
+  },
+  reels_get_content: {
+    description:
+      "Read a production content entry, current dashboard revision and availability of linked local resources. Does not create an edit or read media contents.",
+    input: z.strictObject({ projectId: z.string().min(1).max(160) }),
+    readOnly: true,
+  },
+  reels_upsert_content: {
+    description:
+      "Register or update one production entry by stable ID and current dashboard updatedAt. Resources are an explicit full replacement; omitted content fields are not accepted. Links existing media/folders/documents without copies, proxies, rendering or publication. New entries are private; existing sharing is preserved. Read list_projects and get_content before updating.",
+    input: z.strictObject({
+      content: contentInputSchema,
+      expectedUpdatedAt: revision,
+    }),
+    readOnly: false,
+  },
+  reels_list_local_media: {
+    description:
+      "List one explicitly selected local folder with pagination. Returns media files and subfolders only; no recursion, symlink traversal or content reads. Use returned paths to connect footage and finished materials.",
+    input: z.strictObject({
+      directory: localPathSchema,
+      offset: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(200).default(100),
+    }),
+    readOnly: true,
+  },
   reels_get_app_state: {
     description:
       "Read live editor selection, unsaved changes, current time, runtime availability and render jobs. Start here; unsaved UI changes must not be overwritten.",
