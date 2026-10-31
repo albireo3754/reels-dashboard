@@ -49,7 +49,8 @@ final class AppContainer: ObservableObject {
                 )
             },
             exportService: exportService,
-            editorSourceService: EditorSourceService(supportRoot: configuration.supportRoot)
+            editorSourceService: EditorSourceService(supportRoot: configuration.supportRoot),
+            searchService: PhotoSearchService(library: PhotoKitLibrary())
         )
         do {
             let commandRouter = router

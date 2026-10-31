@@ -217,3 +217,19 @@ test("Photos tools preserve required native evidence arguments and do not expose
   );
   assert.equal(calls.length, 1);
 });
+
+test("Photos location and OCR search validate inputs and preserve pagination", async () => {
+  const calls: { method: string; args: Record<string, string> }[] = [];
+  const dispatch = createAgentDispatch({ session: new AgentSession(), photos: async (method, args) => {
+    validateRequest(method, args); calls.push({ method, args }); return { searchId: "search_test" };
+  }} as AgentPorts);
+  await dispatch("reels_photos_search", { text: "태백관", location: { latitude: 35.2, longitude: 129.08, radiusMeters: 300 }, startDate: "2026-01-01" });
+  assert.deepEqual(calls[0], { method: "photos.search", args: { text: "태백관", latitude: "35.2", longitude: "129.08", "radius-meters": "300", "start-date": "2026-01-01", "page-size": "5" } });
+  const terminal = await dispatch("reels_photos_search_page", { searchId: "search_test", offset: 5, pageSize: 10 });
+  assert.equal((terminal as any).nextOffset, null);
+  assert.equal(calls[1].args.offset, "5");
+  for (const args of [{}, { text: " " }, { location: { latitude: 91, longitude: 0, radiusMeters: 100 } }, { text: "x", pageSize: 11 }, { text: "x", shell: "ls" }]) {
+    await assert.rejects(dispatch("reels_photos_search", args));
+  }
+  assert.equal(calls.length, 2);
+});

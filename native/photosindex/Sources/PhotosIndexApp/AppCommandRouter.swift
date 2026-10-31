@@ -10,6 +10,7 @@ private enum AppCommandRouterError: Error {
 }
 
 final class AppCommandRouter: @unchecked Sendable {
+    private let searchService: PhotoSearchService?
     private let runtime: IndexRuntime
     private let permission: @Sendable () -> String
     private let requestAuthorization: @Sendable () -> String
@@ -39,8 +40,10 @@ final class AppCommandRouter: @unchecked Sendable {
             throw AppCommandRouterError.evidenceInspectorUnavailable
         },
         exportService: ExportCommandService? = nil,
-        editorSourceService: EditorSourceService? = nil
+        editorSourceService: EditorSourceService? = nil,
+        searchService: PhotoSearchService? = nil
     ) {
+        self.searchService = searchService
         self.editorSourceService = editorSourceService
         self.runtime = runtime
         self.permission = permission
@@ -68,6 +71,12 @@ final class AppCommandRouter: @unchecked Sendable {
                     id: request.id,
                     payload: AuthorizationPayload(permission: requestAuthorization())
                 )
+            case "photos.search", "photos.search.page":
+                guard ["authorized", "limited"].contains(permission()) else {
+                    return .failure(id: request.id, error: CommandFailure(code: "photos-permission-required", message: "Photos access is required before searching."))
+                }
+                guard let searchService else { return invalidArguments(request.id, "Search service unavailable") }
+                return try .success(id: request.id, payload: searchService.handle(method: request.method, arguments: request.arguments))
             case "sync":
                 guard ["authorized", "limited"].contains(permission()) else {
                     return .failure(

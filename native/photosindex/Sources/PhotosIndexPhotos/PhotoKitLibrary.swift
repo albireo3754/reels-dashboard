@@ -18,6 +18,14 @@ public final class PhotoKitLibrary: PhotoLibraryReading, @unchecked Sendable {
     }
 
     public func assets(from start: Date, to end: Date) throws -> [PhotoAsset] {
+        try readAssets(from: start, to: end, center: nil, radius: 0, includeFilenames: true).assets
+    }
+
+    public func searchAssets(from start: Date, to end: Date, center: GeoPoint?, radius: Double) throws -> (assets: [PhotoAsset], missingLocationCount: Int) {
+        try readAssets(from: start, to: end, center: center, radius: radius, includeFilenames: center != nil)
+    }
+
+    private func readAssets(from start: Date, to end: Date, center: GeoPoint?, radius: Double, includeFilenames: Bool) throws -> (assets: [PhotoAsset], missingLocationCount: Int) {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(
             format: "creationDate >= %@ AND creationDate < %@",
@@ -28,12 +36,18 @@ public final class PhotoKitLibrary: PhotoLibraryReading, @unchecked Sendable {
         let result = PHAsset.fetchAssets(with: options)
         var output: [PhotoAsset] = []
         output.reserveCapacity(result.count)
+        var missingLocationCount = 0
         result.enumerateObjects { asset, _, _ in
             guard !asset.isHidden, let mediaKind = Self.mediaKind(asset.mediaType) else { return }
-            let resource = PHAssetResource.assetResources(for: asset).first
             let coordinate = asset.location.map {
                 GeoPoint(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
             }
+            if coordinate == nil { missingLocationCount += 1 }
+            if let center {
+                guard let coordinate, center.distanceMeters(to: coordinate) <= radius else { return }
+            }
+            // Resource lookup is expensive; do it only for geographic candidates.
+            let resource = includeFilenames ? PHAssetResource.assetResources(for: asset).first : nil
             output.append(
                 PhotoAssetMapper.map(
                     PhotoMetadataInput(
@@ -49,7 +63,7 @@ public final class PhotoKitLibrary: PhotoLibraryReading, @unchecked Sendable {
                 )
             )
         }
-        return output
+        return (output, missingLocationCount)
     }
 
     private static func mediaKind(_ type: PHAssetMediaType) -> MediaKind? {

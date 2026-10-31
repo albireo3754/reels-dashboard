@@ -16,12 +16,15 @@ public final class PhotoKitEvidenceImageProvider: EvidenceImageProviding, @unche
     private let maximumPixelDimension: Int
     private let jpegQuality: Double
     private let requestTimeout: TimeInterval
+    private let highQuality: Bool
 
     public init(
         maximumPixelDimension: Int = 1024,
         jpegQuality: Double = 0.82,
-        requestTimeout: TimeInterval = 120
+        requestTimeout: TimeInterval = 120,
+        highQuality: Bool = false
     ) {
+        self.highQuality = highQuality
         self.maximumPixelDimension = max(1, maximumPixelDimension)
         self.jpegQuality = min(1, max(0, jpegQuality))
         self.requestTimeout = max(1, requestTimeout)
@@ -42,8 +45,8 @@ public final class PhotoKitEvidenceImageProvider: EvidenceImageProviding, @unche
         try await withCheckedThrowingContinuation { continuation in
             let gate = PhotoContinuationGate(continuation)
             let options = PHImageRequestOptions()
-            options.deliveryMode = .fastFormat
-            options.resizeMode = .fast
+            options.deliveryMode = highQuality ? .highQualityFormat : .fastFormat
+            options.resizeMode = highQuality ? .exact : .fast
             options.isNetworkAccessAllowed = true
             options.version = .current
             let requestID = PHImageManager.default().requestImage(
@@ -54,7 +57,8 @@ public final class PhotoKitEvidenceImageProvider: EvidenceImageProviding, @unche
                 ),
                 contentMode: .aspectFit,
                 options: options
-            ) { image, info in
+            ) { [highQuality] image, info in
+                if highQuality && (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
                 if let error = info?[PHImageErrorKey] as? Error {
                     gate.complete(.failure(error))
                 } else if (info?[PHImageCancelledKey] as? Bool) == true {

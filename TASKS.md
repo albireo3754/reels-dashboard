@@ -56,3 +56,12 @@
 - [ ] WebView 기반 모바일 앱 지원: 기존 React 대시보드 화면을 재사용하고, Capacitor 등 모바일 패키징 방식을 검토해요. 모바일 현황 조회를 우선하며 데이터 동기화·로그인·설치 방식은 구현 시 정해요. Mac 전용 PhotosIndex·영상 편집 기능의 모바일 이식은 별도 범위예요. (2026-10-27 사용자 요청: TODO만 기록, 구현은 추후 진행.)
 
 영상 편집 UI·기존 Python FFmpeg 연결, 여러 날짜의 Photos 색인 영속화, 실제 Sites 배포는 다음 확장으로 관리해요. 기존 PhotosIndex의 단일 날짜 메모리 색인 동작을 영속 색인 완료로 표현하지 않아요.
+
+## Photos 위치·OCR MCP 검색 — 2026-10-31
+
+- [x] `reels_photos_search`: GPS 반경·사진/영상 대표 이미지 OCR·선택 날짜 범위 검색.
+- [x] `reels_photos_search_page`: 독립 스냅샷·페이지 처리·만료·실패 항목 분리. 날짜 색인은 유지.
+- [x] GPS로 먼저 추린 뒤 리소스 조회, OCR 고품질 미리보기 사용.
+- [x] 네이티브/TS 테스트 및 실제 stdio MCP→Electron→PhotoKit/Vision 검증, 별도 앱 패키징.
+- 사용법·검증 범위: [MCP usage](docs/mcp-usage.md#photos-location-and-ocr-search--2026-10-31).
+- 새 패키지는 `release/photos-search/mac-arm64/Reels Dashboard.app`; 현재 실행 앱 교체는 하지 않음.

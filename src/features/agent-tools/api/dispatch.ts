@@ -140,6 +140,16 @@ export function createAgentDispatch(ports: AgentPorts) {
         };
       case "reels_photos_status":
         return ports.photos("status", {});
+      case "reels_photos_search":
+        return photosSearchPage(await ports.photos("photos.search", {
+          ...(input.text ? { text: input.text } : {}),
+          ...(input.location ? { latitude: String(input.location.latitude), longitude: String(input.location.longitude), "radius-meters": String(input.location.radiusMeters) } : {}),
+          ...(input.startDate ? { "start-date": input.startDate } : {}),
+          ...(input.endDate ? { "end-date": input.endDate } : {}),
+          "page-size": String(input.pageSize),
+        }));
+      case "reels_photos_search_page":
+        return photosSearchPage(await ports.photos("photos.search.page", { "search-id": input.searchId, offset: String(input.offset), "page-size": String(input.pageSize) }));
       case "reels_photos_index":
         return ports.photos("sync", { date: input.date });
       case "reels_photos_groups":
@@ -165,4 +175,10 @@ export function createAgentDispatch(ports: AgentPorts) {
         });
     }
   };
+}
+
+// Swift Codable omits nil optionals; expose an explicit terminal cursor in MCP.
+function photosSearchPage(value: unknown) {
+  const page = value as Record<string, unknown>;
+  return { ...page, nextOffset: page.nextOffset ?? null };
 }
