@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardBridge } from "../shared/contracts";
+import type { WorkbenchBridge } from "../shared/workbench";
+import { DEVELOPMENT_MODE_ARGUMENT } from "./development-mode";
 const invoke = (name: string, ...args: unknown[]) =>
   ipcRenderer.invoke(`reels:${name}`, ...args);
 const subscribe = (name: string, callback: (value: any) => void) => {
@@ -10,19 +12,23 @@ const subscribe = (name: string, callback: (value: any) => void) => {
     ipcRenderer.removeListener(name, listener);
   };
 };
+const workbench: WorkbenchBridge = {
+  state: () => invoke("workbench:state"),
+  chooseWorkspace: () => invoke("workbench:chooseWorkspace"),
+  start: (input) => invoke("workbench:start", input),
+  snapshot: (id) => invoke("workbench:snapshot", id),
+  write: (id, data) => invoke("workbench:write", id, data),
+  resize: (id, cols, rows) => invoke("workbench:resize", id, cols, rows),
+  stop: (id) => invoke("workbench:stop", id),
+  remove: (id) => invoke("workbench:remove", id),
+  close: (id) => invoke("workbench:close", id),
+  hideWindow: () => invoke("workbench:hideWindow"),
+  openPreview: () => invoke("workbench:openPreview"),
+  onEvent: (callback) => subscribe("workbench:event", callback),
+  onShortcut: (callback) => subscribe("workbench:shortcut", callback),
+};
 const bridge: DashboardBridge = {
-  workbench: {
-    state: () => invoke("workbench:state"),
-    chooseWorkspace: () => invoke("workbench:chooseWorkspace"),
-    start: (input) => invoke("workbench:start", input),
-    snapshot: (id) => invoke("workbench:snapshot", id),
-    write: (id, data) => invoke("workbench:write", id, data),
-    resize: (id, cols, rows) => invoke("workbench:resize", id, cols, rows),
-    stop: (id) => invoke("workbench:stop", id),
-    remove: (id) => invoke("workbench:remove", id),
-    openPreview: () => invoke("workbench:openPreview"),
-    onEvent: (callback) => subscribe("workbench:event", callback),
-  },
+  ...(process.argv.includes(DEVELOPMENT_MODE_ARGUMENT) ? { workbench } : {}),
   mobileBriefing: {
     status: () => invoke("mobileBriefing:status"),
     open: () => invoke("mobileBriefing:open"),

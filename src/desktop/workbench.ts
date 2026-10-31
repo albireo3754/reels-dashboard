@@ -9,7 +9,13 @@ import {
   type WorkTerminal,
   type WorkbenchEvent,
   type StartTerminal,
+  type WorkbenchState,
 } from "../shared/workbench";
+import {
+  agentProvider,
+  availableAgentProviders,
+  DEFAULT_AGENT_PROVIDER,
+} from "./workbench-providers";
 
 export const PREVIEW_URL = "http://127.0.0.1:4183/?demo=1";
 const startSchema = z
@@ -34,24 +40,7 @@ export function terminalCommand(input: StartTerminal): string | null {
   const prompt = value.task?.trim()
     ? workPrompt(value.phase ?? "implement", value.task)
     : "";
-  const args =
-    value.kind === "codex"
-      ? [
-          "codex",
-          "--sandbox",
-          value.phase === "review" || value.phase === "design"
-            ? "read-only"
-            : "workspace-write",
-          "--ask-for-approval",
-          "on-request",
-        ]
-      : [
-          "claude",
-          "--permission-mode",
-          value.phase === "review" || value.phase === "design"
-            ? "plan"
-            : "manual",
-        ];
+  const args = agentProvider(value.kind).args(value.phase ?? "implement");
   return `exec ${[...args, ...(prompt ? [prompt] : [])].map(quote).join(" ")}`;
 }
 
@@ -78,11 +67,13 @@ type Entry = {
 export class Workbench {
   private workspace: string | null = null;
   private sessions = new Map<string, Entry>();
+  private closing = new Map<string, Promise<void>>();
   private pending = false;
   private disposed = false;
   constructor(
     private root: string,
     private emit: (event: WorkbenchEvent) => void,
+    private spawnPty: typeof spawn = spawn,
   ) {}
 
   async initialize(candidate?: string) {
@@ -104,11 +95,13 @@ export class Workbench {
         this.workspace = await validateWorkspace(candidate).catch(() => null);
     }
   }
-  state() {
+  state(): WorkbenchState {
     return {
       workspace: this.workspace,
       sessions: [...this.sessions.values()].map((e) => ({ ...e.session })),
       previewURL: PREVIEW_URL,
+      providers: availableAgentProviders(),
+      defaultProvider: DEFAULT_AGENT_PROVIDER,
     };
   }
   async chooseWorkspace(directory: string) {
@@ -136,6 +129,8 @@ export class Workbench {
   }
   async start(input: StartTerminal) {
     const value = startSchema.parse(input);
+    // Validate provider policy before touching settings, files or a child process.
+    const command = terminalCommand(value);
     if (this.disposed || this.pending)
       throw new Error("작업공간 준비가 끝난 뒤 다시 시도해주세요.");
     if (!this.workspace) throw new Error("먼저 앱 소스 폴더를 연결해주세요.");
@@ -156,7 +151,6 @@ export class Workbench {
     try {
       const cwd = await validateWorkspace(this.workspace);
       if (this.disposed) throw new Error("작업공간이 종료됐어요.");
-      const command = terminalCommand(value);
       const shell = "/bin/zsh";
       // Finder-launched Electron has a minimal PATH. Login profiles may add tool managers.
       const env = Object.fromEntries(
@@ -170,7 +164,7 @@ export class Workbench {
       ) as Record<string, string>;
       env.PATH = `${path.join(os.homedir(), ".local/bin")}:/opt/homebrew/bin:/usr/local/bin:${env.PATH || "/usr/bin:/bin"}`;
       env.TERM = "xterm-256color";
-      const pty = spawn(shell, command ? ["-lc", command] : ["-l"], {
+      const pty = this.spawnPty(shell, command ? ["-lc", command] : ["-l"], {
         cwd,
         env,
         cols: 100,
@@ -179,8 +173,6 @@ export class Workbench {
       });
       const id = randomUUID();
       const names = {
-        codex: "Codex",
-        claude: "Claude Code",
         shell: "터미널",
         preview: "웹 미리보기",
         checks: "검증",
@@ -188,7 +180,10 @@ export class Workbench {
       const session: WorkTerminal = {
         id,
         kind: value.kind,
-        title: names[value.kind],
+        title:
+          value.kind === "codex" || value.kind === "claude"
+            ? agentProvider(value.kind).label
+            : names[value.kind],
         cwd,
         state: "running",
         startedAt: new Date().toISOString(),
@@ -245,6 +240,45 @@ export class Workbench {
       throw new Error("세션을 먼저 종료해주세요.");
     this.sessions.delete(id);
     this.emit({ type: "changed" });
+  }
+  close(id: string): Promise<void> {
+    z.string().uuid().parse(id);
+    const existing = this.closing.get(id);
+    if (existing) return existing;
+    const entry = this.sessions.get(id);
+    // A repeated close after completion is harmless, including UI/event races.
+    if (!entry) return Promise.resolve();
+    const operation = (async () => {
+      if (entry.session.state === "running") {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            subscription.dispose();
+            reject(new Error("세션 종료를 확인하지 못했어요. 상태를 확인하고 다시 닫아주세요."));
+          }, 5000);
+          const subscription = entry.pty.onExit(() => {
+            clearTimeout(timer);
+            subscription.dispose();
+            resolve();
+          });
+          try {
+            entry.pty.kill();
+          } catch (error) {
+            clearTimeout(timer);
+            subscription.dispose();
+            reject(error);
+          }
+        });
+      }
+      // The regular exit handler runs first and records the actual exit code.
+      if (entry.session.state !== "exited")
+        throw new Error("세션 종료를 확인하지 못했어요.");
+      if (this.sessions.get(id) === entry) {
+        this.sessions.delete(id);
+        this.emit({ type: "changed" });
+      }
+    })().finally(() => this.closing.delete(id));
+    this.closing.set(id, operation);
+    return operation;
   }
   dispose() {
     this.disposed = true;

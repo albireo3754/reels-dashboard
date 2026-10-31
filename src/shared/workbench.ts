@@ -1,4 +1,10 @@
+import type { WorkbenchAction } from "./workbench-shortcuts";
+
 export type AgentProvider = "codex" | "claude";
+export interface AgentProviderOption {
+  id: AgentProvider;
+  label: string;
+}
 export type WorkPhase = "design" | "implement" | "review" | "fix";
 export type TerminalKind = AgentProvider | "shell" | "preview" | "checks";
 export interface StartTerminal {
@@ -27,6 +33,8 @@ export interface WorkbenchState {
   workspace: string | null;
   sessions: WorkTerminal[];
   previewURL: string;
+  providers: AgentProviderOption[];
+  defaultProvider: AgentProvider;
 }
 export interface WorkbenchBridge {
   state(): Promise<WorkbenchState>;
@@ -37,8 +45,11 @@ export interface WorkbenchBridge {
   resize(id: string, cols: number, rows: number): Promise<void>;
   stop(id: string): Promise<void>;
   remove(id: string): Promise<void>;
+  close(id: string): Promise<void>;
+  hideWindow(): Promise<void>;
   openPreview(): Promise<void>;
   onEvent(callback: (event: WorkbenchEvent) => void): () => void;
+  onShortcut(callback: (action: WorkbenchAction) => void): () => void;
 }
 
 export const phaseLabels: Record<WorkPhase, string> = {

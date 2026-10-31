@@ -18,6 +18,9 @@ export function TerminalPane({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   useEffect(() => {
     const term = new Terminal({
       cursorBlink: true,
@@ -27,6 +30,7 @@ export function TerminalPane({
       theme: { background: "#151b27", foreground: "#e3e9f3" },
     });
     const fit = new FitAddon();
+    terminalRef.current = term;
     fitRef.current = fit;
     term.loadAddon(fit);
     term.open(host.current!);
@@ -57,18 +61,29 @@ export function TerminalPane({
         ready = true;
         pending.forEach(apply);
         pending.length = 0;
-        fit.fit();
-        void api.resize(id, term.cols, term.rows).catch(report);
+        if (
+          activeRef.current &&
+          host.current?.clientWidth &&
+          host.current?.clientHeight
+        ) {
+          fit.fit();
+          void api.resize(id, term.cols, term.rows).catch(report);
+        }
       })
       .catch(report);
     const input = term.onData((data) => {
-      void api.write(id, data).catch(report);
+      if (activeRef.current) void api.write(id, data).catch(report);
     });
     const resized = term.onResize(({ cols, rows }) => {
-      void api.resize(id, cols, rows).catch(report);
+      if (activeRef.current) void api.resize(id, cols, rows).catch(report);
     });
     const observer = new ResizeObserver(() => {
-      if (host.current?.clientWidth && host.current?.clientHeight) fit.fit();
+      if (
+        activeRef.current &&
+        host.current?.clientWidth &&
+        host.current?.clientHeight
+      )
+        fit.fit();
     });
     observer.observe(host.current!);
     return () => {
@@ -78,14 +93,27 @@ export function TerminalPane({
       resized.dispose();
       observer.disconnect();
       term.dispose();
+      terminalRef.current = null;
       fitRef.current = null;
     };
   }, [api, id]);
   useEffect(() => {
     if (active) {
-      const frame = requestAnimationFrame(() => fitRef.current?.fit());
+      const frame = requestAnimationFrame(() => {
+        if (host.current?.clientWidth && host.current?.clientHeight)
+          fitRef.current?.fit();
+        terminalRef.current?.focus();
+      });
       return () => cancelAnimationFrame(frame);
     }
+    terminalRef.current?.blur();
   }, [active]);
-  return <div ref={host} className="dev-terminal" aria-label="개발 터미널" />;
+  return (
+    <div
+      ref={host}
+      className="dev-terminal"
+      data-session-id={id}
+      aria-label="개발 터미널"
+    />
+  );
 }

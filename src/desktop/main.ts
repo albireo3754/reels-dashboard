@@ -20,6 +20,11 @@ import {
 import os from "node:os";
 import { syncSnapshot } from "./sync";
 import { Workbench, PREVIEW_URL } from "./workbench";
+import { matchWorkbenchShortcut } from "../shared/workbench-shortcuts";
+import {
+  developmentModeEnabled,
+  DEVELOPMENT_MODE_ARGUMENT,
+} from "./development-mode";
 import { readMobileBriefingStatus } from "./mobile-briefing";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
@@ -37,6 +42,9 @@ import { createDemoBridge } from "../shared/demo";
 if (process.env.REELS_USER_DATA)
   app.setPath("userData", path.resolve(process.env.REELS_USER_DATA));
 app.setName("Reels Dashboard");
+const backgroundQA = process.env.REELS_BACKGROUND_QA === "1";
+if (backgroundQA && process.platform === "darwin")
+  app.setActivationPolicy("accessory");
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "reels-media",
@@ -51,6 +59,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let window: BrowserWindow;
 const fixture = process.env.REELS_DEMO === "1";
+const developmentMode = developmentModeEnabled(process.env);
 const grants = new Set<string>();
 const imageGrants = new Set<string>();
 const destinations = new Set<string>();
@@ -94,11 +103,21 @@ async function awaitReady() {
   const emit = (name: string, value: unknown) => {
     if (window && !window.isDestroyed()) window.webContents.send(name, value);
   };
-  const workbench = new Workbench(root, (event) => emit("workbench:event", event));
+  const workbench = developmentMode
+    ? new Workbench(root, (event) => emit("workbench:event", event))
+    : undefined;
   let workbenchError: unknown;
-  try {
-    await workbench.initialize(app.isPackaged ? path.join(os.homedir(), "side/reels-dashboard") : app.getAppPath());
-  } catch (error) { workbenchError = error; }
+  if (workbench) {
+    try {
+      await workbench.initialize(
+        app.isPackaged
+          ? path.join(os.homedir(), "side/reels-dashboard")
+          : app.getAppPath(),
+      );
+    } catch (error) {
+      workbenchError = error;
+    }
+  }
   const editorService = new EditorService({
     root,
     store,
@@ -146,7 +165,7 @@ async function awaitReady() {
       return;
     }
     quitting = true;
-    workbench.dispose();
+    workbench?.dispose();
     void editorService
       .dispose()
       .then(() => closeAgent?.())
@@ -162,20 +181,41 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
-  for (const method of ["state", "start", "snapshot", "write", "resize", "stop", "remove"] as const) {
-    handle(`workbench:${method}`, (...args: unknown[]) => {
-      if (workbenchError) throw new Error("개발 작업공간 설정을 읽지 못했어요. 소스 폴더를 다시 연결해주세요.");
-      return (workbench[method] as (...values: unknown[]) => unknown).apply(workbench, args);
+  if (workbench) {
+    for (const method of [
+      "state",
+      "start",
+      "snapshot",
+      "write",
+      "resize",
+      "stop",
+      "remove",
+      "close",
+    ] as const) {
+      handle(`workbench:${method}`, (...args: unknown[]) => {
+        if (workbenchError)
+          throw new Error(
+            "개발 작업공간 설정을 읽지 못했어요. 소스 폴더를 다시 연결해주세요.",
+          );
+        return (workbench[method] as (...values: unknown[]) => unknown).apply(
+          workbench,
+          args,
+        );
+      });
+    }
+    handle("workbench:chooseWorkspace", async () => {
+      const result = await dialog.showOpenDialog(window, {
+        title: "Reels Dashboard 소스 폴더",
+        properties: ["openDirectory"],
+      });
+      if (result.canceled) return workbench.state();
+      const state = await workbench.chooseWorkspace(result.filePaths[0]);
+      workbenchError = undefined;
+      return state;
     });
+    handle("workbench:openPreview", () => shell.openExternal(PREVIEW_URL));
+    handle("workbench:hideWindow", () => window.hide());
   }
-  handle("workbench:chooseWorkspace", async () => {
-    const result = await dialog.showOpenDialog(window, { title: "Reels Dashboard 소스 폴더", properties: ["openDirectory"] });
-    if (result.canceled) return workbench.state();
-    const state = await workbench.chooseWorkspace(result.filePaths[0]);
-    workbenchError = undefined;
-    return state;
-  });
-  handle("workbench:openPreview", () => shell.openExternal(PREVIEW_URL));
   for (const method of [
     "runtime",
     "chooseVideo",
@@ -334,6 +374,8 @@ async function awaitReady() {
   );
   const createWindow = () => {
     window = new BrowserWindow({
+      show: !backgroundQA,
+      focusable: !backgroundQA,
       width: 1440,
       height: 940,
       minWidth: 760,
@@ -341,13 +383,36 @@ async function awaitReady() {
       backgroundColor: "#10131c",
       title: "Reels Dashboard",
       webPreferences: {
+        ...(backgroundQA ? { backgroundThrottling: false } : {}),
         preload: path.join(__dirname, "preload.cjs"),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        additionalArguments: fixture ? ["--reels-demo"] : [],
+        additionalArguments: [
+          ...(fixture ? ["--reels-demo"] : []),
+          ...(developmentMode ? [DEVELOPMENT_MODE_ARGUMENT] : []),
+        ],
       },
     });
+    if (developmentMode) {
+      // Capture at the host so shortcuts also work while the cross-origin
+      // preview iframe has focus. Only the trusted top renderer receives actions.
+      window.webContents.on("before-input-event", (event, input) => {
+        if (input.type !== "keyDown") return;
+        const action = matchWorkbenchShortcut({
+          code: input.code,
+          metaKey: input.meta,
+          ctrlKey: input.control,
+          altKey: input.alt,
+          shiftKey: input.shift,
+          isComposing: input.isComposing,
+        });
+        if (!action) return;
+        // Suppress native menu/iframe/xterm handling and key-repeat duplication.
+        event.preventDefault();
+        if (!input.isAutoRepeat) emit("workbench:shortcut", action);
+      });
+    }
     window.webContents.setWindowOpenHandler(({ url }) => {
       try {
         const parsed = new URL(url);
@@ -378,6 +443,14 @@ async function awaitReady() {
     void window.loadFile(path.join(app.getAppPath(), "dist/index.html"));
   };
   createWindow();
+  const showWindow = () => {
+    if (backgroundQA) return;
+    if (window.isDestroyed()) createWindow();
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  };
+  app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
       editor: editorService,
@@ -405,8 +478,6 @@ async function awaitReady() {
       open: (project) => emit("agent:project-opened", project),
       photos: requestPhotos,
     });
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on("activate", showWindow);
 }
 app.on("window-all-closed", () => app.quit());
