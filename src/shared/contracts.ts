@@ -16,8 +16,20 @@ export const commandMethods = [
 ] as const;
 export type CommandMethod = (typeof commandMethods)[number];
 export type Arguments = Record<string, string>;
-export type Stage = "idea" | "selected" | "editing" | "review" | "published";
+export type Stage =
+  | "idea"
+  | "captured"
+  | "selected"
+  | "editing"
+  | "review"
+  | "published";
+export interface LocalResource {
+  role: "footage" | "final" | "cover" | "draft" | "document" | "folder";
+  path: string;
+  label: string;
+}
 export interface Project {
+  production?: import("./production-project").Production;
   id: string;
   title: string;
   date: string;
@@ -25,6 +37,9 @@ export interface Project {
   nextAction: string;
   publicURL: string;
   shared: boolean;
+  resources?: LocalResource[];
+  localNotes?: string;
+  dateBasis?: "capture" | "publication" | "record";
 }
 export interface Dashboard {
   schemaVersion: 1;
@@ -34,18 +49,40 @@ export interface Dashboard {
 export interface Snapshot {
   schemaVersion: 1;
   generatedAt: string;
-  projects: Omit<Project, "shared">[];
+  projects: Pick<
+    Project,
+    "id" | "title" | "date" | "stage" | "nextAction" | "publicURL"
+  >[];
 }
 export interface OpenDocument {
   path: string;
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly projects?: {
+    merge(
+      input: import("./production-project").MergeProjectsInput,
+    ): Promise<{ dashboard: Dashboard; backupPath: string }>;
+    linkEdit(
+      input: import("./production-project").LinkEditInput,
+    ): Promise<Dashboard>;
+    listEdits(): Promise<
+      Array<
+        import("./production-project").EditRef & {
+          title: string;
+          ownerId?: string;
+        }
+      >
+    >;
+  };
+  readonly routeMap?: import("./route-map").RouteMapBridge;
+  readonly cardNews?: import("./card-news").CardNewsBridge;
   readonly workbench?: import("./workbench").WorkbenchBridge;
   readonly mobileBriefing?: {
     status(): Promise<import("./mobile-briefing").MobileBriefingStatus>;
     open(): Promise<void>;
   };
+  readonly contentMedia?: import("./content-media").ContentMediaBridge;
   readonly editor: EditorBridge;
   readonly agent?: AgentUiBridge;
   readonly mode: "desktop" | "demo" | "web";
@@ -55,7 +92,9 @@ export interface DashboardBridge {
   chooseDestination(): Promise<string | null>;
   imageURL(path: string): Promise<string>;
   loadDashboard(): Promise<Dashboard>;
-  saveDashboard(value: Dashboard): Promise<void>;
+  saveDashboard(value: Dashboard, expectedUpdatedAt?: string): Promise<void>;
+  onDashboardChanged?(callback: (value: Dashboard) => void): () => void;
+  revealResource?(projectId: string, resourcePath: string): Promise<void>;
   exportSnapshot(): Promise<string | null>;
   syncSnapshot(
     endpoint: string,

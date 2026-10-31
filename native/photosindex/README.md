@@ -22,7 +22,7 @@ Launch arguments override environment values. All configured filesystem paths mu
 
 `PhotosIndex.app` is an accessory application with no launch window. It starts its command host at application startup and stops it on normal termination. Electron owns the visible interface and should terminate its own helper when appropriate; forced process termination can leave a stale socket, which the existing owner-only startup checks handle.
 
-The native bundle keeps its established bundle identifier and signing identifier to support existing macOS Photos permission identity. This does not guarantee permission on another machine or after a differently signed build. No signing certificate name or secret is stored in this repository. The build automatically discovers an Apple Development identity; CI can explicitly set `PHOTOSINDEX_SIGNING_MODE=adhoc` for disposable artifacts.
+The native bundle keeps its established bundle identifier and signing identifier to support existing macOS Photos permission identity. This does not guarantee permission on another machine or after a differently signed build. No signing certificate name or secret is stored in this repository. Local builds require one Developer ID Application identity (or an explicit `PHOTOSINDEX_SIGNING_IDENTITY` selection). Only disposable CI artifacts may use `CI=true PHOTOSINDEX_SIGNING_MODE=ci-adhoc`. The previous development/adhoc modes are removed. See [signing and permission continuity](../../docs/native-signing.md).
 
 ## Validation
 

@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
+import { ProjectGrouping } from "../features/project-grouping";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type {
   Asset,
   Dashboard,
@@ -14,11 +23,33 @@ import type {
 } from "../shared/contracts";
 import { emptyDashboard } from "../shared/contracts";
 import type { EditorProject } from "../shared/editor";
+import {
+  BoardToolbar,
+  ContentMediaCard,
+  StageProgress,
+  defaultBoardQuery,
+  parseBoardQuery,
+  selectBoardProjects,
+  type BoardQuery,
+} from "../features/content-board";
+import { ContentRouteMap } from "../features/route-map";
 import { Editor } from "./Editor";
+import { MobileBriefing } from "./MobileBriefing";
+import { CardNews } from "../features/card-news";
 import type { DrawerMode } from "../features/dev-workspace";
-const DevWorkspace = lazy(() => import("../features/dev-workspace").then(m => ({ default: m.DevWorkspace })));
+const DevWorkspace = lazy(() =>
+  import("../features/dev-workspace").then((m) => ({
+    default: m.DevWorkspace,
+  })),
+);
 
-type Tab = "dashboard" | "library" | "editor" | "transfers" | "settings" | "develop";
+type Tab =
+  | "dashboard"
+  | "library"
+  | "editor"
+  | "cards"
+  | "transfers"
+  | "settings";
 type Choice = "undecided" | "included" | "excluded";
 type ActivePlan = {
   kind: "export" | "move";
@@ -27,6 +58,7 @@ type ActivePlan = {
 };
 const stages: Record<Stage, string> = {
   idea: "아이디어",
+  captured: "촬영 완료",
   selected: "촬영본 선택",
   editing: "편집 중",
   review: "검토 대기",
@@ -60,7 +92,7 @@ function Icon({ name }: { name: string }) {
     library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
     transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
     editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
-    develop: "M4 5l6 7-6 7 M12 19h8",
+    cards: "M6 3h15v16H6z M3 7v15h14 M9 8h9 M9 12h9 M9 16h5",
     settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     arrow: "M5 12h14 M13 6l6 6-6 6",
     plus: "M12 5v14 M5 12h14",
@@ -115,7 +147,8 @@ function Empty({
 }
 
 export function App({ bridge }: { bridge: DashboardBridge }) {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const navigation = useWorkspaceNavigation<Tab>("dashboard");
+  const { current: tab, navigate: setTab } = navigation;
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
     null,
@@ -133,6 +166,37 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dashboard, setDashboard] = useState<Dashboard>(emptyDashboard);
+  const [boardQuery, setBoardQuery] = useState<BoardQuery>(() => {
+    try {
+      const saved = parseBoardQuery(
+        JSON.parse(
+          localStorage.getItem(`reels-board-view-v1:${bridge.mode}`) ?? "null",
+        ),
+      );
+      return { ...defaultBoardQuery, sort: saved.sort, view: saved.view };
+    } catch {
+      return { ...defaultBoardQuery };
+    }
+  });
+  const [boardLimit, setBoardLimit] = useState(12);
+  const changeBoardQuery = (value: BoardQuery) => {
+    setBoardQuery(value);
+    setBoardLimit(12);
+  };
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `reels-board-view-v1:${bridge.mode}`,
+        JSON.stringify(boardQuery),
+      );
+    } catch {
+      /* View controls remain usable when local storage is unavailable. */
+    }
+  }, [boardQuery, bridge.mode]);
+  const boardProjects = useMemo(
+    () => selectBoardProjects(dashboard.projects, boardQuery),
+    [dashboard.projects, boardQuery],
+  );
   const [status, setStatus] = useState<Status | null>(null);
   const [date, setDate] = useState(localDate);
   const [level, setLevel] = useState<"coarse" | "fine">("fine");
@@ -160,6 +224,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   } | null>(null);
   const [recoveryDigest, setRecoveryDigest] = useState("");
   const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+  const [editingRevision, setEditingRevision] = useState("");
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
@@ -212,6 +277,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       active = false;
     };
   }, [bridge, readOnly]);
+  useEffect(() => bridge.onDashboardChanged?.(setDashboard), [bridge]);
   const refreshDashboard = useCallback(() => {
     void bridge
       .loadDashboard()
@@ -511,12 +577,13 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           ? dashboard.projects.map((p) => (p.id === value.id ? value : p))
           : [value, ...dashboard.projects],
       };
-      await bridge.saveDashboard(next);
-      setDashboard(next);
+      await bridge.saveDashboard(next, editingRevision);
+      setDashboard(await bridge.loadDashboard());
       setEditingProject(null);
       setNotice("콘텐츠 진행 상태를 저장했어요.");
     });
-  const newProject = () =>
+  const newProject = () => {
+    setEditingRevision(dashboard.updatedAt);
     setEditingProject({
       id: crypto.randomUUID(),
       title: "",
@@ -526,6 +593,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       publicURL: "",
       shared: false,
     });
+  };
   useEffect(() => {
     if (!editingProject) return;
     const listener = (event: KeyboardEvent) => {
@@ -628,56 +696,48 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     dashboard: "작업의 흐름을 한눈에",
     library: "다음 이야기를 골라요",
     editor: "선택한 장면을 완성해요",
+    cards: "읽는 속도에 맞춰 이야기를 전해요",
     transfers: "확인하고, 안전하게 옮겨요",
-    develop: "앱을 바로 개선하는 작업공간",
     settings: "내 작업 환경",
   };
   const descriptions: Record<Tab, string> = {
     dashboard: "촬영부터 게시까지, 지금 필요한 다음 작업을 확인해요.",
+    cards: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
     library:
       "Apple Photos에서 날짜별 촬영본을 찾고 콘텐츠에 사용할 장면을 골라요.",
     transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
     editor:
       "장소 안내 묶음과 본문 자막을 더하고, 선택한 시점으로 표지를 만들어요.",
-    develop: "설계부터 구현·미리보기·리뷰까지, 코딩 도구와 함께 이어가요.",
     settings: "로컬 연결과 모바일에서 볼 현황의 공유 범위를 관리해요.",
   };
   const navigationItems: [Tab, string][] = [
     ["dashboard", "대시보드"],
     ["library", "촬영 보관함"],
     ["editor", "영상 편집"],
+    ["cards", "카드뉴스 릴스"],
     ["transfers", "내보내기"],
-    ["settings", "설정"],
-    ...(bridge.workbench ? [["develop", "개발 작업공간"] as [Tab, string]] : []),
   ];
   const navigateTo = (key: Tab) => {
-    if (key === "develop") {
-      setDrawerMode("open");
-      return;
-    }
     setTab(key);
     if (key === "dashboard") refreshDashboard();
     setError("");
     setNotice("");
   };
   return (
-    <div className="app-shell">
+    <div className="app-shell compact-shell" data-terminal={drawerMode}>
+      <WorkspaceToolbar
+        desktop={typeof window.reels !== "undefined"}
+        navigation={navigation}
+        items={[...navigationItems, ["settings", "설정"]]}
+        projects={dashboard.projects}
+        onNavigate={key => navigateTo(key as Tab)}
+        onJump={navigation.jump}
+        settingsActive={tab === "settings"}
+        terminal={drawerMode}
+        onTerminal={bridge.workbench ? () => setDrawerMode(mode => mode === "open" ? "folded" : "open") : undefined}
+        onProject={!readOnly ? project => { setEditingRevision(dashboard.updatedAt); setEditingProject({ ...project }); } : undefined}
+      />
       <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setTab("dashboard");
-          }}
-        >
-          <span className="brand-mark">
-            r<span>●</span>
-          </span>
-          <span>
-            reels<span className="brand-sub">DASHBOARD</span>
-          </span>
-        </a>
         <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
           {navigationItems.map(([key, text]) => (
@@ -686,7 +746,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               aria-label={text}
               className={`nav-item ${tab === key ? "active" : ""}`}
               aria-current={tab === key ? "page" : undefined}
-              aria-expanded={key === "develop" ? drawerMode === "open" : undefined}
+
               onClick={() => navigateTo(key)}
             >
               <Icon name={key} />
@@ -714,29 +774,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           <span className="version">REELS WORKSPACE · 0.1</span>
         </div>
       </aside>
-      <main className="main">
-        <header className="topbar">
-          <span className="breadcrumb">
-            워크스페이스 <span>/</span>{" "}
-            {
-              {
-                dashboard: "대시보드",
-                library: "촬영 보관함",
-                editor: "영상 편집",
-                transfers: "내보내기",
-                settings: "설정",
-                develop: "개발 작업공간",
-              }[tab]
-            }
-          </span>
-          <span className="mode-pill">
-            {readOnly
-              ? "WEB · 읽기 전용"
-              : bridge.mode === "demo"
-                ? "DEMO"
-                : "DESKTOP"}
-          </span>
-        </header>
+      <main className={`main ${tab === "dashboard" ? "dashboard-home" : ""}`}>
         {bridge.mode === "demo" && (
           <div className="demo-banner" role="note">
             예시 데이터로 둘러보는 화면이에요. 실제 Photos와 서버 데이터는
@@ -744,7 +782,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           </div>
         )}
         <div className="page-heading">
-          <div>
+          <div className="shell-page-description">
             <span className="eyebrow">
               {tab === "dashboard"
                 ? "YOUR CREATIVE FLOW"
@@ -752,9 +790,11 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   ? "FROM YOUR CAMERA"
                   : tab === "editor"
                     ? "MAKE YOUR REEL"
-                    : tab === "transfers"
-                      ? "REVIEW & TRANSFER"
-                      : tab === "develop" ? "BUILD · PREVIEW · REVIEW" : "WORKSPACE SETTINGS"}
+                    : tab === "cards"
+                      ? "CARD NEWS · TIMING & MUSIC"
+                      : tab === "transfers"
+                        ? "REVIEW & TRANSFER"
+                        : "WORKSPACE SETTINGS"}
             </span>
             <h1>{titles[tab]}</h1>
             <p>{descriptions[tab]}</p>
@@ -808,65 +848,168 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             {busy} 중이에요. 완료 결과를 기다려주세요.
           </div>
         )}
+        {!readOnly &&
+          bridge.mobileBriefing &&
+          (tab === "dashboard" || tab === "settings") && (
+            <MobileBriefing bridge={bridge} />
+          )}
         {tab === "dashboard" && (
           <>
             <div className="stats-grid">
               {[
-                ["전체 콘텐츠", totals.all, "한곳에 모인 이야기"],
                 ["진행 중", totals.active, "다음 장면을 준비해요"],
                 ["검토 대기", totals.review, "한 번 더 확인해요"],
                 ["게시 완료", totals.published, "세상에 나간 이야기"],
               ].map(([name, value, desc], i) => (
-                <div className={`stat-card stat-${i}`} key={name}>
+                <button
+                  className={`stat-card stat-${i}`}
+                  key={name}
+                  aria-label={`${name} 보기`}
+                  aria-pressed={
+                    boardQuery.stage === ["active", "review", "published"][i]
+                  }
+                  onClick={() =>
+                    changeBoardQuery({
+                      ...boardQuery,
+                      search: "",
+                      basis: "all",
+                      stage: (["active", "review", "published"] as const)[i],
+                    })
+                  }
+                >
                   <span>{name}</span>
                   <strong>
                     {value}
                     <small>개</small>
                   </strong>
                   <p>{desc}</p>
-                </div>
+                </button>
               ))}
             </div>
             <section className="content-section">
               <div className="section-heading">
                 <h2>
-                  콘텐츠 보드 <span>{totals.all}</span>
+                  {boardQuery.stage === "active"
+                    ? "진행 중인 작업"
+                    : "콘텐츠 보드"}{" "}
+                  <span>{boardProjects.length}</span>
                 </h2>
                 <p>
                   {readOnly ? "마지막 동기화" : "마지막 저장"} ·{" "}
                   {readableTime(dashboard.updatedAt)}
                 </p>
               </div>
+              {dashboard.projects.length > 0 && (
+                <BoardToolbar
+                  query={boardQuery}
+                  onChange={changeBoardQuery}
+                  count={boardProjects.length}
+                  total={totals.all}
+                />
+              )}
               {!dashboard.projects.length ? (
                 <Empty title="첫 번째 이야기를 준비해볼까요?">
                   {readOnly
                     ? "아직 공유된 콘텐츠가 없어요. 데스크톱에서 공유할 항목을 선택하고 현황을 동기화해주세요."
                     : "촬영본을 고르거나 새 콘텐츠를 추가해서 제작 흐름을 시작해보세요."}
                 </Empty>
+              ) : !boardProjects.length ? (
+                <div className="board-no-results">
+                  <h3>조건에 맞는 콘텐츠가 없어요.</h3>
+                  <p>검색어를 줄이거나 진행 단계와 날짜 종류를 바꿔보세요.</p>
+                  <button
+                    onClick={() =>
+                      changeBoardQuery({
+                        ...defaultBoardQuery,
+                        stage: "all",
+                        sort: boardQuery.sort,
+                        view: boardQuery.view,
+                      })
+                    }
+                  >
+                    전체 콘텐츠 다시 보기
+                  </button>
+                </div>
               ) : (
-                <div className="project-grid">
-                  {dashboard.projects.map((project, i) => (
+                <div
+                  className={`project-grid ${boardQuery.view === "list" ? "board-list" : ""}`}
+                >
+                  {boardProjects.slice(0, boardLimit).map((project, i) => (
                     <article className="project-card" key={project.id}>
-                      <div className={`project-art art-${i % 4}`}>
-                        <span className="art-lines" />
-                        <span className="project-number">
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <span className={`stage-tag stage-${project.stage}`}>
-                          {stages[project.stage]}
-                        </span>
-                      </div>
+                      <ContentMediaCard
+                        key={project.id + JSON.stringify(project.resources)}
+                        project={project}
+                        bridge={bridge}
+                        index={i}
+                      />
                       <div className="project-body">
+                        <ContentRouteMap project={project} bridge={bridge} />
                         <span className="project-date">
+                          {project.dateBasis === "capture"
+                            ? "촬영 "
+                            : project.dateBasis === "publication"
+                              ? "게시 "
+                              : project.dateBasis === "record"
+                                ? "기록 "
+                                : ""}
                           {project.date || "날짜 미정"}
                           {project.shared && (
                             <span className="share-indicator">모바일 공유</span>
                           )}
                         </span>
                         <h3>{project.title}</h3>
+                        <StageProgress project={project} />
                         <p>
                           {project.nextAction || "다음 할 일을 정해보세요."}
                         </p>
+                        {!readOnly && Boolean(project.resources?.length) && (
+                          <details className="local-resources">
+                            <summary>
+                              연결 자료 {project.resources!.length}개
+                            </summary>
+                            {project.localNotes && <p>{project.localNotes}</p>}
+                            <ul>
+                              {project.resources!.map((resource) => (
+                                <li key={`${resource.role}:${resource.path}`}>
+                                  <span>
+                                    {
+                                      {
+                                        footage: "촬영본",
+                                        final: "완성본",
+                                        cover: "표지",
+                                        draft: "시안",
+                                        document: "문서",
+                                        folder: "폴더",
+                                      }[resource.role]
+                                    }{" "}
+                                    · {resource.label}
+                                  </span>
+                                  <button
+                                    disabled={!bridge.revealResource || !!busy}
+                                    onClick={() =>
+                                      run("자료 위치 열기", async () => {
+                                        await bridge.revealResource!(
+                                          project.id,
+                                          resource.path,
+                                        );
+                                      })
+                                    }
+                                  >
+                                    위치 열기
+                                  </button>
+                                  <small
+                                    style={{
+                                      display: "block",
+                                      overflowWrap: "anywhere",
+                                    }}
+                                  >
+                                    {resource.path}
+                                  </small>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                         <div className="project-footer">
                           {project.publicURL ? (
                             <a
@@ -887,7 +1030,10 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                             <button
                               className="icon-button"
                               aria-label={`${project.title} 수정`}
-                              onClick={() => setEditingProject({ ...project })}
+                              onClick={() => {
+                                setEditingRevision(dashboard.updatedAt);
+                                setEditingProject({ ...project });
+                              }}
                             >
                               <Icon name="arrow" />
                             </button>
@@ -896,6 +1042,22 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                       </div>
                     </article>
                   ))}
+                </div>
+              )}
+              {boardProjects.length > 0 && (
+                <div className="board-load-more">
+                  <small>
+                    {boardProjects.length}개 중{" "}
+                    {Math.min(boardLimit, boardProjects.length)}개 표시
+                  </small>
+                  {boardLimit < boardProjects.length && (
+                    <button
+                      onClick={() => setBoardLimit((limit) => limit + 12)}
+                    >
+                      콘텐츠 더 보기 (
+                      {Math.min(12, boardProjects.length - boardLimit)}개)
+                    </button>
+                  )}
                 </div>
               )}
             </section>
@@ -1315,18 +1477,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             </>
           ))}
         {bridge.workbench && (
-          <Suspense fallback={null}>
-            <DevWorkspace
-              api={bridge.workbench}
-              mode={drawerMode}
-              onModeChange={setDrawerMode}
-              onNavigate={(index) => {
-                const item = navigationItems[index];
-                if (item) navigateTo(item[0]);
-              }}
-              openSite={bridge.mobileBriefing?.open}
-            />
-          </Suspense>
+            <Suspense fallback={null}>
+              <DevWorkspace
+                api={bridge.workbench}
+                mode={drawerMode}
+                onModeChange={setDrawerMode}
+                onNavigate={(index) => {
+                  const item = navigationItems[index];
+                  if (item) navigateTo(item[0]);
+                }}
+                openSite={bridge.mobileBriefing?.open}
+              />
+            </Suspense>
         )}
         <div hidden={tab !== "editor"}>
           <Editor
@@ -1338,6 +1500,9 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             onRenderingChange={setEditorRendering}
             onDashboardChange={refreshDashboard}
           />
+        </div>
+        <div hidden={tab !== "cards"}>
+          <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
         {tab === "transfers" &&
           (readOnly ? (
@@ -1632,10 +1797,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             </section>
           </>
         )}
-        <footer className="page-footer">
-          <span>작은 장면을, 오래 남을 이야기로.</span>
-          <span>Reels Dashboard</span>
-        </footer>
       </main>
       {editingProject && (
         <div
@@ -1743,6 +1904,16 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                 disabled={!!busy}
               />
             </label>
+            {bridge.projects && dashboard.projects.some(p => p.id === editingProject.id) && (
+              <ProjectGrouping
+                key={editingProject.id}
+                api={bridge.projects}
+                project={editingProject}
+                dashboard={dashboard}
+                disabled={!!busy || JSON.stringify(editingProject) !== JSON.stringify(dashboard.projects.find(p => p.id === editingProject.id))}
+                onComplete={(next, message) => { setDashboard(next); setEditingProject(null); setNotice(message); }}
+              />
+            )}
             <label className="checkbox-row">
               <input
                 type="checkbox"

@@ -9,7 +9,10 @@ import type {
   EditorSummary,
   RenderJob,
 } from "../shared/editor";
+import { followCoverDefaults } from "../shared/editor";
 import "./editor.css";
+import { TemplatePanel } from "../features/editor-templates";
+import { CaptionFileTools } from "../features/subtitle-files";
 import { validateEditSettings } from "../shared/editor-model";
 
 type EditorProps = {
@@ -196,7 +199,9 @@ export function Editor({
           setNotice(
             mode === "demo"
               ? "예시 내보내기가 끝났어요. 실제 파일은 만들지 않았어요."
-              : "영상과 표지 내보내기가 완료됐어요.",
+              : next.outputPath?.endsWith(".png")
+                ? "카드 이미지 내보내기가 완료됐어요."
+                : "영상과 표지 내보내기가 완료됐어요.",
           );
           onDashboardChange();
         }
@@ -286,16 +291,16 @@ export function Editor({
       if (projectRef.current && signature(projectRef.current) === sig)
         setPreview({ url, time: at, kind, signature: sig });
     });
-  const exportProject = () =>
+  const exportProject = (target: "both" | "cover" = "both") =>
     run("내보내기 준비", async () => {
       if (!project) return;
-      validate(project, "export");
+      validate(project, target === "cover" ? "cover" : "export");
       const saved = await bridge.save(project);
       setProject(saved);
       setDirty(false);
       await refreshRecent();
       onDashboardChange();
-      const result = await bridge.export(saved);
+      const result = await bridge.export(saved, target);
       if (result) {
         setJob(result);
         setNotice("선택한 설정으로 내보내기를 시작했어요.");
@@ -559,6 +564,12 @@ export function Editor({
               </section>
             </div>
             <div className="editor-controls-column">
+              <TemplatePanel
+                settings={project.settings}
+                disabled={!!busy || !!rendering}
+                onChange={changeSettings}
+              />
+
               <section className="panel">
                 <div className="section-heading">
                   <div>
@@ -681,6 +692,15 @@ export function Editor({
                     자막 추가
                   </button>
                 </div>
+                <CaptionFileTools
+                  key={project.id}
+                  cues={project.settings.captions.items}
+                  duration={project.source.duration}
+                  sourceName={project.source.name}
+                  contextKey={`${project.id}:${project.updatedAt}:${signature(project)}`}
+                  disabled={!!busy || rendering}
+                  onReplace={(items) => setCaptions("items", items)}
+                />
                 <div className="form-grid">
                   <NumberField
                     label="본문 자막 크기"
@@ -783,7 +803,11 @@ export function Editor({
                 <div className="section-heading">
                   <div>
                     <span className="eyebrow">COVER</span>
-                    <h2>표지 훅과 장소 핀</h2>
+                    <h2>
+                      {project.settings.cover.template === "rosy-follow"
+                        ? "팔로우 마지막 장"
+                        : "표지 훅과 장소 핀"}
+                    </h2>
                   </div>
                   <button
                     className="quiet"
@@ -803,7 +827,9 @@ export function Editor({
                   disabled={!!busy || rendering}
                 />
                 <label>
-                  표지 훅
+                  {project.settings.cover.template === "rosy-follow"
+                    ? "마지막 장 안내 문구 (두 줄)"
+                    : "표지 훅"}
                   <textarea
                     value={project.settings.cover.hook}
                     onChange={(e) => setCover("hook", e.target.value)}
@@ -812,25 +838,84 @@ export function Editor({
                   />
                 </label>
                 <p className="muted compact">
-                  표지 훅은 두 줄·왼쪽 정렬이에요. 아래 서명은 훅을 따라가고,
-                  장소 핀의 가로 중앙 배치와는 별개예요.
+                  {project.settings.cover.template === "rosy-follow"
+                    ? "두 줄 안내와 팔로우 문구 아래에 분홍 서명을 배치해요. 선택한 프레임을 9:16 PNG로 저장하며 영상 뒤에 자동으로 붙이지 않아요."
+                    : "표지 훅은 두 줄·왼쪽 정렬이에요. 아래 서명은 훅을 따라가고, 장소 핀의 가로 중앙 배치와는 별개예요."}
                 </p>
                 <label>
                   표지 글자 크기 방식
                   <select
                     value={project.settings.cover.template}
                     onChange={(e) =>
-                      setCover(
-                        "template",
-                        e.target.value as EditSettings["cover"]["template"],
-                      )
+                      changeSettings((s) => {
+                        const { hookSize: _, ...cover } = s.cover;
+                        return {
+                          ...s,
+                          cover: {
+                            ...cover,
+                            ...(e.target.value === "rosy-follow" &&
+                            !cover.hook.trim()
+                              ? { hook: followCoverDefaults.hook }
+                              : {}),
+                            template: e.target
+                              .value as EditSettings["cover"]["template"],
+                          },
+                        };
+                      })
                     }
                     disabled={!!busy || rendering}
                   >
                     <option value="rosy-auto">문구 폭에 맞춰 자동 조절</option>
                     <option value="rosy-large">큰 글자 185 기준</option>
+                    <option value="rosy-follow">
+                      서명 있는 팔로우 마지막 장
+                    </option>
                   </select>
                 </label>
+                {project.settings.cover.template === "rosy-follow" && (
+                  <fieldset
+                    disabled={!!busy || rendering}
+                    className="follow-cover-fields"
+                  >
+                    <legend>팔로우 문구와 서명</legend>
+                    <label>
+                      팔로우 문구
+                      <input
+                        value={
+                          project.settings.cover.followCta ??
+                          followCoverDefaults.cta
+                        }
+                        maxLength={100}
+                        onChange={(e) => setCover("followCta", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      서명 (영문 계정명)
+                      <input
+                        value={
+                          project.settings.cover.followSignature ??
+                          followCoverDefaults.signature
+                        }
+                        maxLength={80}
+                        onChange={(e) =>
+                          setCover("followSignature", e.target.value)
+                        }
+                      />
+                    </label>
+                    <NumberField
+                      label="마지막 장 배경 어둡기 (%)"
+                      min={0}
+                      max={85}
+                      step={1}
+                      value={Math.round(
+                        (project.settings.cover.followDarkness ??
+                          followCoverDefaults.darkness) * 100,
+                      )}
+                      onChange={(v) => setCover("followDarkness", v / 100)}
+                      disabled={!!busy || rendering}
+                    />
+                  </fieldset>
+                )}
                 <label className="checkbox-row">
                   <input
                     type="checkbox"
@@ -870,7 +955,8 @@ export function Editor({
                     disabled={
                       !!busy ||
                       rendering ||
-                      project.settings.cover.useDefaultPosition
+                      project.settings.cover.useDefaultPosition ||
+                      project.settings.cover.template === "rosy-follow"
                     }
                   />
                   <NumberField
@@ -880,7 +966,8 @@ export function Editor({
                     disabled={
                       !!busy ||
                       rendering ||
-                      project.settings.cover.useDefaultPosition
+                      project.settings.cover.useDefaultPosition ||
+                      project.settings.cover.template === "rosy-follow"
                     }
                   />
                 </div>
@@ -889,7 +976,9 @@ export function Editor({
                     onClick={() => makePreview("cover")}
                     disabled={!!busy || rendering || unavailable}
                   >
-                    표지 미리보기 만들기
+                    {project.settings.cover.template === "rosy-follow"
+                      ? "마지막 장 미리보기 만들기"
+                      : "표지 미리보기 만들기"}
                   </button>
                 </div>
               </section>
@@ -908,8 +997,16 @@ export function Editor({
                 편집 설정 저장
               </button>
               <button
+                onClick={() => exportProject("cover")}
+                disabled={!!busy || rendering || unavailable}
+              >
+                {project.settings.cover.template === "rosy-follow"
+                  ? "마지막 장 PNG 내보내기"
+                  : "표지 PNG 내보내기"}
+              </button>
+              <button
                 className="primary"
-                onClick={exportProject}
+                onClick={() => exportProject()}
                 disabled={!!busy || rendering || unavailable}
               >
                 영상과 표지 내보내기

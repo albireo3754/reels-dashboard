@@ -187,47 +187,6 @@ label + label {
   flex-direction: column;
   z-index: 10;
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #284b3b;
-  font-size: 27px;
-  line-height: 1.05;
-  font-weight: 650;
-  letter-spacing: -1px;
-  padding: 0 9px;
-}
-.brand:hover {
-  text-decoration: none;
-}
-.brand-mark {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 44px;
-  font-family: Georgia, serif;
-  font-size: 55px;
-  font-style: italic;
-  color: #506d4b;
-}
-.brand-mark > span {
-  font-size: 11px;
-  position: absolute;
-  right: 0;
-  top: 9px;
-  color: #c78e72;
-}
-.brand-sub {
-  display: block;
-  font-size: 8px;
-  font-weight: 650;
-  letter-spacing: 2.7px;
-  margin-top: 7px;
-  color: #83907c;
-}
 .workspace-label {
   margin: 52px 12px 12px;
   font-size: 10px;
@@ -301,29 +260,6 @@ label + label {
   width: calc(100% - 224px);
   max-width: 1540px;
   padding: 0 46px 24px;
-}
-.topbar {
-  height: 72px;
-  border-bottom: 1px solid #e8ebe3;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.breadcrumb {
-  font-size: 11px;
-  color: #6b7a6e;
-}
-.breadcrumb > span {
-  padding: 0 11px;
-  color: #b5bfb0;
-}
-.mode-pill {
-  font-size: 9px;
-  letter-spacing: 1.3px;
-  border: 1px solid #dce3d5;
-  padding: 5px 9px;
-  border-radius: 6px;
-  color: #839174;
 }
 .page-heading {
   display: flex;
@@ -602,15 +538,6 @@ label + label {
 .library-callout > svg:last-child {
   margin-left: auto;
   color: #8b9c78;
-}
-.page-footer {
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  color: #b1b8a7;
-  margin-top: 46px;
-  padding: 20px 0 4px;
-  border-top: 1px solid #e8ece1;
 }
 .demo-banner {
   margin-top: 18px;
@@ -1274,19 +1201,11 @@ label + label {
     width: 72px;
     padding: 25px 10px;
   }
-  .brand {
-    justify-content: center;
-    padding: 0;
-  }
-  .brand > span:last-child,
   .workspace-label,
   .nav-item > span,
   .nav-item small,
   .sidebar-bottom {
     display: none;
-  }
-  .brand-mark {
-    transform: scale(0.8);
   }
   .sidebar nav {
     margin-top: 35px;
@@ -1368,17 +1287,6 @@ label + label {
   .app-shell {
     display: block;
   }
-  .brand {
-    width: 38px;
-  }
-  .brand-mark {
-    font-size: 42px;
-    height: 37px;
-    width: 30px;
-  }
-  .brand-mark > span {
-    font-size: 8px;
-  }
   .sidebar nav {
     margin: 0 0 0 auto;
     display: flex;
@@ -1393,16 +1301,6 @@ label + label {
     margin: 0;
     width: 100%;
     padding: 0 17px 18px;
-  }
-  .topbar {
-    height: 48px;
-  }
-  .breadcrumb {
-    font-size: 9px;
-  }
-  .mode-pill {
-    font-size: 8px;
-    padding: 3px 6px;
   }
   .demo-banner {
     font-size: 9px;
@@ -1529,11 +1427,6 @@ label + label {
   }
   .library-callout > svg:last-child {
     width: 15px;
-  }
-  .page-footer {
-    margin-top: 28px;
-    font-size: 8px;
-    gap: 12px;
   }
   .panel {
     padding: 18px;
@@ -1721,3 +1614,21 @@ label + label {
     font-size: 62px;
   }
 }
+
+/* Compact application chrome: one toolbar, full-width work area. */
+.compact-shell { padding-top: 52px; }
+.compact-shell .sidebar { top: 52px; padding-top: 18px; }
+.compact-shell .workspace-label { margin: 4px 10px 16px; }
+.compact-shell .main { max-width: none; padding-left: 28px; padding-right: 28px; }
+.compact-shell .page-heading { margin: 18px 0; justify-content: flex-end; }
+.compact-shell .shell-page-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.compact-shell[data-terminal="open"] .main { padding-bottom: 72vh; }
+.compact-shell[data-terminal="folded"] .main { padding-bottom: 90px; }
+@media (max-width: 850px) { .compact-shell .sidebar nav { margin-top: 0; } }
+@media (max-width: 560px) {
+  .compact-shell .sidebar { top: 52px; padding: 7px 12px; }
+  .compact-shell .sidebar nav { margin: 0 auto; }
+  .compact-shell .main { padding-left: 17px; padding-right: 17px; }
+}
+
+.compact-shell .modal-backdrop { z-index: 200; }

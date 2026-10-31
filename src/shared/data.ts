@@ -1,5 +1,17 @@
+import {
+  productionSchema,
+  validateProductionLinks,
+} from "./production-project";
+import { localResourcesSchema } from "./local-resources";
 import type { Dashboard, Project, Snapshot } from "./contracts";
-const stages = new Set(["idea", "selected", "editing", "review", "published"]);
+const stages = new Set([
+  "idea",
+  "captured",
+  "selected",
+  "editing",
+  "review",
+  "published",
+]);
 const record = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 function text(value: unknown, max: number): string {
@@ -37,14 +49,37 @@ export function validateDashboard(value: unknown): Dashboard {
       throw new Error("Invalid project date");
     return {
       id,
+      ...(p.production !== undefined
+        ? { production: productionSchema.parse(p.production) }
+        : {}),
       title: text(p.title, 500),
       date,
       stage: p.stage as Project["stage"],
       nextAction: text(p.nextAction, 2000),
       publicURL,
       shared: p.shared,
+      ...(p.resources !== undefined
+        ? { resources: localResourcesSchema.parse(p.resources) }
+        : {}),
+      ...(p.localNotes !== undefined
+        ? { localNotes: text(p.localNotes, 4000) }
+        : {}),
+      ...(p.dateBasis !== undefined
+        ? {
+            dateBasis: (() => {
+              if (
+                !["capture", "publication", "record"].includes(
+                  String(p.dateBasis),
+                )
+              )
+                throw new Error("Invalid date basis");
+              return p.dateBasis as Project["dateBasis"];
+            })(),
+          }
+        : {}),
     };
   });
+  validateProductionLinks(projects);
   const updatedAt = text(value.updatedAt, 40);
   if (!Number.isFinite(Date.parse(updatedAt)))
     throw new Error("Invalid update time");
@@ -83,7 +118,15 @@ export function fromSnapshot(value: unknown): Dashboard {
     updatedAt: value.generatedAt,
     projects: value.projects.map((p) => {
       if (!record(p)) throw new Error("Invalid snapshot project");
-      return { ...p, shared: true };
+      return {
+        id: p.id,
+        title: p.title,
+        date: p.date,
+        stage: p.stage,
+        nextAction: p.nextAction,
+        publicURL: p.publicURL,
+        shared: true,
+      };
     }),
   });
 }

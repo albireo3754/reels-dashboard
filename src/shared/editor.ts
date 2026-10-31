@@ -12,6 +12,8 @@ export interface EditSettings {
     material: "none" | "tape" | "rectangle";
     x: number;
     y: number;
+    offsetX?: number;
+    offsetY?: number;
     size: number;
     persistent: boolean;
     showDuring: string;
@@ -21,12 +23,19 @@ export interface EditSettings {
     useDefaultPosition: boolean;
     time: number;
     hook: string;
-    template: "rosy-auto" | "rosy-large";
+    template: "rosy-auto" | "rosy-large" | "rosy-follow";
     x: number;
     y: number;
     placeX: number;
     placeY: number;
+    hookOffsetX?: number;
+    hookOffsetY?: number;
+    placeOffsetX?: number;
+    placeOffsetY?: number;
     hookSize?: number;
+    followCta?: string;
+    followSignature?: string;
+    followDarkness?: number;
   };
 }
 export interface EditorSource {
@@ -78,7 +87,10 @@ export interface EditorBridge {
     time: number,
     kind: "video" | "cover",
   ): Promise<string>;
-  export(project: EditorProject): Promise<RenderJob | null>;
+  export(
+    project: EditorProject,
+    target?: "both" | "cover",
+  ): Promise<RenderJob | null>;
   job(id: string): Promise<RenderJob>;
   cancel(id: string): Promise<void>;
   reveal(id: string): Promise<void>;
@@ -122,3 +134,10 @@ export interface AgentUiBridge {
   onProjectOpened(callback: (project: EditorProject) => void): () => void;
   onRenderStarted(callback: (job: RenderJob) => void): () => void;
 }
+
+export const followCoverDefaults = {
+  hook: "여행 전에 알아둘 정보를\n더 보고 싶다면",
+  cta: "팔로우해 주세요!",
+  signature: "@your_account 🌹",
+  darkness: 0.3,
+} as const;

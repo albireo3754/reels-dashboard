@@ -18,6 +18,8 @@ if getattr(sys, 'frozen', False):
 from reels_editor.features.video_overlay import run as video_main
 from reels_editor.features.thumbnail import run as thumbnail_main
 from reels_editor.shared.media import probe_video, run_ffmpeg_progress
+from follow_cover import render_follow_cover
+from card_templates import render_batch
 
 
 def emit(value):
@@ -61,6 +63,14 @@ def number(value, name, minimum=0, maximum=1):
     return str(value)
 
 
+def offset_arguments(settings, mapping):
+    args = []
+    for key, flag in mapping:
+        if key in settings:
+            args += [flag, number(settings[key], key, -1, 1)]
+    return args
+
+
 def video_arguments(request, output, temporary):
     place = request['place']
     if not isinstance(place['name'], str) or not place['name'].strip():
@@ -76,6 +86,7 @@ def video_arguments(request, output, temporary):
         raise ValueError('place.useDefaultPosition must be a boolean')
     if not place['useDefaultPosition']:
         args += ['--place-x', number(place['x'], 'place.x'), '--place-y', number(place['y'], 'place.y')]
+    args += offset_arguments(place, [('offsetX', '--place-offset-x'), ('offsetY', '--place-offset-y')])
     if banner:
         description = place['description']
         if not isinstance(description, str) or not description.strip():
@@ -115,6 +126,8 @@ def cover_arguments(request, output):
     if not cover['useDefaultPosition']:
         args += ['--x', number(cover['x'], 'cover.x'), '--y', number(cover['y'], 'cover.y'),
                  '--place-x', number(cover['placeX'], 'cover.placeX'), '--place-y', number(cover['placeY'], 'cover.placeY')]
+    args += offset_arguments(cover, [('hookOffsetX', '--hook-offset-x'), ('hookOffsetY', '--hook-offset-y'),
+                                     ('placeOffsetX', '--place-offset-x'), ('placeOffsetY', '--place-offset-y')])
     if cover.get('hookSize') is not None:
         size = cover['hookSize']
         if isinstance(size, bool) or not isinstance(size, int):
@@ -142,12 +155,15 @@ def proxy(source, output):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest='action', required=True)
+    p = sub.add_parser('card-frames'); p.add_argument('request'); p.add_argument('output')
     sub.add_parser('probe').add_argument('source')
     p = sub.add_parser('proxy'); p.add_argument('source'); p.add_argument('output')
     for action in ('preview', 'cover', 'render'):
         p = sub.add_parser(action); p.add_argument('request'); p.add_argument('output')
         if action == 'preview': p.add_argument('--time', type=float, required=True)
     args = parser.parse_args(argv)
+    if args.action == 'card-frames':
+        emit(render_batch(json.loads(Path(args.request).read_text(encoding='utf8')), args.output)); return
     if args.action == 'probe':
         emit(probe(source_path(args.source))); return
     if args.action == 'proxy':
@@ -160,7 +176,10 @@ def main(argv=None):
     captured = io.StringIO()
     with tempfile.TemporaryDirectory(prefix='reels-editor-') as directory, contextlib.redirect_stdout(captured):
         if args.action == 'cover':
-            thumbnail_main(cover_arguments(request, output))
+            if request['cover']['template'] == 'rosy-follow':
+                render_follow_cover(request, output)
+            else:
+                thumbnail_main(cover_arguments(request, output))
         else:
             arguments = video_arguments(request, output, Path(directory))
             if args.action == 'preview':

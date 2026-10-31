@@ -50,6 +50,10 @@ This moves the place-guide group and selects a cover frame, preserving caption t
 
 `reels_list_templates` describes the supported cover and place-guide choices. Actual output manifests, not template names alone, establish what was rendered.
 
+## Existing content and local footage
+
+`reels_list_local_media`, `reels_get_content` and `reels_upsert_content` connect existing capture folders, completed videos/covers and canonical content documents to the production dashboard without editing imports or proxy generation. Read the current dashboard revision before writing. See [local content workflow](local-content-library.md) for stable IDs, full resource-list replacement, private fields and availability checks.
+
 ## Photos and limits
 
 `reels_photos_status`, `reels_photos_index`, `reels_photos_groups`, `reels_photos_group` and `reels_photos_inspect` use the app's validated native boundary. Inspection creates a bounded evidence page. `reels_import_photos_video` takes a group/index-run/asset selection and uses the same checked materialization as the UI. Existing macOS Photos permission is required; grant it through the app. Re-index after a native-helper restart rather than treating old index-run IDs as persistent project IDs.
@@ -73,6 +77,11 @@ npm run test:mcp
 MCP integration tests launch a real non-demo Electron app with an isolated temporary profile and generated synthetic media. They exercise stdio discovery, live UI updates, revision/dirty-state protection, actual PNG decoding, real video/audio/cover output, cancellation, disconnect and restart. They do not access or delete personal Photos media.
 
 See [interface design](agent-interface.md) and [verification record](mcp-verification.md).
+
+
+## 제작 프로젝트 연결·병합 — 2026-10-31
+
+`reels_list_project_edits`에서 저장된 영상/카드뉴스 편집의 소유 프로젝트를 확인한다. `reels_link_project_edit`로 미연결 편집을 붙이고, 이미 독립 카드가 있으면 `reels_merge_projects`로 대표 카드에 합친다. 쓰기는 현재 dashboard revision을 사용하며 병합 전 전체 백업 경로를 반환한다. [스키마·동작](production-projects.md).
 
 ## Photos location and OCR search — 2026-10-31
 

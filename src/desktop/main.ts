@@ -26,9 +26,13 @@ import {
   DEVELOPMENT_MODE_ARGUMENT,
 } from "./development-mode";
 import { readMobileBriefingStatus } from "./mobile-briefing";
+import { installApplicationIdentity } from "./application-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
+import { ContentLibrary, BoardMedia } from "../features/content-library";
 import { EditorService } from "../features/reel-editing";
+import { RouteLibrary } from "./route-library";
+import { CardNewsService } from "./card-news";
 import type { EditorBridge } from "../shared/editor";
 import { NativeClient, validateRequest } from "./native";
 import {
@@ -118,7 +122,16 @@ async function awaitReady() {
       workbenchError = error;
     }
   }
+  const contentLibrary = new ContentLibrary(store, (value) =>
+    emit("dashboard:changed", value),
+    async () => [
+      ...(await editorService.list()).map(p => ({ kind: "video" as const, id: p.id, title: p.name })),
+      ...(await cardNews.list()).map(p => ({ kind: "card-news" as const, id: p.id, title: p.title })),
+    ],
+  );
+  const routeLibrary = new RouteLibrary(contentLibrary);
   const editorService = new EditorService({
+    dashboardChanged: (value) => emit("dashboard:changed", value),
     root,
     store,
     runtime: app.isPackaged
@@ -134,7 +147,9 @@ async function awaitReady() {
     chooseOutput: async (name) => {
       const result = await dialog.showSaveDialog(window, {
         defaultPath: name,
-        filters: [{ name: "영상", extensions: ["mov", "mp4"] }],
+        filters: name.endsWith(".png")
+          ? [{ name: "카드 이미지", extensions: ["png"] }]
+          : [{ name: "영상", extensions: ["mov", "mp4"] }],
       });
       return result.canceled ? null : (result.filePath ?? null);
     },
@@ -148,8 +163,81 @@ async function awaitReady() {
     changed: (project) => emit("agent:project-changed", project),
     renderStarted: (job) => emit("agent:render-started", job),
   });
+  const boardMedia = new BoardMedia(
+    contentLibrary,
+    path.join(root, "board-media"),
+    app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    async (file, width) =>
+      (
+        await nativeImage.createThumbnailFromPath(file, {
+          width,
+          height: width,
+        })
+      ).toDataURL(),
+  );
   const editor: EditorBridge = fixture ? demo.editor : editorService;
-  protocol.handle("reels-media", (request) => editorService.media(request));
+  const cardNews = new CardNewsService({
+    root,
+    store,
+    runtime: app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    chooseAsset: async (kind) => {
+      const result = await dialog.showOpenDialog(window, {
+        properties: ["openFile"],
+        filters: [
+          {
+            name:
+              kind === "image" ? "사진" : kind === "video" ? "영상" : "음악",
+            extensions:
+              kind === "image"
+                ? ["jpg", "jpeg", "png", "webp"]
+                : kind === "video"
+                  ? ["mp4", "mov", "m4v"]
+                  : ["mp3", "m4a", "wav", "aac"],
+          },
+        ],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+    chooseOutput: async (name) => {
+      const result = await dialog.showSaveDialog(window, {
+        defaultPath: name,
+        filters: [{ name: "MP4 영상", extensions: ["mp4"] }],
+      });
+      return result.canceled ? null : (result.filePath ?? null);
+    },
+    normalizeImage: (data) => {
+      const image = nativeImage.createFromBuffer(data);
+      if (image.isEmpty())
+        throw new Error(
+          "사진을 읽을 수 없어요. JPG·PNG·WebP 파일을 선택해주세요.",
+        );
+      const size = image.getSize();
+      return (
+        Math.max(size.width, size.height) > 1920
+          ? image.resize(
+              size.width > size.height ? { width: 1920 } : { height: 1920 },
+            )
+          : image
+      ).toPNG();
+    },
+    validateFrame: (data) => {
+      const image = nativeImage.createFromBuffer(data),
+        size = image.getSize();
+      if (image.isEmpty() || size.width !== 1080 || size.height !== 1920)
+        throw new Error("카드 이미지는 1080×1920이어야 해요.");
+    },
+    reveal: (file) => shell.showItemInFolder(file),
+    changed: (value) => emit("dashboard:changed", value),
+  });
+  protocol.handle("reels-media", (request) =>
+    new URL(request.url).host === "content"
+      ? boardMedia.media(request)
+      : editorService.media(request),
+  );
   const demoDocuments = new Map<string, string>();
   let queue: Promise<unknown> = Promise.resolve();
   let activeOperations = 0;
@@ -157,7 +245,7 @@ async function awaitReady() {
   app.on("before-quit", (event) => {
     if (quitting) return;
     event.preventDefault();
-    if (activeOperations > 0 || editorService.busy) {
+    if (activeOperations > 0 || editorService.busy || cardNews.busy) {
       dialog.showMessageBoxSync(window, {
         type: "info",
         message: "진행 중인 작업이 끝난 뒤 종료해주세요.",
@@ -166,6 +254,7 @@ async function awaitReady() {
     }
     quitting = true;
     workbench?.dispose();
+    boardMedia.dispose();
     void editorService
       .dispose()
       .then(() => closeAgent?.())
@@ -181,6 +270,24 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  for (const method of [
+    "list",
+    "load",
+    "save",
+    "chooseAsset",
+    "preview",
+    "export",
+    "job",
+    "cancel",
+    "reveal",
+  ] as const) {
+    handle(`cardNews:${method}`, (...args: unknown[]) =>
+      (cardNews[method] as (...values: unknown[]) => unknown).apply(
+        cardNews,
+        args,
+      ),
+    );
+  }
   if (workbench) {
     for (const method of [
       "state",
@@ -350,13 +457,49 @@ async function awaitReady() {
     return `data:image/jpeg;base64,${image.toString("base64")}`;
   });
   handle("loadDashboard", () => store.load());
+  handle("projects:listEdits", () => contentLibrary.listEdits());
+  handle("projects:merge", (input) => {
+    agentSession.assertWritable();
+    if (editorService.busy || cardNews.busy) throw new Error("편집·내보내기가 끝난 뒤 합쳐주세요.");
+    return contentLibrary.merge(input);
+  });
+  handle("projects:linkEdit", (input) => {
+    agentSession.assertWritable();
+    if (editorService.busy || cardNews.busy) throw new Error("편집·내보내기가 끝난 뒤 연결해주세요.");
+    return contentLibrary.linkEdit(input);
+  });
   handle("mobileBriefing:status", () => readMobileBriefingStatus(root));
   handle("mobileBriefing:open", async () => {
     const status = await readMobileBriefingStatus(root);
-    if (!status.siteUrl) throw new Error("브리핑 사이트 연결 정보를 확인해주세요.");
+    if (!status.siteUrl)
+      throw new Error("브리핑 사이트 연결 정보를 확인해주세요.");
     await shell.openExternal(status.siteUrl);
   });
-  handle("saveDashboard", (value: unknown) => store.save(value));
+  handle("saveDashboard", async (value: unknown, revision: unknown) => {
+    if (typeof revision !== "string")
+      throw new Error("현재 현황을 다시 조회해주세요.");
+    await store.save(value, revision);
+    emit("dashboard:changed", await store.load());
+  });
+  handle("routeMap:load", (id: string) => fixture ? demo.routeMap!.load(id) : routeLibrary.load(id));
+  handle("contentMedia:list", (id: string, folder?: string, offset?: number) =>
+    fixture
+      ? demo.contentMedia!.list(id, folder, offset)
+      : contentLibrary.mediaPage(id, folder, offset),
+  );
+  handle("contentMedia:thumbnail", (id: string, file: string) =>
+    fixture
+      ? demo.contentMedia!.thumbnail(id, file)
+      : boardMedia.thumbnail(id, file),
+  );
+  handle("contentMedia:open", (id: string, file: string) =>
+    fixture ? demo.contentMedia!.open(id, file) : boardMedia.open(id, file),
+  );
+  handle("revealResource", async (id: unknown, resource: unknown) => {
+    if (typeof id !== "string" || typeof resource !== "string")
+      throw new Error("Invalid resource request");
+    shell.showItemInFolder(await contentLibrary.resolveLinked(id, resource));
+  });
   handle("exportSnapshot", async () => {
     const snapshot = toSnapshot(await store.load());
     const result = await dialog.showSaveDialog(window, {
@@ -376,8 +519,9 @@ async function awaitReady() {
     window = new BrowserWindow({
       show: !backgroundQA,
       focusable: !backgroundQA,
-      width: 1440,
-      height: 940,
+      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 17 } } : {}),
+      width: 1600,
+      height: 1000,
       minWidth: 760,
       minHeight: 600,
       backgroundColor: "#10131c",
@@ -432,7 +576,10 @@ async function awaitReady() {
       (_webContents, _permission, callback) => callback(false),
     );
     window.on("close", (event) => {
-      if ((activeOperations > 0 || editorService.busy) && !quitting) {
+      if (
+        (activeOperations > 0 || editorService.busy || cardNews.busy) &&
+        !quitting
+      ) {
         event.preventDefault();
         dialog.showMessageBoxSync(window, {
           type: "info",
@@ -450,12 +597,14 @@ async function awaitReady() {
     window.show();
     window.focus();
   };
+  if (!backgroundQA) installApplicationIdentity(showWindow);
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
       editor: editorService,
       session: agentSession,
       dashboard: () => store.load(),
+      content: contentLibrary,
       preview: async (project, time, kind) => {
         const artifact = await editorService.previewArtifact(
           project,
@@ -478,6 +627,8 @@ async function awaitReady() {
       open: (project) => emit("agent:project-opened", project),
       photos: requestPhotos,
     });
-  app.on("activate", showWindow);
+  app.on("activate", () => {
+    showWindow();
+  });
 }
 app.on("window-all-closed", () => app.quit());

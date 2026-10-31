@@ -20,6 +20,7 @@ export function safeDocumentName(name: unknown): string {
   return name.replace(/\.json$/, "");
 }
 export class LocalStore {
+  private queue: Promise<unknown> = Promise.resolve();
   constructor(readonly root: string) {}
   async initialize() {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
@@ -37,13 +38,35 @@ export class LocalStore {
       );
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT")
-        return emptyDashboard();
+        return { ...emptyDashboard(), updatedAt: "1970-01-01T00:00:00.000Z" };
       throw e;
     }
   }
-  async save(value: unknown) {
-    const valid = validateDashboard(value);
-    await this.atomic(path.join(this.root, "dashboard.json"), valid);
+  async update(
+    change: (current: Dashboard) => Dashboard | Promise<Dashboard>,
+    expectedUpdatedAt?: string,
+  ): Promise<Dashboard> {
+    const operation = this.queue.then(async () => {
+      const current = await this.load();
+      if (
+        expectedUpdatedAt !== undefined &&
+        current.updatedAt !== expectedUpdatedAt
+      )
+        throw new Error(
+          "STALE_DASHBOARD: 현황이 변경됐어요. 다시 조회하고 수정해주세요.",
+        );
+      const valid = validateDashboard(await change(structuredClone(current)));
+      valid.updatedAt = new Date(
+        Math.max(Date.now(), Date.parse(current.updatedAt) + 1),
+      ).toISOString();
+      await this.atomic(path.join(this.root, "dashboard.json"), valid);
+      return valid;
+    });
+    this.queue = operation.catch(() => {});
+    return operation;
+  }
+  async save(value: unknown, expectedUpdatedAt?: string) {
+    await this.update(() => validateDashboard(value), expectedUpdatedAt);
   }
   async document(name: string, data: unknown): Promise<string> {
     const clean = safeDocumentName(name);

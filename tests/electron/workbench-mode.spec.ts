@@ -20,7 +20,7 @@ for (const flag of [undefined, "0", "true"]) {
         page.getByRole("button", { name: "대시보드", exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "개발 작업공간", exact: true }),
+        page.getByRole("button", { name: "터미널", exact: true }),
       ).toHaveCount(0);
       expect(
         await page.evaluate(() => window.reels!.workbench),
@@ -69,7 +69,7 @@ test("opt-in offers Codex and rejects a forged future provider request", async (
     app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
     const page = await app.firstWindow();
     await page
-      .getByRole("button", { name: "개발 작업공간", exact: true })
+      .getByRole("button", { name: "터미널", exact: true })
       .click();
     await page
       .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })

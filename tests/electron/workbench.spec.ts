@@ -15,10 +15,10 @@ test("real PTY input, tab reattach, resize, source lock and explicit lifecycle",
     app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
     const page = await app.firstWindow();
     await page
-      .getByRole("button", { name: "개발 작업공간", exact: true })
+      .getByRole("button", { name: "터미널", exact: true })
       .click();
     await expect(
-      page.getByRole("region", { name: "개발 작업공간" }),
+      page.getByRole("region", { name: "터미널" }),
     ).toContainText(resolve("."));
     await page
       .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
@@ -46,8 +46,12 @@ test("real PTY input, tab reattach, resize, source lock and explicit lifecycle",
       )
       .toContain("PTY_READY");
     await page.getByRole("button", { name: "대시보드", exact: true }).click();
+    // The toolbar toggles the drawer; reopening preserves the existing PTY.
+    await page.getByRole("button", { name: "터미널", exact: true }).click();
+    await expect(page.getByRole("region", { name: "터미널", exact: true }))
+      .toHaveAttribute("data-drawer-state", "folded");
     await page
-      .getByRole("button", { name: "개발 작업공간", exact: true })
+      .getByRole("button", { name: "터미널", exact: true })
       .click();
     await expect(
       page.locator(`.dev-terminal[data-session-id="${id}"]`),
@@ -113,7 +117,7 @@ test("preview server shows real dashboard without desktop bridge and stops clean
     app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
     const page = await app.firstWindow();
     await page
-      .getByRole("button", { name: "개발 작업공간", exact: true })
+      .getByRole("button", { name: "터미널", exact: true })
       .click();
     await page.getByRole("button", { name: "미리보기 서버 시작" }).click();
     const session = await page.evaluate(
@@ -144,7 +148,7 @@ test("preview server shows real dashboard without desktop bridge and stops clean
       frame.getByRole("heading", { name: "작업의 흐름을 한눈에" }),
     ).toBeVisible();
     await expect(
-      frame.getByRole("button", { name: "개발 작업공간", exact: true }),
+      frame.getByRole("button", { name: "터미널", exact: true }),
     ).toHaveCount(0);
     await page.locator("iframe").scrollIntoViewIfNeeded();
     await frame
@@ -162,11 +166,11 @@ test("preview server shows real dashboard without desktop bridge and stops clean
       });
     await pressWorkbenchKey(app, "n");
     await expect(
-      page.getByRole("region", { name: "개발 작업공간", exact: true }),
+      page.getByRole("region", { name: "터미널", exact: true }),
     ).toHaveAttribute("data-drawer-state", "folded");
     await pressWorkbenchKey(app, "n");
     await expect(
-      page.getByRole("region", { name: "개발 작업공간", exact: true }),
+      page.getByRole("region", { name: "터미널", exact: true }),
     ).toHaveAttribute("data-drawer-state", "open");
     await page.getByRole("button", { name: "세션 종료", exact: true }).click();
     await expect(page.locator(".dev-session-tabs")).toContainText("종료");

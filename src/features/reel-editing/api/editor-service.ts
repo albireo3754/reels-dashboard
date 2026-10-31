@@ -1,3 +1,4 @@
+import { editOwner, recordExports } from "../../../shared/production-project";
 import { spawn, type ChildProcess } from "node:child_process";
 import {
   access,
@@ -23,6 +24,7 @@ import type {
 import { defaultEditSettings } from "../../../shared/editor";
 import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
+import type { LocalResource, Dashboard } from "../../../shared/contracts";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -31,6 +33,7 @@ interface RecordData {
   mtimeMs: number;
 }
 interface Options {
+  dashboardChanged?: (dashboard: Dashboard) => void;
   root: string;
   runtime: string;
   store: LocalStore;
@@ -273,26 +276,62 @@ export class EditorService implements EditorBridge {
   private async updateStage(
     project: EditorProject,
     stage: "editing" | "review",
+    outputs: LocalResource[] = [],
   ) {
-    const dashboard = await this.options.store.load();
-    const old = dashboard.projects.find((p) => p.id === project.id);
-    const item = {
-      id: project.id,
-      title: old?.title ?? project.source.name,
-      date: old?.date ?? new Date().toLocaleDateString("en-CA"),
-      stage,
-      nextAction:
-        stage === "review"
-          ? "내보낸 영상과 표지를 확인해요."
-          : "자막과 장소 안내를 편집해요.",
-      publicURL: old?.publicURL ?? "",
-      shared: old?.shared ?? false,
-    };
-    dashboard.projects = old
-      ? dashboard.projects.map((p) => (p.id === item.id ? item : p))
-      : [...dashboard.projects, item];
-    dashboard.updatedAt = new Date().toISOString();
-    await this.options.store.save(dashboard);
+    const record = await this.record(project.id);
+    outputs = await Promise.all(
+      outputs.map(async (resource) => ({
+        ...resource,
+        path: await realpath(resource.path),
+      })),
+    );
+    const dashboard = await this.options.store.update((dashboard) => {
+      const edit = { kind: "video" as const, id: project.id };
+      const old = editOwner(dashboard, edit);
+      const item = {
+        ...old,
+        id: old?.id ?? project.id,
+        title: old?.title ?? project.source.name,
+        date: old?.date ?? new Date().toLocaleDateString("en-CA"),
+        stage: old?.stage === "published" ? ("published" as const) : stage,
+        resources: [
+          ...(old?.resources ?? []).filter(
+            (r) =>
+              !outputs.some((o) => o.path === r.path && o.role === r.role) &&
+              !(r.path === record.sourcePath && r.role === "footage"),
+          ),
+          {
+            role: "footage" as const,
+            path: record.sourcePath,
+            label: project.source.name,
+          },
+          ...outputs,
+        ],
+        nextAction:
+          old?.stage === "published"
+            ? old.nextAction
+            : stage === "review"
+              ? "내보낸 영상과 표지를 확인해요."
+              : "자막과 장소 안내를 편집해요.",
+        publicURL: old?.publicURL ?? "",
+        shared: old?.shared ?? false,
+      };
+      const linked = {
+        ...item,
+        production: recordExports(
+          item,
+          edit,
+          outputs,
+          new Date().toISOString(),
+          randomUUID,
+        ),
+      };
+      dashboard.projects = old
+        ? dashboard.projects.map((p) => (p.id === item.id ? linked : p))
+        : [...dashboard.projects, linked];
+      return dashboard;
+    });
+    this.options.dashboardChanged?.(dashboard);
   }
   private async importFile(input: string): Promise<EditorProject> {
     const sourcePath = await realpath(input);
@@ -460,8 +499,13 @@ export class EditorService implements EditorBridge {
       }
     });
   }
-  async export(project: EditorProject): Promise<RenderJob | null> {
-    return this.render(project, undefined, "both");
+  async export(
+    project: EditorProject,
+    target: "both" | "cover" = "both",
+  ): Promise<RenderJob | null> {
+    if (!["both", "cover"].includes(target))
+      throw new Error("지원하지 않는 출력 형식이에요.");
+    return this.render(project, undefined, target);
   }
   async render(
     project: EditorProject,
@@ -477,7 +521,8 @@ export class EditorService implements EditorBridge {
         const selected =
           destination ??
           (await this.options.chooseOutput(
-            path.parse(task.project.source.name).name + "_reel.mov",
+            path.parse(task.project.source.name).name +
+              (target === "cover" ? "_card.png" : "_reel.mov"),
           ));
         if (!selected) {
           await rm(task.dir, { recursive: true, force: true });
@@ -500,7 +545,11 @@ export class EditorService implements EditorBridge {
           ) ||
           [output, cover, manifest].includes(task.record.sourcePath)
         )
-          throw new Error("원본과 다른 MOV 또는 MP4 출력 경로를 선택해주세요.");
+          throw new Error(
+            target === "cover"
+              ? "원본과 다른 PNG 출력 경로를 선택해주세요."
+              : "원본과 다른 MOV 또는 MP4 출력 경로를 선택해주세요.",
+          );
         const outputFiles =
           target === "both"
             ? [output, cover, manifest, cover.replace(/\.png$/, ".style.json")]
@@ -514,7 +563,7 @@ export class EditorService implements EditorBridge {
           id: randomUUID(),
           projectId: project.id,
           state: "running",
-          phase: "영상 내보내기",
+          phase: target === "cover" ? "카드 이미지 내보내기" : "영상 내보내기",
           progress: 0,
         };
         await this.saveRecord({ ...task.record, project: task.project });
@@ -564,7 +613,26 @@ export class EditorService implements EditorBridge {
             job.manifestPaths = published.filter((file) =>
               file.endsWith(".style.json"),
             );
-            await this.updateStage(task.project, "review");
+            await this.updateStage(task.project, "review", [
+              ...(target !== "cover"
+                ? [
+                    {
+                      role: "draft" as const,
+                      path: output,
+                      label: path.basename(output),
+                    },
+                  ]
+                : []),
+              ...(target !== "video"
+                ? [
+                    {
+                      role: "cover" as const,
+                      path: cover,
+                      label: path.basename(cover),
+                    },
+                  ]
+                : []),
+            ]);
             job.progress = 100;
             job.phase = "내보내기 완료";
             job.state = "completed";

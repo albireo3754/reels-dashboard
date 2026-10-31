@@ -21,7 +21,7 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
   const page = await app!.firstWindow();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await expect(page.locator("body")).toContainText("Reels");
+  await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "대시보드", exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.reels?.mode)).toBe("demo");
   const runtime = await app!.evaluate(({ BrowserWindow, app }) => {
     const window = BrowserWindow.getAllWindows()[0]!;
@@ -54,13 +54,19 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
   ).toBe("undefined");
   expect(await page.evaluate(() => Object.keys(window.reels!).sort())).toEqual(
     [
+      "cardNews",
+      "routeMap",
+      "projects",
       "chooseDestination",
+      "contentMedia",
+      "mobileBriefing",
       "agent",
       "editor",
       "exportSnapshot",
       "imageURL",
       "loadDashboard",
-      "mobileBriefing",
+      "onDashboardChanged",
+      "revealResource",
       "mode",
       "openDocument",
       "request",
@@ -69,8 +75,22 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
       "syncSnapshot",
     ].sort(),
   );
-  expect(await page.evaluate(() => Object.keys(window.reels!.editor).sort())).toEqual(
-    ["runtime", "chooseVideo", "fromPhotos", "list", "load", "save", "preview", "export", "job", "cancel", "reveal"].sort(),
+  expect(
+    await page.evaluate(() => Object.keys(window.reels!.editor).sort()),
+  ).toEqual(
+    [
+      "runtime",
+      "chooseVideo",
+      "fromPhotos",
+      "list",
+      "load",
+      "save",
+      "preview",
+      "export",
+      "job",
+      "cancel",
+      "reveal",
+    ].sort(),
   );
   expect(errors).toEqual([]);
   await page.screenshot({
@@ -133,7 +153,14 @@ test("persists dashboard through app restart using the same isolated user data d
       },
     ],
   };
-  await page.evaluate((value) => window.reels!.saveDashboard(value), dashboard);
+  await page.evaluate(
+    async (value) =>
+      window.reels!.saveDashboard(
+        value,
+        (await window.reels!.loadDashboard()).updatedAt,
+      ),
+    dashboard,
+  );
   expect(
     (await page.evaluate(() => window.reels!.loadDashboard())).projects,
   ).toEqual(dashboard.projects);
@@ -333,31 +360,34 @@ test("desktop file dialogs round-trip documents and export only shared dashboard
   expect(document?.data).toEqual({ kind: "fixture", title: "촬영 계획" });
   expect(document?.path).toBe(documentPath);
 
-  await page.evaluate(() =>
-    window.reels!.saveDashboard({
-      schemaVersion: 1,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      projects: [
-        {
-          id: "visible",
-          title: "공유 항목",
-          date: "2026-01-01",
-          stage: "review",
-          nextAction: "확인",
-          publicURL: "",
-          shared: true,
-        },
-        {
-          id: "private",
-          title: "비공유 항목",
-          date: "2026-01-01",
-          stage: "idea",
-          nextAction: "",
-          publicURL: "",
-          shared: false,
-        },
-      ],
-    }),
+  await page.evaluate(async () =>
+    window.reels!.saveDashboard(
+      {
+        schemaVersion: 1,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        projects: [
+          {
+            id: "visible",
+            title: "공유 항목",
+            date: "2026-01-01",
+            stage: "review",
+            nextAction: "확인",
+            publicURL: "",
+            shared: true,
+          },
+          {
+            id: "private",
+            title: "비공유 항목",
+            date: "2026-01-01",
+            stage: "idea",
+            nextAction: "",
+            publicURL: "",
+            shared: false,
+          },
+        ],
+      },
+      (await window.reels!.loadDashboard()).updatedAt,
+    ),
   );
   const snapshotPath = join(profile, "dashboard snapshot.json");
   await app!.evaluate(({ dialog }, snapshotPath) => {

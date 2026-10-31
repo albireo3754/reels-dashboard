@@ -19,6 +19,7 @@ command(uv, ['pip', 'install', '--python', python, '-r', path.join(engine, 'requ
 command(python, [path.join(engine, 'check_reels_architecture.py')], { stdio: 'inherit' });
 command(python, ['-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--name', 'reels-editor',
   '--distpath', path.join(build, 'dist'), '--workpath', path.join(build, 'pyinstaller'), '--specpath', build,
+  '--add-data', path.join(repo, 'src/shared/card-template-presets.json') + ':.',
   '--paths', engine, path.join(engine, 'editor_cli.py')], { stdio: 'inherit' });
 rmSync(runtime, { recursive: true, force: true });
 cpSync(path.join(build, 'dist/reels-editor'), runtime, { recursive: true, verbatimSymlinks: true });

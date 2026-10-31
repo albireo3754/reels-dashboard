@@ -32,7 +32,9 @@ test("private storage persists and refuses unsafe documents or ungranted file ac
     await store.initialize();
     const d = await store.load();
     await store.save(d);
-    assert.deepEqual(await new LocalStore(root).load(), d);
+    const saved = await new LocalStore(root).load();
+    assert.deepEqual(saved.projects, d.projects);
+    assert.ok(Date.parse(saved.updatedAt) > Date.parse(d.updatedAt));
     assert.throws(() => safeDocumentName("../escape"));
     const file = await store.document("decision", { valid: true });
     assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { valid: true });

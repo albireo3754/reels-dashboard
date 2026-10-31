@@ -85,6 +85,37 @@ class EngineTests(unittest.TestCase):
         else: self.assertNotEqual(result.returncode, 0)
         return result
 
+    def test_signed_follow_card_is_separate_from_place_and_preserves_custom_settings(self):
+        request = copy.deepcopy(self.request)
+        request['place']['name'] = ''
+        request['cover'].update(template='rosy-follow', hook='여행 전에 알아둘 정보를\n더 보고 싶다면',
+                                followCta='팔로우해 주세요!', followSignature='@travel_notes 🌹', followDarkness=.4)
+        config = self.root / 'follow.json'
+        config.write_text(json.dumps(request, ensure_ascii=False))
+        output = self.root / 'follow.png'
+        self.call('cover', config, output)
+        with Image.open(output) as image:
+            self.assertEqual(image.size, (1080, 1920))
+        manifest = json.loads(output.with_suffix('.style.json').read_text())
+        self.assertEqual(manifest['template'], 'rosy-follow')
+        self.assertFalse(manifest['placeGuide'])
+        self.assertEqual(manifest['sourceTime'], .2)
+        self.assertEqual(manifest['signature']['text'], '@travel_notes 🌹')
+        self.assertEqual(manifest['layers'][-1]['text'], '팔로우해 주세요!')
+        self.assertEqual(manifest['followDarkness'], .4)
+        first = Image.open(output).copy()
+        request['cover']['followSignature'] = '@another_account'
+        config.write_text(json.dumps(request, ensure_ascii=False))
+        second = self.root / 'follow-other.png'
+        self.call('cover', config, second)
+        with Image.open(second) as image:
+            self.assertIsNotNone(ImageChops.difference(first, image).getbbox())
+        request['cover']['hookOffsetY'] = .9
+        config.write_text(json.dumps(request, ensure_ascii=False))
+        invalid = self.root / 'follow-invalid.png'
+        self.call('cover', config, invalid, ok=False)
+        self.assertFalse(invalid.exists())
+
     def test_probe_and_browser_proxy(self):
         metadata = json.loads(self.call('probe', self.source).stdout)
         self.assertEqual((metadata['width'], metadata['height']), (720, 1280))
@@ -107,6 +138,44 @@ class EngineTests(unittest.TestCase):
             request['place']['material'] = 'none'
             self.assertNotIn('--show-during', video_arguments(request, self.root / 'unused.mp4', Path(tmp)))
         self.assertNotIn('--x', cover_arguments(self.request, self.root / 'unused.png'))
+
+    def test_template_adjustments_reach_preview_cover_and_render(self):
+        request = copy.deepcopy(self.request)
+        request['place']['offsetX'] = .02
+        request['place']['offsetY'] = .02
+        request['cover'].update(hookOffsetY=-.02, placeOffsetX=.01, hookSize=165)
+        file = self.root / 'adjustments.json'
+        for material in ('none', 'tape', 'rectangle'):
+            request['place']['material'] = material
+            file.write_text(json.dumps(request))
+            output = self.root / f'adjusted-{material}.png'
+            self.call('preview', file, output, '--time', .2)
+            manifest = json.loads(output.with_suffix('.style.json').read_text())
+            self.assertEqual(manifest['requested']['place_offset_x'], .02)
+            self.assertEqual(manifest['requested']['place_offset_y'], .02)
+            self.assertEqual(manifest['requested']['offset_y'], 0)
+            groups = {g['name']: g for g in manifest['groups']}
+            self.assertIn('body-captions', groups)
+            if material == 'tape':
+                # Export must resolve exactly the same placement as preview.
+                video = self.root / 'adjusted-export.mp4'
+                self.call('render', file, video)
+                rendered = json.loads(video.with_suffix('.style.json').read_text())
+                self.assertEqual(rendered['groups'], manifest['groups'])
+        for template in ('rosy-auto', 'rosy-large'):
+            request['cover']['template'] = template
+            file.write_text(json.dumps(request))
+            output = self.root / f'adjusted-{template}.png'
+            self.call('cover', file, output)
+            manifest = json.loads(output.with_suffix('.style.json').read_text())
+            self.assertEqual(manifest['hook_size_at_2160'], 165)
+            self.assertEqual(manifest['alignment'], 'left')
+            self.assertEqual(manifest['requested']['hook_offset_y'], -.02)
+            self.assertEqual(manifest['requested']['place_offset_x'], .01)
+            self.assertEqual(manifest['requested']['place_offset_y'], 0)
+        request['place']['offsetX'] = 2
+        with self.assertRaises(ValueError):
+            video_arguments(request, self.root / 'bad.mp4', self.root)
 
     def test_preview_respects_cue_and_description_times(self):
         early = self.root / 'early.png'; boundary = self.root / 'boundary.png'; late = self.root / 'late.png'

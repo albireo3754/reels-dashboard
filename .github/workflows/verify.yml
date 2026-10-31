@@ -9,7 +9,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      PHOTOSINDEX_SIGNING_MODE: adhoc
+      PHOTOSINDEX_SIGNING_MODE: ci-adhoc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,6 +23,7 @@ jobs:
       - run: npx playwright install chromium
       - run: npm run check:architecture
       - run: npm run typecheck
+      - run: zsh native/photosindex/scripts/test-sign-app.zsh
       - run: npm run verify:spec
       - run: npm test
       - run: npm run test:native

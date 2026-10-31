@@ -2,6 +2,14 @@
 
 이 검증은 예시 adapter의 성공 응답을 검사하는 테스트가 아니에요. 실제 Electron preload/main, 번들된 Python 편집 엔진, FFmpeg·FFprobe를 사용해 합성 촬영본을 편집하고 결과 파일을 확인해요. 합성 출력 테스트와, 별도 사용자 허용 후 수행한 한 영상의 실제 Photos→편집기 가져오기 검증을 아래에서 구분해요.
 
+## 개발 중 포커스 보호
+
+Playwright Electron 테스트는 기본적으로 `REELS_BACKGROUND_QA=1`로 실행해 창을 숨기고 OS 포커스를 받지 않아요. macOS Dock·트레이를 만들지 않으며 activate/second-instance 이벤트도 창을 앞으로 가져오지 않아요. 숨겨진 renderer의 타이머 제한은 해제하므로 DOM 조작·스크린샷·재생 검증을 계속할 수 있어요. 일반 앱 실행은 기존 동작을 유지해요.
+
+창 활성화 자체를 확인하는 application-identity 테스트는 기본 실행에서 제외해요. 사용자가 창 표시를 요청한 경우에만 `REELS_ELECTRON_HEADED=1 npm run test:electron -- tests/electron/application-identity.spec.ts`로 실행해요. 웹 테스트는 headless를 기본값으로 명시했어요. 기존 패키징 앱에는 이 변경이 없으므로 패키징 QA 전에는 새로 빌드해야 해요.
+
+2026-10-31 개발 빌드 검증: background 회귀(숨김·포커스 불가·activate/second-instance·스크린샷)와 기존 desktop 5개 통과, 창 활성화 전용1개는 의도적으로 제외했어요. 기존 preload API 목록 검사는 현재 bridge의 `cardNews`·`routeMap`이 기대 목록에 없어1개 실패했으며 이번 범위에서 수정하지 않았어요. 빌드·타입·FSD·diff 검사 통과. 기존 패키징 앱은 재빌드·검증하지 않았어요.
+
 ## 실행
 
 편집 runtime과 Electron 빌드가 준비된 뒤 실행해요. 패키징된 앱은 `REELS_ELECTRON_EXECUTABLE`에 해당 실행 파일을 지정해요.
@@ -59,4 +67,10 @@ REELS_EDITOR_QA=1 npm run test:electron -- tests/electron/editor.spec.ts
 - 테스트가 만든 앱 profile을 종료·정리하여 private 원본 사본과 proxy를 제거했어요. 별도 사용자 권한 확인용 helper는 건드리지 않았어요.
 - 이 테스트는 `REELS_EDITOR_QA=1`, `REELS_LIVE_EDITOR_QA=1`, `REELS_LIVE_EDITOR_DATE`와 선택적인 `REELS_LIVE_EDITOR_FALLBACK_DATE`를 명시해야 실행돼요. 실제 촬영일은 테스트 소스에 고정하지 않아요.
 
-실제 handoff 결과는 gitignored `artifacts/electron-packaged/results.json`과 HTML report에 있어요. 단일 테스트를 실행하기 전에 전체 합성 8개 결과를 별도 보존했어요. 최종 타입 검사와 diff 검사도 통과했어요.
+실제 handoff의 성공과 읽기·복사 범위는 위 실행 기록으로 남겼어요. 공통 reporter의 `results.json`과 HTML report는 마지막 실행으로 갱신되므로, 아래 후속 회귀 실행 후에는 해당 합성 테스트의 결과를 가리켜요. 전체 합성 8개 결과는 별도 JSON으로 보존했어요. 타입 검사와 diff 검사도 통과했어요.
+
+## 내보내기 후 재편집 상태 회귀
+
+내보내기를 마친 프로젝트를 변경 없이 저장하면 `review`를 유지하고, 자막 등 편집 설정을 실제로 변경해 저장하면 `editing`으로 돌아가도록 수정했어요. 재패키징한 앱에서 변경한 첫 번째 실제 편집 테스트만 실행해 **1/1 통과, 7.4초**를 확인했어요.
+
+합성 영상의 실제 내보내기 후 변경 없는 저장·자막 변경 저장·앱 재실행 복원까지 통과했어요. 취소 테스트와 개인 Photos 가져오기는 다시 실행하지 않았어요. 이번 결과는 `artifacts/electron-packaged/editor-reedit-regression-results.json` 및 최신 `results.json`에 보존했어요.

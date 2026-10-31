@@ -17,11 +17,9 @@ const executable = path.join(app, "Contents", "MacOS", "PhotosIndex");
 const support = mkdtempSync(path.join(os.tmpdir(), "reels-rebuild-"));
 const socketPath = `/tmp/reels-rebuild-${randomUUID().slice(0, 8)}.sock`;
 const metadata = path.join(support, "helper-instance.json");
-// CI/local ad-hoc signing is explicit for this disposable QA build. The product
-// build continues to require a development identity unless configured otherwise.
+// Use the product signing policy. CI explicitly selects its disposable mode.
 const env = {
   ...process.env,
-  PHOTOSINDEX_SIGNING_MODE: process.env.PHOTOSINDEX_SIGNING_MODE ?? "adhoc",
   PHOTOSINDEX_APP_PATH: app,
   PHOTOSINDEX_SOCKET_PATH: socketPath,
   PHOTOSINDEX_SUPPORT_ROOT: support,
