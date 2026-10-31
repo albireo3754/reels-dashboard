@@ -21,3 +21,12 @@ __pycache__/
 .pytest_cache/
 
 dist-mcp/
+
+# Local workspace instructions and independently managed private site.
+/AGENTS.md
+/sites/
+*.sqlite
+*.sqlite3
+*.db
+*.p12
+*.mobileprovision
