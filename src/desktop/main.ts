@@ -376,8 +376,9 @@ async function awaitReady() {
     window = new BrowserWindow({
       show: !backgroundQA,
       focusable: !backgroundQA,
-      width: 1440,
-      height: 940,
+      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 17 } } : {}),
+      width: 1600,
+      height: 1000,
       minWidth: 760,
       minHeight: 600,
       backgroundColor: "#10131c",

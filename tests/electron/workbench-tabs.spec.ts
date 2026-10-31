@@ -42,7 +42,7 @@ test("drawer shortcuts retain editor content and mounted terminal tabs", async (
     await expect(page.locator("#dev-task")).toBeAttached();
     await pressWorkbenchKey(app, "n");
     const drawer = page.getByRole("region", {
-      name: "개발 작업공간",
+      name: "터미널",
       exact: true,
     });
     await expect(drawer).toHaveAttribute("data-drawer-state", "open");
@@ -255,7 +255,7 @@ test("folding blurs the terminal and preserves its PTY size until reopened", asy
       .focus();
     await pressWorkbenchKey(app, "n");
     const drawer = page.getByRole("region", {
-      name: "개발 작업공간",
+      name: "터미널",
       exact: true,
     });
     await expect(drawer).toHaveAttribute("data-drawer-state", "folded");
@@ -355,7 +355,7 @@ test("Cmd W closes the selected process and tab, then hides a folded drawer with
     ).toBe(1);
     await pressWorkbenchKey(app, "n");
     await expect(
-      page.getByRole("region", { name: "개발 작업공간", exact: true }),
+      page.getByRole("region", { name: "터미널", exact: true }),
     ).toHaveAttribute("data-drawer-state", "folded");
     await pressWorkbenchKey(app, "w");
     expect((await state(page)).sessions.map((s) => s.id)).toEqual([first.id]);
@@ -370,7 +370,7 @@ test("Cmd W closes the selected process and tab, then hides a folded drawer with
     await expect.poll(async () => (await state(page)).sessions.length).toBe(0);
     await pressWorkbenchKey(app, "w");
     await expect(
-      page.locator('[aria-label="개발 작업공간"][data-drawer-state]'),
+      page.locator('[aria-label="터미널"][data-drawer-state]'),
     ).toHaveAttribute("data-drawer-state", "closed");
     expect(
       await app.evaluate(

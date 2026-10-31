@@ -27,6 +27,10 @@ A local-first **Electron + React** workspace for Apple Photos discovery, evidenc
 
 All **26 upstream test files / 75 tests** are preserved byte-for-byte. The native component does not depend on a separately installed PhotosIndex app. Apple Photos functionality remains macOS-specific.
 
+## Compact workspace
+
+The window uses a compact toolbar: back/forward, screen history and menu/content search on the left; settings and the opt-in terminal on the right. The large introductory titles and sidebar development/settings entries are removed. See [window layout and terminal controls](docs/workspace-shell.md).
+
 ## Agent integration
 
 Enable the desktop **개발 작업공간** with `REELS_DEV_MODE=1 npm start` after building. A bottom panel keeps terminal tabs mounted while you switch or fold it, with Cmd+N/T/W/1–9 shortcuts. Codex is the default provider; Claude Code is reserved for later enablement. Design → implement → review → fix prompts support a user-directed improvement loop. Normal desktop and shared-web startup do not expose terminal APIs. See [architecture, usage and validation](docs/development-workspace.md).

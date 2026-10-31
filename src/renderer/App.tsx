@@ -1,3 +1,4 @@
+import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Asset,
@@ -18,7 +19,7 @@ import { Editor } from "./Editor";
 import type { DrawerMode } from "../features/dev-workspace";
 const DevWorkspace = lazy(() => import("../features/dev-workspace").then(m => ({ default: m.DevWorkspace })));
 
-type Tab = "dashboard" | "library" | "editor" | "transfers" | "settings" | "develop";
+type Tab = "dashboard" | "library" | "editor" | "transfers" | "settings";
 type Choice = "undecided" | "included" | "excluded";
 type ActivePlan = {
   kind: "export" | "move";
@@ -60,7 +61,6 @@ function Icon({ name }: { name: string }) {
     library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
     transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
     editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
-    develop: "M4 5l6 7-6 7 M12 19h8",
     settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     arrow: "M5 12h14 M13 6l6 6-6 6",
     plus: "M12 5v14 M5 12h14",
@@ -115,7 +115,8 @@ function Empty({
 }
 
 export function App({ bridge }: { bridge: DashboardBridge }) {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const navigation = useWorkspaceNavigation<Tab>("dashboard");
+  const { current: tab, navigate: setTab } = navigation;
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
     null,
@@ -629,7 +630,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     library: "다음 이야기를 골라요",
     editor: "선택한 장면을 완성해요",
     transfers: "확인하고, 안전하게 옮겨요",
-    develop: "앱을 바로 개선하는 작업공간",
     settings: "내 작업 환경",
   };
   const descriptions: Record<Tab, string> = {
@@ -639,7 +639,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
     editor:
       "장소 안내 묶음과 본문 자막을 더하고, 선택한 시점으로 표지를 만들어요.",
-    develop: "설계부터 구현·미리보기·리뷰까지, 코딩 도구와 함께 이어가요.",
     settings: "로컬 연결과 모바일에서 볼 현황의 공유 범위를 관리해요.",
   };
   const navigationItems: [Tab, string][] = [
@@ -647,37 +646,28 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     ["library", "촬영 보관함"],
     ["editor", "영상 편집"],
     ["transfers", "내보내기"],
-    ["settings", "설정"],
-    ...(bridge.workbench ? [["develop", "개발 작업공간"] as [Tab, string]] : []),
   ];
   const navigateTo = (key: Tab) => {
-    if (key === "develop") {
-      setDrawerMode("open");
-      return;
-    }
     setTab(key);
     if (key === "dashboard") refreshDashboard();
     setError("");
     setNotice("");
   };
   return (
-    <div className="app-shell">
+    <div className="app-shell compact-shell" data-terminal={drawerMode}>
+      <WorkspaceToolbar
+        desktop={typeof window.reels !== "undefined"}
+        navigation={navigation}
+        items={[...navigationItems, ["settings", "설정"]]}
+        projects={dashboard.projects}
+        onNavigate={key => navigateTo(key as Tab)}
+        onJump={navigation.jump}
+        settingsActive={tab === "settings"}
+        terminal={drawerMode}
+        onTerminal={bridge.workbench ? () => setDrawerMode(mode => mode === "open" ? "folded" : "open") : undefined}
+        onProject={!readOnly ? project => { setEditingProject({ ...project }); } : undefined}
+      />
       <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setTab("dashboard");
-          }}
-        >
-          <span className="brand-mark">
-            r<span>●</span>
-          </span>
-          <span>
-            reels<span className="brand-sub">DASHBOARD</span>
-          </span>
-        </a>
         <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
           {navigationItems.map(([key, text]) => (
@@ -686,7 +676,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               aria-label={text}
               className={`nav-item ${tab === key ? "active" : ""}`}
               aria-current={tab === key ? "page" : undefined}
-              aria-expanded={key === "develop" ? drawerMode === "open" : undefined}
+
               onClick={() => navigateTo(key)}
             >
               <Icon name={key} />
@@ -715,28 +705,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         </div>
       </aside>
       <main className="main">
-        <header className="topbar">
-          <span className="breadcrumb">
-            워크스페이스 <span>/</span>{" "}
-            {
-              {
-                dashboard: "대시보드",
-                library: "촬영 보관함",
-                editor: "영상 편집",
-                transfers: "내보내기",
-                settings: "설정",
-                develop: "개발 작업공간",
-              }[tab]
-            }
-          </span>
-          <span className="mode-pill">
-            {readOnly
-              ? "WEB · 읽기 전용"
-              : bridge.mode === "demo"
-                ? "DEMO"
-                : "DESKTOP"}
-          </span>
-        </header>
         {bridge.mode === "demo" && (
           <div className="demo-banner" role="note">
             예시 데이터로 둘러보는 화면이에요. 실제 Photos와 서버 데이터는
@@ -744,7 +712,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           </div>
         )}
         <div className="page-heading">
-          <div>
+          <div className="shell-page-description">
             <span className="eyebrow">
               {tab === "dashboard"
                 ? "YOUR CREATIVE FLOW"
@@ -754,7 +722,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     ? "MAKE YOUR REEL"
                     : tab === "transfers"
                       ? "REVIEW & TRANSFER"
-                      : tab === "develop" ? "BUILD · PREVIEW · REVIEW" : "WORKSPACE SETTINGS"}
+                      : "WORKSPACE SETTINGS"}
             </span>
             <h1>{titles[tab]}</h1>
             <p>{descriptions[tab]}</p>

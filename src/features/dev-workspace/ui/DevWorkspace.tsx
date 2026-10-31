@@ -135,12 +135,12 @@ export function DevWorkspace({
   return (
     <section
       className="dev-workspace"
-      aria-label="개발 작업공간"
+      aria-label="터미널"
       data-drawer-state={mode}
       hidden={mode === "closed"}
     >
       <header className="dev-drawer-header">
-        <strong>개발 작업공간</strong>
+        <strong>터미널</strong>
         <span className="dev-drawer-hint">
           {shortcutHint("toggle")} 열기·접기 · {shortcutHint("close")}{" "}
           {mode === "open" ? "세션 닫기" : "창 숨기기"}
@@ -159,19 +159,20 @@ export function DevWorkspace({
           disabled={busy || !state?.workspace}
           onClick={() => start("shell")}
           title={shortcutHint("newTerminal")}
+          aria-label="새 터미널"
         >
           새 터미널 <kbd>{shortcutHint("newTerminal")}</kbd>
         </button>
         <button
           aria-label={
-            mode === "open" ? "개발 작업공간 접기" : "개발 작업공간 펼치기"
+            mode === "open" ? "터미널 접기" : "터미널 펼치기"
           }
           onClick={() => onModeChange(toggleDrawer(mode))}
         >
           {mode === "open" ? "접기" : "펼치기"}
         </button>
         <button
-          aria-label="개발 작업공간 닫기"
+          aria-label="터미널 닫기"
           title="패널만 숨기고 세션은 유지해요"
           onClick={() => onModeChange("closed")}
         >

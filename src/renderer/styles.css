@@ -1721,3 +1721,22 @@ label + label {
     font-size: 62px;
   }
 }
+
+/* Compact application chrome: one toolbar, full-width work area. */
+.compact-shell { padding-top: 52px; }
+.compact-shell .sidebar { top: 52px; padding-top: 18px; }
+.compact-shell .workspace-label { margin: 4px 10px 16px; }
+.compact-shell .main { max-width: none; padding-left: 28px; padding-right: 28px; }
+.compact-shell .page-heading { margin: 18px 0; justify-content: flex-end; }
+.compact-shell .shell-page-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.compact-shell .page-footer { display: none; }
+.compact-shell[data-terminal="open"] .main { padding-bottom: 72vh; }
+.compact-shell[data-terminal="folded"] .main { padding-bottom: 90px; }
+@media (max-width: 850px) { .compact-shell .sidebar nav { margin-top: 0; } }
+@media (max-width: 560px) {
+  .compact-shell .sidebar { top: 52px; padding: 7px 12px; }
+  .compact-shell .sidebar nav { margin: 0 auto; }
+  .compact-shell .main { padding-left: 17px; padding-right: 17px; }
+}
+
+.compact-shell .modal-backdrop { z-index: 200; }
