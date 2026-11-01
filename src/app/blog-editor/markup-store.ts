@@ -1,5 +1,5 @@
 import type {VisualEvidence} from "../../shared/markup-review";
-import {paragraphSource,findingApplicability} from "../../shared/review-applicability";
+import {paragraphSource,findingApplicability,findingTarget} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {AnnotationStore} from "./annotations";
 import {readFile,writeFile,realpath,mkdir,rename,readdir,stat} from "node:fs/promises";
@@ -7,13 +7,11 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import type {EditorConfig} from "./store";
-import {parse,serialize,validate,legend,type ParagraphNode,type MarkStyle} from "../../shared/blog-markup";
+import {bundleParagraphs,parse,serialize,validate,legend,type ParagraphNode,type MarkStyle} from "../../shared/blog-markup";
 import {paragraphNodes,bundleHashes,reviewFresh,fingerprint} from "../../shared/blog-markup-source";
 import {load,save} from "../../shared/blog-markup-store";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
-import {readInline,inlineSource,escapeHtml,cssColor,type InlineRun,type CanonicalDocument} from "../../shared/canonical-blog";
-
-const colorHex=(value:string)=>cssColor(value)?.replace(/rgb\((\d+),(\d+),(\d+)\)/,(_,r,g,b)=>"#"+[r,g,b].map(n=>Number(n).toString(16).padStart(2,"0")).join(""));
+import {readInline,inlineSource,escapeHtml,cssHex as colorHex,type InlineRun,type CanonicalDocument} from "../../shared/canonical-blog";
 function edited(original:ParagraphNode,source:string):ParagraphNode{
   const runs=readInline(source),text=runs.map(r=>r.text).join("");
   if(/[<>]/.test(text)||/\n\s*\n/.test(text))throw new Error("문단 내부의 빈 문단·HTML은 지원하지 않아요.");
@@ -77,7 +75,7 @@ export class MarkupStore {
           }
           return {...r,visualFresh:r.visualSourceFingerprint===x.base.fingerprint,freshText:hashes[r.bundleId]?.textHash===r.basedOn?.textHash,
             findings:r.findings.map((f:any)=>{
-              const id=f.proposal?.tid??f.proposal?.entry?.id;
+              const id=findingTarget(f);
               const fresh=!!hashes[r.bundleId]&&reviewFresh(f.axis,f.basedOn??r.basedOn,hashes[r.bundleId]);
               const baseline=receipt?paragraphNodes(receipt).find(p=>p.id===id):fresh?paragraphNodes(x.doc).find(p=>p.id===id):undefined;
               return {...f,sourceAtReview:f.sourceAtReview??(baseline?paragraphSource(baseline):undefined),status:source.corrections?.[f.id]?.status??f.status??"proposed",fresh};
@@ -90,7 +88,7 @@ export class MarkupStore {
       format:"markup",title:String(x.doc.metadata?.title??""),path:this.config.canon,revision:x.base.fingerprint,
       frameVersion:x.base.fingerprint,fontCss:this.fonts([...x.layout.matchAll(/@font-face\s*\{[^}]*\}/g)].map(m=>m[0]).join("\n")),
       paragraphs:paragraphNodes(x.doc).map(p=>({id:p.id,source:paragraphSource(p)})),
-      bundles:x.doc.bundles.map(b=>({id:b.id,name:b.name,question:b.question,paragraphIds:b.nodes.flatMap(n=>n.kind==="paragraph"?[n.id]:(n.children??[]).map(p=>p.id))})),
+      bundles:x.doc.bundles.map(b=>({id:b.id,name:b.name,question:b.question,paragraphIds:bundleParagraphs(b).map(p=>p.id)})),
       reviews,warnings:[...x.base.warnings,...validate(x.doc).filter(i=>i.level!=="fact").map(i=>i.where+": "+i.message)],
     };
   }

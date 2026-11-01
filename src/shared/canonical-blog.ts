@@ -86,6 +86,18 @@ export function cssColor(value: string): string | undefined {
   if (!m || m.slice(1).some((v) => Number(v) > 255)) return undefined;
   return `rgb(${m.slice(1).map(Number).join(",")})`;
 }
+/** `cssColor` as lowercase `#rrggbb`, so equal colours compare equal. */
+export const cssHex = (value: string) =>
+  cssColor(value)?.replace(
+    /rgb\((\d+),(\d+),(\d+)\)/,
+    (_, r, g, b) =>
+      "#" +
+      [r, g, b].map((n) => Number(n).toString(16).padStart(2, "0")).join(""),
+  );
+export const plainText = (source: string) =>
+  readInline(source)
+    .map((r) => r.text)
+    .join("");
 export function readInline(source: string): InlineRun[] {
   const runs: InlineRun[] = [];
   const stack: InlineStyle[] = [{}];

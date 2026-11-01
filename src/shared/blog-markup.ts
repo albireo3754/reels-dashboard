@@ -183,6 +183,10 @@ export interface MarkupDoc {
   frontmatter?: string;
 }
 
+/** Paragraphs of a bundle in order, including those nested in components. */
+export const bundleParagraphs = (bundle: MarkupBundle): ParagraphNode[] =>
+  bundle.nodes.flatMap((n) => (n.kind === "paragraph" ? [n] : n.children ?? []));
+
 // ─── 서식 토큰 ──────────────────────────────────────────────────────────────
 
 const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";

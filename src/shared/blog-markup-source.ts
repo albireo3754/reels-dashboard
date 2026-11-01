@@ -1,8 +1,8 @@
 import { sha256Hex } from "./lib/hash";
-import { parse, serialize, type MarkupDoc, type MarkupBundle, type ParagraphNode } from "./blog-markup";
+import { bundleParagraphs, parse, serialize, type MarkupDoc, type MarkupBundle, type ParagraphNode } from "./blog-markup";
 
 export const fingerprint = (text: string) => sha256Hex(text);
-export const paragraphNodes = (doc: MarkupDoc) => doc.bundles.flatMap(b => b.nodes.flatMap(n => n.kind === "paragraph" ? [n] : n.children ?? []));
+export const paragraphNodes = (doc: MarkupDoc) => doc.bundles.flatMap(bundleParagraphs);
 export function textOf(doc: MarkupDoc): string[] {
   return [
     ...(typeof doc.metadata?.title === "string" ? [doc.metadata.title] : []),

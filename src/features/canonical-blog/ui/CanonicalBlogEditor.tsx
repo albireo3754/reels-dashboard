@@ -1,4 +1,4 @@
-import {findingApplicability,replaceInlineText} from "../../../shared/review-applicability";
+import {applyFinding,findingApplicability,findingTarget} from "../../../shared/review-applicability";
 import {UserAnnotations,type AnnotationTarget} from "./UserAnnotations";
 import { FormattingToolbar, type SelectionFormat } from "./FormattingToolbar";
 import { FormatComparison } from "./FormatComparison";
@@ -8,7 +8,6 @@ import {
   inlineHtml,
   inlineSource,
   readInline,
-  restyle,
   type CanonicalDocument,
   type CanonicalFinding,
   type InlineRun,
@@ -320,33 +319,13 @@ export function CanonicalBlogEditor() {
   function apply(f: CanonicalFinding) {
     if (!doc || busy) return;
     const p = f.proposal;
-    const id = p?.tid ?? p?.entry?.id;
+    const id = findingTarget(f);
     const original = doc.paragraphs.find((t) => t.id === id);
     if (!p || !original) return;
     let source = edits[original.id] ?? original.source;
     try {
       if(doc.format==="markup"){const state=findingApplicability(f,source);if(!state.canApply)throw new Error(state.reason);}
-      const runs = readInline(source),
-        plain = runs.map((r) => r.text).join("");
-      if (p.layer === "emphasis" && p.entry) {
-        const start = plain.indexOf(p.entry.phrase);
-        if (start < 0) throw new Error("강조할 구절이 바뀌었어요.");
-        const { bg, ...s } = p.entry.style;
-        source = restyle(
-          source,
-          start,
-          start + p.entry.phrase.length,
-          { ...s, ...(bg ? { background: bg } : {}) },
-          p.op === "remove",
-        );
-      } else if (p.layer === "text" && p.before && p.after !== undefined) {
-        const start = plain.indexOf(p.before);
-        if (start < 0 || plain.indexOf(p.before, start + 1) >= 0)
-          throw new Error(
-            "제안 대상이 바뀌었거나 여러 곳에 있어요. 본문에서 직접 수정해주세요.",
-          );
-        source = replaceInlineText(source,start,start+p.before.length,p.after);
-      } else throw new Error("이 제안은 본문에서 직접 수정해주세요.");
+      source = applyFinding(f, source);
       setEdits(old=>({...old,[original.id]:source}));
       send({ type: "replace", id: original.id, html: inlineHtml(source) });
       setDecisions((old) => ({ ...old, [f.id]: "적용 · 저장 전" }));
@@ -581,7 +560,7 @@ export function CanonicalBlogEditor() {
                     ),
                 )
                 .map((f) => {
-                  const targetId=f.proposal?.tid??f.proposal?.entry?.id;
+                  const targetId=findingTarget(f);
                   const availability=doc.format==="markup"?findingApplicability(f,edits[targetId??""]??doc.paragraphs.find(p=>p.id===targetId)?.source):undefined;
                   return (
                   <article key={f.id} className="ce-proposal">
@@ -641,10 +620,7 @@ export function CanonicalBlogEditor() {
                           setReviewOpen(false);
                           send({
                             type: "focus",
-                            id:
-                              f.proposal?.tid ??
-                              f.proposal?.entry?.id ??
-                              bundle?.paragraphIds[0],
+                            id: findingTarget(f) ?? bundle?.paragraphIds[0],
                           });
                         }}
                       >

@@ -1,4 +1,4 @@
-import {readInline,inlineSource,cssColor,type InlineRun,type InlineStyle,type CanonicalFinding} from "./canonical-blog";
+import {readInline,inlineSource,cssHex,plainText as plain,restyle,type InlineRun,type InlineStyle,type CanonicalFinding} from "./canonical-blog";
 import type {ParagraphNode} from "./blog-markup";
 export function paragraphSource(p:ParagraphNode):string{
  const runs:InlineRun[]=[];
@@ -13,9 +13,14 @@ export function paragraphSource(p:ParagraphNode):string{
  });
  return inlineSource(runs);
 }
-const plain=(source:string)=>readInline(source).map(r=>r.text).join("");
+/** Paragraph a finding targets. */
+export const findingTarget=(f:Pick<CanonicalFinding,"proposal">)=>f.proposal?.tid??f.proposal?.entry?.id;
+/** Review entries call the background `bg`; inline styles call it `background`. */
+export function entryStyle({bg,...rest}:{color?:string;bg?:string;weight?:number;size?:number}):InlineStyle{
+ return {...rest,...(bg?{background:bg}:{})};
+}
 const normalized=(style:InlineStyle)=>{
- const color=(s?:string)=>s?cssColor(s)?.replace(/rgb\((\d+),(\d+),(\d+)\)/,(_,r,g,b)=>"#"+[r,g,b].map(n=>Number(n).toString(16).padStart(2,"0")).join("")):undefined;
+ const color=(s?:string)=>s?cssHex(s):undefined;
  return {color:color(style.color),background:color(style.background),weight:style.weight,size:style.size};
 };
 function styles(source:string){
@@ -43,7 +48,7 @@ export function findingApplicability(f:CanonicalFinding,source?:string):Applicab
   const e=p.entry,start=occurrence(text,e.phrase);
   if(start===-2)return result("ambiguous","대상 구절이 여러 곳에 있어요. 본문에서 직접 선택해주세요.");
   if(start<0)return result("changed","강조할 구절이 달라졌어요. 다시 검토해주세요.");
-  const {bg,...rest}=e.style,desired=normalized({...rest,...(bg?{background:bg}:{})});
+  const desired=normalized(entryStyle(e.style));
   const keys=(p.op==="remove"?["color","background","weight","size"]:Object.keys(desired).filter(k=>desired[k as keyof InlineStyle]!==undefined)) as (keyof InlineStyle)[];
   if(!keys.length)return result("unsupported","적용할 서식이 없어요.");
   const current=styles(source).slice(start,start+e.phrase.length);
@@ -58,6 +63,22 @@ export function findingApplicability(f:CanonicalFinding,source?:string):Applicab
   return result("available","대상 구절과 변경할 서식이 그대로라 적용할 수 있어요.");
  }
  return result("unsupported","이 제안은 본문에서 직접 수정해주세요.");
+}
+/** Apply a text or emphasis proposal to an inline source; throws when the target no longer matches. */
+export function applyFinding(f:CanonicalFinding,source:string):string{
+ const p=f.proposal,text=plain(source);
+ if(p?.layer==="emphasis"&&p.entry){
+  const start=text.indexOf(p.entry.phrase);
+  if(start<0)throw new Error("강조할 구절이 바뀌었어요.");
+  return restyle(source,start,start+p.entry.phrase.length,entryStyle(p.entry.style),p.op==="remove");
+ }
+ if(p?.layer==="text"&&p.before&&p.after!==undefined){
+  const start=text.indexOf(p.before);
+  if(start<0||text.indexOf(p.before,start+1)>=0)
+   throw new Error("제안 대상이 바뀌었거나 여러 곳에 있어요. 본문에서 직접 수정해주세요.");
+  return replaceInlineText(source,start,start+p.before.length,p.after);
+ }
+ throw new Error("이 제안은 본문에서 직접 수정해주세요.");
 }
 /** Preserve styles of unchanged characters when inserting text (for example list check marks). */
 export function replaceInlineText(source:string,start:number,end:number,replacement:string){

@@ -1,9 +1,11 @@
 import {
+  plainText,
   readInline,
   restyle,
   type CanonicalFinding,
   type InlineRun,
 } from "../../../shared/canonical-blog";
+import { entryStyle } from "../../../shared/review-applicability";
 function sample(source: string, start: number, end: number) {
   let at = 0;
   return readInline(source).flatMap((r) => {
@@ -87,20 +89,17 @@ export function FormatComparison({
   const p = finding.proposal;
   if (!p?.entry || source === undefined) return null;
   const phrase = p.entry.phrase,
-    plain = readInline(source)
-      .map((r) => r.text)
-      .join(""),
+    plain = plainText(source),
     start = plain.indexOf(phrase);
   if (start < 0)
     return (
       <p className="ce-warning">현재 본문에서 제안 구절을 찾을 수 없어요.</p>
     );
-  const { bg, ...style } = p.entry.style;
   const after = restyle(
     source,
     start,
     start + phrase.length,
-    { ...style, ...(bg ? { background: bg } : {}) },
+    entryStyle(p.entry.style),
     p.op === "remove",
   );
   const beforeRuns = sample(source, start, start + phrase.length),

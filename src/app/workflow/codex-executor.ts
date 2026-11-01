@@ -12,6 +12,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { mkdir, writeFile, realpath, readFile } from "node:fs/promises";
 import path from "node:path";
 import { blogDraft } from "../../shared/blog";
+import { bundleParagraphs } from "../../shared/blog-markup";
 import {
   bundlesOf,
   reviewResult,
@@ -326,8 +327,9 @@ export class CodexExecutor {
     this.launch(job,async signal=>{
       const workspace=path.join(this.root,"markup-review");
       await mkdir(workspace,{recursive:true,mode:0o700});
-      const targets=doc.bundles.filter(b=>input.bundleIds.includes(b.id)).flatMap(b=>b.nodes.flatMap(n=>n.kind==="paragraph"?[{tid:n.id,text:n.lines.join("\n")} ]:(n.children??[]).map(p=>({tid:p.id,text:p.lines.join("\n")}))));
-      const emphasisTargets=doc.bundles.filter(b=>input.bundleIds.includes(b.id)).flatMap(b=>b.nodes.flatMap(n=>n.kind==="paragraph"?[n]:n.children??[]).flatMap(p=>p.marks.map(m=>({tid:p.id,phrase:p.lines[m.line].slice(m.start,m.end),style:m.style,role:m.role}))));
+      const paragraphs=doc.bundles.filter(b=>input.bundleIds.includes(b.id)).flatMap(bundleParagraphs);
+      const targets=paragraphs.map(p=>({tid:p.id,text:p.lines.join("\n")}));
+      const emphasisTargets=paragraphs.flatMap(p=>p.marks.map(m=>({tid:p.id,phrase:p.lines[m.line].slice(m.start,m.end),style:m.style,role:m.role})));
       const resultSchema:any=z.toJSONSchema(markupReviewResult);
       resultSchema.properties.reviews.items.properties.emphasisDecisions.items.properties.tid={type:"string",enum:targets.map(p=>p.tid)};
       const alternatives=resultSchema.properties.reviews.items.properties.findings.items.properties.proposal.anyOf;
