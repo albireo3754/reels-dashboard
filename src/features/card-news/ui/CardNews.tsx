@@ -20,7 +20,7 @@ import {
   musicError,
   videoError,
 } from "../../../shared/card-news-model";
-import { drawCard } from "../model/frame";
+import { drawCard } from "./frame";
 import "./card-news.css";
 import { errorMessage } from "../../../shared/errors";
 

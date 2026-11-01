@@ -6,7 +6,7 @@ import path from 'node:path';
 import {LocalStore} from '../../src/shared/lib/storage';
 import {ContentLibrary} from '../../src/features/content-library';
 import {BlogLibrary} from '../../src/desktop/blog-library';
-import {importSpec} from '../../src/features/blog-workspace/ui/import-spec';
+import {importSpec} from '../../src/features/blog-workspace/model/import-spec';
 
 test('blog uses registered markdown, local image grants and revision checked private drafts',async()=>{
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'blog-test-')));
