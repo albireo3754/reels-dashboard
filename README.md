@@ -53,6 +53,10 @@ Existing footage folders, completed videos/covers and content documents can be l
 
 The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI's editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
 
+## Headless workflows
+
+Blog editorial loops can run through LangGraph with a local web server, CLI and independent MCP server. Tasks can be performed by the current Codex session or explicitly run through the Codex TypeScript SDK. Saved Codex login works without an API key; a configured key takes priority. Run `npm run build:web` then `npm run start:server`. See [workflow control and scope](docs/workflows.md). Native Photos/editor features retain their existing platform requirements.
+
 ## Run locally
 
 The bundled editor build currently targets Apple Silicon and macOS 15+. Source builds require Swift 6, Node 22.12+ and the [editor build dependencies](docs/editor-engine.md); the packaged app includes its Python/Pillow/media runtime.

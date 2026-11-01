@@ -1,3 +1,6 @@
+import { workflowRequest } from "../app/workflow/client";
+import { workflowAction } from "../shared/workflow";
+import { BlogLibrary } from "./blog-library";
 import {
   app,
   BrowserWindow,
@@ -130,6 +133,7 @@ async function awaitReady() {
     ],
   );
   const routeLibrary = new RouteLibrary(contentLibrary);
+  const blogs = new BlogLibrary(store, contentLibrary);
   const editorService = new EditorService({
     dashboardChanged: (value) => emit("dashboard:changed", value),
     root,
@@ -270,6 +274,10 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
+  handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
+  handle("blog:load", (projectId) => blogs.load(projectId));
+  handle("blog:save", (draft) => blogs.save(draft));
   for (const method of [
     "list",
     "load",

@@ -1,3 +1,4 @@
+import { WorkflowPanel } from "../features/workflow";
 import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
 import { ProjectGrouping } from "../features/project-grouping";
 import {
@@ -32,6 +33,7 @@ import {
   selectBoardProjects,
   type BoardQuery,
 } from "../features/content-board";
+import { BlogWorkspace } from "../features/blog-workspace";
 import { ContentRouteMap } from "../features/route-map";
 import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
@@ -48,6 +50,8 @@ type Tab =
   | "library"
   | "editor"
   | "cards"
+  | "workflow"
+  | "blog"
   | "transfers"
   | "settings";
 type Choice = "undecided" | "included" | "excluded";
@@ -147,7 +151,7 @@ function Empty({
 }
 
 export function App({ bridge }: { bridge: DashboardBridge }) {
-  const navigation = useWorkspaceNavigation<Tab>("dashboard");
+  const navigation = useWorkspaceNavigation<Tab>(new URLSearchParams(location.search).has("workflow") ? "workflow" : "dashboard");
   const { current: tab, navigate: setTab } = navigation;
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
@@ -232,6 +236,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     if (tab !== "settings") setToken("");
   }, [tab]);
   const readOnly = bridge.mode === "web";
+  const workflowHost = readOnly && new URLSearchParams(location.search).has("workflow");
   const protocolOK = !status || status.protocolVersion === 1;
   const canIndex =
     !readOnly &&
@@ -697,12 +702,16 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     library: "다음 이야기를 골라요",
     editor: "선택한 장면을 완성해요",
     cards: "읽는 속도에 맞춰 이야기를 전해요",
+    workflow: "작업을 이어가고, 검토를 쌓아요",
+    blog: "원고와 사진을 함께 살펴봐요",
     transfers: "확인하고, 안전하게 옮겨요",
     settings: "내 작업 환경",
   };
   const descriptions: Record<Tab, string> = {
+    workflow: "세션에서 수행하는 제작 작업의 순서와 검토 이력을 관리해요.",
     dashboard: "촬영부터 게시까지, 지금 필요한 다음 작업을 확인해요.",
     cards: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
+    blog: "원고와 사진의 순서를 정하고 미리 확인해요.",
     library:
       "Apple Photos에서 날짜별 촬영본을 찾고 콘텐츠에 사용할 장면을 골라요.",
     transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
@@ -715,6 +724,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     ["library", "촬영 보관함"],
     ["editor", "영상 편집"],
     ["cards", "카드뉴스 릴스"],
+    ["blog", "블로그"],
+    ["workflow", "워크플로"],
     ["transfers", "내보내기"],
   ];
   const navigateTo = (key: Tab) => {
@@ -760,14 +771,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div className="sidebar-bottom">
           <div className="local-badge">
             <span className="status-dot good" />
-            {readOnly
+            {workflowHost ? "로컬 워크플로" : readOnly
               ? "공유된 현황"
               : bridge.mode === "demo"
                 ? "예시 작업공간"
                 : "로컬 작업공간"}
           </div>
           <p>
-            {readOnly
+            {workflowHost ? "작업 상태는 이 컴퓨터에 저장해요." : readOnly
               ? "마지막 동기화된 내용을 보여드려요."
               : "촬영 원본은 내 Mac에 그대로 있어요."}
           </p>
@@ -792,9 +803,13 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     ? "MAKE YOUR REEL"
                     : tab === "cards"
                       ? "CARD NEWS · TIMING & MUSIC"
-                      : tab === "transfers"
-                        ? "REVIEW & TRANSFER"
-                        : "WORKSPACE SETTINGS"}
+                      : tab === "workflow"
+                        ? "워크플로"
+                      : tab === "blog"
+                        ? "BLOG WORKSPACE"
+                        : tab === "transfers"
+                          ? "REVIEW & TRANSFER"
+                          : "WORKSPACE SETTINGS"}
             </span>
             <h1>{titles[tab]}</h1>
             <p>{descriptions[tab]}</p>
@@ -1504,6 +1519,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div hidden={tab !== "cards"}>
           <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
+        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}/></div>
+        {tab === "workflow" && <WorkflowPanel />}
         {tab === "transfers" &&
           (readOnly ? (
             nativeNotice
