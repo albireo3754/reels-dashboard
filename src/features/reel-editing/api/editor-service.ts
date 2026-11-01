@@ -1,6 +1,6 @@
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
-import { editOwner, recordExports } from "../../../shared/production-project";
+import { upsertExportedProject } from "../../../shared/production-project";
 import { type ChildProcess } from "node:child_process";
 import {
   access,
@@ -265,52 +265,31 @@ export class EditorService implements EditorBridge {
         path: await realpath(resource.path),
       })),
     );
-    const dashboard = await this.options.store.update((dashboard) => {
-      const edit = { kind: "video" as const, id: project.id };
-      const old = editOwner(dashboard, edit);
-      const item = {
-        ...old,
-        id: old?.id ?? project.id,
-        title: old?.title ?? project.source.name,
-        date: old?.date ?? new Date().toLocaleDateString("en-CA"),
-        stage: old?.stage === "published" ? ("published" as const) : stage,
-        resources: [
-          ...(old?.resources ?? []).filter(
-            (r) =>
-              !outputs.some((o) => o.path === r.path && o.role === r.role) &&
-              !(r.path === record.sourcePath && r.role === "footage"),
-          ),
-          {
-            role: "footage" as const,
-            path: record.sourcePath,
-            label: project.source.name,
-          },
-          ...outputs,
-        ],
-        nextAction:
-          old?.stage === "published"
-            ? old.nextAction
-            : stage === "review"
+    const dashboard = await this.options.store.update((dashboard) =>
+      upsertExportedProject(
+        dashboard,
+        { kind: "video", id: project.id },
+        {
+          title: project.source.name,
+          stage,
+          nextAction:
+            stage === "review"
               ? "내보낸 영상과 표지를 확인해요."
               : "자막과 장소 안내를 편집해요.",
-        publicURL: old?.publicURL ?? "",
-        shared: old?.shared ?? false,
-      };
-      const linked = {
-        ...item,
-        production: recordExports(
-          item,
-          edit,
-          outputs,
-          new Date().toISOString(),
-          randomUUID,
-        ),
-      };
-      dashboard.projects = old
-        ? dashboard.projects.map((p) => (p.id === item.id ? linked : p))
-        : [...dashboard.projects, linked];
-      return dashboard;
-    });
+          resources: [
+            {
+              role: "footage",
+              path: record.sourcePath,
+              label: project.source.name,
+            },
+            ...outputs,
+          ],
+          exported: outputs,
+        },
+        new Date(),
+        randomUUID,
+      ),
+    );
     this.options.dashboardChanged?.(dashboard);
   }
   private async importFile(input: string): Promise<EditorProject> {

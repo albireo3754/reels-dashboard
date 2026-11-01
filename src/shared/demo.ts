@@ -14,6 +14,7 @@ import type {
 } from "./contracts";
 import { emptyDashboard } from "./contracts";
 import { validateDashboard, toSnapshot } from "./data";
+import { utcDate } from "./production-project";
 
 export function createDemoBridge(
   search = typeof window === "undefined" ? "" : window.location.search,
@@ -363,7 +364,7 @@ export function createDemoBridge(
       const item = {
         id: project.id,
         title: previous?.title ?? project.source.name,
-        date: previous?.date ?? new Date().toLocaleDateString("en-CA"),
+        date: previous?.date ?? utcDate(),
         stage,
         nextAction:
           stage === "review"

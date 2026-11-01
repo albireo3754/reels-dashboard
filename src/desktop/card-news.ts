@@ -1,6 +1,6 @@
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
-import { editOwner, recordExports } from "../shared/production-project";
+import { upsertExportedProject } from "../shared/production-project";
 import { type ChildProcess } from "node:child_process";
 import {
   mkdir,
@@ -623,49 +623,23 @@ export class CardNewsService implements CardNewsBridge {
       await link(temporary, output);
       published = true;
       job.outputPath = output;
-      const dashboard = await this.options.store.update((current) => {
-        const edit = { kind: "card-news" as const, id: plan.id };
-        const existing = editOwner(current, edit);
-        const next = {
-          ...existing,
-          id: existing?.id ?? plan.id,
-          title: existing?.title ?? plan.title,
-          date: existing?.date ?? new Date().toISOString().slice(0, 10),
-          dateBasis: existing?.dateBasis ?? ("record" as const),
-          stage:
-            existing?.stage === "published"
-              ? ("published" as const)
-              : ("review" as const),
-          nextAction:
-            existing?.stage === "published"
-              ? existing.nextAction
-              : "카드뉴스 MP4 확인",
-          publicURL: existing?.publicURL ?? "",
-          shared: existing?.shared ?? false,
-          resources: [
-            ...(existing?.resources ?? []).filter(
-              (r) => !(r.path === output && r.role === "draft"),
-            ),
-            { role: "draft" as const, path: output, label: "카드뉴스 MP4" },
-          ],
-        };
-        const item = {
-          ...next,
-          production: recordExports(
-            next,
-            edit,
-            [{ role: "draft", path: output, label: "카드뉴스 MP4" }],
-            new Date().toISOString(),
-            randomUUID,
-          ),
-        };
-        return {
-          ...current,
-          projects: existing
-            ? current.projects.map((p) => (p.id === item.id ? item : p))
-            : [...current.projects, item],
-        };
-      });
+      const mp4 = { role: "draft" as const, path: output, label: "카드뉴스 MP4" };
+      const dashboard = await this.options.store.update((current) =>
+        upsertExportedProject(
+          current,
+          { kind: "card-news", id: plan.id },
+          {
+            title: plan.title,
+            stage: "review",
+            nextAction: "카드뉴스 MP4 확인",
+            dateBasis: "record",
+            resources: [mp4],
+            exported: [mp4],
+          },
+          new Date(),
+          randomUUID,
+        ),
+      );
       this.options.changed(dashboard);
       job.state = "completed";
       job.progress = 100;
