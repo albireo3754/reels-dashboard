@@ -157,3 +157,7 @@ Final SDK checks: current unit suite 120/120 passed; Dashboard SDK/manual browse
 ## 사진 기반 경험 수집
 
 새 작업의 경험 폼 옵션, 질문 계약, 답변 일괄 저장과 초안 연결은 [경험 수집 단계](experience-intake.md)를 따른다. API 생성 시 `collectExperience: true`로 켜고 준비 결과에 `experience-form.json`을 포함한다. 사용자 답변 없이 이 단계를 SDK로 통과할 수 없다.
+
+## Isolated publication verification — 2026-11-01
+
+The workflow/SDK/observability snapshot passed 95 unit tests, 2 headless workflow browser tests and 1 Electron-to-server bridge test in a separate checkout. Typecheck, web/desktop build, architecture and preserved-spec checks passed. Installed dependencies were copied from the local dependency cache; no fresh dependency-download claim is made. Separate canonical-blog editor, reference extraction and media-analysis changes are outside this snapshot.

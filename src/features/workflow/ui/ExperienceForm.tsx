@@ -71,6 +71,7 @@ export function ExperienceForm({
   const update = (questionId: string, patch: Partial<ExperienceAnswer>) => {
     setDirty(true);
     setMessage("");
+    setError("");
     setAnswers((current) => {
       const prior = current.find((a) => a.questionId === questionId) ?? {
         questionId,
@@ -123,7 +124,7 @@ export function ExperienceForm({
         메모하듯 적어도 괜찮아요. 기억나지 않는 내용이나 글에 넣고 싶지 않은
         내용은 그대로 표시해주세요. 답변을 제출하기 전에는 초안을 쓰지 않아요.
       </p>
-      <details open>
+      <details>
         <summary>미리 확인한 자료</summary>
         <ul>
           {record.form.facts.map((fact, i) => (

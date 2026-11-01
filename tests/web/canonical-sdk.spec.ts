@@ -1,3 +1,4 @@
+import {readInline} from "../../src/shared/canonical-blog";
 import { test, expect } from "@playwright/test";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
@@ -31,7 +32,9 @@ test("standalone blog UI proxies the shared SDK service and applies only on expl
     expect(await readFile(fixture.config.canon, "utf8")).toBe(fixture.raw);
     await expect(page.getByRole("button", { name: "SDK 제안 적용" })).toBeDisabled();
     await page.getByRole("button", { name: "정본 저장", exact: true }).click();
-    await expect.poll(() => readFile(fixture.config.canon, "utf8")).toContain("벤치에서 잠깐 쉬어갔어요");
+    await expect.poll(async () => readInline(await readFile(fixture.config.canon, "utf8")).map(run=>run.text).join("")).toContain("벤치에서 잠깐 쉬어갔어요");
+    await page.reload();
+    await expect(frame.getByRole("textbox", { name: "T1 문단" })).toContainText("벤치에서 잠깐 쉬어갔어요");
   } finally {
     await editor.close(); await backend.close();
     if (previousUrl === undefined) delete process.env.REELS_WORKFLOW_URL; else process.env.REELS_WORKFLOW_URL = previousUrl;
