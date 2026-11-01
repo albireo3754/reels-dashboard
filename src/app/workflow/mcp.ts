@@ -15,6 +15,7 @@ import {
   isReadOnlyWorkflowAction,
 } from "../../shared/workflow";
 import { workflowRequest } from "./client";
+import { errorMessage } from "../../shared/errors";
 
 const handle = serveStdio(() => {
   const server = new McpServer(
@@ -107,7 +108,7 @@ const handle = serveStdio(() => {
             content: [
               {
                 type: "text",
-                text: e instanceof Error ? e.message : String(e),
+                text: errorMessage(e),
               },
             ],
           };

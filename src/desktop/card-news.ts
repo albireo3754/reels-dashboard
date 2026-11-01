@@ -26,6 +26,7 @@ import {
 import { timeline, musicError, videoError } from "../shared/card-news-model";
 import type { LocalStore } from "../shared/lib/storage";
 import type { Dashboard } from "../shared/contracts";
+import { errorMessage } from "../shared/errors";
 
 type AssetRecord = {
   id: string;
@@ -677,7 +678,7 @@ export class CardNewsService implements CardNewsBridge {
         job.state = "cancelled";
       } else {
         job.state = "failed";
-        job.error = e instanceof Error ? e.message : String(e);
+        job.error = errorMessage(e);
       }
     } finally {
       await rm(temporary, { force: true }).catch(() => {});

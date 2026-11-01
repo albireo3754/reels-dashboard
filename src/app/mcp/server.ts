@@ -1,5 +1,6 @@
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { toolDefinitions } from "../../features/agent-tools";
+import { errorMessage } from "../../shared/errors";
 
 export function createMcpServer(
   call: (name: string, args: unknown) => Promise<any>,
@@ -66,7 +67,7 @@ export function createMcpServer(
             content: [
               {
                 type: "text",
-                text: error instanceof Error ? error.message : String(error),
+                text: errorMessage(error),
               },
             ],
           };

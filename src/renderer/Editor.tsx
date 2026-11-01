@@ -14,6 +14,7 @@ import "./editor.css";
 import { TemplatePanel } from "../features/editor-templates";
 import { CaptionFileTools } from "../features/subtitle-files";
 import { validateEditSettings } from "../shared/editor-model";
+import { errorMessage } from "../shared/errors";
 
 type EditorProps = {
   bridge: EditorBridge;
@@ -34,8 +35,6 @@ const formatSeconds = (value: number) =>
   `${Math.floor(value / 60)}:${(value % 60).toFixed(2).padStart(5, "0")}`;
 const signature = (project: EditorProject) =>
   JSON.stringify({ id: project.id, settings: project.settings });
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
 const clampedTime = (time: number, duration: number) =>
   Math.min(Math.max(0, time), Math.max(0, duration - 0.01));
 function validate(project: EditorProject, kind: "video" | "cover" | "export") {
@@ -86,12 +85,12 @@ export function Editor({
         active,
         busy: Boolean(busy) || Boolean(rendering),
       })
-      .catch((e) => setError(message(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [agent, project?.id, dirty, time, active, busy, rendering]);
   useEffect(() => {
     if (!agent) return;
     const changed = agent.onProjectChanged((next) => {
-      void refreshRecent().catch((e) => setError(message(e)));
+      void refreshRecent().catch((e) => setError(errorMessage(e)));
       onDashboardChange();
       if (projectRef.current?.id !== next.id) return;
       if (dirtyRef.current && !busyRef.current) {
@@ -122,8 +121,8 @@ export function Editor({
     try {
       await operation();
     } catch (e) {
-      if (message(e).includes("STALE_PROJECT")) setConflict(true);
-      setError(message(e));
+      if (errorMessage(e).includes("STALE_PROJECT")) setConflict(true);
+      setError(errorMessage(e));
     } finally {
       busyRef.current = false;
       setBusy("");
@@ -154,7 +153,7 @@ export function Editor({
         if (live) setRuntime(value);
       })
       .catch((e) => {
-        if (live) setError(message(e));
+        if (live) setError(errorMessage(e));
       });
     void bridge
       .list()
@@ -162,7 +161,7 @@ export function Editor({
         if (live) setRecent(value);
       })
       .catch((e) => {
-        if (live) setError(message(e));
+        if (live) setError(errorMessage(e));
       });
     return () => {
       live = false;
@@ -215,7 +214,7 @@ export function Editor({
       } catch (e) {
         if (!disposed)
           setError(
-            `진행 상태를 확인하지 못했어요. 다시 확인하고 있어요. ${message(e)}`,
+            `진행 상태를 확인하지 못했어요. 다시 확인하고 있어요. ${errorMessage(e)}`,
           );
       }
       if (!disposed) timeout = setTimeout(poll, 750);

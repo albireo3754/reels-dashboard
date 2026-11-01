@@ -15,6 +15,7 @@ import "./workflow.css";
 
 import { workflowCall } from "../../../shared/workflow-client";
 import { SdkProgress } from "../../../shared/ui/SdkProgress";
+import { errorMessage } from "../../../shared/errors";
 const request = (action = "", input?: unknown) =>
   workflowCall((action.replace(/^\//, "") || "list") as WorkflowAction, input);
 export function WorkflowPanel() {
@@ -72,7 +73,7 @@ function ConnectedWorkflowPanel() {
       await fn();
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

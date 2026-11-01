@@ -8,6 +8,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { CanonicalStore, type EditorConfig } from "./store";
 import { frameScript } from "./frame-script";
+import { errorMessage } from "../../shared/errors";
 export async function startCanonicalEditor(
   config: EditorConfig,
   webRoot = path.resolve("dist"),
@@ -130,7 +131,7 @@ export async function startCanonicalEditor(
       });
       res.end(await readFile(file));
     } catch (e) {
-      json(409, { error: e instanceof Error ? e.message : String(e) });
+      json(409, { error: errorMessage(e) });
     }
   });
   await new Promise<void>((resolve, reject) => {

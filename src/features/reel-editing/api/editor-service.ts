@@ -27,6 +27,7 @@ import { defaultEditSettings } from "../../../shared/editor";
 import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
+import { errorMessage } from "../../../shared/errors";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -643,7 +644,7 @@ export class EditorService implements EditorBridge {
             if (job.state !== "cancelled") {
               job.state = "failed";
               job.phase = "내보내기 실패";
-              job.error = e instanceof Error ? e.message : String(e);
+              job.error = errorMessage(e);
             }
             for (const file of published) await rm(file, { force: true });
           } finally {

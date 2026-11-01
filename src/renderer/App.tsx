@@ -41,6 +41,7 @@ import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
 import { CardNews } from "../features/card-news";
 import type { DrawerMode } from "../features/dev-workspace";
+import { errorMessage } from "../shared/errors";
 const DevWorkspace = lazy(() =>
   import("../features/dev-workspace").then((m) => ({
     default: m.DevWorkspace,
@@ -255,7 +256,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       try {
         await fn();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
       } finally {
         setBusy("");
       }
@@ -270,7 +271,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         if (active) setDashboard(d);
       })
       .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : String(e));
+        if (active) setError(errorMessage(e));
       });
     if (!readOnly)
       void bridge
@@ -279,7 +280,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           if (active) setStatus(s);
         })
         .catch((e) => {
-          if (active) setError(e instanceof Error ? e.message : String(e));
+          if (active) setError(errorMessage(e));
         });
     return () => {
       active = false;
@@ -290,7 +291,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     void bridge
       .loadDashboard()
       .then(setDashboard)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [bridge]);
   const editPhotosVideo = (assetID: string) =>
     run("Photos 원본과 재생 영상 준비", async () => {

@@ -28,6 +28,7 @@ import {
   CodexObserver,
   type CodexObservationPort,
 } from "../observability/codex-observer";
+import { errorMessage } from "../../shared/errors";
 
 // Backend-only; no key is returned to clients or written to a project file.
 export function codexEnvironment(
@@ -160,7 +161,7 @@ export class CodexExecutor {
     this.runtime.saveJob(job);
   }
   private safeError(error: unknown) {
-    let message = error instanceof Error ? error.message : String(error);
+    let message = errorMessage(error);
     const key = configuredApiKey(this.env);
     if (key) message = message.split(key).join("[redacted]");
     return message.replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 2000);
