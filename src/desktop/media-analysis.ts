@@ -1,6 +1,7 @@
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedExecFile } from "../shared/lib/logged-process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { sha256Hex, sourceVersion as versionOf } from "../shared/lib/hash";
 import {
   mkdir,
   readFile,
@@ -28,7 +29,6 @@ import {
   CodexImageAnalyzer,
   type ImageAnalyzer,
 } from "./analysis-provider";
-const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 const photos = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
 const videos = new Set([".mov", ".mp4", ".m4v"]);
 export class MediaAnalysis {
@@ -92,7 +92,7 @@ export class MediaAnalysis {
     );
   }
   private file(id: string) {
-    return path.join(this.root, hash(id) + ".json");
+    return path.join(this.root, sha256Hex(id) + ".json");
   }
   private async load(projectId: string): Promise<AnalysisDocument> {
     await this.library.get(projectId);
@@ -176,7 +176,7 @@ export class MediaAnalysis {
     if (!result || !result.fields.faceRegions) throw new Error("얼굴 분석 결과가 없어요.");
     const sample = result.sample;
     const { info } = await this.library.resolveMedia(projectId, sample.sourcePath);
-    if (hash(`${info.size}:${info.mtimeMs}`) !== sample.sourceVersion) throw new Error("분석 후 원본이 변경됐어요. 다시 분석해주세요.");
+    if (versionOf(info) !== sample.sourceVersion) throw new Error("분석 후 원본이 변경됐어요. 다시 분석해주세요.");
     return sample;
   }
   async mosaicSample(projectId: string, sampleId: string) {
@@ -294,7 +294,7 @@ export class MediaAnalysis {
     runId: string,
   ): Promise<AnalysisSample[]> {
     const { info } = await this.library.resolveMedia(projectId, file);
-    const sourceVersion = hash(`${info.size}:${info.mtimeMs}`),
+    const sourceVersion = versionOf(info),
       kind = videos.has(path.extname(file).toLowerCase())
         ? "video-frame"
         : "photo";
@@ -331,7 +331,7 @@ export class MediaAnalysis {
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const samples: AnalysisSample[] = [];
     for (const time of times) {
-      const id = hash(`${file}:${sourceVersion}:${time}`),
+      const id = sha256Hex(`${file}:${sourceVersion}:${time}`),
         imagePath = path.join(dir, id + ".jpg");
       const args = [
         "-nostdin",
@@ -400,7 +400,7 @@ export class MediaAnalysis {
             for (const sample of samples) {
               const current = await stat(sample.sourcePath);
               if (
-                hash(`${current.size}:${current.mtimeMs}`) !==
+                versionOf(current) !==
                 sample.sourceVersion
               )
                 throw new Error("분석 중 원본 변경");

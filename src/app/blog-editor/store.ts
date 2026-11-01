@@ -9,7 +9,8 @@ import {
   open,
 } from "node:fs/promises";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { sha256Hex as hash } from "../../shared/lib/hash";
 import { z } from "zod";
 import {
   readInline,
@@ -31,7 +32,6 @@ export interface EditorConfig {
   port?: number;
   assetFiles?: string[];
 }
-const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const key = (g: any) =>
   g.photo
     ? "photo:" + g.photo
