@@ -28,6 +28,7 @@ import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
 import { errorMessage } from "../../../shared/errors";
+import { parseRange } from "../../../shared/lib/http-range";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -65,31 +66,6 @@ const exists = async (file: string) => {
     return false;
   }
 };
-export function parseRange(
-  value: string | null,
-  size: number,
-): { start: number; end: number; partial: boolean } {
-  if (!value) return { start: 0, end: size - 1, partial: false };
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
-  if (!match || (!match[1] && !match[2])) throw new Error("Invalid range");
-  const start = match[1]
-    ? Number(match[1])
-    : Math.max(0, size - Number(match[2]));
-  const end = match[1]
-    ? match[2]
-      ? Math.min(size - 1, Number(match[2]))
-      : size - 1
-    : size - 1;
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    start < 0 ||
-    start >= size ||
-    end < start
-  )
-    throw new Error("Invalid range");
-  return { start, end, partial: true };
-}
 export class EditorService implements EditorBridge {
   private records = new Map<string, RecordData>();
   private jobs = new Map<string, RenderJob>();

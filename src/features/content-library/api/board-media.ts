@@ -8,6 +8,7 @@ import { type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { mediaKind } from "../../../shared/content-media";
 import { ContentLibrary } from "./library";
+import { parseRange } from "../../../shared/lib/http-range";
 
 export class BoardMedia {
   private thumbnails = new Map<string, Promise<string>>();
@@ -177,19 +178,16 @@ export class BoardMedia {
       const range = request.headers.get("range");
       let start = 0,
         end = info.size - 1;
-      if (range) {
-        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-        if (!match || (!match[1] && !match[2]))
-          return new Response(null, {
-            status: 416,
-            headers: { ...cors, "content-range": `bytes */${info.size}` },
-          });
-        start = match[1]
-          ? Number(match[1])
-          : Math.max(0, info.size - Number(match[2]));
-        end = match[1] && match[2] ? Math.min(end, Number(match[2])) : end;
-      }
+      let invalid = false;
+      if (range)
+        try {
+          ({ start, end } = parseRange(range, info.size));
+        } catch {
+          invalid = true;
+        }
+      // Also rejects an empty file without a Range header (end < start).
       if (
+        invalid ||
         !Number.isSafeInteger(start) ||
         !Number.isSafeInteger(end) ||
         start < 0 ||
