@@ -100,7 +100,7 @@ export function ExperienceForm({
       setDirty(false);
       setMessage(
         submit
-          ? "답변을 제출했어요. 초안 작성에 연결됐습니다."
+          ? "답변을 제출했어요. 추가 요청 확인 단계에 연결됐습니다."
           : "답변을 임시저장했어요.",
       );
       await onSaved();
@@ -213,7 +213,7 @@ export function ExperienceForm({
         <button type="button" disabled={busy} onClick={() => void save(false)}>
           답변 임시저장
         </button>
-        <button disabled={busy}>한 번에 제출 · 초안으로</button>
+        <button disabled={busy}>한 번에 제출 · 요청 확인</button>
       </div>
     </form>
   );

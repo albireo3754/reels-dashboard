@@ -1,3 +1,4 @@
+import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
 import { workflowRequest } from "../app/workflow/client";
@@ -82,6 +83,7 @@ if (app.requestSingleInstanceLock()) {
 async function awaitReady() {
   await app.whenReady();
   const root = app.getPath("userData");
+  const logs = new ExecutionLogs(root);
   const store = new LocalStore(root);
   await store.initialize();
   const nativeRoot = app.isPackaged
@@ -162,10 +164,12 @@ async function awaitReady() {
     app.isPackaged
       ? path.join(process.resourcesPath, "editor-runtime")
       : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    logs,
     undefined,
     path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
   );
   const editorService = new EditorService({
+    logs,
     dashboardChanged: (value) => emit("dashboard:changed", value),
     root,
     store,
@@ -204,6 +208,7 @@ async function awaitReady() {
     app.isPackaged
       ? path.join(process.resourcesPath, "editor-runtime")
       : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    logs,
     async (file, width) =>
       (
         await nativeImage.createThumbnailFromPath(file, {
@@ -214,6 +219,7 @@ async function awaitReady() {
   );
   const editor: EditorBridge = fixture ? demo.editor : editorService;
   const cardNews = new CardNewsService({
+    logs,
     root,
     store,
     runtime: app.isPackaged
@@ -307,6 +313,7 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  handle("executionLogs:list", () => logs.list());
   handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
   handle("blog:openCanonical", () => canonicalEditor.open());
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));

@@ -2,7 +2,7 @@
 
 새 워크플로 화면에서 **자료 준비 후 내 경험을 한 폼으로 받기**를 선택하면 `근거 준비 → 내 경험 채우기 → 초안 작성 → 문안 검토 → 화면 구성 → 화면 검토`로 진행한다. 체크는 기본 선택이다. CLI/MCP에서 만들 때는 `collectExperience: true`를 넣는다. 경험 수집이 필요 없는 기존 작업은 원래 흐름을 유지한다.
 
-근거 준비는 현재 세션 또는 명시적으로 실행한 SDK가 수행한다. 촬영물 탐색·원본/프레임 선별·레퍼런스 추출·메뉴/장소 조사 결과를 먼저 만들고, 그 근거에 맞는 질문을 `experience-form.json`으로 작성한다. 이 파일을 준비 단계의 `evidence`에 포함해야 경험 단계가 열린다. 그래프 자체가 Photos나 웹을 수집하거나 다음 SDK 단계를 자동 실행하는 것은 아니다.
+근거 준비는 현재 세션 또는 명시적으로 실행한 SDK가 수행한다. 촬영물 탐색·원본/프레임 선별·레퍼런스 추출·메뉴/장소 조사 결과를 먼저 만들고, 그 근거에 맞는 질문을 `experience-form.json`으로 작성한다. 이 파일(또는 SDK가 `.workflow-results/<job>/experience-form.json`에 저장한 후보)을 준비 단계의 `evidence`에 포함해야 경험 단계가 열린다. 그래프 자체가 Photos나 웹을 수집하거나 다음 SDK 단계를 자동 실행하는 것은 아니다.
 
 ## 준비 결과의 계약
 
@@ -36,3 +36,11 @@
 CLI: `npm run workflow -- experience-save /path/to/answers.json`. MCP: `reels_workflow_experience-save`. 입력은 `{runId, taskId, expectedRevision, answers:[{questionId,status:"answered|unknown|omit",text}], submit:false|true}`다. `get`으로 현재 질문·revision·답변을 읽는다. `experience-media`는 등록된 질문 ID/사진 인덱스만 받아 미리보기 data URL을 반환한다. 기존 Desktop preload와 HTTP/CLI/MCP가 같은 저장소를 사용한다. 외부 폼 서비스, 외부 공유, 게시 기능은 추가하지 않는다.
 
 직접 열기: `http://127.0.0.1:4318/?workflow=1&run=<runId>`. 이 주소는 이 Mac에서 사용한다.
+
+SDK는 기존 읽기 전용 계약을 따른다. 제공된 조사/사진 근거로 질문 후보를 반환하고 호스트가 저장한다. Photos 내보내기·레퍼런스 URL 추출처럼 로컬 쓰기가 필요한 준비는 Dashboard MCP를 사용하는 제작 세션이 맡는다. 자료가 없으면 준비 완료로 제출하지 않는다.
+
+## 검증 — 2026-11-01
+
+전체 단위 146개, 경험 폼 추가 후 관련 워크플로 13개(읽기 전용 SDK 후보→질문 단계 포함), 웹 3개, 새 패키지의 Electron 경험 폼 1개를 통과했다. 타입·FSD·웹/데스크톱 빌드와 diff 공백 검사도 통과했다. 합성 자료로 저장/재시작/중복 제출/미응답/근거 변경/외부 symlink/SDK 우회 차단을 확인했다. 실제 콘텐츠 폼은 질문 8개와 이미지 배치 7개(고유 프레임 5개)가 모두 표시되고 390px에서 가로 넘침이 없음을 확인했다. 실제 사용자 답변은 아직 입력하지 않았다.
+
+새 Mac 빌드: `release/experience-intake/mac-arm64/Reels Dashboard.app`. 기존 실행 앱의 촬영 작업은 재시작하지 않았다. 새 웹 화면과 서버는 사용할 수 있으며, 저장 상태 UI 등 기존 소스 변경을 함께 포함한 별도 패키지를 검증했다.

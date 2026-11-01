@@ -1,3 +1,4 @@
+import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
 import { WorkflowPanel } from "../features/workflow";
 import { ProjectAnalysis } from "../features/media-analysis";
 import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
@@ -52,6 +53,7 @@ type Tab =
   | "editor"
   | "cards"
   | "workflow"
+  | "logs"
   | "blog"
   | "transfers"
   | "settings";
@@ -703,12 +705,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     library: "다음 이야기를 골라요",
     editor: "선택한 장면을 완성해요",
     cards: "읽는 속도에 맞춰 이야기를 전해요",
+    logs: "실행 중인 처리와 종료 이력",
     workflow: "작업을 이어가고, 검토를 쌓아요",
     blog: "원고와 사진을 함께 살펴봐요",
     transfers: "확인하고, 안전하게 옮겨요",
     settings: "내 작업 환경",
   };
   const descriptions: Record<Tab, string> = {
+    logs: "앱에서 실행한 영상 처리의 진행과 결과를 확인해요.",
     workflow: "세션에서 수행하는 제작 작업의 순서와 검토 이력을 관리해요.",
     dashboard: "촬영부터 게시까지, 지금 필요한 다음 작업을 확인해요.",
     cards: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
@@ -728,6 +732,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     ["blog", "블로그"],
     ["workflow", "워크플로"],
     ["transfers", "내보내기"],
+    ...(bridge.executionLogs ? [["logs", "실행 로그"] as [Tab, string]] : []),
   ];
   const navigateTo = (key: Tab) => {
     setTab(key);
@@ -806,6 +811,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                       ? "CARD NEWS · TIMING & MUSIC"
                       : tab === "workflow"
                         ? "워크플로"
+                      : tab === "logs"
+                        ? "실행 로그"
                       : tab === "blog"
                         ? "BLOG WORKSPACE"
                         : tab === "transfers"
@@ -1522,6 +1529,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
         <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}/></div>
+        {tab === "logs" && bridge.executionLogs && <ExecutionLogsPanel bridge={bridge.executionLogs} />}
         {tab === "workflow" && <WorkflowPanel />}
         {tab === "transfers" &&
           (readOnly ? (

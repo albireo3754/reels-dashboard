@@ -31,6 +31,7 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 - Local production dashboard with persistent stages, next actions and public links; media thumbnails, a video/image/audio viewer and paginated browsing of linked footage folders.
 - An integrated video editor: select a Photos or local video, edit timed captions and a place-guide bundle, choose a cover frame and two-line hook, then export video/audio and a PNG cover.
 - A bundled Python/Pillow/FFmpeg runtime, exact engine previews, browser playback proxies, saved drafts, progress and cancellation.
+- Local execution logs for media operations started by the shared app/MCP services: progress, process exit, diagnostics and restart-preserved history in **실행 로그**. Standalone Python/FFmpeg processes are not collected. See [log design and scope](docs/execution-logs.md).
 - Five existing video/cover template cards beside playback, independent grouped position offsets and explicit cover sizing; content and timing are preserved.
 - Reviewed UTF-8 SRT/plain WebVTT caption import and SRT export, using an attributed MIT parser adaptation from OpenCut Classic; see [adoption notes](docs/opencut-adoption.md).
 - Explicitly selected shared snapshots, a common web renderer and an HTTPS update-endpoint adapter.

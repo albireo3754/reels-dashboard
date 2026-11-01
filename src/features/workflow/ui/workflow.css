@@ -235,3 +235,7 @@
 .workflow-panel .experience-toggle input {
   width: auto;
 }
+
+.workflow-followups {padding:16px;border:1px solid #c9d3d0;border-radius:12px;margin:16px 0;}
+.workflow-followups li {margin:16px 0;overflow-wrap:anywhere;}
+.workflow-followups blockquote {margin:8px 0;padding-left:12px;border-left:3px solid #9cb5aa;white-space:pre-wrap;}

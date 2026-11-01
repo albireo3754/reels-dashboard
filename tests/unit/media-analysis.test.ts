@@ -1,3 +1,4 @@
+import { ExecutionLogs } from "../../src/shared/lib/execution-logs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
@@ -41,6 +42,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
       store,
       new ContentLibrary(store),
       "unused",
+      new ExecutionLogs(root),
       [
         {
           id: "fake",
@@ -165,6 +167,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
       store,
       new ContentLibrary(store),
       "unused",
+      new ExecutionLogs(root),
       [
         {
           id: "broken",

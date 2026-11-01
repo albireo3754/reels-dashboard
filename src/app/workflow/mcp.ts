@@ -1,3 +1,4 @@
+import { openFollowupsInput } from "../../shared/followups";
 import {
   saveExperienceInput,
   experienceMediaInput,
@@ -23,6 +24,11 @@ const handle = serveStdio(() => {
     },
   );
   const tools = [
+    [
+      "followups-open",
+      openFollowupsInput,
+      "Reconcile submitted answers and explicitly supplied additional instructions before continuing an existing draft/review. Preserves history; refuses stale tasks.",
+    ],
     [
       "experience-save",
       saveExperienceInput,

@@ -57,7 +57,7 @@ export class MarkupReviewWorker{
     if(!["pending","running"].includes(r.status))continue;
     try{
       if(!this.config.review)throw new Error("검토 결과 파일이 설정되지 않았어요.");
-      const input=markupReviewInput.parse({id:r.id,bundleIds:r.bundleIds,source:r.source,annotations:r.annotations??[]});
+      const input=markupReviewInput.parse({id:r.id,bundleIds:r.bundleIds,source:r.source,guidance:r.guidance??"",annotations:r.annotations??[],visualEvidence:r.visualEvidence??[]});
       if(r.status==="pending"){
         const current=bundleHashes(parse(await readFile(this.config.canon,"utf8")));
         if(input.bundleIds.some(id=>current[id]?.fullHash!==r.basedOn?.[id]?.fullHash)){
@@ -81,7 +81,7 @@ export class MarkupReviewWorker{
           try{stored=JSON.parse(await readFile(this.config.review,"utf8"));}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
           const generatedAt=job.updatedAt;
           const original=paragraphNodes(reviewDocument(input.source));
-          const reviews=result.reviews.map(review=>({...review,basedOn:r.basedOn[review.bundleId],generatedAt,requestId:r.id,provider:"Codex",jobId:job.id,findings:review.findings.map(f=>{const p=original.find(p=>p.id===(f.proposal?.layer==="text"?f.proposal.tid:f.proposal?.layer==="emphasis"?f.proposal.entry.id:undefined));return {...f,status:"proposed",...(p?{sourceAtReview:paragraphSource(p)}:{})};})}));
+          const reviews=result.reviews.map(review=>({...review,basedOn:r.basedOn[review.bundleId],generatedAt,requestId:r.id,provider:"Codex",jobId:job.id,visualSourceFingerprint:input.visualEvidence[0]?.sourceFingerprint,screenshots:input.visualEvidence.flatMap((e,index)=>e.bundleId===review.bundleId?[{width:e.width,index}]:[]),findings:review.findings.map(f=>{const p=original.find(p=>p.id===(f.proposal?.layer==="text"?f.proposal.tid:f.proposal?.layer==="emphasis"?f.proposal.entry.id:undefined));return {...f,status:"proposed",...(p?{sourceAtReview:paragraphSource(p)}:{})};})}));
           stored.reviews=[...(stored.reviews??[]).filter((review:any)=>!input.bundleIds.includes(review.bundleId)),...reviews];
           await atomic(this.config.review,stored);
         }finally{await reviewLock.close();await unlink(this.config.review+".lock");}

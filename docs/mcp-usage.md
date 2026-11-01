@@ -60,7 +60,7 @@ This moves the place-guide group and selects a cover frame, preserving caption t
 
 The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, uploads, or publication. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
 
-Project edits persist across restart. Render job records are in-memory for the current app instance; normal app quit is blocked during active work. Do not claim crash recovery of jobs. `STALE_PROJECT` means re-read and compare; `EDITOR_BUSY` means preserve unsaved UI work. After a timeout or lost connection, inspect state before retrying a mutation.
+Project edits persist across restart. Render job records are in-memory for the current app instance; normal app quit is blocked during active work. Do not claim crash recovery of jobs. Separately, the shared media services persist bounded process execution logs, visible in the desktop **실행 로그** screen; unfinished observations become interrupted on restart, without claiming the OS process has exited. See [execution logs](execution-logs.md). `STALE_PROJECT` means re-read and compare; `EDITOR_BUSY` means preserve unsaved UI work. After a timeout or lost connection, inspect state before retrying a mutation.
 
 The socket directory is private, connection metadata is mode 0600, and requests require the current random token. Both MCP and app boundaries validate input. No credentials or socket tokens are stored in the repository.
 

@@ -3,6 +3,8 @@ import { z } from "zod";
 export const workflowStages = [
   "prepare",
   "experience",
+  "requests",
+  "followup",
   "draft",
   "review",
   "revise",
@@ -13,6 +15,8 @@ export type WorkflowStage = (typeof workflowStages)[number];
 export const stageLabels: Record<WorkflowStage, string> = {
   prepare: "근거 준비",
   experience: "내 경험 채우기",
+  requests: "답변 요청 분류",
+  followup: "추가 작업",
   draft: "초안 작성",
   review: "문안 검토",
   revise: "문안 수정",
@@ -54,6 +58,7 @@ export const workflowAction = z.enum([
   "review-markup",
   "experience-save",
   "experience-media",
+  "followups-open",
 ]);
 export type WorkflowAction = z.infer<typeof workflowAction>;
 export interface WorkflowBridge {
@@ -86,12 +91,14 @@ export interface WorkflowRecord {
   at: string;
 }
 export interface WorkflowTask {
+  followupId?: string;
   taskId: string;
   stage: WorkflowStage;
   instruction: string;
   inputHashes: Record<string, string>;
 }
 export interface WorkflowRun {
+  followups?: import("./followups").Followups;
   collectExperience?: boolean;
   experience?: import("./experience").ExperienceRecord;
   runId: string;

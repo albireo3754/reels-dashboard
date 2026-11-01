@@ -191,7 +191,8 @@ function ConnectedWorkflowPanel() {
                   .filter(
                     (s) =>
                       s !== "revise" &&
-                      (s !== "experience" || run.collectExperience),
+                      (!["experience", "requests", "followup"].includes(s) ||
+                        run.collectExperience),
                   )
                   .map((stage) => (
                     <li
@@ -222,11 +223,84 @@ function ConnectedWorkflowPanel() {
                 </ul>
                 <small>실행 ID: {run.runId}</small>
               </details>
+              {run.followups && (
+                <section
+                  aria-label="추가 요청 작업 목록"
+                  className="workflow-followups"
+                >
+                  <h4>답변에서 분리한 추가 작업</h4>
+                  {run.followups.tasks.length ? (
+                    <ol>
+                      {run.followups.tasks.map((item) => (
+                        <li key={item.id}>
+                          <strong>
+                            {item.title} ·{" "}
+                            {item.status === "done"
+                              ? "처리 완료"
+                              : item.status === "blocked"
+                                ? "보류"
+                                : "대기"}
+                          </strong>
+                          <blockquote>{item.sourceQuote}</blockquote>
+                          {item.summary && <p>{item.summary}</p>}
+                          <small>
+                            {Object.keys(item.evidence).join(" · ")}
+                          </small>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>
+                      분류 결과를 기다리거나, 추가 요청이 없는 것으로 확인된
+                      상태예요.
+                    </p>
+                  )}
+                </section>
+              )}
+              {run.experience?.status === "submitted" &&
+                run.status === "waiting" &&
+                [
+                  "draft",
+                  "review",
+                  "revise",
+                  "layout",
+                  "visual_review",
+                ].includes(run.stage) && (
+                  <button
+                    disabled={busy || run.execution?.status === "running"}
+                    onClick={() =>
+                      void perform(() =>
+                        request("followups-open", {
+                          runId: run.runId,
+                          expectedTaskId: run.task!.taskId,
+                        }),
+                      )
+                    }
+                  >
+                    답변의 추가 요청 다시 확인
+                  </button>
+                )}
               {run.task && (
                 <article className="workflow-task">
                   <h4>현재 요청 · {stageLabels[run.task.stage]}</h4>
-                  <p>{run.task.instruction}</p>
-                  <code>{run.task.taskId}</code>
+                  {["requests", "followup"].includes(run.stage) ? (
+                    <>
+                      <p>
+                        {run.stage === "requests"
+                          ? "경험과 추가 작업 요청을 구분하고 있어요. 필요한 일을 목록으로 정리한 뒤 초안에 반영합니다."
+                          : run.followups?.tasks.find(
+                              (t) => t.id === run.task?.followupId,
+                            )?.instruction}
+                      </p>
+                      <details>
+                        <summary>작업 실행 계약</summary>
+                        <pre>{run.task.instruction}</pre>
+                      </details>
+                    </>
+                  ) : (
+                    <p>{run.task.instruction}</p>
+                  )}
+                  {run.stage !== "experience" && <code>{run.task.taskId}</code>}
                   {run.stage === "experience" && run.experience ? (
                     <ExperienceForm
                       key={run.task.taskId}
@@ -236,7 +310,14 @@ function ConnectedWorkflowPanel() {
                   ) : (
                     <>
                       <button
-                        disabled={busy || run.execution?.status === "running"}
+                        disabled={
+                          busy ||
+                          run.execution?.status === "running" ||
+                          (run.stage === "followup" &&
+                            run.followups?.tasks.find(
+                              (t) => t.id === run.task?.followupId,
+                            )?.executor === "session")
+                        }
                         onClick={() =>
                           void perform(() =>
                             request("/execute", {
@@ -246,7 +327,12 @@ function ConnectedWorkflowPanel() {
                           )
                         }
                       >
-                        Codex로 현재 단계 실행
+                        {run.stage === "followup" &&
+                        run.followups?.tasks.find(
+                          (t) => t.id === run.task?.followupId,
+                        )?.executor === "session"
+                          ? "제작 세션에서 처리할 작업"
+                          : "Codex로 현재 단계 실행"}
                       </button>
                       <TaskResult
                         key={run.task.taskId}

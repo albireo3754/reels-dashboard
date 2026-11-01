@@ -1,3 +1,4 @@
+import {captureMarkupReview} from "./markup-review-capture";
 import {BrowserWindow,session} from "electron";
 import {readFile} from "node:fs/promises";
 import path from "node:path";
@@ -21,7 +22,7 @@ export class DesktopCanonicalEditor{
       try{config=JSON.parse(await readFile(path.join(this.root,"canonical-blog.json"),"utf8"));}
       catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")throw new Error("연결된 마크업 정본이 없어요. 로컬 canonical-blog.json 설정을 확인해주세요.");throw e;}
       if(config.format!=="markup"||![config.canon,config.layout,config.media].every(v=>typeof v==="string"&&path.isAbsolute(v)))throw new Error("마크업 편집기 경로 설정이 올바르지 않아요.");
-      this.handle=await startCanonicalEditor({...config,port:0},this.webRoot);
+      this.handle=await startCanonicalEditor({...config,port:0},this.webRoot,captureMarkupReview);
     }
     const url=this.handle.url+"/?blogEditor=1";
     if(this.window&&!this.window.isDestroyed()){if(!this.background){this.window.show();this.window.focus();}return url;}

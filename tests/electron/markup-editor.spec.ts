@@ -84,7 +84,7 @@ test("real configured manuscript renders read-only with photos and no source wri
       if(latest){
         const index=parse(original).bundles.findIndex(b=>b.id===latest.bundleId);
         await editor.getByRole("navigation",{name:"정본 묶음"}).getByRole("button").nth(index).click();
-        await expect(editor.getByText("검토 완료",{exact:true})).toBeVisible();
+        await expect(editor.getByText("검토 응답 도착",{exact:true})).toBeVisible();
         await expect(editor.locator(".ce-proposal")).toHaveCount(latest.findings.filter((f:any)=>!["withdrawn","rejected","obsolete"].includes(f.status)).length);
         const data=await (await editor.request.get(new URL("/api/blog/document",editor.url()).href)).json();
         const {findingApplicability}=await import("../../src/shared/review-applicability");
@@ -111,9 +111,16 @@ test("markup review button runs engine and refreshes completed results without r
     await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
     server=await startWorkflowServer({root:path.join(profile,"workflow"),port:0,sdkEnv:{},sdkFactory:()=>({
       startThread:()=>({async runStreamed(prompt){
-        const input=JSON.parse(prompt.split("\nInput: ")[1].split("\nReturn resultJson")[0]);
+        const input=JSON.parse((typeof prompt==="string"?prompt:(prompt[0] as {text:string}).text).split("\nInput: ")[1].split("\nReturn resultJson")[0]);
+        expect(Array.isArray(prompt)).toBe(true);
+        expect(input.visualEvidence.map((e:any)=>e.width)).toEqual([360,390,430]);
+        if(Array.isArray(prompt)){
+          expect(prompt.filter(p=>p.type==="local_image")).toHaveLength(3);
+          const img=prompt.find(p=>p.type==="local_image")!;
+          if(img.type==="local_image")await testInfo.attach("captured-bundle",{body:await readFile(img.path),contentType:"image/png"});
+        }
         return {events:(async function*(){
-          yield {type:"item.completed" as const,item:{id:"answer",type:"agent_message" as const,text:JSON.stringify({resultJson:JSON.stringify({requestId:input.id,reviews:[{bundleId:"B1",verdict:"passed",summary:"Fresh review from running engine",findings:[]}]})})}};
+          yield {type:"item.completed" as const,item:{id:"answer",type:"agent_message" as const,text:JSON.stringify({resultJson:JSON.stringify({requestId:input.id,reviews:[{bundleId:"B1",verdict:"passed",summary:"Fresh review from running engine",findings:[],emphasisDecisions:[{tid:"P1",phrase:"First",role:"label",methods:["color","size"],action:"keep",reason:"Label contrast in screenshots",alternatives:"No background needed",findingIds:[]}],visual:{status:"pass",evidence:input.visualEvidence.map((e:any)=>e.sha256),observation:"Label distinct at all supplied widths"}}]})})}};
           yield {type:"turn.completed" as const,usage:{input_tokens:10,output_tokens:10,cached_input_tokens:0,cache_write_input_tokens:0,reasoning_output_tokens:0}};
         })()};
       }})
@@ -126,7 +133,8 @@ test("markup review button runs engine and refreshes completed results without r
     const editor=await opened;
     await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
     await editor.getByRole("button",{name:"이 묶음 검토",exact:true}).click();
-    await expect(editor.getByText("검토 완료",{exact:true})).toBeVisible({timeout:15000});
+    await expect(editor.getByText("검토 응답 도착",{exact:true})).toBeVisible({timeout:30000});
+    await expect(editor.getByText("화면 확인 통과",{exact:true})).toBeVisible();
     await editor.getByText("묶음 평가 요약",{exact:true}).click();
     await expect(editor.getByText("Fresh review from running engine",{exact:true})).toBeVisible();
     await expect(editor.getByText("검토 요청됨 · 엔진 처리 대기",{exact:true})).toHaveCount(0);
@@ -171,5 +179,36 @@ test("independent proposals stay applicable after label recolor and sequential e
   const p=paragraphNodes(saved).find(p=>p.id==="P2")!;
   expect(p.marks.map(m=>m.style.color)).toEqual(["#85613f","#0096dc"]);
   await editor.screenshot({path:testInfo.outputPath("independent-proposals.png"),fullPage:true});
+ }finally{await closeApp(app);await cleanProfile(profile);}
+});
+
+test("explicit live visual review consumes rendered evidence and never edits manuscript",async({},testInfo)=>{
+ test.skip(!process.env.REELS_LIVE_VISUAL_BUNDLE||!process.env.REELS_MARKUP_CONFIG,"Explicit live review opt-in");
+ test.setTimeout(360000);
+ const profile=await makeProfile();let app;
+ const config=JSON.parse(await readFile(process.env.REELS_MARKUP_CONFIG!,"utf8"));
+ const original=await readFile(config.canon,"utf8"),doc=parse(original),id=process.env.REELS_LIVE_VISUAL_BUNDLE!;
+ try{
+  await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+  app=await launchApp(profile);
+  const main=await app.firstWindow();await main.getByRole("button",{name:"블로그",exact:true}).click();
+  const opened=app.waitForEvent("window");await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+  const editor=await opened;
+  await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
+  await editor.getByRole("navigation",{name:"정본 묶음"}).getByRole("button").nth(doc.bundles.findIndex(b=>b.id===id)).click();
+  const requestedAt=Date.now();
+  await editor.getByRole("button",{name:"이 묶음 검토",exact:true}).click();
+  await expect.poll(async()=>{
+    const data=await (await editor.request.get(new URL("/api/blog/review-status",editor.url()).href)).json();
+    const job=data.requests.find((r:any)=>r.bundleIds.includes(id)&&Date.parse(r.updatedAt??"")>=requestedAt);
+    if(job?.status==="failed")throw new Error(job.error);
+    return job?.status;
+  },{timeout:300000,intervals:[1000,2000,4000]}).toBe("completed");
+  const data=await (await editor.request.get(new URL("/api/blog/document",editor.url()).href)).json();
+  const review=data.reviews.find((r:any)=>r.bundleId===id);
+  expect(review.visual.status).not.toBe("unverified");expect(review.visualFresh).toBe(true);expect(review.screenshots).toHaveLength(3);
+  await editor.screenshot({path:testInfo.outputPath("live-visual-review.png"),fullPage:true});
+  expect(await readFile(config.canon,"utf8")).toBe(original);
+  console.log(JSON.stringify({requestId:review.requestId,visual:review.visual,decisions:review.emphasisDecisions.length,findings:review.findings.length}));
  }finally{await closeApp(app);await cleanProfile(profile);}
 });

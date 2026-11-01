@@ -37,3 +37,5 @@
 .blog-extract-form>button{grid-column:1/-1;justify-self:start}
 .blog-extract-result{overflow-wrap:anywhere}
 .blog-reference-run-text{white-space:pre-wrap;line-height:1.7}
+
+.blog-preview-panel{scroll-margin-top:85px;outline:none;margin-top:20px}.blog-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.blog-preview-heading h3{margin:0;font-size:18px}

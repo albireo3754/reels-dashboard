@@ -85,6 +85,8 @@ export async function startWorkflowServer(options: {
         switch (url.pathname) {
           case "/api/workflows/create":
             return json(200, await runtime.create(input));
+          case "/api/workflows/followups-open":
+            return json(200, await runtime.openFollowups(input));
           case "/api/workflows/experience-save":
             return json(200, await runtime.saveExperience(input));
           case "/api/workflows/experience-media":

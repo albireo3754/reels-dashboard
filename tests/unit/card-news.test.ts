@@ -1,3 +1,4 @@
+import { ExecutionLogs } from "../../src/shared/lib/execution-logs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -54,6 +55,7 @@ test("saved plans survive restart, reject stale writes and ungranted assets", as
     const store = new LocalStore(root);
     await store.initialize();
     const options = {
+      logs: new ExecutionLogs(root),
       root,
       store,
       runtime: root,

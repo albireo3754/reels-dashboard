@@ -51,6 +51,7 @@ export function CanonicalBlogEditor() {
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   const [reviewJobs,setReviewJobs]=useState<Array<{id:string;bundleIds:string[];status:string;error?:string}>>([]);
   const [reviewStatusError,setReviewStatusError]=useState("");
+  const [reviewPreparing,setReviewPreparing]=useState(false);
   const [queued, setQueued] = useState<string[]>([]);
   const [selectionFormat, setSelectionFormat] = useState<SelectionFormat>();
   const [narrow, setNarrow] = useState(() => window.innerWidth <= 1080);
@@ -215,7 +216,7 @@ export function CanonicalBlogEditor() {
     const savedBeforeReview=dirty;
     const current = savedBeforeReview ? await save("review") : doc;
     if (!current) return;
-    setBusy(true);
+    setBusy(true);setReviewPreparing(true);
     setError("");
     try {
       await api("review", { revision: current.revision, bundleIds: ids });
@@ -226,7 +227,7 @@ export function CanonicalBlogEditor() {
     } catch (e) {
       setError((savedBeforeReview?"저장은 완료됐지만 검토 요청에 실패했어요. ":"검토 요청에 실패했어요. ")+String(e));
     } finally {
-      setBusy(false);
+      setBusy(false);setReviewPreparing(false);
     }
   }
   useEffect(()=>{
@@ -536,9 +537,10 @@ export function CanonicalBlogEditor() {
           <hr />
           <h3>AI 검토 결과</h3>
           {doc.format==="markup"&&<>
+            {reviewPreparing&&<p role="status">검토할 화면을 준비하고 있어요…</p>}
             {reviewStatusError&&<p role="alert">{reviewStatusError}</p>}
             {reviewJobs.filter(j=>!j.bundleIds.length||j.bundleIds.includes(selected)).slice(0,1).map(j=><div key={j.id} role="status">
-              <p>{({pending:"검토 시작 대기",running:"AI 검토 실행 중",completed:"검토 완료",failed:"검토 실패",cancelled:"검토 중지",interrupted:"실행 중단",stale:"본문 변경 · 다시 검토 필요"} as Record<string,string>)[j.status]??j.status}</p>
+              <p>{({pending:"검토 시작 대기",running:"AI 검토 실행 중",completed:"검토 응답 도착",failed:"검토 실패",cancelled:"검토 중지",interrupted:"실행 중단",stale:"본문 변경 · 다시 검토 필요"} as Record<string,string>)[j.status]??j.status}</p>
               {j.error&&<p>{j.error}</p>}
               {["failed","cancelled","interrupted","stale"].includes(j.status)&&<button disabled={busy} onClick={()=>void request("selected")}>검토 다시 실행</button>}
             </div>)}
@@ -552,6 +554,16 @@ export function CanonicalBlogEditor() {
           )}
           {review ? (
             <>
+              {doc.format==="markup"&&<section className="ce-visual-review" aria-label="강조·화면 검수">
+                <strong>{!review.visual||review.visual.status==="unverified"?"화면 미검증":dirty||!review.visualFresh?"화면 재확인 필요":review.visual.status==="pass"?"화면 확인 통과":"강조·화면 수정 필요"}</strong>
+                <p>{!review.visual?"이전 결과에는 실제 화면 검증 근거가 없습니다.":review.visual.status==="unverified"?"실제 화면을 확인하지 않은 서식 제안입니다. 화면 검수를 완료해야 합니다.":dirty||!review.visualFresh?"검토 이후 원고가 바뀌었습니다. 아래 화면은 검토 당시 기록입니다.":review.visual.observation}</p>
+                {!!review.screenshots?.length&&<details><summary>검토한 화면 보기</summary>{review.screenshots.map(e=><figure key={e.index}><figcaption>{e.width}px</figcaption><img alt={e.width+"px 검토 당시 묶음 화면"} src={"/api/blog/review-image?request="+encodeURIComponent(review.requestId??"")+"&index="+e.index}/></figure>)}</details>}
+                {review.emphasisDecisions?.map((d,i)=><details key={i}>
+                  <summary>{d.phrase} · {d.role}</summary>
+                  <p>선택: {d.methods.map(m=>({weight:"굵기",color:"색",background:"배경",size:"크기",marker:"표식",none:"강조 없음"})[m]).join(" · ")} · {({keep:"유지",change:"변경 제안",remove:"제거 제안",unconfirmed:"미확인"})[d.action]}</p>
+                  <p>{d.reason}</p><p>다른 방식과 비교: {d.alternatives}</p>
+                </details>)}
+              </section>}
               <details className="ce-review-summary">
                 <summary>묶음 평가 요약</summary>
                 <p>{review.summary}</p>

@@ -1,3 +1,4 @@
+import { ExecutionLogs } from "../../src/shared/lib/execution-logs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -45,6 +46,7 @@ test("board media is paginated, scoped to current links, and rejects symlink esc
     library,
     path.join(root, "cache"),
     "/unused",
+    new ExecutionLogs(root),
     async () => "data:image/png;base64,fixture",
   );
   try {

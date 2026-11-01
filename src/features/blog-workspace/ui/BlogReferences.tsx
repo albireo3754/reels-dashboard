@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BlogBridge, BlogResult } from "../../../shared/blog";
 import {
   blockKind,
@@ -12,6 +12,18 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
     [active, setActive] = useState(""),
     [preview, setPreview] = useState(""),
     [loading, setLoading] = useState(false);
+  const previewPanel=useRef<HTMLElement>(null);
+  const previewOpener=useRef<HTMLButtonElement|null>(null);
+  const [previewReveal,setPreviewReveal]=useState(0);
+  useEffect(()=>{
+    if(!preview)return;
+    previewPanel.current?.scrollIntoView({block:"start",behavior:"auto"});
+    previewPanel.current?.focus({preventScroll:true});
+  },[preview,previewReveal]);
+  const closePreview=()=>{
+    setPreview("");
+    if(previewOpener.current?.isConnected)previewOpener.current.focus();
+  };
   useEffect(() => {
     if (!api) return;
     const refresh = () =>
@@ -147,10 +159,13 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
             {result.preview && (
               <button
                 disabled={loading}
-                onClick={async () => {
+                aria-expanded={!!preview&&active===result.id}
+                onClick={async (event) => {
+                  previewOpener.current=event.currentTarget;
                   setLoading(true);
                   try {
                     setPreview(await api!.previewResult(result.id));
+                    setPreviewReveal(v=>v+1);
                     setActive(result.id);
                     setError("");
                   } catch (e) {
@@ -173,8 +188,11 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
         </p>
       )}
       {preview && (
-        <section>
-          <button onClick={() => setPreview("")}>미리보기 닫기</button>
+        <section ref={previewPanel} tabIndex={-1} className="blog-preview-panel" aria-label="템플릿 미리보기">
+          <div className="blog-preview-heading">
+            <h3>{results.find(r=>r.id===active)?.names.join(" · ")??"레퍼런스"} · 미리보기</h3>
+            <button onClick={closePreview}>미리보기 닫기</button>
+          </div>
           <iframe
             className="blog-result-preview"
             title="저장된 블로그 템플릿 미리보기"

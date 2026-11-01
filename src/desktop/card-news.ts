@@ -1,6 +1,7 @@
+import { ExecutionLogs } from "../shared/lib/execution-logs";
+import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
 import { editOwner, recordExports } from "../shared/production-project";
-import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { promisify } from "node:util";
+import { type ChildProcess } from "node:child_process";
 import {
   mkdir,
   readFile,
@@ -26,7 +27,6 @@ import { timeline, musicError, videoError } from "../shared/card-news-model";
 import type { LocalStore } from "../shared/lib/storage";
 import type { Dashboard } from "../shared/contracts";
 
-const execute = promisify(execFile);
 type AssetRecord = {
   id: string;
   kind: "image" | "audio" | "video";
@@ -36,6 +36,7 @@ type AssetRecord = {
   duration?: number;
 };
 type Options = {
+  logs: ExecutionLogs;
   root: string;
   runtime: string;
   store: LocalStore;
@@ -52,6 +53,10 @@ function id(value: unknown): string {
   return value;
 }
 export class CardNewsService implements CardNewsBridge {
+  private execute(executable: string, args: string[], options: import("node:child_process").ExecFileOptions) {
+    const label = path.basename(executable) === "ffprobe" ? "카드뉴스 미디어 정보 확인" : path.basename(executable) === "ffmpeg" ? "카드뉴스 재생 영상 준비" : "카드뉴스 이미지 생성";
+    return loggedExecFile(this.options.logs, { source: "card-news", label, jobId: this.current?.id }, executable, args, options);
+  }
   private queue: Promise<unknown> = Promise.resolve();
   private jobs = new Map<string, CardJob>();
   private child?: ChildProcess;
@@ -216,7 +221,7 @@ export class CardNewsService implements CardNewsBridge {
         throw new Error("MP4·MOV·M4V 영상을 선택해주세요.");
       const probe = JSON.parse(
         (
-          await execute(
+          await this.execute(
             path.join(this.options.runtime, "bin/ffprobe"),
             [
               "-v",
@@ -256,7 +261,7 @@ export class CardNewsService implements CardNewsBridge {
         ? "zscale=t=linear:npl=100,format=gbrpf32le,tonemap=tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,"
         : "";
       try {
-        await execute(
+        await this.execute(
           path.join(this.options.runtime, "bin/ffmpeg"),
           [
             "-n",
@@ -306,7 +311,7 @@ export class CardNewsService implements CardNewsBridge {
         throw new Error("MP3·M4A·WAV·AAC 파일을 선택해주세요.");
       const probe = JSON.parse(
         (
-          await execute(
+          await this.execute(
             path.join(this.options.runtime, "bin/ffprobe"),
             [
               "-v",
@@ -373,7 +378,7 @@ export class CardNewsService implements CardNewsBridge {
       JSON.stringify({ cards, darkness: plan.style.darkness }),
       { mode: 0o600 },
     );
-    await execute(
+    await this.execute(
       path.join(this.options.runtime, "reels-editor"),
       ["card-frames", request, work],
       { timeout: 60000 },
@@ -574,19 +579,20 @@ export class CardNewsService implements CardNewsBridge {
         temporary,
       );
       await new Promise<void>((resolve, reject) => {
-        const child = spawn(
+        const child = loggedSpawn(
+          this.options.logs, { source: "card-news", label: "카드뉴스 영상 인코딩", projectId: plan.id, jobId: job.id },
           path.join(this.options.runtime, "bin/ffmpeg"),
           args,
-          { stdio: ["ignore", "pipe", "pipe"] },
+          { stdio: ["ignore", "pipe", "pipe"] }, total,
         );
         this.child = child;
         let errors = "",
           progress = "";
         const timeout = setTimeout(() => child.kill("SIGKILL"), 15 * 60 * 1000);
-        child.stderr.on("data", (chunk) => {
+        child.stderr!.on("data", (chunk) => {
           errors = (errors + chunk).slice(-4000);
         });
-        child.stdout.on("data", (chunk) => {
+        child.stdout!.on("data", (chunk) => {
           progress += chunk;
           const lines = progress.split("\n");
           progress = lines.pop()!;

@@ -130,7 +130,7 @@ test("experience intake survives restart, preserves original answers, rejects by
       ],
       submit: true,
     });
-    assert.equal(run.stage, "draft");
+    assert.equal(run.stage, "requests");
     assert.equal(run.experience!.status, "submitted");
     const exported = JSON.parse(
       await readFile(path.join(root, run.experience!.exports[0]), "utf8"),
