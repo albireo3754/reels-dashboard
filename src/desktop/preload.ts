@@ -28,6 +28,7 @@ const workbench: WorkbenchBridge = {
   onShortcut: (callback) => subscribe("workbench:shortcut", callback),
 };
 const bridge: DashboardBridge = {
+  workflow: { request: (action, input) => invoke("workflow:request", action, input) },
   blog: { readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
   routeMap: { load: (id) => invoke("routeMap:load", id) },
   cardNews: {

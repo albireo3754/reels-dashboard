@@ -59,6 +59,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly workflow?: import("./workflow").WorkflowBridge;
   readonly blog?: import("./blog").BlogBridge;
   readonly projects?: {
     merge(

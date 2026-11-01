@@ -1,3 +1,5 @@
+import { workflowRequest } from "../app/workflow/client";
+import { workflowAction } from "../shared/workflow";
 import { BlogLibrary } from "./blog-library";
 import {
   app,
@@ -272,6 +274,7 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
   handle("blog:load", (projectId) => blogs.load(projectId));
   handle("blog:save", (draft) => blogs.save(draft));

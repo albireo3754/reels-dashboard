@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## LangGraph · Codex SDK · 관측 — 2026-11-01
+
+- [x] Electron 없이 웹·CLI·MCP로 제어하는 LangGraph 편집 루프, SQLite 재개·중복/오래된 입력 차단.
+- [x] Codex SDK 명시 실행·중지, 로그인 기본값 및 API 키 설정 시 제한된 인증 폴백.
+- [x] 실행 모델·역할·토큰·예상 비용 관측, OpenTelemetry 및 선택적 Langfuse 매핑.
+- [x] Dashboard와 Electron 연결 및 공통 블로그 묶음 검토 API. 정본 블로그 편집기·미디어 분석은 별도 작업으로 유지.
+- [x] 분리 워크트리 검증: 단위95개·웹2개·Electron 연결1개, 타입·빌드·아키텍처·원본 명세 보존·공개 소스 검사 통과.
+- [사용법](docs/workflows.md) · [관측 계약](docs/ai-observability.md)
+
 ## 블로그 작업 — 2026-10-31
 
 - [x] 기존 프로젝트의 명시 연결 Markdown 중 선택한 구간과 연결 사진으로 배치, 순서 조정·기기 내 비공개 저장/재열기·모바일/PC 미리보기. 원고 정본은 수정하지 않음.
