@@ -13,7 +13,10 @@ import { followCoverDefaults } from "../shared/editor";
 import "./editor.css";
 import { TemplatePanel } from "../features/editor-templates";
 import { CaptionFileTools } from "../features/subtitle-files";
-import { validateEditSettings } from "../shared/editor-model";
+import {
+  selectCoverTemplate,
+  validateEditSettings,
+} from "../shared/editor-model";
 import { errorMessage } from "../shared/errors";
 
 type EditorProps = {
@@ -846,21 +849,12 @@ export function Editor({
                   <select
                     value={project.settings.cover.template}
                     onChange={(e) =>
-                      changeSettings((s) => {
-                        const { hookSize: _, ...cover } = s.cover;
-                        return {
-                          ...s,
-                          cover: {
-                            ...cover,
-                            ...(e.target.value === "rosy-follow" &&
-                            !cover.hook.trim()
-                              ? { hook: followCoverDefaults.hook }
-                              : {}),
-                            template: e.target
-                              .value as EditSettings["cover"]["template"],
-                          },
-                        };
-                      })
+                      changeSettings((s) =>
+                        selectCoverTemplate(
+                          s,
+                          e.target.value as EditSettings["cover"]["template"],
+                        ),
+                      )
                     }
                     disabled={!!busy || rendering}
                   >
