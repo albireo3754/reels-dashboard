@@ -32,6 +32,9 @@ import {
   type WorkflowRecord,
   type SdkJob,
   executeWorkflowInput,
+  followupReopenStages,
+  isReviewStage,
+  requiresSessionWork,
 } from "../../shared/workflow";
 
 const intakeInstruction = `
@@ -437,7 +440,7 @@ export class WorkflowRuntime {
         throw new Error(
           "USER_INPUT_REQUIRED: 경험 폼에서 답변을 제출해주세요.",
         );
-      const review = run.stage === "review" || run.stage === "visual_review";
+      const review = isReviewStage(run.stage);
       if (!["cancel", "blocked"].includes(input.outcome)) {
         if (
           review
@@ -567,9 +570,7 @@ export class WorkflowRuntime {
       if (run.status !== "waiting" || run.task?.taskId !== input.expectedTaskId)
         throw new Error("STALE_TASK: refresh before reconciling requests");
       if (
-        !["draft", "review", "revise", "layout", "visual_review"].includes(
-          run.stage,
-        ) ||
+        !followupReopenStages.includes(run.stage) ||
         run.experience?.status !== "submitted"
       )
         throw new Error(
@@ -787,11 +788,7 @@ export class WorkflowRuntime {
         JSON.stringify(run.task.inputHashes)
       )
         throw new Error("STALE_INPUT: refresh the task before executing");
-      if (
-        run.stage === "followup" &&
-        run.followups?.tasks.find((t) => t.id === run.task?.followupId)
-          ?.executor === "session"
-      )
+      if (requiresSessionWork(run))
         throw new Error(
           "SESSION_WORK_REQUIRED: 이 작업은 제작 세션에서 처리해주세요.",
         );

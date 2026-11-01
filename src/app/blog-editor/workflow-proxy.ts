@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { workflowRequest } from "../workflow/client";
-import { workflowAction, type WorkflowAction } from "../../shared/workflow";
+import {
+  isReadOnlyWorkflowAction,
+  workflowAction,
+  type WorkflowAction,
+} from "../../shared/workflow";
 
 /** Same-origin bridge to the single workflow backend; no second SDK runtime or credential store. */
 export async function proxyWorkflow(
@@ -29,7 +33,7 @@ export async function proxyWorkflow(
     )
       throw new Error("Same-origin JSON required");
     action = workflowAction.parse(url.pathname.slice("/api/workflows/".length));
-    if (["list", "get", "job", "capabilities"].includes(action))
+    if (isReadOnlyWorkflowAction(action))
       throw new Error("Invalid workflow action");
     let body = "";
     for await (const chunk of req) {

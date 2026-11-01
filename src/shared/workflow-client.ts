@@ -1,22 +1,14 @@
-import type { WorkflowAction } from "./workflow";
+import {
+  workflowEndpoint,
+  workflowFetchInit,
+  type WorkflowAction,
+} from "./workflow";
 export async function workflowCall(action: WorkflowAction, input: any = {}) {
   if (window.reels?.workflow)
     return window.reels.workflow.request(action, input);
-  let endpoint = "/api/workflows";
-  if (action === "get")
-    endpoint += `/run?id=${encodeURIComponent(input.runId)}`;
-  else if (action === "job")
-    endpoint += `/job?id=${encodeURIComponent(input.jobId)}`;
-  else if (action !== "list") endpoint += "/" + action;
   const response = await fetch(
-    endpoint,
-    ["list", "get", "job", "capabilities"].includes(action)
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        },
+    workflowEndpoint(action, input),
+    workflowFetchInit(action, input),
   );
   if (!response.headers.get("content-type")?.includes("application/json"))
     throw new Error(

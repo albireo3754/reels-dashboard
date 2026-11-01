@@ -1,23 +1,22 @@
 import { ExperienceForm } from "./ExperienceForm";
 import { useCallback, useEffect, useState } from "react";
 import {
+  canReopenFollowups,
+  currentFollowup,
+  isReviewStage,
+  requiresSessionWork,
+  runStatusLabels,
   stageLabels,
-  workflowStages,
+  visibleStages,
+  type WorkflowAction,
   type WorkflowRun,
 } from "../../../shared/workflow";
 import "./workflow.css";
 
 import { workflowCall } from "../../../shared/workflow-client";
 import { SdkProgress } from "../../../shared/ui/SdkProgress";
-import type { WorkflowAction } from "../../../shared/workflow";
 const request = (action = "", input?: unknown) =>
   workflowCall((action.replace(/^\//, "") || "list") as WorkflowAction, input);
-const statuses = {
-  waiting: "작업 대기",
-  ready: "검토 완료",
-  blocked: "보류",
-  cancelled: "취소",
-};
 export function WorkflowPanel() {
   if (location.protocol === "file:" && !window.reels?.workflow)
     return (
@@ -173,7 +172,7 @@ function ConnectedWorkflowPanel() {
             >
               <strong>{r.title}</strong>
               <small>
-                {statuses[r.status]} · {stageLabels[r.stage]}
+                {runStatusLabels[r.status]} · {stageLabels[r.stage]}
               </small>
             </button>
           ))}
@@ -184,29 +183,22 @@ function ConnectedWorkflowPanel() {
             <>
               <div className="workflow-heading">
                 <h3>{run.title}</h3>
-                <span>{statuses[run.status]}</span>
+                <span>{runStatusLabels[run.status]}</span>
               </div>
               <ol className="workflow-stages" aria-label="제작 단계">
-                {workflowStages
-                  .filter(
-                    (s) =>
-                      s !== "revise" &&
-                      (!["experience", "requests", "followup"].includes(s) ||
-                        run.collectExperience),
-                  )
-                  .map((stage) => (
-                    <li
-                      key={stage}
-                      aria-current={
-                        run.stage === stage ||
-                        (stage === "draft" && run.stage === "revise")
-                          ? "step"
-                          : undefined
-                      }
-                    >
-                      {stageLabels[stage]}
-                    </li>
-                  ))}
+                {visibleStages(run).map((stage) => (
+                  <li
+                    key={stage}
+                    aria-current={
+                      run.stage === stage ||
+                      (stage === "draft" && run.stage === "revise")
+                        ? "step"
+                        : undefined
+                    }
+                  >
+                    {stageLabels[stage]}
+                  </li>
+                ))}
               </ol>
               <p>
                 수정 {run.revisions}회 / 한도 {run.maxRevisions}회 · 최종 발행은
@@ -257,29 +249,21 @@ function ConnectedWorkflowPanel() {
                   )}
                 </section>
               )}
-              {run.experience?.status === "submitted" &&
-                run.status === "waiting" &&
-                [
-                  "draft",
-                  "review",
-                  "revise",
-                  "layout",
-                  "visual_review",
-                ].includes(run.stage) && (
-                  <button
-                    disabled={busy || run.execution?.status === "running"}
-                    onClick={() =>
-                      void perform(() =>
-                        request("followups-open", {
-                          runId: run.runId,
-                          expectedTaskId: run.task!.taskId,
-                        }),
-                      )
-                    }
-                  >
-                    답변의 추가 요청 다시 확인
-                  </button>
-                )}
+              {canReopenFollowups(run) && (
+                <button
+                  disabled={busy || run.execution?.status === "running"}
+                  onClick={() =>
+                    void perform(() =>
+                      request("followups-open", {
+                        runId: run.runId,
+                        expectedTaskId: run.task!.taskId,
+                      }),
+                    )
+                  }
+                >
+                  답변의 추가 요청 다시 확인
+                </button>
+              )}
               {run.task && (
                 <article className="workflow-task">
                   <h4>현재 요청 · {stageLabels[run.task.stage]}</h4>
@@ -288,9 +272,7 @@ function ConnectedWorkflowPanel() {
                       <p>
                         {run.stage === "requests"
                           ? "경험과 추가 작업 요청을 구분하고 있어요. 필요한 일을 목록으로 정리한 뒤 초안에 반영합니다."
-                          : run.followups?.tasks.find(
-                              (t) => t.id === run.task?.followupId,
-                            )?.instruction}
+                          : currentFollowup(run)?.instruction}
                       </p>
                       <details>
                         <summary>작업 실행 계약</summary>
@@ -313,10 +295,7 @@ function ConnectedWorkflowPanel() {
                         disabled={
                           busy ||
                           run.execution?.status === "running" ||
-                          (run.stage === "followup" &&
-                            run.followups?.tasks.find(
-                              (t) => t.id === run.task?.followupId,
-                            )?.executor === "session")
+                          requiresSessionWork(run)
                         }
                         onClick={() =>
                           void perform(() =>
@@ -327,10 +306,7 @@ function ConnectedWorkflowPanel() {
                           )
                         }
                       >
-                        {run.stage === "followup" &&
-                        run.followups?.tasks.find(
-                          (t) => t.id === run.task?.followupId,
-                        )?.executor === "session"
+                        {requiresSessionWork(run)
                           ? "제작 세션에서 처리할 작업"
                           : "Codex로 현재 단계 실행"}
                       </button>
@@ -418,7 +394,7 @@ function TaskResult({
   busy: boolean;
   onSubmit: (input: unknown) => Promise<void>;
 }) {
-  const review = run.stage === "review" || run.stage === "visual_review";
+  const review = isReviewStage(run.stage);
   return (
     <form
       className="workflow-result"
