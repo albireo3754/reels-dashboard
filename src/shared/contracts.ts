@@ -16,13 +16,23 @@ export const commandMethods = [
 ] as const;
 export type CommandMethod = (typeof commandMethods)[number];
 export type Arguments = Record<string, string>;
-export type Stage =
-  | "idea"
-  | "captured"
-  | "selected"
-  | "editing"
-  | "review"
-  | "published";
+export const projectStages = [
+  "idea",
+  "captured",
+  "selected",
+  "editing",
+  "review",
+  "published",
+] as const;
+export type Stage = (typeof projectStages)[number];
+export const projectStageLabels: Record<Stage, string> = {
+  idea: "아이디어",
+  captured: "촬영 완료",
+  selected: "촬영본 선택",
+  editing: "편집 중",
+  review: "검토 대기",
+  published: "게시 완료",
+};
 export interface LocalResource {
   role: "footage" | "final" | "cover" | "draft" | "document" | "folder";
   path: string;

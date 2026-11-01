@@ -24,7 +24,7 @@ import type {
   Stage,
   Status,
 } from "../shared/contracts";
-import { emptyDashboard } from "../shared/contracts";
+import { emptyDashboard, projectStageLabels } from "../shared/contracts";
 import type { EditorProject } from "../shared/editor";
 import {
   BoardToolbar,
@@ -63,14 +63,6 @@ type ActivePlan = {
   kind: "export" | "move";
   path: string;
   envelope: PlanEnvelope;
-};
-const stages: Record<Stage, string> = {
-  idea: "아이디어",
-  captured: "촬영 완료",
-  selected: "촬영본 선택",
-  editing: "편집 중",
-  review: "검토 대기",
-  published: "게시 완료",
 };
 const permissions: Record<string, string> = {
   "not-determined": "아직 요청하지 않음",
@@ -1896,7 +1888,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   }
                   disabled={!!busy}
                 >
-                  {Object.entries(stages).map(([key, name]) => (
+                  {Object.entries(projectStageLabels).map(([key, name]) => (
                     <option value={key} key={key}>
                       {name}
                     </option>

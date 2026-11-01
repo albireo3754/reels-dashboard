@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import type { DashboardBridge, Project } from "../../../shared/contracts";
+import {
+  projectStageLabels as stages,
+  projectStages,
+  type DashboardBridge,
+  type Project,
+} from "../../../shared/contracts";
 import type {
   ContentMediaItem,
   ContentMediaPage,
 } from "../../../shared/content-media";
 import { resourceLabels } from "../../../shared/content-media";
 import "./content-board.css";
-const stages = {
-  idea: "아이디어",
-  captured: "촬영 완료",
-  selected: "촬영본 선택",
-  editing: "편집 중",
-  review: "검토 대기",
-  published: "게시 완료",
-};
 const labels = {
   video: "영상",
   image: "사진",
@@ -27,7 +24,7 @@ const errorText = (e: unknown) =>
     ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")
     : "자료를 불러오지 못했어요.";
 export function StageProgress({ project }: { project: Project }) {
-  const keys = Object.keys(stages) as (keyof typeof stages)[];
+  const keys = projectStages;
   return (
     <div
       className="board-stage-progress"
