@@ -28,7 +28,16 @@ const workbench: WorkbenchBridge = {
   onShortcut: (callback) => subscribe("workbench:shortcut", callback),
 };
 const bridge: DashboardBridge = {
-  blog: { readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
+  workflow: { request: (action, input) => invoke("workflow:request", action, input) },
+  blog: { openCanonical: () => invoke("blog:openCanonical"), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
+  analysis: {
+    mosaicSample: (projectId, sampleId) => invoke("analysis:mosaicSample", projectId, sampleId),
+    mosaicExport: (input) => invoke("analysis:mosaicExport", input),
+    providers: () => invoke("analysis:providers"),
+    start: (v) => invoke("analysis:start", v),
+    search: (v) => invoke("analysis:search", v),
+    correct: (v) => invoke("analysis:correct", v),
+  },
   routeMap: { load: (id) => invoke("routeMap:load", id) },
   cardNews: {
     preview: (plan) => invoke("cardNews:preview", plan),

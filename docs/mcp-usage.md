@@ -139,3 +139,19 @@ image timeouts were returned separately. Personal evidence is kept in the conten
 workspace, not this repository. Packaged output: `release/photos-search/mac-arm64/Reels Dashboard.app`.
 The packaged helper hash was checked against the tested release helper. Existing
 running app sessions are not automatically replaced by building this artifact.
+
+## Blog reference extraction — 2026-11-01
+
+- `reels_extract_blog_reference {url, outputDirectory?, name?}`: runs the same in-app extractor as the Blog tab. Writes `<outputDirectory>/<blogId>-<logNo>/` (structures, templates with original text and photo CDN URLs, report, restore viewer), registers it in the Blog tab results and returns `{directory, resultId, blocks, kinds, warnings, fidelity, mobileCrosscheck}`. Omitting `outputDirectory` uses the folder last chosen in the app; with none, the call fails. One extraction at a time, ~10–60 s.
+- `reels_list_blog_references {}`: registered result folders with author names, block counts, preview availability and read errors (a moved folder reports an error).
+- `reels_link_blog_reference {directory}` / `reels_unlink_blog_reference {id}`: register an existing result folder or remove a registration (files are never deleted). The open Blog tab list refreshes automatically after any link, unlink or extraction.
+
+Details and data policy: [blog workspace](blog-workspace.md#url-추출--2026-11-01).
+
+## Image analysis context intake
+
+Before `reels_start_analysis`, follow [context intake](media-analysis.md#context-intake-before-every-analysis): read the project's authoritative records and `reels_search_analysis({projectId})`, prepare/reconcile context, and pass it with the current analysis `expectedRevision`. Only omit context when the saved context has been checked and is still current. Verify the returned run's context snapshot and terminal state, then inspect representative menu/place searches and unrelated-scene counterexamples. Project title alone is not adequate intake when richer facts already exist. The runtime does not currently reject empty context; do not mistake this operator requirement for an implemented runtime guard.
+
+### Dashboard MCP versus analyzer MCP
+
+`reels_*` tools operate the dashboard from the user's agent. The Codex image analyzer instead receives an invocation-local `reels_analysis` MCP with only `get_analysis_context({})`. This serves a frozen batch snapshot and does not connect to the dashboard's editing or job-start tools. Do not register the full dashboard MCP inside the analyzer. See [isolation scope and verification](media-analysis.md#isolated-codex-invocation-with-a-batch-mcp--2026-10-31).

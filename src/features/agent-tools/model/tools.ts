@@ -1,5 +1,7 @@
+import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
 import { mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
+import { blogExtractInput } from "../../../shared/blog-restore";
 import {
   contentInputSchema,
   localPathSchema,
@@ -23,6 +25,46 @@ const nativeID = z
   .max(500)
   .refine((v) => !v.includes("\0"));
 export const toolDefinitions = {
+  reels_start_analysis: {
+    description:
+      "Analyze a linked project folder with the selected image analyzer. Sends sampled images to the provider using existing CLI login. Async: query analysis for progress; never automatically retry uncertain starts. Photos and three video stills per source, no motion/audio claims.",
+    input: analysisStart,
+    readOnly: false,
+  },
+  reels_search_analysis: {
+    description:
+      "Search project image/frame descriptions, tags, OCR and human corrections; includes run progress/errors and source timestamps.",
+    input: analysisQuery,
+    readOnly: true,
+  },
+  reels_correct_analysis: {
+    description:
+      "Preserve a human correction separately from model results, with revision protection.",
+    input: analysisCorrection,
+    readOnly: false,
+  },
+
+  reels_extract_blog_reference: {
+    description:
+      "Extract a Naver blog post (SmartEditor ONE) into a local reference folder: DOM block order, nested computed styles, partial text formatting, original text, photo groups/geometry and real anchors. Photos are stored as original CDN URLs only (no files). Validates block/character/image/anchor consistency, cross-checks component counts with the mobile page, writes reference-structures/templates/restore-report and a restore viewer, registers the folder in the Blog tab results, then re-renders it and compares each block height with the original. One extraction at a time; takes ~10-60s. Does not publish, comment or log in.",
+    input: blogExtractInput,
+    readOnly: false,
+  },
+  reels_list_blog_references: {
+    description: "List registered blog reference result folders (authors, block counts, preview availability, read errors such as a moved folder).",
+    input: z.strictObject({}),
+    readOnly: true,
+  },
+  reels_link_blog_reference: {
+    description: "Register an existing result folder containing reference-structures.json/.md (e.g. after the folder was moved). Idempotent. The Blog tab list refreshes automatically.",
+    input: z.strictObject({ directory: absolutePath }),
+    readOnly: false,
+  },
+  reels_unlink_blog_reference: {
+    description: "Remove a registered result folder from the Blog tab list by id (from reels_list_blog_references). Files are not deleted.",
+    input: z.strictObject({ id: z.string().regex(/^[a-f0-9]{64}$/) }),
+    readOnly: false,
+  },
   reels_merge_projects: {
     description: "Merge explicit source dashboard cards into one target production project. Preserves files and edit bindings, creates a full pre-merge backup, and rejects stale revisions. Target title, stage, date and sharing win; differing publication URLs are rejected.",
     input: mergeProjectsSchema,

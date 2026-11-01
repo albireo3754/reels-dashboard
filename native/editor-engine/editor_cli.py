@@ -20,6 +20,7 @@ from reels_editor.features.thumbnail import run as thumbnail_main
 from reels_editor.shared.media import probe_video, run_ffmpeg_progress
 from follow_cover import render_follow_cover
 from card_templates import render_batch
+from face_mosaic import render_mosaic
 
 
 def emit(value):
@@ -155,6 +156,7 @@ def proxy(source, output):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest='action', required=True)
+    p = sub.add_parser('face-mosaic'); p.add_argument('request'); p.add_argument('output'); p.add_argument('--preview', action='store_true')
     p = sub.add_parser('card-frames'); p.add_argument('request'); p.add_argument('output')
     sub.add_parser('probe').add_argument('source')
     p = sub.add_parser('proxy'); p.add_argument('source'); p.add_argument('output')
@@ -162,6 +164,8 @@ def main(argv=None):
         p = sub.add_parser(action); p.add_argument('request'); p.add_argument('output')
         if action == 'preview': p.add_argument('--time', type=float, required=True)
     args = parser.parse_args(argv)
+    if args.action == 'face-mosaic':
+        emit(render_mosaic(json.loads(Path(args.request).read_text(encoding='utf8')), args.output, args.preview)); return
     if args.action == 'card-frames':
         emit(render_batch(json.loads(Path(args.request).read_text(encoding='utf8')), args.output)); return
     if args.action == 'probe':

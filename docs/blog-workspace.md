@@ -1,5 +1,7 @@
 # 블로그 작업공간
 
+현재 정본을 직접 고치는 화면은 [정본 스마트 에디터](canonical-blog-editor.md)다. 아래의 앱 내 배치 초안은 자료 준비 도구이며 정본 편집기가 아니다.
+
 데스크톱의 **블로그** 메뉴에서 기존 프로젝트를 선택한다. 프로젝트 편집에서 원고 Markdown을 `문서`, 사진이 있는 폴더를 `폴더`로 미리 연결한다. 프로젝트가 새로 만들어지지 않는다.
 
 **원고 열기** 후 필요한 텍스트 구간만 선택하고 **선택한 구간 추가**를 누른다. 기록·과거 버전·비공개 메모는 자동으로 본문에 들어가지 않는다. 선택한 구간의 Markdown 소제목과 굵은 글씨는 미리보기에서 표현한다. 복잡한 Markdown 전체 문법을 지원하는 편집기는 아니다. 원고는 읽기만 하며 저장은 앱의 배치 초안에만 적용된다.
@@ -13,3 +15,54 @@
 ## 검증·설치 — 2026-10-31
 
 타입·FSD 검사, 합성 단위 테스트2개, 개발 및 패키지 Electron의 원고선택/render-spec 검토/사진/제목/링크/저장/재실행/원본보존 흐름을 확인했다. `release/blog-workspace-final/mac-arm64/Reels Dashboard.app`를 빌드한 뒤 기존 앱을 백업하고 `release/production-projects/mac-arm64/Reels Dashboard.app`에 설치했다. 실제 앱 재시작 후 블로그 메뉴·BLOG WORKSPACE 제목을 확인했다. 기존66개 프로젝트 유지. 사용자의 블로그 배치는 아직 자동으로 가져오거나 저장하지 않았다.
+
+## 레퍼런스 추출·탐색
+
+블로그 탭 안의 **레퍼런스 추출·탐색**에서 `blog-reference-extract` 스킬 결과인 reference-structures.md/json을 읽는다. 파일 선택은 해당 파일의 세션 내 읽기만 수행하며 프로젝트 원고나 배치·초안 파일을 바꾸지 않는다. 탭 전환 중에는 유지되지만 앱 재시작 후에는 재선택한다. 10MB 이하, 최대30개 원본·원본당1000블록, 네이버HTTPS 주소를 검증한다.
+
+원본 보기, 블록목록, 사진/문단의 구조도식, 부분CSS inspector를 제공한다. iframe이 차단된 사이트는 새창링크로 열며 보안설정을 완화하지 않는다. URL에서 직접 추출하려면 아래 **URL 추출**을 사용한다.
+
+이미지그룹은 바깥블록id가 비어있는 경우 내부 실제id를 anchorId로 사용한다. 이동앵커가 없는 블록을 선택하면 기존 iframe주소를 유지하고 안내한다. 원본의 상단으로 이동하는 빈hash fallback을 쓰지 않는다. 원문/사진 데이터와 측정파일은 공개 코드저장소에 넣지 않는다.
+
+
+## 저장된 분석 결과 열기 — 2026-11-01
+
+블로그 → 레퍼런스 추출·탐색에서 **분석 결과 폴더 연결**로 `reference-structures.json` 또는 `.md`가 있는 폴더를 등록한다. 연결 목록은 기기 내 `blog-results.json`에 저장되며 재시작 후 복원된다. 결과 이름을 누르면 현재 원본 파일에서 구조를 읽는다. 파일 이동·삭제는 오류로 표시하고 다른 파일로 대체하지 않는다.
+
+같은 폴더에 `index.html`이 있으면 **템플릿 미리보기 열기**로 기존 추출/복원 뷰어를 앱 내부에서 연다. 결과 파일을 앱 저장소로 복제하지 않으며, 등록한 폴더의 뷰어·명세·폰트·미디어만 임시 토큰을 가진 loopback 서버에서 제공한다. 임의 파일, 상위 경로와 symlink 접근은 거절하며 서버는 앱 종료 시 닫힌다. 뷰어의 새 글 작업은 기존처럼 JSON으로 직접 저장한다.
+
+검증: 타입/FSD, 단위 88개, Electron 구조 가져오기 및 폴더 등록→미리보기→재시작 복원 검사 2개 통과. 기존 로컬 결과 2개 레퍼런스·113블록을 임시 프로필에서 열어 템플릿 표시와 페이지/HTTP 오류 없음을 확인했다. URL 자동 추출은 이 변경의 범위가 아니다.
+
+## URL 추출 — 2026-11-01
+
+블로그 → 레퍼런스 추출·탐색 맨 위의 **네이버 블로그 URL로 추출**에 글 주소를 넣고 **추출**을 누른다. 에이전트는 같은 서비스를 Dashboard MCP `reels_extract_blog_reference {url, outputDirectory?, name?}`로 호출하고, `reels_list_blog_references`로 등록 목록을 읽는다. 처음 한 번 **저장 위치 선택**으로 상위 폴더를 정하면 `blog-extract.json`에 기억하며, 결과는 `<상위>/<blogId>-<logNo>/`에 저장된다. MCP는 `outputDirectory`가 없고 기억된 위치도 없으면 오류를 돌려준다. 한 번에 하나만 실행하고, 실행 중에는 앱 종료를 미룬다.
+
+처리 순서(`src/desktop/blog-extractor.ts`):
+
+1. 화면에 표시하지 않는 `BrowserWindow`를 메모리 전용 파티션 `blog-extract`(sandbox, contextIsolation, Node 없음, 권한·다운로드·새 창 거부, naver.com 밖 이동 차단)로 연다. 글 주소의 `#mainFrame` src(PostView)를 최상위로 다시 연다. `.se-main-container`가 없으면 추정하지 않고 중단하며 파일을 쓰지 않는다.
+2. 스크롤하며 `_blur` 썸네일이 아닌 실제 사진이 로드될 때까지 최대 4회 확인한다.
+3. `src/desktop/blog-extract-page.ts`의 읽기 전용 추출 스크립트로 블록 순서, 53개 계산 CSS를 가진 중첩 트리, `::before/::after`, 텍스트 노드별 부분 서식, 원문(`text`)과 가림 문자(`sample`), 사진의 표시·원본 크기와 원본 CDN 주소(`https`·`*.pstatic.net`만), 실제 anchor를 한 번에 얻는다. 빈 줄의 zero-width 문자는 보이지 않는 공백으로 유지한다. 링크 href·댓글·프로필·로그인 상태는 읽지 않는다.
+4. `src/shared/blog-restore.ts`로 블록별 문단 글자수(중복 계수), 사진 수, anchor를 교차검증한다. 오류가 있으면 쓰지 않는다. 모바일 페이지 정적 HTML의 컴포넌트 종류별 개수와 비교한다(PC 본문 광고 `ssp-adcontent`와 모바일 제목 컴포넌트 제외, 개수만 보관).
+5. 원본이 실제로 로드한 `se-*` 웹폰트를 네이버 스타일시트의 `@font-face`에서 찾아 `fonts/`에 받는다(woff2, 5MB 이하, pstatic만). `reference-structures.json/.md`(위 구조 탐색 입력), `reference-templates.json/.md`(TemplateEngine 입력), `restore-report.json`, `README.md`, 복원 뷰어(`index.html`, `restore-viewer.*`, 빌드 시 `dist-electron/blog-restore-viewer`)를 원자적으로 쓴다. 같은 URL은 교체, 폴더당 최대 30개다.
+6. 결과 폴더를 **저장된 분석 결과**에 등록한 뒤, 기존 미리보기 서버로 복원 뷰어를 별도 파티션의 숨김 창에 열어 원문과 원본 사진으로 그리고 블록별 높이를 원본과 대조한다. 광고와 TemplateEngine이 자리표시로 그리는 지도는 대조에서 제외하고 목록에 남긴다.
+
+사진 파일과 사진이 보이는 캡처는 저장하지 않는다. 뷰어는 `no-referrer`로 원본 CDN에서 사진을 불러온다(로컬 Referer는 403). 원본이 삭제·비공개되면 같은 크기의 깨진 이미지가 보이며 `?images=0`은 자리표시, `?text=0`은 가림 글이다. 원문은 기기 내 결과 폴더에만 있으며 공유 snapshot·공개 저장소에 넣지 않는다.
+
+구조 파일의 텍스트 run에도 원문(`text`)을 저장해, 구조 탐색 화면은 글자수 막대 대신 원문을 측정된 색·굵기·크기·글꼴로 보여 준다(이전 파일처럼 `text`가 없으면 막대). 결과 목록은 등록·해제·추출 뒤 자동 갱신되어 MCP로 바꾼 내용도 열린 탭에 바로 보인다. 폴더를 옮기면 해당 항목에 오류와 안내가 뜨며, **연결 해제** 후 새 위치를 **분석 결과 폴더 연결**(또는 MCP `reels_link_blog_reference`)로 다시 연결한다. 해제는 파일을 지우지 않는다.
+
+한계: 스마트에디터 ONE 글만 지원한다. 대조는 PC 1280px 뷰포트 기준의 구조 검증이며 픽셀 일치나 모바일 감사가 아니다. 지도·슬라이드 탐색·광고는 재현하지 않는다. 비공개·로그인 필요 글은 읽지 않는다.
+
+검증(2026-11-01): 타입/FSD, 단위 97개, Electron `blog-extract.spec.ts` 3개(합성 글 UI 추출→등록→구조→미리보기·재추출 교체, 비 스마트에디터 페이지 무쓰기, stdio MCP 도구 목록·오류·추출·목록), 기존 `blog-references.spec.ts` 2개 통과. 실제 글(eehdune/224442171288)을 앱에서 추출: 54블록, 사진 26/26 로드, 대상 블록 50/50 높이 ±5%, 모바일 교차검증 일치, 웹폰트 5종 수신(약 13초). 실제 글 검사는 `REELS_BLOG_LIVE_URL`을 줄 때만 실행한다.
+
+패키지·설치(2026-11-01): `release/blog-url-extract/mac-arm64/Reels Dashboard.app`를 빌드하고 패키지 실행 파일로 블로그 Electron 검사 5개 통과. 기존 앱을 `release/production-projects-before-blog-url-extract/`에 보존하고 `release/production-projects/mac-arm64/Reels Dashboard.app`를 교체한 뒤 기존 프로필로 `REELS_DEV_MODE=1` 실행. 실행 중인 앱에 stdio MCP로 eehdune/224442171288을 추출해 54블록, 50/50 높이 ±5%, 모바일 일치, 경고 없음, 12초를 확인했다. 후속 빌드(`release/blog-url-extract-2`)로 결과 목록 자동 갱신·연결 해제·MCP 연결/해제 도구를 추가하고 같은 방식으로 교체·재실행했다(직전 설치본은 `release/production-projects-before-blog-results-sync/`). 실제 앱에서 MCP로 옮겨진 `side/reels/assets/2026-10-31-pangyo-html-preview` 등록을 해제하고 `side/blog/rosy/assets/...`를 다시 연결해 애둔·해달 113블록이 열리는 것을 확인했다.
+
+
+## 복원 미리보기 목차 배치 — 2026-11-01
+
+420px 고정 우측 목록을 기본 접힘 상태의 상단 `블록 목차`로 변경했다. 본문은 단일 열 전체 폭을 사용하며, 목차는 펼쳐도 본문 폭을 줄이지 않고 최대 280px 안에서 스크롤한다. 원본 고정 폭과 배율은 보존하며 좁은 화면의 본문 가로 스크롤은 캔버스 안으로 한정한다.
+
+검증: desktop 빌드, 타입/FSD, 합성 URL 추출 Electron 검사(600·900·1280px, 목차 토글·블록 이동·높이 대조) 통과. 기존 로컬 복원 결과 2개의 뷰어 JS/CSS를 백업 후 갱신하고 실제 글의 1280px 화면을 확인했다(사진은 자리표시). 설치된 앱 패키지는 교체하지 않았으므로 해당 패키지의 신규 추출에 적용하려면 새 빌드 설치가 필요하다.
+
+## 정본 편집
+
+[정본 스마트 에디터](canonical-blog-editor.md)에서 원고·사진·강조를 실제 배치로 열고 정본을 직접 저장한다. 이전의 독립 초안/검토 JSON UI는 제품 화면에서 제거했다. 기존 원고 가져오기·비공개 배치 기능은 자료 준비 도구로 유지한다.

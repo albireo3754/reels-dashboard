@@ -1,11 +1,17 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import {CanonicalBlogEditor} from "../features/canonical-blog";
 import { createDemoBridge } from "../shared/demo";
 import { createWebBridge } from "../shared/web";
+import { emptyDashboard } from "../shared/contracts";
 import "./styles.css";
 const bridge =
   window.reels ??
   (new URLSearchParams(location.search).get("demo") === "1"
     ? createDemoBridge()
     : createWebBridge());
-createRoot(document.getElementById("root")!).render(<App bridge={bridge} />);
+// The local workflow server has its own persisted runs; it does not need a shared desktop snapshot.
+if (!window.reels && new URLSearchParams(location.search).has("workflow")) {
+  bridge.loadDashboard = async () => emptyDashboard();
+}
+createRoot(document.getElementById("root")!).render(new URLSearchParams(location.search).has("blogEditor") ? <CanonicalBlogEditor/> : <App bridge={bridge} />);

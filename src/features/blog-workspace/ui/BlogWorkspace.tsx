@@ -3,6 +3,7 @@ import type {BlogBlock,BlogBridge,BlogDraft,BlogSpan,BlogStyle} from '../../../s
 import type {Project} from '../../../shared/contracts';
 import type {ContentMediaBridge,ContentMediaItem} from '../../../shared/content-media';
 import './blog.css';
+import {BlogReferences} from './BlogReferences';
 import {importSpec} from './import-spec';
 
 function Rich({text,spans=[]}:{text:string;spans?:BlogSpan[]}) {
@@ -36,6 +37,8 @@ function Photo({api,projectId,path,alt}:{api:ContentMediaBridge;projectId:string
   return error?<p>연결된 사진을 읽지 못했어요.</p>:url?<img src={url} alt={alt}/>:<p>사진 불러오는 중…</p>;
 }
 export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[]}) {
+  const [mode,setMode]=useState<'draft'|'reference'>('draft');
+  const [sourceTools,setSourceTools]=useState(true);
   const [projectId,setProjectId]=useState(''); const project=projects.find(p=>p.id===projectId);
   const [draft,setDraft]=useState<BlogDraft>(); const [dirty,setDirty]=useState(false); const [busy,setBusy]=useState(false);
   const [documentPath,setDocumentPath]=useState(''); const [text,setText]=useState(''); const [error,setError]=useState(''); const [notice,setNotice]=useState('');
@@ -44,15 +47,15 @@ export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:Conte
   const textRef=useRef<HTMLTextAreaElement>(null); const documents=project?.resources?.filter(r=>r.role==='document' && /\.md$/i.test(r.path))??[];
   const folders=project?.resources?.filter(r=>r.role==='folder')??[];
   useEffect(()=>{const listener=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',listener);return()=>window.removeEventListener('beforeunload',listener);},[dirty]);
-  const switchProject=async(id:string)=>{if(dirty && !window.confirm('저장하지 않은 블로그 배치를 버리고 프로젝트를 바꿀까요?'))return;setError('');setNotice('');setBusy(true);try{const result=id?await api!.load(id):undefined;setProjectId(id);setDraft(result);setDirty(false);setDocumentPath('');setText('');setPending(undefined);setFolder('');setItems([]);setNext(null);}catch(e){setError(String(e));}finally{setBusy(false);}};
+  const switchProject=async(id:string)=>{if(dirty && !window.confirm('저장하지 않은 블로그 배치를 버리고 프로젝트를 바꿀까요?'))return;setError('');setNotice('');setBusy(true);try{const result=id?await api!.load(id):undefined;setProjectId(id);setDraft(result);setSourceTools(!result?.blocks.length);setDirty(false);setDocumentPath('');setText('');setPending(undefined);setFolder('');setItems([]);setNext(null);}catch(e){setError(String(e));}finally{setBusy(false);}};
   const change=(blocks:BlogBlock[])=>{if(draft && !busy){setDraft({...draft,blocks});setDirty(true);setNotice('');}};
   const list=async(directory:string,offset=0)=>{if(!projectId || !media)return;try{const page=await media.list(projectId,directory||undefined,offset);setItems(offset?old=>[...old,...page.items]:page.items);setNext(page.nextOffset);}catch(e){setError(String(e));}};
   if(!api || !media)return <section className="blog-workspace"><p>블로그 작업은 데스크톱 앱에서 사용할 수 있어요.</p></section>;
   return <section className="blog-workspace" aria-label="블로그 작업">
-    <h2>블로그 작업</h2><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
+    <h2>블로그 작업</h2><div className="blog-reference-toolbar"><button disabled={busy||!api.openCanonical} onClick={async()=>{setBusy(true);setError('');try{await api.openCanonical?.();}catch(e){setError(String(e));}finally{setBusy(false);}}}>정본 스마트 에디터 열기</button><button aria-pressed={mode==='draft'} onClick={()=>setMode('draft')}>원고·배치</button><button aria-pressed={mode==='reference'} onClick={()=>setMode('reference')}>레퍼런스 추출·탐색</button></div><div hidden={mode!=='reference'}><BlogReferences api={api}/></div><div hidden={mode!=='draft'}><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
     <label>프로젝트 <select aria-label="블로그 프로젝트" value={projectId} disabled={busy} onChange={e=>void switchProject(e.target.value)}><option value="">프로젝트 선택</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
     {project && draft && <>
-      <div className="blog-columns"><div>
+      <details className="blog-source-tools" open={sourceTools} onToggle={e=>setSourceTools(e.currentTarget.open)}><summary>원고·사진 가져오기 및 블록 배치</summary><div className="blog-columns"><div>
         <h3>원고에서 가져오기</h3><p>기록 전체가 게시 본문은 아니에요. 아래에서 필요한 구간만 직접 선택해 추가해주세요.</p>
         <label>연결된 Markdown <select aria-label="블로그 원고" value={documentPath} onChange={e=>{setDocumentPath(e.target.value);setText('');}}><option value="">문서 선택</option>{documents.map(r=><option key={r.path} value={r.path}>{r.label}</option>)}</select></label>
         <button disabled={!documentPath||busy} onClick={async()=>{setBusy(true);setError('');try{setText((await api.readDocument(projectId,documentPath)).text);}catch(e){setError(String(e));}finally{setBusy(false);}}}>원고 열기</button>
@@ -66,10 +69,11 @@ export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:Conte
         {draft.blocks.map((b,i)=><div className="blog-block" key={b.id}><span>{i+1}. {b.type==='text'?b.text.slice(0,80):b.alt}</span><div><button aria-label={`${i+1} 위로`} disabled={i===0} onClick={()=>{const v=[...draft.blocks];[v[i-1],v[i]]=[v[i],v[i-1]];change(v);}}>↑</button><button aria-label={`${i+1} 아래로`} disabled={i===draft.blocks.length-1} onClick={()=>{const v=[...draft.blocks];[v[i],v[i+1]]=[v[i+1],v[i]];change(v);}}>↓</button><button aria-label={`${i+1} 삭제`} onClick={()=>change(draft.blocks.filter((_,j)=>j!==i))}>삭제</button></div></div>)}
         <button disabled={!dirty||busy} onClick={async()=>{setBusy(true);setError('');try{const saved=await api.save(draft);setDraft(saved);setDirty(false);setNotice('배치를 저장했어요.');}catch(e){setError(String(e));}finally{setBusy(false);}}}>배치 저장</button>
         <button disabled={busy} onClick={async()=>{if(dirty&&!window.confirm('저장하지 않은 배치를 버리고 다시 불러올까요?'))return;setBusy(true);try{setDraft(await api.load(projectId));setDirty(false);setNotice('저장된 배치를 불러왔어요.');}catch(e){setError(String(e));}finally{setBusy(false);}}}>저장된 배치 불러오기</button>
-      </div></div>
+      </div></div></details>
       <h3>미리보기</h3><button onClick={()=>setMobile(!mobile)}>{mobile?'PC 폭 보기':'모바일 폭 보기'}</button><p>네이버 실제 편집기와 다를 수 있어요. 지정한 글꼴이 기기에 없으면 대체 글꼴로 보여요. 지도·질문 카드와 게시 기능은 포함하지 않아요.</p>
       <article className={`blog-preview ${mobile?'blog-preview-mobile':''}`} style={{backgroundColor:draft.style?.background,color:draft.style?.color,fontFamily:draft.style?.bodyFont ? `"${draft.style.bodyFont}", sans-serif` : undefined,fontSize:mobile?draft.style?.mobileParagraphSize:draft.style?.paragraphSize,lineHeight:draft.style?.lineHeight,textAlign:draft.style?.align,maxWidth:mobile?draft.style?.mobileWidth:draft.style?.desktopWidth,padding:draft.style?.padding, '--blog-heading-weight':draft.style?.headingWeight,'--blog-image-radius':draft.style?.imageRadius === undefined ? undefined : `${draft.style.imageRadius}px`, '--blog-heading-color':draft.style?.headingColor,'--blog-heading-size':draft.style?.headingSize ? `${draft.style.headingSize}px` : undefined,'--blog-info-font':draft.style?.infoFont ? `"${draft.style.infoFont}", sans-serif` : undefined} as React.CSSProperties}><PreviewBlocks blocks={draft.blocks} api={media} projectId={projectId}/></article>
     </>}
+    </div>
     {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}
   </section>;
 }

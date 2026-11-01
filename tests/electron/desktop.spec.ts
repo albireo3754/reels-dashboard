@@ -54,6 +54,9 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
   ).toBe("undefined");
   expect(await page.evaluate(() => Object.keys(window.reels!).sort())).toEqual(
     [
+      "analysis",
+      "blog",
+      "workflow",
       "cardNews",
       "routeMap",
       "projects",

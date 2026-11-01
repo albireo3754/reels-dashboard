@@ -1,0 +1,93 @@
+import type { AiObservation } from "../ai-observation";
+const number = (value: number | null | undefined) =>
+  value == null ? "확인 불가" : value.toLocaleString();
+export function AiUsageDetails({
+  observation,
+}: {
+  observation: AiObservation;
+}) {
+  return (
+    <details aria-label="모델·사용량·예상 비용" open>
+      <summary>모델 · 사용량 · 예상 비용</summary>
+      {observation.attempts.map((attempt) => (
+        <article
+          key={attempt.id}
+          style={{
+            borderTop: "1px solid #dce4de",
+            padding: "10px 0",
+            overflowWrap: "anywhere",
+          }}
+        >
+          <strong>
+            시도 {attempt.ordinal} ·{" "}
+            {attempt.auth === "api-key" ? "API 키" : "Codex 로그인"}
+          </strong>
+          <p>
+            {attempt.agent} · {attempt.role} · {attempt.status}
+            {attempt.durationMs !== null &&
+              ` · ${(attempt.durationMs / 1000).toFixed(1)}초`}
+          </p>
+          <p>
+            실행 모델: {attempt.runtimeModels.join(", ") || "확인 불가"}
+            {attempt.runtimeReasoning && ` / 추론 ${attempt.runtimeReasoning}`}
+          </p>
+          <p>
+            입력 {number(attempt.usage?.input)} · 출력{" "}
+            {number(attempt.usage?.output)} 토큰
+            <br />
+            <small>
+              입력 중 캐시 {number(attempt.usage?.cachedInput)} · 출력 중 추론{" "}
+              {number(attempt.usage?.reasoningOutput)}
+            </small>
+          </p>
+          <p>
+            {attempt.cost.status === "not-applicable"
+              ? "Codex 로그인 사용 · API 비용 산정 대상 아님"
+              : attempt.cost.status === "estimated"
+                ? `예상 API 비용 $${attempt.cost.usd!.toFixed(8)} (청구액 아님)`
+                : "예상 API 비용: 확인 불가"}
+          </p>
+          <details>
+            <summary>기록 근거</summary>
+            <p>
+              요청 모델: {attempt.requestedModel ?? "Codex 기본 설정"}
+              <br />
+              응답 모델: {attempt.responseModel ?? "미제공"}
+              <br />
+              모델 근거: {attempt.modelSource ?? "미수신"}
+              <br />
+              실행 버전: {attempt.runtimeVersion ?? "미수신"}
+            </p>
+            <p>
+              지침 해시: {attempt.instructionHash}
+              <br />
+              스레드: {attempt.threadId ?? "미수신"}
+              <br />
+              Trace: {attempt.traceId ?? "없음"}
+            </p>
+            {attempt.cost.rateId && (
+              <p>
+                단가: {attempt.cost.rateId} · {attempt.cost.rateValidFrom} ~{" "}
+                {attempt.cost.rateValidUntil}
+                <br />
+                {attempt.cost.rateSource}
+                {attempt.cost.usdPerMillion && (
+                  <>
+                    <br />
+                    USD/백만 토큰: 입력 {attempt.cost.usdPerMillion.input} ·
+                    캐시 {attempt.cost.usdPerMillion.cachedInput} · 출력{" "}
+                    {attempt.cost.usdPerMillion.output}
+                  </>
+                )}
+              </p>
+            )}
+            {attempt.cost.reason && <p>비용 판정: {attempt.cost.reason}</p>}
+            {attempt.warnings.length > 0 && (
+              <p>관측 제한: {attempt.warnings.join(", ")}</p>
+            )}
+          </details>
+        </article>
+      ))}
+    </details>
+  );
+}

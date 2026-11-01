@@ -1,0 +1,18 @@
+.restore{font:13px/1.6 se-nanumgothic,sans-serif;color:#333}
+.restore-nav{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+.restore-notice,.restore-summary{margin:0;padding:8px 24px;color:#666;text-align:center}
+.restore-summary{background:#edf6f2;color:#245b4d}
+.restore-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding:16px}
+.restore-canvas{min-width:0;overflow:auto;background:#fff;padding:24px 0}
+.restore-canvas [data-restore-block]{outline:1px dashed transparent;cursor:pointer}
+.restore-canvas [data-restore-block]:hover{outline-color:#c9c2b8}
+.restore-canvas .restore-selected{outline:2px solid #85613f}
+.restore-index{grid-row:1;min-width:0;border:1px solid #ddd;border-radius:6px;background:#fff}
+.restore-index summary{padding:10px 14px;cursor:pointer;font-weight:700}
+.restore-index summary:focus-visible{outline:2px solid #85613f;outline-offset:2px}
+.restore-table{max-height:280px;overflow:auto;background:#fff}
+.restore-table table{border-collapse:collapse;width:100%;font-size:12px}
+.restore-table th,.restore-table td{padding:4px 6px;border-bottom:1px solid #eee;text-align:right}
+.restore-table th:nth-child(2),.restore-table td:nth-child(2){text-align:left}
+.restore-table tr{cursor:pointer}.restore-table tr.active{background:#f4efe8}.restore-table tr.off td:nth-child(4){color:#a64132;font-weight:700}
+@media(max-width:600px){.restore-grid{padding:8px;gap:8px}.restore-notice,.restore-summary{padding:8px 12px;overflow-wrap:anywhere}}

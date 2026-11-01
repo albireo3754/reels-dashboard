@@ -30,6 +30,13 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  blog?: {
+    extract(input: unknown): Promise<unknown>;
+    results(): Promise<unknown>;
+    link(directory: string): Promise<unknown>;
+    unlink(id: string): Promise<unknown>;
+  };
+  analysis?: Pick<import("../../../shared/media-analysis").AnalysisBridge, "providers" | "start" | "search" | "correct">;
   editor: AgentEditorPort;
   session: AgentSession;
   dashboard(): Promise<Dashboard>;
@@ -71,6 +78,28 @@ export function createAgentDispatch(ports: AgentPorts) {
       throw new Error("UNKNOWN_TOOL: 지원하지 않는 도구예요.");
     const input = toolDefinitions[name as ToolName].input.parse(args) as any;
     switch (name as ToolName) {
+      case "reels_extract_blog_reference":
+        if (!ports.blog) throw new Error("UNSUPPORTED");
+        return ports.blog.extract(input);
+      case "reels_list_blog_references":
+        if (!ports.blog) throw new Error("UNSUPPORTED");
+        return ports.blog.results();
+      case "reels_link_blog_reference":
+        if (!ports.blog) throw new Error("UNSUPPORTED");
+        return ports.blog.link(input.directory);
+      case "reels_unlink_blog_reference":
+        if (!ports.blog) throw new Error("UNSUPPORTED");
+        return ports.blog.unlink(input.id);
+      case "reels_start_analysis":
+        if (!ports.analysis) throw new Error("UNSUPPORTED");
+        return ports.analysis.start(input);
+      case "reels_search_analysis":
+        if (!ports.analysis) throw new Error("UNSUPPORTED");
+        return ports.analysis.search(input);
+      case "reels_correct_analysis":
+        if (!ports.analysis) throw new Error("UNSUPPORTED");
+        return ports.analysis.correct(input);
+
       case "reels_merge_projects":
         session.assertWritable();
         if (editor.busy) throw new Error("BUSY");

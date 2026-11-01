@@ -1,0 +1,46 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { workflowRequest } from "../workflow/client";
+import { workflowAction, type WorkflowAction } from "../../shared/workflow";
+
+/** Same-origin bridge to the single workflow backend; no second SDK runtime or credential store. */
+export async function proxyWorkflow(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+) {
+  if (!url.pathname.startsWith("/api/workflows")) return false;
+  let action: WorkflowAction;
+  let input: unknown = {};
+  if (req.method === "GET") {
+    const route = url.pathname.slice("/api/workflows".length);
+    if (route === "") action = "list";
+    else if (route === "/run") {
+      action = "get";
+      input = { runId: url.searchParams.get("id") };
+    } else if (route === "/job") {
+      action = "job";
+      input = { jobId: url.searchParams.get("id") };
+    } else if (route === "/capabilities") action = "capabilities";
+    else throw new Error("Unknown workflow route");
+  } else if (req.method === "POST") {
+    if (
+      req.headers.origin !== url.origin ||
+      !req.headers["content-type"]?.startsWith("application/json")
+    )
+      throw new Error("Same-origin JSON required");
+    action = workflowAction.parse(url.pathname.slice("/api/workflows/".length));
+    if (["list", "get", "job", "capabilities"].includes(action))
+      throw new Error("Invalid workflow action");
+    let body = "";
+    for await (const chunk of req) {
+      body += chunk;
+      if (Buffer.byteLength(body) > 256000)
+        throw new Error("Request too large");
+    }
+    input = JSON.parse(body);
+  } else throw new Error("Method not allowed");
+  const result = await workflowRequest(action, input);
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(result));
+  return true;
+}

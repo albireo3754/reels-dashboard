@@ -43,6 +43,8 @@ All **26 upstream test files / 75 tests** are preserved byte-for-byte. The nativ
 
 The window uses a compact toolbar: back/forward, screen history and menu/content search on the left; settings and the opt-in terminal on the right. The large introductory titles and sidebar development/settings entries are removed. See [window layout and terminal controls](docs/workspace-shell.md).
 
+Project photo/frame metadata analysis supports a replaceable image analyzer, source timestamps, human corrections and search through the desktop/MCP. See [metadata analysis](docs/media-analysis.md).
+
 ## Agent integration
 
 The desktop **터미널** is enabled explicitly with `REELS_DEV_MODE=1 npm start` after building. It connects this source checkout to Codex and shell PTY sessions, a local web preview, verification commands and the existing briefing site. It is absent from normal desktop startup and the shared web app. Codex is the default; the provider boundary reserves Claude Code for a later release. Design → implement → review → fix prompts support a user-directed improvement loop. See [architecture, usage and validation](docs/development-workspace.md).
@@ -52,6 +54,12 @@ Owner-private [mobile production briefing](https://example.chatgpt.site) stores 
 Existing footage folders, completed videos/covers and content documents can be linked locally through MCP without proxy generation or media copies. See [local content library](docs/local-content-library.md).
 
 The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI's editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
+
+사진과 조사 자료를 먼저 준비한 뒤 직접 경험을 한 폼으로 받아 초안에 연결할 수 있다. [경험 수집 워크플로](docs/experience-intake.md).
+
+## Headless workflows
+
+Blog editorial loops can run through LangGraph with a local web server, CLI and independent MCP server. Tasks can be performed by the current Codex session or explicitly run through the Codex TypeScript SDK. Saved Codex login works without an API key; a configured key takes priority. Run `npm run build:web` then `npm run start:server`. See [workflow control and scope](docs/workflows.md). Native Photos/editor features retain their existing platform requirements.
 
 ## Run locally
 

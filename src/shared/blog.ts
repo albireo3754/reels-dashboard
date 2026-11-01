@@ -6,13 +6,28 @@ export const blogBlock = z.discriminatedUnion('type', [
   z.strictObject({id:z.string().min(1).max(100),type:z.literal('text'),text:z.string().max(20000),role:z.enum(['paragraph','title','heading','info','source','native','tags']).optional(),spans:z.array(blogSpan).max(100).optional()}),
   z.strictObject({id:z.string().min(1).max(100),type:z.literal('image'),path:z.string().startsWith('/').max(4096),alt:z.string().max(500)})
 ]);
-export const blogDraft = z.strictObject({projectId:z.string().min(1).max(160), revision:z.number().int().min(0), blocks:z.array(blogBlock).max(300),style:blogStyle.optional()});
+export const blogDraft = z.strictObject({projectId:z.string().min(1).max(160), revision:z.number().int().min(0), blocks:z.array(blogBlock).max(300),style:blogStyle.optional(),reviewGroups:z.array(z.strictObject({id:z.string().min(1).max(160),startBlockId:z.string().min(1).max(100),name:z.string().min(1).max(120),question:z.string().max(1000)})).max(300).optional()});
 export type BlogSpan=z.infer<typeof blogSpan>;
 export type BlogStyle=z.infer<typeof blogStyle>;
 export type BlogBlock = z.infer<typeof blogBlock>;
 export type BlogDraft = z.infer<typeof blogDraft>;
 export interface BlogBridge {
+  openCanonical?():Promise<string>;
+  /** URL → in-app extraction → result folder registered in results(). Same service as MCP reels_extract_blog_reference. */
+  extract(input:import('./blog-restore').BlogExtractInput):Promise<import('./blog-restore').BlogExtractResult>;
+  extractDirectory():Promise<string|null>;
+  /** Fires after any link/unlink, including MCP calls. */
+  onResultsChanged(callback:()=>void):()=>void;
+  removeResult(id:string):Promise<{removed:string}>;
+  chooseExtractDirectory():Promise<string|null>;
+  onExtractProgress(callback:(event:import('./blog-restore').BlogExtractProgress)=>void):()=>void;
+  results():Promise<BlogResult[]>;
+  addResult():Promise<BlogResult|null>;
+  readResult(id:string):Promise<string>;
+  previewResult(id:string):Promise<string>;
   readDocument(projectId:string, documentPath:string):Promise<{text:string; fingerprint:string}>;
   load(projectId:string):Promise<BlogDraft>;
   save(draft:BlogDraft):Promise<BlogDraft>;
 }
+
+export interface BlogResult {id:string;directory:string;names:string[];blocks:number;preview:boolean;error?:string}

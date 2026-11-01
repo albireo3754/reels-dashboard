@@ -1,3 +1,9 @@
+import { DesktopCanonicalEditor } from "./canonical-editor";
+import { BlogResults } from "./blog-results";
+import { workflowRequest } from "../app/workflow/client";
+import { workflowAction } from "../shared/workflow";
+import { BlogExtractor } from "./blog-extractor";
+import { MediaAnalysis } from "./media-analysis";
 import { BlogLibrary } from "./blog-library";
 import {
   app,
@@ -132,6 +138,33 @@ async function awaitReady() {
   );
   const routeLibrary = new RouteLibrary(contentLibrary);
   const blogs = new BlogLibrary(store, contentLibrary);
+  const canonicalEditor = new DesktopCanonicalEditor(root, path.join(app.getAppPath(),"dist"), backgroundQA);
+  const blogResults = new BlogResults(store, () => emit("blog:results-changed", null));
+  const blogExtractor = new BlogExtractor({
+    store,
+    viewerAssets: path.join(app.getAppPath(), "dist-electron/blog-restore-viewer"),
+    register: (directory) => blogResults.register(directory),
+    preview: (id) => blogResults.preview(id),
+    progress: (event) => emit("blog:extract-progress", event),
+  });
+  // Shared by the Blog tab and MCP; counted as an active operation so quitting waits for it.
+  const extractBlog = async (input: unknown) => {
+    activeOperations++;
+    try {
+      return await blogExtractor.extract(input);
+    } finally {
+      activeOperations--;
+    }
+  };
+  const analysis = new MediaAnalysis(
+    store,
+    contentLibrary,
+    app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    undefined,
+    path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
+  );
   const editorService = new EditorService({
     dashboardChanged: (value) => emit("dashboard:changed", value),
     root,
@@ -256,9 +289,11 @@ async function awaitReady() {
     }
     quitting = true;
     workbench?.dispose();
+    blogResults.dispose();
     boardMedia.dispose();
     void editorService
       .dispose()
+      .then(() => canonicalEditor.dispose())
       .then(() => closeAgent?.())
       .then(() => native.dispose())
       .finally(() => app.quit());
@@ -272,9 +307,39 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
+  handle("blog:openCanonical", () => canonicalEditor.open());
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
+  handle("blog:results", () => blogResults.list());
+  handle("blog:readResult", (id) => blogResults.read(id));
+  handle("blog:previewResult", (id) => blogResults.preview(id));
+  handle("blog:addResult", async () => {
+    const result = await dialog.showOpenDialog(window, {title:"블로그 분석 결과 폴더 연결", properties:["openDirectory"]});
+    return result.canceled ? null : blogResults.register(result.filePaths[0]);
+  });
+  handle("blog:extract", (input) => extractBlog(input));
+  handle("blog:removeResult", (id) => blogResults.remove(id));
+  handle("blog:extractDirectory", () => blogExtractor.defaultParent());
+  handle("blog:chooseExtractDirectory", async () => {
+    const result = await dialog.showOpenDialog(window, { title: "블로그 추출 결과 저장 위치", properties: ["openDirectory", "createDirectory"] });
+    return result.canceled ? null : blogExtractor.setDefaultParent(result.filePaths[0]);
+  });
   handle("blog:load", (projectId) => blogs.load(projectId));
   handle("blog:save", (draft) => blogs.save(draft));
+  handle("analysis:mosaicSample", (projectId, sampleId) => analysis.mosaicSample(projectId, sampleId));
+  handle("analysis:mosaicExport", async (input) => {
+    const result = await dialog.showSaveDialog(window, { defaultPath: "mosaic.png", filters: [{ name: "PNG 이미지", extensions: ["png"] }] });
+    if (result.canceled || !result.filePath) return null;
+    return analysis.mosaicExport(input, result.filePath);
+  });
+  for (const method of ["providers", "start", "search", "correct"] as const) {
+    handle(`analysis:${method}`, (...args: unknown[]) =>
+      (analysis[method] as (...values: unknown[]) => unknown).apply(
+        analysis,
+        args,
+      ),
+    );
+  }
   for (const method of [
     "list",
     "load",
@@ -610,6 +675,8 @@ async function awaitReady() {
       session: agentSession,
       dashboard: () => store.load(),
       content: contentLibrary,
+      analysis,
+      blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
       preview: async (project, time, kind) => {
         const artifact = await editorService.previewArtifact(
           project,

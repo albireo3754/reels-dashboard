@@ -6,7 +6,7 @@ if (process.platform === "darwin") {
   await chmod(`node_modules/node-pty/prebuilds/darwin-${process.arch}/spawn-helper`, 0o755);
 }
 await build({
-  entryPoints: ["src/desktop/main.ts", "src/desktop/preload.ts"],
+  entryPoints: ["src/desktop/main.ts", "src/desktop/preload.ts", "src/desktop/analysis-context-mcp.ts"],
   bundle: true,
   platform: "node",
   format: "cjs",
@@ -15,6 +15,20 @@ await build({
   outdir: "dist-electron",
   outExtension: { ".js": ".cjs" },
   sourcemap: true,
+});
+
+// Restore viewer copied into each blog extraction result folder (served by BlogResults.preview).
+await build({
+  entryPoints: { "restore-viewer": "tools/blog-restore/viewer.jsx" },
+  outdir: "dist-electron/blog-restore-viewer",
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  jsx: "automatic",
+  external: ["fonts/*"],
+  define: { "process.env.NODE_ENV": '"production"' },
+  minify: true,
+  logLevel: "warning",
 });
 
 await build({
