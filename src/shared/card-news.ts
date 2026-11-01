@@ -1,12 +1,5 @@
 import { z } from "zod";
 
-export const cardTemplates = {
-  hook: "훅",
-  body: "본문",
-  summary: "큰 요약",
-  comparison: "비교표",
-  follow: "팔로우",
-} as const;
 export const cardTemplateSchema = z
   .object({
     templateId: z.enum(["hook", "body", "summary", "comparison", "follow"]),
