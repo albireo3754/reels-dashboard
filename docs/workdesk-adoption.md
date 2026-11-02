@@ -48,3 +48,7 @@ The Electron bundle calls the workflow service over its existing HTTP client; La
 This fixes the observed Electron 45 packaging failure in SQLite's V8 `HolderV2`/`GetPrototypeV2` calls without disabling the PTY rebuild or changing workflow persistence. The hook follows the installed electron-builder 26.18 `beforeBuild` contract and `@electron/rebuild` 4.2.1 `onlyModules` option.
 
 Returning `false` also makes dependency copying the application's responsibility. An explicit file set includes node-pty's JavaScript, license and rebuilt native module/spawn helper, retaining ASAR unpacking. CI launches the finished app and exercises its real PTY after packaging, so a successful archive build alone cannot hide a missing runtime module.
+
+## Socket shutdown regression found during CI
+
+A timed-out client could finish after the socket host was released. Its callback used a weak host reference to return an acquired semaphore slot, allowing libdispatch to destroy a borrowed semaphore and terminate with signal 5. The callback now retains the semaphore independently and always returns its slot. A new lifetime test reproduced the original crash; the fix passed 20 fresh-process repetitions, all 102 Swift tests and preservation of the original 26 files/75 methods.
