@@ -39,6 +39,14 @@ jobs:
       - run: npm run test:workflow-ui
       - run: REELS_EDITOR_QA=1 npm run test:electron
       - run: npm run package:mac
+      - name: Verify packaged desktop and PTY
+        shell: bash
+        run: |
+          shopt -s nullglob
+          app_binaries=(release/mac*/"Reels Dashboard.app/Contents/MacOS/Reels Dashboard")
+          test "${#app_binaries[@]}" -eq 1
+          test -x "${app_binaries[0]}"
+          REELS_ELECTRON_EXECUTABLE="$PWD/${app_binaries[0]}" npm run test:electron -- tests/electron/desktop.spec.ts tests/electron/workbench-mode.spec.ts
       - run: npm run audit:public
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -89,7 +89,18 @@
       "package.json",
       "LICENSE",
       "THIRD_PARTY_NOTICES.md",
-      "!node_modules/better-sqlite3/**"
+      "!node_modules/better-sqlite3/**",
+      {
+        "from": "node_modules/node-pty",
+        "to": "node_modules/node-pty",
+        "filter": [
+          "lib/**/*",
+          "package.json",
+          "LICENSE",
+          "build/Release/pty.node",
+          "build/Release/spawn-helper"
+        ]
+      }
     ],
     "extraResources": [
       {
