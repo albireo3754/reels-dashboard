@@ -1,0 +1,41 @@
+# Workdesk UX and reliability adoption — 2026-11-02
+
+The changes around [Workdesk #41](https://github.com/albireo3754/workdesk/pull/41) are adapted to the Dashboard's existing workflow and development workspace. Workdesk's Claude hub, tmux sessions and company integrations are not dependencies of this application. The implementation uses Dashboard data and boundaries; it does not copy Workdesk's backend.
+
+## What changed
+
+- Workflow history and SDK progress use flat message rows with sender, timestamp, date separators and five-minute grouping. Markdown reports support headings, lists, tables, quotes, line breaks and readable inline/fenced code. Raw HTML is not executed, executable/local URL schemes are excluded and report images do not trigger remote downloads.
+- Result entry keeps its text above a compact action toolbar. Drafts belong to their workflow/task while that workspace is mounted, so selecting another run does not mix submissions.
+- In developer mode, **화면 검사** or `⌘⇧C` selects an element without activating it. Add a comment to the existing development request, then explicitly start Codex. Source locations are repository-relative; adjacent ancestors from the same file collapse to the innermost location. Text inputs and page contents are not copied into feedback.
+- Search lists up to eight matches per category, shows the total and supports arrow keys, Enter, Home/End and Escape. Opening a record closes the search dialog first. Finder-launched terminals default to UTF-8 only when no locale is configured.
+- Workflow completion/failure notifications are based on observed job transitions, with an initial baseline and duplicate suppression. Focused windows and background QA do not show native alerts. Clicking an alert routes to the workflow without reloading the editor.
+- Concurrent markup-review requests with the same ID share one SDK start. Reusing an ID with different content is rejected, including while screenshot validation is pending. JSON/error MCP responses share a helper while image-preview responses retain their existing contract.
+
+## Upstream coverage
+
+| Workdesk source | Dashboard outcome |
+| --- | --- |
+| #38, #41, #24: Slack-style rows and Markdown | Applied to real workflow history and SDK progress; no artificial user/assistant conversation is fabricated. |
+| #35–36: UI inspection and source deduplication | Applied through developer-only inspection and explicit request preparation. |
+| #40: MCP response deduplication | Applied to desktop and workflow MCP servers. |
+| #37: prefixed hub request matching | No equivalent hook/parser exists here. Workflow requests are bound to structured run/task IDs. |
+| #39: hub liveness during a turn | No polling-based Claude hub liveness exists here. SDK process/job status remains authoritative, including quiet turns; a concrete concurrent-start race was fixed. |
+| #26: background notifications | Applied to workflow job outcomes, with QA suppression and click routing. |
+| #25: per-target threads/request state | Existing run/task IDs, history and persisted SDK job lifecycle supply the corresponding isolation and restart status. |
+| #31: asynchronous questions | Existing experience/follow-up flow supplies questions and saved answers. Separately developed shared input forms remain their own local work. |
+| #22, #18, #20, #4: search/navigation/settings/terminal tabs | Existing navigation and tabs retained; search accessibility and result limits improved. |
+| #9: shortcut discoverability | Existing visible hints retained; inspector adds its shortcut hint. |
+| #6: Finder locale | UTF-8 fallback applied without overriding configured locales. |
+| #33: Claude profiles/usage | Existing Codex usage details retained. Claude environment/profile switching is not compatible with the SDK execution model. |
+| #34: GitHub full-review/button prompts | Existing centralized development review/fix prompts retained. Company PR review integration is outside the production app. |
+| #7, #19, #23, #32 | Claude hub reconnection, KakaoWork and MATRIX-specific integrations have no Dashboard counterpart. |
+
+## Validation and release
+
+- TypeScript and architecture checks, specification preservation and public-source/history audit passed.
+- 173 unit tests, 101 Swift tests, 85 Chromium tests and four workflow browser tests passed.
+- Full background Electron run: 51 passed, ten explicit opt-in scenarios skipped, and one stale preload-key assertion failed. The assertion was updated to include the existing execution-log API and all six desktop bridge checks then passed. Five focused inspector browser checks cover the final feedback/iframe fixes.
+- All 13 bundled editor-engine checks passed against the rebuilt runtime.
+- Independent review found and fixed deferred inspection feedback loss, iframe interaction during inspection, repeated notification routing and workflow draft loss on menu navigation.
+
+Tests use synthetic workflows and background Electron profiles; they do not submit real model work, publish content or modify personal media. Native toast delivery, actual Finder Korean input and subjective visual preference remain manual verification boundaries. Full source-to-runtime native helper and editor builds passed; packaging follows the main merge.

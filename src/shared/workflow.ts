@@ -63,6 +63,7 @@ export const workflowAction = z.enum([
 export type WorkflowAction = z.infer<typeof workflowAction>;
 export interface WorkflowBridge {
   request(action: WorkflowAction, input?: unknown): Promise<any>;
+  onOpen?(callback: (runId: string) => void): () => void;
 }
 export interface SdkJob {
   inputHash?: string;

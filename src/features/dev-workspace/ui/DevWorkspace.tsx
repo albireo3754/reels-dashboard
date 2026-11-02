@@ -24,12 +24,16 @@ export function DevWorkspace({
   onModeChange,
   onNavigate,
   openSite,
+  feedbackDraft,
+  onFeedbackApplied,
 }: {
   api: WorkbenchBridge;
   mode: DrawerMode;
   onModeChange: (mode: DrawerMode) => void;
   onNavigate: (index: number) => void;
   openSite?: () => Promise<void>;
+  feedbackDraft?: { id: number; text: string; phase: "fix" };
+  onFeedbackApplied?: (id: number) => void;
 }) {
   const [state, setState] = useState<WorkbenchState | null>(null);
   const [selected, setSelected] = useState("");
@@ -42,6 +46,24 @@ export function DevWorkspace({
   const [version, setVersion] = useState(0);
   const [notice, setNotice] = useState("");
   const pending = useRef(false);
+  const setup = useRef<HTMLDetailsElement>(null);
+  const appliedFeedback = useRef<number | null>(null);
+  useEffect(() => {
+    if (!feedbackDraft || appliedFeedback.current === feedbackDraft.id) return;
+    if (setup.current) setup.current.open = true;
+    const combined = task.trim()
+      ? `${task}\n\n${feedbackDraft.text}`
+      : feedbackDraft.text;
+    if (combined.length > 16000) {
+      setNotice("검사 의견을 보관하고 있어요. 기존 요청을 줄이면 이어서 추가돼요.");
+      return;
+    }
+    appliedFeedback.current = feedbackDraft.id;
+    setTask(combined);
+    setPhase(feedbackDraft.phase);
+    setNotice("화면 검사 의견을 기존 요청에 추가했어요. 내용을 확인한 뒤 수정 세션을 시작하세요.");
+    onFeedbackApplied?.(feedbackDraft.id);
+  }, [feedbackDraft, task, onFeedbackApplied]);
   const previousSessions = useRef<string[]>([]);
   const acceptState = (next: WorkbenchState) => {
     const previous = previousSessions.current;
@@ -214,7 +236,7 @@ export function DevWorkspace({
         )}
       </div>
       <div className="dev-drawer-body" hidden={mode !== "open"}>
-        <details className="dev-setup">
+        <details className="dev-setup" ref={setup}>
           <summary>소스 연결 · 개선 요청 · 코딩 도구</summary>
           <div className="dev-connect">
             <div>

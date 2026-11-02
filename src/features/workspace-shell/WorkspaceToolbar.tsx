@@ -15,6 +15,8 @@ export function WorkspaceToolbar({
   onTerminal,
   settingsActive,
   desktop,
+  inspecting,
+  onInspect,
 }: {
   navigation: Navigation<string>;
   items: Item[];
@@ -26,6 +28,8 @@ export function WorkspaceToolbar({
   onTerminal?: () => void;
   settingsActive: boolean;
   desktop: boolean;
+  inspecting?: boolean;
+  onInspect?: () => void;
 }) {
   const [panel, setPanel] = useState<"history" | "search" | null>(null);
   const [query, setQuery] = useState("");
@@ -49,6 +53,7 @@ export function WorkspaceToolbar({
         return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setQuery("");
         setPanel((p) => (p === "search" ? null : "search"));
       }
     };
@@ -62,7 +67,10 @@ export function WorkspaceToolbar({
   const foundProjects = projects.filter((p) =>
     matches(`${p.title} ${p.nextAction}`),
   );
-  const close = () => setPanel(null);
+  const close = () => {
+    dialog.current?.close();
+    setPanel(null);
+  };
   return (
     <>
       <header
@@ -110,6 +118,17 @@ export function WorkspaceToolbar({
           </button>
         </div>
         <div className="shell-tools-right">
+          {onInspect && (
+            <button
+              aria-label="화면 검사"
+              aria-pressed={Boolean(inspecting)}
+              title="화면 검사 (⌘⇧C)"
+              onClick={onInspect}
+            >
+              <Glyph name="inspect" />
+              <span>화면 검사</span>
+            </button>
+          )}
           {onTerminal && (
             <button
               aria-label="터미널"
@@ -135,8 +154,51 @@ export function WorkspaceToolbar({
         ref={dialog}
         className="shell-dialog"
         aria-labelledby="shell-dialog-title"
-        onCancel={close}
-        onClose={close}
+        onCancel={() => setPanel(null)}
+        onClose={() => setPanel(null)}
+        onKeyDown={(event) => {
+          if (
+            event.nativeEvent.isComposing ||
+            event.altKey ||
+            event.metaKey ||
+            event.ctrlKey
+          )
+            return;
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          const input = dialog.current?.querySelector("input");
+          const results = [
+            ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              ".shell-results button",
+            ),
+          ];
+          const index = results.indexOf(target as HTMLButtonElement);
+          if (target !== input && index < 0) return;
+          if (target === input && event.key === "Enter" && results.length) {
+            event.preventDefault();
+            results[0].click();
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!results.length) return;
+            const next =
+              index < 0
+                ? event.key === "ArrowDown"
+                  ? 0
+                  : results.length - 1
+                : event.key === "ArrowDown"
+                  ? index + 1
+                  : index - 1;
+            if (index >= 0 && (next < 0 || next >= results.length) && input)
+              input.focus();
+            else results[(next + results.length) % results.length].focus();
+          } else if (
+            index >= 0 &&
+            (event.key === "Home" || event.key === "End")
+          ) {
+            event.preventDefault();
+            results[event.key === "Home" ? 0 : results.length - 1]?.focus();
+          }
+        }}
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             const r = e.currentTarget.getBoundingClientRect();
@@ -170,8 +232,8 @@ export function WorkspaceToolbar({
                         index === navigation.index ? "page" : undefined
                       }
                       onClick={() => {
-                        onJump(index);
                         close();
+                        onJump(index);
                       }}
                     >
                       <span>
@@ -191,32 +253,43 @@ export function WorkspaceToolbar({
                 <input
                   autoFocus
                   aria-label="메뉴·콘텐츠 검색"
+                  aria-describedby="shell-search-help"
+                  aria-controls="shell-search-results"
                   placeholder="메뉴, 콘텐츠 제목, 다음 할 일 검색"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
-                <div className="shell-results">
-                  <h3>메뉴</h3>
-                  {foundItems.map(([key, label]) => (
+                <p id="shell-search-help" className="shell-search-help">
+                  ↑↓ 이동 · Enter 열기 · Esc 닫기
+                </p>
+                <div className="shell-results" id="shell-search-results">
+                  <h3>메뉴 · {foundItems.length}</h3>
+                  {foundItems.slice(0, 8).map(([key, label]) => (
                     <button
                       key={key}
                       onClick={() => {
-                        onNavigate(key);
                         close();
+                        onNavigate(key);
                       }}
                     >
                       {label}
                       <small>화면 열기</small>
                     </button>
                   ))}
+                  {foundItems.length > 8 && (
+                    <p className="shell-search-help">
+                      메뉴 {foundItems.length}개 중 8개를 표시해요. 검색어로
+                      좁혀 주세요.
+                    </p>
+                  )}
                   <h3>콘텐츠 · {foundProjects.length}</h3>
-                  {foundProjects.slice(0, 50).map((p) =>
+                  {foundProjects.slice(0, 8).map((p) =>
                     onProject ? (
                       <button
                         key={p.id}
                         onClick={() => {
-                          onProject(p);
                           close();
+                          onProject(p);
                         }}
                       >
                         <span>
@@ -236,8 +309,11 @@ export function WorkspaceToolbar({
                   {!foundItems.length && !foundProjects.length && (
                     <p role="status">검색 결과가 없어요.</p>
                   )}
-                  {foundProjects.length > 50 && (
-                    <p>처음 50개를 표시해요. 검색어를 더 입력해 주세요.</p>
+                  {foundProjects.length > 8 && (
+                    <p className="shell-search-help">
+                      콘텐츠 {foundProjects.length}개 중 8개를 표시해요.
+                      검색어로 좁혀 주세요.
+                    </p>
                   )}
                 </div>
               </>
@@ -254,6 +330,7 @@ function Glyph({ name }: { name: string }) {
     search: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     terminal: "M4 6l6 6-6 6 M12 18h8",
     settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
+    inspect: "M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M9 9l9 4-5 1-1 5z",
   };
   return (
     <svg

@@ -1,5 +1,5 @@
 import { ExperienceForm } from "./ExperienceForm";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   stageLabels,
   workflowStages,
@@ -9,6 +9,8 @@ import "./workflow.css";
 
 import { workflowCall } from "../../../shared/workflow-client";
 import { SdkProgress } from "../../../shared/ui/SdkProgress";
+import { ConversationFeed } from "../../../shared/ui/ConversationFeed";
+import { MarkdownView } from "../../../shared/ui/MarkdownView";
 import type { WorkflowAction } from "../../../shared/workflow";
 const request = (action = "", input?: unknown) =>
   workflowCall((action.replace(/^\//, "") || "list") as WorkflowAction, input);
@@ -18,7 +20,9 @@ const statuses = {
   blocked: "보류",
   cancelled: "취소",
 };
-export function WorkflowPanel() {
+export function WorkflowPanel({
+  openRunRequest,
+}: { openRunRequest?: { runId: string; sequence: number } } = {}) {
   if (location.protocol === "file:" && !window.reels?.workflow)
     return (
       <section className="workflow-panel">
@@ -33,9 +37,15 @@ export function WorkflowPanel() {
         </a>
       </section>
     );
-  return <ConnectedWorkflowPanel />;
+  return <ConnectedWorkflowPanel openRunRequest={openRunRequest} />;
 }
-function ConnectedWorkflowPanel() {
+function ConnectedWorkflowPanel({
+  openRunRequest,
+}: {
+  openRunRequest?: { runId: string; sequence: number };
+}) {
+  const openRunId = openRunRequest?.runId;
+  const resultDrafts = useRef(new Map<string, ResultDraft>());
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [selected, setSelected] = useState(
     new URLSearchParams(location.search).get("run") ?? "",
@@ -43,6 +53,8 @@ function ConnectedWorkflowPanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [openNotice, setOpenNotice] = useState("");
+  const handledOpenRun = useRef<number | undefined>(undefined);
   const refresh = useCallback(async () => {
     const data = await request();
     setRuns(data.runs);
@@ -66,6 +78,27 @@ function ConnectedWorkflowPanel() {
     };
   }, []);
   const run = runs.find((r) => r.runId === selected) ?? runs[0];
+  useEffect(() => {
+    if (
+      !openRunId ||
+      handledOpenRun.current === openRunRequest?.sequence ||
+      !runs.length
+    )
+      return;
+    handledOpenRun.current = openRunRequest?.sequence;
+    if (run?.runId !== openRunId && run?.stage === "experience") {
+      setOpenNotice(
+        "다른 작업의 알림이 도착했어요. 작성 중인 경험 답변을 저장한 뒤 작업 목록에서 열어주세요.",
+      );
+      return;
+    }
+    if (!runs.some((item) => item.runId === openRunId)) {
+      setOpenNotice("알림의 작업을 목록에서 찾을 수 없어요.");
+      return;
+    }
+    setSelected(openRunId);
+    setOpenNotice("");
+  }, [openRunId, openRunRequest?.sequence, runs, run?.runId, run?.stage]);
   const perform = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -91,6 +124,7 @@ function ConnectedWorkflowPanel() {
           {creating ? "닫기" : "새 워크플로"}
         </button>
       </header>
+      {openNotice && <p role="status">{openNotice}</p>}
       {error && (
         <p className="workflow-error" role="alert">
           {error}
@@ -215,7 +249,7 @@ function ConnectedWorkflowPanel() {
               <details>
                 <summary>작업 맥락과 파일</summary>
                 <p>{run.workspace}</p>
-                <pre>{run.instructions}</pre>
+                <MarkdownView>{run.instructions}</MarkdownView>
                 <ul>
                   {run.trackedFiles.map((f) => (
                     <li key={f}>{f}</li>
@@ -280,6 +314,31 @@ function ConnectedWorkflowPanel() {
                     답변의 추가 요청 다시 확인
                   </button>
                 )}
+              <h4>작업 이력</h4>
+              {run.history.length ? (
+                <ConversationFeed
+                  label="작업 이력"
+                  messages={run.history.map((item) => ({
+                    id: item.taskId,
+                    sender: "result",
+                    senderLabel: "작업 결과",
+                    avatar: "작업",
+                    at: item.at,
+                    title: stageLabels[item.stage],
+                    body: item.summary,
+                    status: outcomeLabels[item.outcome],
+                    tone:
+                      item.outcome === "blocked" || item.outcome === "revise"
+                        ? "warning"
+                        : item.outcome === "cancel"
+                          ? "neutral"
+                          : "success",
+                    evidence: Object.keys(item.evidence),
+                  }))}
+                />
+              ) : (
+                <p>이 세션에서 첫 작업을 수행한 뒤 결과를 제출해주세요.</p>
+              )}
               {run.task && (
                 <article className="workflow-task">
                   <h4>현재 요청 · {stageLabels[run.task.stage]}</h4>
@@ -298,7 +357,7 @@ function ConnectedWorkflowPanel() {
                       </details>
                     </>
                   ) : (
-                    <p>{run.task.instruction}</p>
+                    <MarkdownView>{run.task.instruction}</MarkdownView>
                   )}
                   {run.stage !== "experience" && <code>{run.task.taskId}</code>}
                   {run.stage === "experience" && run.experience ? (
@@ -337,6 +396,7 @@ function ConnectedWorkflowPanel() {
                       <TaskResult
                         key={run.task.taskId}
                         run={run}
+                        drafts={resultDrafts.current}
                         busy={busy || run.execution?.status === "running"}
                         onSubmit={(input) =>
                           perform(() => request("/submit", input))
@@ -377,27 +437,6 @@ function ConnectedWorkflowPanel() {
                     : "다시 검토"}
                 </button>
               )}
-              <h4>작업 이력</h4>
-              {run.history.length ? (
-                <ol className="workflow-history">
-                  {run.history.map((item) => (
-                    <li key={item.taskId}>
-                      <strong>
-                        {stageLabels[item.stage]} · {item.outcome}
-                      </strong>
-                      <p>{item.summary}</p>
-                      <small>{new Date(item.at).toLocaleString()}</small>
-                      <ul>
-                        {Object.keys(item.evidence).map((f) => (
-                          <li key={f}>{f}</li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p>이 세션에서 첫 작업을 수행한 뒤 결과를 제출해주세요.</p>
-              )}
             </>
           ) : (
             <p>
@@ -409,16 +448,46 @@ function ConnectedWorkflowPanel() {
     </section>
   );
 }
+const outcomeLabels = {
+  done: "작업 완료",
+  pass: "검토 통과",
+  revise: "수정 필요",
+  blocked: "근거 부족 · 보류",
+  cancel: "작업 취소",
+};
+interface ResultDraft {
+  summary: string;
+  evidence: string;
+  outcome: string;
+}
 function TaskResult({
   run,
   busy,
+  drafts,
   onSubmit,
 }: {
   run: WorkflowRun;
+  drafts: Map<string, ResultDraft>;
   busy: boolean;
   onSubmit: (input: unknown) => Promise<void>;
 }) {
   const review = run.stage === "review" || run.stage === "visual_review";
+  const draftKey = `${run.runId}:${run.task!.taskId}`;
+  const [draft, setDraft] = useState<ResultDraft>(
+    () =>
+      drafts.get(draftKey) ?? {
+        summary: "",
+        evidence: "",
+        outcome: review ? "pass" : "done",
+      },
+  );
+  const update = (patch: Partial<ResultDraft>) => {
+    setDraft((current) => {
+      const next = { ...current, ...patch };
+      drafts.set(draftKey, next);
+      return next;
+    });
+  };
   return (
     <form
       className="workflow-result"
@@ -438,29 +507,47 @@ function TaskResult({
       }}
     >
       <label>
-        결과
-        <select name="outcome" aria-label="결과">
-          {review ? (
-            <>
-              <option value="pass">검토 통과</option>
-              <option value="revise">수정 필요</option>
-            </>
-          ) : (
-            <option value="done">작업 완료</option>
-          )}
-          <option value="blocked">근거 부족 · 보류</option>
-          <option value="cancel">작업 취소</option>
-        </select>
-      </label>
-      <label>
         판단·변경 내용
-        <textarea name="summary" required />
+        <textarea
+          name="summary"
+          required
+          value={draft.summary}
+          onChange={(e) => update({ summary: e.target.value })}
+          placeholder="수행한 작업과 판단 근거를 적어주세요. Markdown을 사용할 수 있어요."
+        />
       </label>
       <label>
         결과·검토 근거 파일 (상대 경로, 한 줄에 하나)
-        <textarea name="evidence" />
+        <textarea
+          name="evidence"
+          value={draft.evidence}
+          onChange={(e) => update({ evidence: e.target.value })}
+        />
       </label>
-      <button disabled={busy}>결과 제출</button>
+      <div className="workflow-composer-toolbar">
+        <span>현재 단계 · {stageLabels[run.stage]}</span>
+        <label>
+          결과
+          <select
+            name="outcome"
+            aria-label="결과"
+            value={draft.outcome}
+            onChange={(e) => update({ outcome: e.target.value })}
+          >
+            {review ? (
+              <>
+                <option value="pass">검토 통과</option>
+                <option value="revise">수정 필요</option>
+              </>
+            ) : (
+              <option value="done">작업 완료</option>
+            )}
+            <option value="blocked">근거 부족 · 보류</option>
+            <option value="cancel">작업 취소</option>
+          </select>
+        </label>
+        <button disabled={busy}>결과 제출</button>
+      </div>
     </form>
   );
 }

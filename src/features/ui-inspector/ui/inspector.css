@@ -1,0 +1,82 @@
+.ui-inspector-banner {
+  position: fixed;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 14px;
+  background: #173e33;
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px #0003;
+  font-size: 13px;
+}
+.ui-inspector-banner button {
+  color: #173e33;
+  background: #fff;
+  white-space: nowrap;
+}
+.ui-inspector-outline {
+  position: fixed;
+  z-index: 1499;
+  pointer-events: none;
+  border: 2px solid #137c64;
+  background: #137c6414;
+  box-shadow: 0 0 0 1px #fff;
+}
+.ui-inspector-dialog {
+  width: min(620px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid #b5c8bd;
+  border-radius: 14px;
+  color: #17342b;
+  background: #f6f7f3;
+  max-height: 85vh;
+  overflow: auto;
+}
+.ui-inspector-dialog::backdrop {
+  background: #12291f66;
+}
+.ui-inspector-dialog header,
+.ui-inspector-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ui-inspector-dialog footer {
+  justify-content: flex-end;
+}
+.ui-inspector-dialog h2 {
+  font-size: 18px;
+}
+.ui-inspector-dialog label {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.ui-inspector-dialog textarea {
+  resize: vertical;
+  min-height: 110px;
+  width: 100%;
+}
+.ui-inspector-dialog ul {
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.ui-inspector-help {
+  margin: 10px 0 16px;
+  color: #586b60;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Cross-origin preview clicks never reach document capture listeners. */
+.reels-inspecting iframe {
+  pointer-events: none !important;
+}

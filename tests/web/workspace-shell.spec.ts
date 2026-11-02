@@ -83,3 +83,73 @@ test("compact shell provides navigation history, search and settings without los
     await page.screenshot({ path: info.outputPath(`shell-${width}.png`) });
   }
 });
+
+test("search caps each group, reaches overflow by query and keeps keyboard focus predictable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "reels-dashboard-demo-v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: "2026-11-02T00:00:00.000Z",
+        projects: Array.from({ length: 12 }, (_, index) => ({
+          id: `keyboard-project-${index}`,
+          title: `검색용 콘텐츠 ${index + 1}`,
+          date: "2026-11-02",
+          stage: "editing",
+          nextAction: "검토",
+          publicURL: "",
+          shared: false,
+        })),
+      }),
+    );
+  });
+  await page.goto("/?demo=1");
+  const searchButton = page
+    .getByRole("banner", { name: "작업공간 도구" })
+    .getByRole("button", { name: "검색", exact: true });
+  await searchButton.click();
+  const search = page.getByRole("dialog", { name: "작업공간 검색" });
+  const input = search.getByRole("textbox", { name: "메뉴·콘텐츠 검색" });
+  await expect(
+    search.getByText("콘텐츠 12개 중 8개를 표시해요. 검색어로 좁혀 주세요."),
+  ).toBeVisible();
+  await expect(
+    search.getByRole("button", { name: /검색용 콘텐츠/ }),
+  ).toHaveCount(8);
+  expect(
+    await search.locator(".shell-results button").count(),
+  ).toBeLessThanOrEqual(16);
+  const first = search.locator(".shell-results button").first();
+  const last = search.locator(".shell-results button").last();
+  await input.press("ArrowUp");
+  await expect(last).toBeFocused();
+  await last.press("ArrowDown");
+  await expect(input).toBeFocused();
+  await input.press("ArrowDown");
+  await expect(first).toBeFocused();
+  await first.press("End");
+  await expect(last).toBeFocused();
+  await last.press("Home");
+  await expect(first).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(search).not.toBeVisible();
+  await expect(searchButton).toBeFocused();
+
+  await page.keyboard.press("Control+k");
+  await input.fill("검색용 콘텐츠 12");
+  await expect(
+    search.getByRole("button", { name: /검색용 콘텐츠/ }),
+  ).toHaveCount(1);
+  await input.press("Enter");
+  const project = page.getByRole("dialog", { name: "콘텐츠 기록" });
+  await expect(project.getByLabel("콘텐츠 제목", { exact: true })).toHaveValue(
+    "검색용 콘텐츠 12",
+  );
+  await expect(search).not.toBeVisible();
+  await project.getByRole("button", { name: "취소", exact: true }).click();
+  await page.keyboard.press("Control+k");
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+});

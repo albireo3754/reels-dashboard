@@ -42,6 +42,8 @@ All **26 upstream test files / 75 tests** are preserved byte-for-byte. The nativ
 
 ## Compact workspace
 
+Workflow reports now use Slack-style message rows and safe Markdown rendering. Developer mode adds **화면 검사** (`⌘⇧C`) to turn a selected element and comment into a reviewable Codex request. Search keyboard access, background workflow notifications and concurrent-review protection are included. See [Workdesk adoption and coverage](docs/workdesk-adoption.md).
+
 The window uses a compact toolbar: back/forward, screen history and menu/content search on the left; settings and the opt-in terminal on the right. The large introductory titles and sidebar development/settings entries are removed. See [window layout and terminal controls](docs/workspace-shell.md).
 
 Project photo/frame metadata analysis supports a replaceable image analyzer, source timestamps, human corrections and search through the desktop/MCP. See [metadata analysis](docs/media-analysis.md).

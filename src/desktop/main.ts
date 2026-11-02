@@ -3,6 +3,7 @@ import { DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
 import { workflowRequest } from "../app/workflow/client";
 import { workflowAction } from "../shared/workflow";
+import { WorkflowNotifications } from "./workflow-notifications";
 import { BlogExtractor } from "./blog-extractor";
 import { MediaAnalysis } from "./media-analysis";
 import { BlogLibrary } from "./blog-library";
@@ -14,6 +15,7 @@ import {
   shell,
   protocol,
   nativeImage,
+  Notification,
 } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -116,6 +118,33 @@ async function awaitReady() {
   const emit = (name: string, value: unknown) => {
     if (window && !window.isDestroyed()) window.webContents.send(name, value);
   };
+  let workflowOpen: { runId: string; sequence: number } | null = null;
+  let workflowOpenSequence = 0;
+  const workflowToasts = new Set<Notification>();
+  const workflowNotifications = new WorkflowNotifications({
+    enabled: !backgroundQA && !fixture,
+    list: () => workflowRequest("list"),
+    isActive: () => !!window && !window.isDestroyed() && window.isVisible() && window.isFocused(),
+    setBadge: (count) => { app.setBadgeCount(count); },
+    open: (runId) => {
+      workflowOpen = { runId, sequence: ++workflowOpenSequence };
+      showWindow();
+      emit("workflow:open", null);
+    },
+    notify: (notice, count, onClick) => {
+      if (!Notification.isSupported()) return;
+      const state = notice.status === "completed" ? "완료" : notice.status === "interrupted" ? "중단" : "실패";
+      const toast = new Notification({
+        title: count > 1 ? `워크플로 ${count}건 상태 변경` : `워크플로 ${state}`,
+        body: notice.title.replace(/[\r\n\t]/g, " ").slice(0, 160),
+        silent: true,
+      });
+      workflowToasts.add(toast);
+      toast.once("click", onClick);
+      toast.once("close", () => workflowToasts.delete(toast));
+      toast.show();
+    },
+  });
   const workbench = developmentMode
     ? new Workbench(root, (event) => emit("workbench:event", event))
     : undefined;
@@ -294,6 +323,9 @@ async function awaitReady() {
       return;
     }
     quitting = true;
+    workflowNotifications.dispose();
+    for (const toast of workflowToasts) toast.close();
+    workflowToasts.clear();
     workbench?.dispose();
     blogResults.dispose();
     boardMedia.dispose();
@@ -315,6 +347,10 @@ async function awaitReady() {
     });
   handle("executionLogs:list", () => logs.list());
   handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
+  handle("workflow:pendingOpen", () => workflowOpen);
+  handle("workflow:ackOpen", (sequence) => {
+    if (workflowOpen?.sequence === sequence) workflowOpen = null;
+  });
   handle("blog:openCanonical", () => canonicalEditor.open());
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
   handle("blog:results", () => blogResults.list());
@@ -649,6 +685,7 @@ async function awaitReady() {
       return { action: "deny" };
     });
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    window.on("focus", () => workflowNotifications.clearUnread());
     window.webContents.session.setPermissionRequestHandler(
       (_webContents, _permission, callback) => callback(false),
     );
@@ -675,6 +712,7 @@ async function awaitReady() {
     window.focus();
   };
   if (!backgroundQA) installApplicationIdentity(showWindow);
+  workflowNotifications.start();
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {

@@ -30,6 +30,7 @@
 }
 .workspace-toolbar button:hover,
 .workspace-toolbar button[aria-current],
+.workspace-toolbar button[aria-pressed="true"],
 .workspace-toolbar button[aria-expanded="true"] {
   background: #dfe6d8;
 }
@@ -83,6 +84,16 @@
 }
 .shell-results button[aria-current] {
   border-color: var(--green);
+}
+.shell-results button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  background: #e6ede0;
+}
+.shell-search-help {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 8px 0 0;
 }
 .shell-results small {
   display: block;

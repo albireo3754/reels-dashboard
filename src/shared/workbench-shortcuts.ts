@@ -1,5 +1,6 @@
 export type WorkbenchAction =
   | { type: "toggle" }
+  | { type: "inspect" }
   | { type: "newTerminal" }
   | { type: "close" }
   | { type: "selectIndex"; index: number };
@@ -16,6 +17,7 @@ const commands = [
 ] satisfies { code: string; hint: string; action: WorkbenchAction }[];
 
 export function shortcutHint(type: WorkbenchAction["type"], index?: number) {
+  if (type === "inspect") return "⌘⇧C";
   return (
     commands.find(
       (entry) =>
@@ -39,10 +41,11 @@ export function matchWorkbenchShortcut(event: {
     event.keyCode === 229 ||
     !event.metaKey ||
     event.ctrlKey ||
-    event.altKey ||
-    event.shiftKey
+    event.altKey
   )
     return;
+  if (event.shiftKey)
+    return event.code === "KeyC" ? { type: "inspect" } : undefined;
   const code = /^Numpad[1-9]$/.test(event.code)
     ? event.code.replace("Numpad", "Digit")
     : event.code;

@@ -117,6 +117,12 @@ const bundleOutput = z.strictObject({
 });
 
 export class CodexExecutor {
+  // Reserve request IDs while asynchronous screenshot validation is in progress.
+  // Persisted jobs alone cannot prevent a second request from starting in that gap.
+  private markupStarting = new Map<
+    string,
+    { inputHash: string; promise: Promise<SdkJob> }
+  >();
   private active = new Map<
     string,
     { controller: AbortController; promise: Promise<void> }
@@ -314,6 +320,25 @@ export class CodexExecutor {
     let existing:SdkJob|undefined;
     try{existing=this.runtime.getJob(input.id);}catch(e){if((e as Error).message!=="Unknown SDK job")throw e;}
     if(existing){if(existing.inputHash!==inputHash)throw new Error("Request ID reused with different content");return existing;}
+    const pending = this.markupStarting.get(input.id);
+    if (pending) {
+      if (pending.inputHash !== inputHash)
+        throw new Error("Request ID reused with different content");
+      return pending.promise;
+    }
+    const promise = this.startMarkupReview(input, doc, inputHash);
+    this.markupStarting.set(input.id, { inputHash, promise });
+    try {
+      return await promise;
+    } finally {
+      this.markupStarting.delete(input.id);
+    }
+  }
+  private async startMarkupReview(
+    input: z.infer<typeof markupReviewInput>,
+    doc: ReturnType<typeof reviewDocument>,
+    inputHash: string,
+  ): Promise<SdkJob> {
     for(const evidence of input.visualEvidence){
       const file=await realpath(evidence.path);
       if(file!==path.resolve(evidence.path)||!file.endsWith(".png"))throw new Error("Invalid screenshot path");

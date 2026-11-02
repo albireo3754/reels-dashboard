@@ -7,10 +7,35 @@ import { execFileSync } from "node:child_process";
 import type { IPty, spawn } from "node-pty";
 import {
   terminalCommand,
+  terminalEnvironment,
   validateWorkspace,
   Workbench,
 } from "../../src/desktop/workbench";
 import { workPrompt } from "../../src/shared/workbench";
+
+test("Finder terminal defaults to UTF-8 without overriding configured locales", () => {
+  assert.equal(terminalEnvironment({}).LC_CTYPE, "UTF-8");
+  assert.equal(
+    terminalEnvironment({ LANG: "", LC_CTYPE: "", LC_ALL: "" }).LC_CTYPE,
+    "UTF-8",
+  );
+  for (const key of ["LANG", "LC_ALL", "LC_CTYPE"] as const) {
+    for (const value of ["C", "ko_KR.UTF-8", "en_US.UTF-8"]) {
+      const source = {
+        [key]: value,
+        PATH: "/custom/bin",
+        CODEX_HOME: "/private/config",
+      };
+      const env = terminalEnvironment(source);
+      assert.equal(env[key], value);
+      assert.equal(env.LC_CTYPE, key === "LC_CTYPE" ? value : undefined);
+      assert.equal(env.CODEX_HOME, undefined);
+      assert.ok(env.PATH.endsWith(":/custom/bin"));
+      assert.equal(env.TERM, "xterm-256color");
+      assert.equal(source.CODEX_HOME, "/private/config");
+    }
+  }
+});
 
 test("agent launch quotes untrusted task text as one argument and retains approvals", () => {
   const task = "따옴표 ' $HOME $(touch /tmp/should-not-run) `id`\n다음 줄";
@@ -94,7 +119,6 @@ test("workspace validation and settings persistence do not depend on app install
   }
 });
 
-
 test("closing a tab waits for exit, deduplicates requests and preserves failures", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "reels-close-test-"));
   const exitListeners = new Set<(event: { exitCode: number }) => void>();
@@ -104,7 +128,11 @@ test("closing a tab waits for exit, deduplicates requests and preserves failures
     onData: () => ({ dispose() {} }),
     onExit: (listener: (event: { exitCode: number }) => void) => {
       exitListeners.add(listener);
-      return { dispose: () => { exitListeners.delete(listener); } };
+      return {
+        dispose: () => {
+          exitListeners.delete(listener);
+        },
+      };
     },
     kill: () => {
       killCount++;
@@ -120,9 +148,13 @@ test("closing a tab waits for exit, deduplicates requests and preserves failures
     (() => pty) as typeof spawn,
   );
   try {
-    await writeFile(path.join(root, "package.json"), JSON.stringify({
-      name: "reels-dashboard", scripts: { dev: "vite", typecheck: "tsc" },
-    }));
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        name: "reels-dashboard",
+        scripts: { dev: "vite", typecheck: "tsc" },
+      }),
+    );
     await manager.initialize(root);
     const session = await manager.start({ kind: "shell" });
     const first = manager.close(session.id);
@@ -144,7 +176,10 @@ test("closing a tab waits for exit, deduplicates requests and preserves failures
     assert.equal(exitListeners.size, 1);
     failKill = false;
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const timedOut = assert.rejects(manager.close(failed.id), /종료를 확인하지 못했어요/);
+    const timedOut = assert.rejects(
+      manager.close(failed.id),
+      /종료를 확인하지 못했어요/,
+    );
     t.mock.timers.tick(5000);
     await timedOut;
     assert.equal(manager.state().sessions[0].state, "running");

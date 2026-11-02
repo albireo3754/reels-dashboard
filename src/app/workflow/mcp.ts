@@ -1,3 +1,4 @@
+import { mcpResult, mcpError } from "../../shared/mcp-result";
 import { openFollowupsInput } from "../../shared/followups";
 import {
   saveExperienceInput,
@@ -96,20 +97,9 @@ const handle = serveStdio(() => {
       async (input: unknown): Promise<CallToolResult> => {
         try {
           const result = await workflowRequest(action, input);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result) }],
-            structuredContent: result,
-          };
-        } catch (e) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: e instanceof Error ? e.message : String(e),
-              },
-            ],
-          };
+          return mcpResult(result);
+        } catch (error) {
+          return mcpError(error);
         }
       },
     );

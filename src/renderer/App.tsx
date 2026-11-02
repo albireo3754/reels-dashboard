@@ -1,5 +1,5 @@
 import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
-import { WorkflowPanel } from "../features/workflow";
+import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
 import { ProjectAnalysis } from "../features/media-analysis";
 import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
 import { ProjectGrouping } from "../features/project-grouping";
@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -41,6 +42,7 @@ import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
 import { CardNews } from "../features/card-news";
 import type { DrawerMode } from "../features/dev-workspace";
+const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
 const DevWorkspace = lazy(() =>
   import("../features/dev-workspace").then((m) => ({
     default: m.DevWorkspace,
@@ -156,7 +158,18 @@ function Empty({
 export function App({ bridge }: { bridge: DashboardBridge }) {
   const navigation = useWorkspaceNavigation<Tab>(new URLSearchParams(location.search).has("workflow") ? "workflow" : "dashboard");
   const { current: tab, navigate: setTab } = navigation;
+  const notificationRun = useWorkflowNotifications(setTab);
+  const [workflowVisited, setWorkflowVisited] = useState(tab === "workflow");
+  useEffect(() => { if (tab === "workflow") setWorkflowVisited(true); }, [tab]);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
+  const [inspecting, setInspecting] = useState(false);
+  const [feedbackDrafts, setFeedbackDrafts] = useState<{ id: number; text: string; phase: "fix" }[]>([]);
+  const feedbackSequence = useRef(0);
+  const acknowledgeFeedback = useCallback((id: number) => setFeedbackDrafts((drafts) => drafts.filter((draft) => draft.id !== id)), []);
+  const closeInspector = useCallback(() => setInspecting(false), []);
+  useEffect(() => bridge.workbench?.onShortcut((action) => {
+    if (action.type === "inspect") setInspecting((active) => !active);
+  }), [bridge.workbench]);
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
     null,
   );
@@ -750,10 +763,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         onNavigate={key => navigateTo(key as Tab)}
         onJump={navigation.jump}
         settingsActive={tab === "settings"}
+        inspecting={inspecting}
+        onInspect={bridge.workbench ? () => setInspecting((active) => !active) : undefined}
         terminal={drawerMode}
         onTerminal={bridge.workbench ? () => setDrawerMode(mode => mode === "open" ? "folded" : "open") : undefined}
         onProject={!readOnly ? project => { setEditingRevision(dashboard.updatedAt); setEditingProject({ ...project }); } : undefined}
       />
+      {bridge.workbench && inspecting && <Suspense fallback={null}><UiInspector onClose={closeInspector} onFeedback={(text) => {
+        const id = ++feedbackSequence.current;
+        setFeedbackDrafts((previous) => [...previous, { id, text, phase: "fix" }]);
+        setInspecting(false);
+        setDrawerMode("open");
+      }} /></Suspense>}
       <aside className="sidebar">
         <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
@@ -1504,6 +1525,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             <Suspense fallback={null}>
               <DevWorkspace
                 api={bridge.workbench}
+                feedbackDraft={feedbackDrafts[0]}
+                onFeedbackApplied={acknowledgeFeedback}
                 mode={drawerMode}
                 onModeChange={setDrawerMode}
                 onNavigate={(index) => {
@@ -1530,7 +1553,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         </div>
         <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}/></div>
         {tab === "logs" && bridge.executionLogs && <ExecutionLogsPanel bridge={bridge.executionLogs} />}
-        {tab === "workflow" && <WorkflowPanel />}
+        {(workflowVisited || tab === "workflow") && <div hidden={tab !== "workflow"}><WorkflowPanel openRunRequest={notificationRun} /></div>}
         {tab === "transfers" &&
           (readOnly ? (
             nativeNotice

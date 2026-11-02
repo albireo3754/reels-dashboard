@@ -18,6 +18,26 @@ import {
 } from "./workbench-providers";
 
 export const PREVIEW_URL = "http://127.0.0.1:4183/?demo=1";
+
+export function terminalEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  const env = Object.fromEntries(
+    Object.entries(environment).filter(
+      ([key, value]) =>
+        value !== undefined &&
+        !/^(CLAUDE|CODEX|ELECTRON_|NODE_OPTIONS|NODE_INSPECT|REELS_)/.test(key),
+    ),
+  ) as Record<string, string>;
+  // Finder supplies neither a shell PATH nor a locale. Preserve deliberate locale
+  // choices (including C), but allow Korean input when none has been configured.
+  env.PATH = `${path.join(os.homedir(), ".local/bin")}:/opt/homebrew/bin:/usr/local/bin:${env.PATH || "/usr/bin:/bin"}`;
+  env.TERM = "xterm-256color";
+  if (![env.LANG, env.LC_ALL, env.LC_CTYPE].some((value) => value?.trim()))
+    env.LC_CTYPE = "UTF-8";
+  return env;
+}
+
 const startSchema = z
   .object({
     kind: z.enum(["codex", "claude", "shell", "preview", "checks"]),
@@ -153,17 +173,7 @@ export class Workbench {
       if (this.disposed) throw new Error("작업공간이 종료됐어요.");
       const shell = "/bin/zsh";
       // Finder-launched Electron has a minimal PATH. Login profiles may add tool managers.
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(
-          ([k, v]) =>
-            v !== undefined &&
-            !/^(CLAUDE|CODEX|ELECTRON_|NODE_OPTIONS|NODE_INSPECT|REELS_)/.test(
-              k,
-            ),
-        ),
-      ) as Record<string, string>;
-      env.PATH = `${path.join(os.homedir(), ".local/bin")}:/opt/homebrew/bin:/usr/local/bin:${env.PATH || "/usr/bin:/bin"}`;
-      env.TERM = "xterm-256color";
+      const env = terminalEnvironment();
       const pty = this.spawnPty(shell, command ? ["-lc", command] : ["-l"], {
         cwd,
         env,
@@ -253,7 +263,11 @@ export class Workbench {
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => {
             subscription.dispose();
-            reject(new Error("세션 종료를 확인하지 못했어요. 상태를 확인하고 다시 닫아주세요."));
+            reject(
+              new Error(
+                "세션 종료를 확인하지 못했어요. 상태를 확인하고 다시 닫아주세요.",
+              ),
+            );
           }, 5000);
           const subscription = entry.pty.onExit(() => {
             clearTimeout(timer);
