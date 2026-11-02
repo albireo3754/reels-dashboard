@@ -36,6 +36,7 @@ The changes around [Workdesk #41](https://github.com/albireo3754/workdesk/pull/4
 - 173 unit tests, 101 Swift tests, 85 Chromium tests and four workflow browser tests passed.
 - Full background Electron run: 51 passed, ten explicit opt-in scenarios skipped, and one stale preload-key assertion failed. The assertion was updated to include the existing execution-log API and all six desktop bridge checks then passed. Five focused inspector browser checks cover the final feedback/iframe fixes.
 - All 13 bundled editor-engine checks passed against the rebuilt runtime.
+- Final background Electron inspector and notification routing checks passed. CI's media tests now run after the bundled runtime build; a fresh runner previously failed before FFmpeg existed.
 - Independent review found and fixed deferred inspection feedback loss, iframe interaction during inspection, repeated notification routing and workflow draft loss on menu navigation.
 
 Tests use synthetic workflows and background Electron profiles; they do not submit real model work, publish content or modify personal media. Native toast delivery, actual Finder Korean input and subjective visual preference remain manual verification boundaries. Full source-to-runtime native helper and editor builds passed; packaging follows the main merge.

@@ -25,13 +25,14 @@ jobs:
       - run: npm run typecheck
       - run: zsh native/photosindex/scripts/test-sign-app.zsh
       - run: npm run verify:spec
-      - run: npm test
       - run: npm run test:native
       - run: npm run build:native
       - run: npm run test:native-rebuild
       - run: npm run test:native-install
       - run: brew install uv ffmpeg x264 x265 pkg-config
       - run: npm run build:editor
+      # Media service tests execute the bundled FFmpeg/editor runtime.
+      - run: npm test
       - run: npm run test:editor-engine
       - run: npm run build
       - run: npm run test:web
