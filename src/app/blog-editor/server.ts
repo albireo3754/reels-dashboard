@@ -1,3 +1,4 @@
+import type {VisualEvidence} from "../../shared/markup-review";
 import {MarkupReviewWorker} from "./review-worker";
 import { AnnotationStore } from "./annotations";
 import { MarkupStore } from "./markup-store";
@@ -10,8 +11,9 @@ import { frameScript } from "./frame-script";
 export async function startCanonicalEditor(
   config: EditorConfig,
   webRoot = path.resolve("dist"),
+  capture?: (url:string,bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>,
 ) {
-  const store = config.format === "markup" ? new MarkupStore(config) : new CanonicalStore(config);
+  const store = config.format === "markup" ? new MarkupStore(config,capture?((ids,dir,rev)=>capture("http://127.0.0.1:"+(server.address() as {port:number}).port+"/api/blog/frame",ids,dir,rev)):undefined) : new CanonicalStore(config);
   await store.load();
   const annotations = config.format === "markup" ? new AnnotationStore(config.canon) : undefined;
   const worker = config.format === "markup" ? new MarkupReviewWorker(config) : undefined;
@@ -76,6 +78,15 @@ export async function startCanonicalEditor(
         res.writeHead(200, { "Content-Type": "text/javascript" });
         res.end(frameScript);
         return;
+      }
+      if(u.pathname==="/api/blog/review-image"&&config.requests){
+        const id=u.searchParams.get("request")??"",index=Number(u.searchParams.get("index"));
+        if(!/^[0-9a-f-]{36}$/i.test(id)||!Number.isInteger(index)||index<0)return json(400,{error:"Invalid evidence"});
+        const request=JSON.parse(await readFile(path.join(config.requests,id+".json"),"utf8"));
+        const evidence=request.visualEvidence?.[index];if(!evidence)return json(404,{error:"Evidence missing"});
+        const root=await realpath(path.join(config.requests,"evidence",id)),file=await realpath(evidence.path);
+        if(!file.startsWith(root+path.sep)||!file.endsWith(".png"))return json(403,{error:"Invalid evidence path"});
+        res.writeHead(200,{"Content-Type":"image/png"});res.end(await readFile(file));return;
       }
       let file: string;
       if (u.pathname === "/api/blog/asset")

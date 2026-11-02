@@ -1,3 +1,4 @@
+import { ExecutionLogs } from "../../src/shared/lib/execution-logs";
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, readFile, stat, realpath, rm} from 'node:fs/promises';
@@ -18,7 +19,7 @@ test('face mosaic saves a new image and reviewed settings, rejecting changed sou
     const before=await readFile(source), info=await stat(source);
     const store=new LocalStore(root); await store.initialize();
     await store.update(d=>({...d,projects:[{id:'p',title:'p',date:'2026-10-31',stage:'captured',nextAction:'',publicURL:'',shared:false,resources:[{role:'folder',path:media,label:'media'}]}]}));
-    const service=new MediaAnalysis(store,new ContentLibrary(store),runtime);
+    const service=new MediaAnalysis(store,new ContentLibrary(store),runtime,new ExecutionLogs(root));
     await mkdir(service.root,{recursive:true});
     const sample={id:'s',sourcePath:source,sourceVersion:createHash('sha256').update(`${info.size}:${info.mtimeMs}`).digest('hex'),kind:'photo',time:null,imagePath:source};
     const fields={description:'fixture',tags:[],ocr:[],uncertainties:[],faceRegions:[{x:.1,y:.1,width:.3,height:.3}]};

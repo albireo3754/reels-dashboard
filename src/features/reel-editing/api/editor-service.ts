@@ -1,5 +1,7 @@
+import { ExecutionLogs } from "../../../shared/lib/execution-logs";
+import { loggedSpawn } from "../../../shared/lib/logged-process";
 import { editOwner, recordExports } from "../../../shared/production-project";
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import {
   access,
   mkdir,
@@ -33,6 +35,7 @@ interface RecordData {
   mtimeMs: number;
 }
 interface Options {
+  logs: ExecutionLogs;
   dashboardChanged?: (dashboard: Dashboard) => void;
   root: string;
   runtime: string;
@@ -118,7 +121,7 @@ export class EditorService implements EditorBridge {
     tracked = false,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.executable, args, {
+      const child = loggedSpawn(this.options.logs, { source: "editor", label: ({probe: "편집 영상 정보 확인", render: "영상 인코딩", proxy: "편집용 재생 영상 준비", preview: "편집 미리보기", cover: "표지 생성"} as Record<string,string>)[args[0]] ?? `편집 엔진 · ${args[0]}`, projectId: this.activeJob?.projectId, jobId: this.activeJob?.id }, this.executable, args, {
         cwd: this.options.runtime,
         env: {
           ...process.env,
@@ -143,7 +146,7 @@ export class EditorService implements EditorBridge {
         },
         tracked ? 3600000 : 600000,
       );
-      child.stdout.on("data", (chunk) => {
+      child.stdout!.on("data", (chunk) => {
         const text = chunk.toString();
         stdout += text;
         if (stdout.length > 8 * 1024 * 1024) {
@@ -163,7 +166,7 @@ export class EditorService implements EditorBridge {
           } catch {}
         }
       });
-      child.stderr.on("data", (chunk) => {
+      child.stderr!.on("data", (chunk) => {
         stderr = (stderr + chunk.toString()).slice(-16000);
       });
       const finish = (error?: Error) => {

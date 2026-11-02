@@ -41,6 +41,11 @@ export interface CanonicalFinding {
   status?: string;
 }
 export interface CanonicalReview {
+  emphasisDecisions?: import("./markup-review").MarkupReviewResult["reviews"][number]["emphasisDecisions"];
+  visual?: import("./markup-review").MarkupReviewResult["reviews"][number]["visual"];
+  visualFresh?: boolean;
+  screenshots?: Array<{width:number;index:number}>;
+
   generatedAt?: string;
   provider?: string;
   requestId?: string;

@@ -1,3 +1,4 @@
+import type {VisualEvidence} from "../../shared/markup-review";
 import {paragraphSource,findingApplicability} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {AnnotationStore} from "./annotations";
@@ -40,7 +41,7 @@ function edited(original:ParagraphNode,source:string):ParagraphNode{
 const patchSchema=z.strictObject({revision:z.string(),edits:z.array(z.strictObject({id:z.string(),source:z.string().min(1).max(20000)})).max(100),title:z.string().min(1).max(200).optional()});
 export class MarkupStore {
   private bases=new Map<string,{text:string;fingerprint:string}>();
-  constructor(readonly config:EditorConfig){}
+  constructor(readonly config:EditorConfig,private capture?: (bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>){}
   async inputs(){
     if(await realpath(this.config.canon)!==path.resolve(this.config.canon))throw new Error("정본 경로가 바뀌었어요.");
     const base=await load(this.config.canon),doc=parse(base.text);
@@ -74,7 +75,7 @@ export class MarkupStore {
             try{receipt=reviewDocument(JSON.parse(await readFile(path.join(this.config.requests,r.requestId+".json"),"utf8")).source);}
             catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
           }
-          return {...r,freshText:hashes[r.bundleId]?.textHash===r.basedOn?.textHash,
+          return {...r,visualFresh:r.visualSourceFingerprint===x.base.fingerprint,freshText:hashes[r.bundleId]?.textHash===r.basedOn?.textHash,
             findings:r.findings.map((f:any)=>{
               const id=f.proposal?.tid??f.proposal?.entry?.id;
               const fresh=!!hashes[r.bundleId]&&reviewFresh(f.axis,f.basedOn??r.basedOn,hashes[r.bundleId]);
@@ -148,9 +149,17 @@ body{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20p
     await mkdir(this.config.requests,{recursive:true});
     const existing=await Promise.all((await readdir(this.config.requests)).filter(n=>/^[0-9a-f-]{36}\.json$/i.test(n)).map(async n=>JSON.parse(await readFile(path.join(this.config.requests!,n),"utf8"))));
     const source=legend()+"\n\n"+x.rules+"\n"+serialize(x.doc),annotations=await new AnnotationStore(this.config.canon).list();
-    const same=existing.find(r=>["pending","running"].includes(r.status)&&JSON.stringify(r.bundleIds)===JSON.stringify(input.bundleIds)&&r.source===source&&JSON.stringify(r.annotations??[])===JSON.stringify(annotations));
+    const guidance=(await Promise.all((this.config.reviewGuidance??[]).map(async file=>{
+      if(!path.isAbsolute(file))throw new Error("검토 기준은 절대 경로로 지정해주세요.");
+      return await readFile(await realpath(file),"utf8");
+    }))).join("\n\n");
+    if(guidance.length>60000)throw new Error("검토 기준이 너무 길어요. 관련 기준만 연결해주세요.");
+    const same=existing.find(r=>["pending","running"].includes(r.status)&&JSON.stringify(r.bundleIds)===JSON.stringify(input.bundleIds)&&r.source===source&&(r.guidance??"")===guidance&&JSON.stringify(r.annotations??[])===JSON.stringify(annotations));
     if(same)return same;
-    const request={createdAt:new Date().toISOString(),id:randomUUID(),kind:"blog.markup.review-request",status:"pending",bundleIds:input.bundleIds,basedOn:bundleHashes(x.doc),source:legend()+"\n\n"+x.rules+"\n"+serialize(x.doc),annotations:await new AnnotationStore(this.config.canon).list()};
+    const id=randomUUID();
+    const visualEvidence=this.capture?await this.capture(input.bundleIds,path.join(this.config.requests,"evidence",id),x.base.fingerprint):[];
+    if(fingerprint(await readFile(this.config.canon,"utf8"))!==x.base.fingerprint)throw new Error("화면 준비 중 원고가 바뀌었어요. 다시 요청해주세요.");
+    const request={guidance,visualEvidence,createdAt:new Date().toISOString(),id,kind:"blog.markup.review-request",status:"pending",bundleIds:input.bundleIds,basedOn:bundleHashes(x.doc),source:legend()+"\n\n"+x.rules+"\n"+serialize(x.doc),annotations:await new AnnotationStore(this.config.canon).list()};
     await writeFile(path.join(this.config.requests,request.id+".json"),JSON.stringify(request,null,2),{flag:"wx"});
     return request;
   }

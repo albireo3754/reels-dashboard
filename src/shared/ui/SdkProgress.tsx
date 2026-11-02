@@ -1,5 +1,6 @@
 import type { SdkJob } from "../workflow";
 import { AiUsageDetails } from "./AiUsageDetails";
+import { ConversationFeed } from "./ConversationFeed";
 export function SdkProgress({
   job,
   onStop,
@@ -37,11 +38,17 @@ export function SdkProgress({
       {job.error && <p role="alert">{job.error}</p>}
       <details>
         <summary>진행 기록</summary>
-        <ol>
-          {job.events.map((event, i) => (
-            <li key={i}>{event.message}</li>
-          ))}
-        </ol>
+        <ConversationFeed
+          label="Codex 진행 기록"
+          messages={job.events.map((event, i) => ({
+            id: `${job.id}:${i}`,
+            sender: "codex",
+            senderLabel: "Codex",
+            avatar: "C",
+            at: event.at,
+            body: event.message,
+          }))}
+        />
       </details>
       {job.observation && <AiUsageDetails observation={job.observation} />}
       {!job.observation && job.usage && (

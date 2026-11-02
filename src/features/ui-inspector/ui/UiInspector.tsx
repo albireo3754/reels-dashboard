@@ -1,0 +1,193 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  feedbackPrompt,
+  inspectTarget,
+  type InspectionTarget,
+} from "../model/inspect";
+import "./inspector.css";
+
+export function UiInspector({
+  onClose,
+  onFeedback,
+}: {
+  onClose: () => void;
+  onFeedback: (text: string) => void;
+}) {
+  const [hovered, setHovered] = useState<Element | null>(null);
+  const [bounds, setBounds] = useState<DOMRect | null>(null);
+  const [selected, setSelected] = useState<InspectionTarget | null>(null);
+  const [comment, setComment] = useState("");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const exitButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(document.activeElement);
+  useEffect(() => {
+    document.documentElement.classList.add("reels-inspecting");
+    return () => document.documentElement.classList.remove("reels-inspecting");
+  }, []);
+  useEffect(() => {
+    // Native shortcuts also arrive while a preview iframe owns keyboard focus.
+    // Bring Escape and activation keys back to this document for inspection.
+    exitButton.current?.focus();
+    return () => {
+      const element = restoreFocus.current;
+      if (element instanceof HTMLElement && element.isConnected)
+        element.focus();
+    };
+  }, []);
+  useEffect(() => {
+    if (!hovered || selected) {
+      setBounds(null);
+      return;
+    }
+    const refresh = () =>
+      setBounds(hovered.isConnected ? hovered.getBoundingClientRect() : null);
+    refresh();
+    window.addEventListener("resize", refresh);
+    window.addEventListener("scroll", refresh, true);
+    return () => {
+      window.removeEventListener("resize", refresh);
+      window.removeEventListener("scroll", refresh, true);
+    };
+  }, [hovered, selected]);
+  useEffect(() => {
+    if (selected) dialog.current?.showModal();
+  }, [selected]);
+  useEffect(() => {
+    const own = (target: EventTarget | null) =>
+      target instanceof Element &&
+      Boolean(target.closest('[data-ui-inspector], [aria-label="화면 검사"]'));
+    const move = (event: PointerEvent) => {
+      if (!selected)
+        setHovered(
+          event.target instanceof Element && !own(event.target)
+            ? event.target
+            : null,
+        );
+    };
+    const suppress = (event: Event) => {
+      if (own(event.target)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const choose = (event: MouseEvent) => {
+      if (own(event.target)) return;
+      suppress(event);
+      if (!selected && event.target instanceof Element)
+        setSelected(inspectTarget(event.target));
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.isComposing) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onClose();
+      } else if (
+        !own(event.target) &&
+        (event.key === "Enter" || event.key === " ")
+      )
+        suppress(event);
+    };
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerdown", suppress, true);
+    document.addEventListener("mousedown", suppress, true);
+    document.addEventListener("click", choose, true);
+    document.addEventListener("dblclick", suppress, true);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerdown", suppress, true);
+      document.removeEventListener("mousedown", suppress, true);
+      document.removeEventListener("click", choose, true);
+      document.removeEventListener("dblclick", suppress, true);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [onClose, selected]);
+  return (
+    <>
+      {!selected && (
+        <div className="ui-inspector-banner" data-ui-inspector role="status">
+          수정할 화면 요소를 선택하세요.{" "}
+          <button ref={exitButton} onClick={onClose}>
+            검사 끝내기 · Esc
+          </button>
+        </div>
+      )}
+      {bounds && (
+        <div
+          aria-hidden="true"
+          className="ui-inspector-outline"
+          style={{
+            left: bounds.left,
+            top: bounds.top,
+            width: bounds.width,
+            height: bounds.height,
+          }}
+        />
+      )}
+      <dialog
+        ref={dialog}
+        className="ui-inspector-dialog"
+        data-ui-inspector
+        aria-labelledby="ui-inspector-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (selected && comment.trim())
+              onFeedback(feedbackPrompt(selected, comment));
+          }}
+        >
+          <header>
+            <h2 id="ui-inspector-title">화면 수정 요청</h2>
+            <button type="button" aria-label="화면 검사 닫기" onClick={onClose}>
+              닫기
+            </button>
+          </header>
+          <p>
+            선택한 요소: <code>&lt;{selected?.tag}&gt;</code>
+          </p>
+          <ul aria-label="선택 요소 코드 위치">
+            {selected?.sources.map((source) => (
+              <li key={source}>
+                <code>{source}</code>
+              </li>
+            ))}
+          </ul>
+          {!selected?.sources.length && (
+            <p>이 요소의 코드 위치를 확인하지 못했어요.</p>
+          )}
+          <label>
+            수정할 내용
+            <textarea
+              autoFocus
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              maxLength={6000}
+              rows={5}
+              placeholder="어떻게 바꾸고 싶은지 적어주세요."
+            />
+          </label>
+          <p className="ui-inspector-help">
+            개선 요청에 추가한 뒤 Codex 시작 버튼으로 실행할 수 있어요. 화면의
+            입력값과 본문은 자동으로 포함하지 않아요.
+          </p>
+          <footer>
+            <button type="button" onClick={onClose}>
+              취소
+            </button>
+            <button
+              className="primary"
+              type="submit"
+              disabled={!comment.trim()}
+            >
+              개선 요청에 추가
+            </button>
+          </footer>
+        </form>
+      </dialog>
+    </>
+  );
+}

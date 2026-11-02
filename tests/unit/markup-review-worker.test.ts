@@ -16,9 +16,9 @@ test("request -> SDK job -> persisted review with provenance, idempotence and no
   const config={...await markupFixture(root),review:path.join(root,"review.json")};
   const factory:SdkFactory=()=>({startThread:()=>({async runStreamed(prompt){
    calls++;
-   const data=JSON.parse(prompt.split("\nInput: ")[1].split("\nReturn resultJson")[0]);
+   const data=JSON.parse((typeof prompt==="string"?prompt:(prompt[0] as {text:string}).text).split("\nInput: ")[1].split("\nReturn resultJson")[0]);
    return {events:(async function*(){
-    yield {type:"item.completed" as const,item:{id:"answer",type:"agent_message" as const,text:JSON.stringify({resultJson:JSON.stringify({requestId:data.id,reviews:[{bundleId:"B1",verdict:"passed",summary:"The supplied text fits the bundle.",findings:[]}]})})}};
+    yield {type:"item.completed" as const,item:{id:"answer",type:"agent_message" as const,text:JSON.stringify({resultJson:JSON.stringify({requestId:data.id,reviews:[{bundleId:"B1",verdict:"awaiting-visual",summary:"The supplied text fits the bundle.",findings:[],emphasisDecisions:[{tid:"P1",phrase:"First",role:"label",methods:["color","size"],action:"keep",reason:"Identifies the label",alternatives:"No background needed",findingIds:[]}],visual:{status:"unverified",evidence:[],observation:"No screenshots"}}]})})}};
     yield {type:"turn.completed" as const,usage:{input_tokens:10,output_tokens:10,cached_input_tokens:0,cache_write_input_tokens:0,reasoning_output_tokens:0}};
    })()};
   }})});

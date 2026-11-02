@@ -59,6 +59,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly executionLogs?: import("./execution-log").ExecutionLogBridge;
   readonly workflow?: import("./workflow").WorkflowBridge;
   readonly blog?: import("./blog").BlogBridge;
   readonly analysis?: import("./media-analysis").AnalysisBridge;

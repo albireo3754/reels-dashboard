@@ -339,3 +339,18 @@ test("unfinished SDK jobs become interrupted after runtime restart, with no auto
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("SDK preparation returns the question artifact, then waits for user answers", async () => {
+  const form = {version:1,title:"Fixture questions",introduction:"Answer together",facts:[],questions:[{id:"memory",section:"Memory",prompt:"What do you remember?",images:[]}]};
+  const f = await fixture(factory(() => success({outcome:"done",summary:"Prepared questions",artifacts:[{name:"experience-form.json",content:JSON.stringify(form)}]})));
+  try {
+    let run = await f.runtime.create({title:"Intake",workspace:f.root,trackedFiles:["source.md"],instructions:"Use prepared sources",collectExperience:true});
+    const job = await f.executor.execute({runId:run.runId,taskId:run.task!.taskId});
+    assert.equal((await finished(f.runtime,job.id)).status,"completed");
+    run = await f.runtime.get({runId:run.runId});
+    assert.equal(run.stage,"experience");
+    assert(run.trackedFiles.some(f=>f.endsWith("/experience-form.json")));
+    await assert.rejects(f.executor.execute({runId:run.runId,taskId:run.task!.taskId}),/USER_INPUT_REQUIRED/);
+    assert.equal(run.experience!.answers.length,0);
+  } finally {await f.close();}
+});

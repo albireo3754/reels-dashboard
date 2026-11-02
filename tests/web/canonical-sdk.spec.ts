@@ -10,7 +10,7 @@ import { makeCanonicalFixture } from "../fixtures/canonical-content";
 test("standalone blog UI proxies the shared SDK service and applies only on explicit choice", async ({ page }, info) => {
   const fixture = await makeCanonicalFixture();
   const factory: SdkFactory = () => ({ startThread: () => ({ runStreamed: async (prompt) => ({ events: (async function* () {
-    const request = JSON.parse(prompt.split("Request: ")[1].split("\nReturn resultJson")[0]);
+    const request = JSON.parse((typeof prompt==="string"?prompt:(prompt[0] as {text:string}).text).split("Request: ")[1].split("\nReturn resultJson")[0]);
     const bundleId = request.bundleIds[0], before = request.bundles.find((b: any) => b.id === bundleId).blocks[0];
     const result = { schemaVersion: 1, kind: "blog.bundle-review.result", requestId: request.requestId, reviews: [{ bundleId, verdict: "revise", summary: "합성 SDK 문안 제안", findings: [{ id: "sdk-example", bundleId, blockId: before.id, reason: "합성 검증을 위한 문장 수정", before, after: { ...before, text: "벤치에서 잠깐 쉬어갔어요" } }] }] };
     yield { type: "item.completed" as const, item: { id: "answer", type: "agent_message" as const, text: JSON.stringify({ resultJson: JSON.stringify(result) }) } };

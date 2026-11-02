@@ -1,3 +1,5 @@
+import { ExecutionLogs } from "../shared/lib/execution-logs";
+import { loggedExecFile } from "../shared/lib/logged-process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
@@ -24,7 +26,6 @@ import {
 } from "../shared/media-analysis";
 import {
   CodexImageAnalyzer,
-  runFile,
   type ImageAnalyzer,
 } from "./analysis-provider";
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -39,6 +40,7 @@ export class MediaAnalysis {
     private store: LocalStore,
     private library: ContentLibrary,
     private runtime: string,
+    private logs: ExecutionLogs,
     adapters?: ImageAnalyzer[],
     contextMcpPath?: string,
   ) {
@@ -190,7 +192,7 @@ export class MediaAnalysis {
     const sidecar = output + ".mosaic.json";
     await writeFile(sidecar, JSON.stringify(plan, null, 2), { flag: "wx", mode: 0o600 });
     try {
-      await runFile(path.join(this.runtime, "reels-editor"), ["face-mosaic", sidecar, output], { timeout: 90000, maxBuffer: 1024 * 1024 });
+      await loggedExecFile(this.logs, {source: "analysis", label: "분석 사진 모자이크", projectId: input.projectId}, path.join(this.runtime, "reels-editor"), ["face-mosaic", sidecar, output], { timeout: 90000, maxBuffer: 1024 * 1024 });
     } catch (error) {
       await unlink(sidecar).catch(() => {});
       throw error;
@@ -298,7 +300,8 @@ export class MediaAnalysis {
         : "photo";
     let times: (number | null)[] = [null];
     if (kind === "video-frame") {
-      const { stdout } = await runFile(
+      const { stdout } = await loggedExecFile(
+        this.logs, { source: "analysis", label: "분석 영상 정보 확인", projectId, jobId: runId },
         path.join(this.runtime, "bin/ffprobe"),
         [
           "-v",
@@ -346,7 +349,7 @@ export class MediaAnalysis {
         "-y",
         imagePath,
       ];
-      await runFile(path.join(this.runtime, "bin/ffmpeg"), args, {
+      await loggedExecFile(this.logs, { source: "analysis", label: `분석용 프레임 추출${time === null ? "" : ` · ${time}초`}`, projectId, jobId: runId }, path.join(this.runtime, "bin/ffmpeg"), args, {
         timeout: 90000,
         maxBuffer: 1024 * 1024,
       });

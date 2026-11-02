@@ -138,10 +138,13 @@ public final class UnixCommandHost: @unchecked Sendable {
                 clientSlots.signal()
                 continue
             }
-            clientQueue.async { [weak self] in
+            // The callback owns the acquired slot even if handling the final
+            // response releases the host. Retain the semaphore until the slot
+            // is returned; destroying it while borrowed traps in libdispatch.
+            clientQueue.async { [weak self, clientSlots] in
                 defer {
                     Darwin.close(client)
-                    self?.clientSlots.signal()
+                    clientSlots.signal()
                 }
                 self?.handle(client: client)
             }

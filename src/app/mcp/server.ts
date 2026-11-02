@@ -1,3 +1,4 @@
+import { mcpResult, mcpError } from "../../shared/mcp-result";
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { toolDefinitions } from "../../features/agent-tools";
 
@@ -50,26 +51,9 @@ export function createMcpServer(
               },
             };
           }
-          const structuredContent =
-            result && typeof result === "object" && !Array.isArray(result)
-              ? result
-              : { result };
-          return {
-            content: [
-              { type: "text", text: JSON.stringify(structuredContent) },
-            ],
-            structuredContent,
-          };
+          return mcpResult(result);
         } catch (error) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: error instanceof Error ? error.message : String(error),
-              },
-            ],
-          };
+          return mcpError(error);
         }
       },
     );

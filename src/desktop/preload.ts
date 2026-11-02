@@ -28,7 +28,23 @@ const workbench: WorkbenchBridge = {
   onShortcut: (callback) => subscribe("workbench:shortcut", callback),
 };
 const bridge: DashboardBridge = {
-  workflow: { request: (action, input) => invoke("workflow:request", action, input) },
+  executionLogs: { list: () => invoke("executionLogs:list") },
+  workflow: {
+    request: (action, input) => invoke("workflow:request", action, input),
+    onOpen: (callback) => {
+      let active = true;
+      let delivered = 0;
+      const take = () => void invoke("workflow:pendingOpen").then((request) => {
+        if (!active || !request || typeof request.runId !== "string" || request.sequence <= delivered) return;
+        delivered = request.sequence;
+        callback(request.runId);
+        void invoke("workflow:ackOpen", request.sequence).catch(() => {});
+      }).catch(() => {});
+      const unsubscribe = subscribe("workflow:open", take);
+      take();
+      return () => { active = false; unsubscribe(); };
+    },
+  },
   blog: { openCanonical: () => invoke("blog:openCanonical"), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
   analysis: {
     mosaicSample: (projectId, sampleId) => invoke("analysis:mosaicSample", projectId, sampleId),

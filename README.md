@@ -31,6 +31,7 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 - Local production dashboard with persistent stages, next actions and public links; media thumbnails, a video/image/audio viewer and paginated browsing of linked footage folders.
 - An integrated video editor: select a Photos or local video, edit timed captions and a place-guide bundle, choose a cover frame and two-line hook, then export video/audio and a PNG cover.
 - A bundled Python/Pillow/FFmpeg runtime, exact engine previews, browser playback proxies, saved drafts, progress and cancellation.
+- Local execution logs for media operations started by the shared app/MCP services: progress, process exit, diagnostics and restart-preserved history in **실행 로그**. Standalone Python/FFmpeg processes are not collected. See [log design and scope](docs/execution-logs.md).
 - Five existing video/cover template cards beside playback, independent grouped position offsets and explicit cover sizing; content and timing are preserved.
 - Reviewed UTF-8 SRT/plain WebVTT caption import and SRT export, using an attributed MIT parser adaptation from OpenCut Classic; see [adoption notes](docs/opencut-adoption.md).
 - Explicitly selected shared snapshots, a common web renderer and an HTTPS update-endpoint adapter.
@@ -40,6 +41,8 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 All **26 upstream test files / 75 tests** are preserved byte-for-byte. The native component does not depend on a separately installed PhotosIndex app. Apple Photos functionality remains macOS-specific.
 
 ## Compact workspace
+
+Workflow reports now use Slack-style message rows and safe Markdown rendering. Developer mode adds **화면 검사** (`⌘⇧C`) to turn a selected element and comment into a reviewable Codex request. Search keyboard access, background workflow notifications and concurrent-review protection are included. See [Workdesk adoption and coverage](docs/workdesk-adoption.md).
 
 The window uses a compact toolbar: back/forward, screen history and menu/content search on the left; settings and the opt-in terminal on the right. The large introductory titles and sidebar development/settings entries are removed. See [window layout and terminal controls](docs/workspace-shell.md).
 

@@ -40,7 +40,8 @@ try {
     command === "review-bundles" ||
     command === "review-markup" ||
     command === "experience-save" ||
-    command === "experience-media"
+    command === "experience-media" ||
+    command === "followups-open"
   ) {
     if (!arg) throw new Error("Pass a JSON file path or '-' for stdin");
     let source = "";

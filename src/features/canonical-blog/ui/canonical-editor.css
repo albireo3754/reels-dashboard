@@ -570,3 +570,5 @@ summary:focus-visible {
 .ce-save-status.is-error strong{color:#a64132}
 .canonical-editor .ce-save-done:disabled{opacity:1;background:#e9f2e8;color:#315e4d;border-color:#bdd0bf}
 @media(max-width:650px){.ce-save-status{min-width:0;text-align:left;width:100%}.ce-header .ce-save-status small{font-size:10px}}
+
+.ce-visual-review{border:1px solid #cbd7cf;border-radius:8px;padding:12px;margin:12px 0;background:#f7faf5}.ce-visual-review p{font-size:12px;line-height:1.6}.ce-visual-review details{margin:10px 0}.ce-visual-review img{max-width:100%;height:auto}.ce-visual-review figure{margin:8px 0}

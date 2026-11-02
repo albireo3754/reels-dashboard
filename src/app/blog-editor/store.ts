@@ -22,6 +22,7 @@ import {
 export interface EditorConfig {
   format?: "markup";
   review?: string;
+  reviewGuidance?: string[];
   requests?: string;
   canon: string;
   layers: string;

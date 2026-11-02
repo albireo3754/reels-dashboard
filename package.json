@@ -54,10 +54,14 @@
     "node-pty": "^1.1.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "yaml": "2.8.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@electron/rebuild": "4.2.1",
     "@modelcontextprotocol/client": "2.4.0",
     "@playwright/test": "1.64.1",
     "@types/node": "^22.19.0",
@@ -84,7 +88,19 @@
       "resources/branding/*.png",
       "package.json",
       "LICENSE",
-      "THIRD_PARTY_NOTICES.md"
+      "THIRD_PARTY_NOTICES.md",
+      "!node_modules/better-sqlite3/**",
+      {
+        "from": "node_modules/node-pty",
+        "to": "node_modules/node-pty",
+        "filter": [
+          "lib/**/*",
+          "package.json",
+          "LICENSE",
+          "build/Release/pty.node",
+          "build/Release/spawn-helper"
+        ]
+      }
     ],
     "extraResources": [
       {
@@ -113,7 +129,8 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/node-pty/**"
-    ]
+    ],
+    "beforeBuild": "./scripts/prepare-desktop-dependencies.mjs"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true

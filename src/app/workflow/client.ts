@@ -12,7 +12,8 @@ export async function workflowRequest(
     | "review-bundles"
     | "review-markup"
     | "experience-save"
-    | "experience-media",
+    | "experience-media"
+    | "followups-open",
   input: unknown = {},
   base = process.env.REELS_WORKFLOW_URL ?? "http://127.0.0.1:4318",
 ) {

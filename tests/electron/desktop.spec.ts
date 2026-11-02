@@ -65,6 +65,7 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
       "mobileBriefing",
       "agent",
       "editor",
+      "executionLogs",
       "exportSnapshot",
       "imageURL",
       "loadDashboard",

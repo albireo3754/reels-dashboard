@@ -1,8 +1,10 @@
+import { ExecutionLogs } from "../../../shared/lib/execution-logs";
+import { loggedSpawn } from "../../../shared/lib/logged-process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, stat, rename, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { mediaKind } from "../../../shared/content-media";
 import { ContentLibrary } from "./library";
@@ -21,6 +23,7 @@ export class BoardMedia {
     private library: ContentLibrary,
     private cache: string,
     private runtime: string,
+    private logs: ExecutionLogs,
     private thumbnailer: (file: string, width: number) => Promise<string>,
   ) {}
   async thumbnail(projectId: string, file: string) {
@@ -64,7 +67,7 @@ export class BoardMedia {
       if (!(await stat(file).catch(() => null))?.size) {
         if (!this.pending.has(file)) {
           const output = file;
-          const work = this.queue.then(() => this.proxy(source, output));
+          const work = this.queue.then(() => this.proxy(source, output, projectId));
           this.pending.set(file, work);
           this.queue = work.catch(() => {});
           void work.finally(() => this.pending.delete(output)).catch(() => {});
@@ -85,15 +88,16 @@ export class BoardMedia {
     this.grants.set(token, { projectId, source, file, type });
     return { kind, url: `reels-media://content/${token}` };
   }
-  private async proxy(source: string, output: string) {
+  private async proxy(source: string, output: string, projectId: string) {
     if (this.closing) throw new Error("앱이 종료 중이에요.");
     const temporary = output + `.${randomUUID()}.mp4`;
     try {
       await new Promise<void>((resolve, reject) => {
-        const child = spawn(
+        const child = loggedSpawn(
+          this.logs, { source: "library", label: "보관함 재생 영상 준비", projectId },
           path.join(this.runtime, "reels-editor"),
           ["proxy", source, temporary],
-          { detached: true, stdio: "ignore" },
+          { detached: true, stdio: ["ignore", "pipe", "pipe"] },
         );
         this.children.add(child);
         const kill = () => {

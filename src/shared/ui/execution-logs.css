@@ -1,0 +1,83 @@
+.execution-logs {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.execution-logs > p {
+  color: #56635b;
+}
+.execution-logs select {
+  margin-left: 8px;
+  padding: 6px;
+}
+.execution-log {
+  border: 1px solid #cbd9d1;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 14px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.execution-log header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.execution-log header span {
+  flex-shrink: 0;
+  color: #48614f;
+}
+.execution-log[data-status="failed"] header span {
+  color: #a73333;
+}
+.execution-log[data-status="running"] {
+  border-left: 4px solid #428259;
+}
+.execution-log p {
+  font-size: 13px;
+  color: #59665e;
+}
+.execution-log progress {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+}
+.execution-log details {
+  margin-top: 12px;
+}
+.execution-log summary {
+  cursor: pointer;
+}
+.execution-log dl {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 6px;
+  font-size: 13px;
+}
+.execution-log dd {
+  margin: 0;
+}
+.execution-log ol {
+  padding-left: 20px;
+  font-size: 13px;
+}
+.execution-log time {
+  color: #59665e;
+}
+.execution-log pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: #f2f5f3;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .execution-logs {
+    padding: 8px;
+  }
+  .execution-log dl {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+}
