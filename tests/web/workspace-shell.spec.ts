@@ -153,3 +153,40 @@ test("search caps each group, reaches overflow by query and keeps keyboard focus
   await expect(input).toHaveValue("");
   await expect(input).toBeFocused();
 });
+
+test("a queued native close event cannot dismiss a reopened search", async ({
+  page,
+}) => {
+  await page.goto("/?demo=1");
+  const searchButton = page
+    .getByRole("banner", { name: "작업공간 도구" })
+    .getByRole("button", { name: "검색", exact: true });
+  await searchButton.click();
+  const search = page.getByRole("dialog", { name: "작업공간 검색" });
+  // close() queues a native close event. Reopen in the next microtask, before
+  // that event is delivered, to reproduce fast Escape/shortcut interaction.
+  await search.evaluate(async (element) => {
+    const closed = new Promise<void>((resolve) => {
+      element.addEventListener(
+        "close",
+        () => requestAnimationFrame(() => resolve()),
+        { once: true },
+      );
+    });
+    element
+      .querySelector<HTMLButtonElement>('[aria-label="검색·히스토리 닫기"]')!
+      .click();
+    await Promise.resolve();
+    document
+      .querySelector<HTMLButtonElement>(
+        '.workspace-toolbar [aria-label="검색"]',
+      )!
+      .click();
+    await closed;
+  });
+  const input = search.getByRole("textbox", { name: "메뉴·콘텐츠 검색" });
+  await expect(input).toBeVisible();
+  await input.fill("영상 편집");
+  await input.press("Enter");
+  await expect(page.locator(".editor-workspace")).toBeVisible();
+});

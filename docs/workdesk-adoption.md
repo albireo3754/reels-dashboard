@@ -33,8 +33,8 @@ The changes around [Workdesk #41](https://github.com/albireo3754/workdesk/pull/4
 ## Validation and release
 
 - TypeScript and architecture checks, specification preservation and public-source/history audit passed.
-- 173 unit tests, 101 Swift tests, 85 Chromium tests and four workflow browser tests passed.
-- Full background Electron run: 51 passed, ten explicit opt-in scenarios skipped, and one stale preload-key assertion failed. The assertion was updated to include the existing execution-log API and all six desktop bridge checks then passed. Five focused inspector browser checks cover the final feedback/iframe fixes.
+- 173 unit tests, 102 Swift tests, 87 Chromium tests and four workflow browser tests passed.
+- Final full background Electron run: 52 passed and ten explicit opt-in scenarios skipped. The final 87-test browser run used CI settings. Packaged integration checks also passed for the desktop bridge, PTY, MCP rendering/cancellation, notifications, inspector, shared input forms and three compact canonical-editor scenarios.
 - All 13 bundled editor-engine checks passed against the rebuilt runtime.
 - Final background Electron inspector and notification routing checks passed. CI's media tests now run after the bundled runtime build; a fresh runner previously failed before FFmpeg existed.
 - Independent review found and fixed deferred inspection feedback loss, iframe interaction during inspection, repeated notification routing and workflow draft loss on menu navigation.
@@ -54,3 +54,5 @@ Returning `false` also makes dependency copying the application's responsibility
 A timed-out client could finish after the socket host was released. Its callback used a weak host reference to return an acquired semaphore slot, allowing libdispatch to destroy a borrowed semaphore and terminate with signal 5. The callback now retains the semaphore independently and always returns its slot. A new lifetime test reproduced the original crash; the fix passed 20 fresh-process repetitions, all 102 Swift tests and preservation of the original 26 files/75 methods.
 
 CI also exercised the canonical editor below its 1080px drawer breakpoint. Successful review requests now open the result drawer; three Electron scenarios explicitly use 960×720 and follow the modal's open/close controls before saving or applying suggestions. The hidden-response failure was reproduced before this one-line behavior fix; all three scenarios and three related formatting/save-state browser checks passed afterward.
+
+The full browser suite also exposed a delayed native dialog-close event clearing a newly reopened search. Search state now closes only through explicit button, backdrop and Escape actions. A deterministic browser regression reproduces the old ordering and verifies the reopened input remains usable; the canonical mobile scenario likewise closes its active review modal before resuming editing.

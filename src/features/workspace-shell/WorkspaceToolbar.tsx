@@ -68,6 +68,8 @@ export function WorkspaceToolbar({
     matches(`${p.title} ${p.nextAction}`),
   );
   const close = () => {
+    // Control state here, not in the queued native `close` event: that event
+    // may arrive after the user has already reopened this dialog.
     dialog.current?.close();
     setPanel(null);
   };
@@ -154,8 +156,10 @@ export function WorkspaceToolbar({
         ref={dialog}
         className="shell-dialog"
         aria-labelledby="shell-dialog-title"
-        onCancel={() => setPanel(null)}
-        onClose={() => setPanel(null)}
+        onCancel={(event) => {
+          event.preventDefault();
+          close();
+        }}
         onKeyDown={(event) => {
           if (
             event.nativeEvent.isComposing ||

@@ -71,6 +71,17 @@ test("edits actual canonical rich text, persists formatting, queues only on sign
       fullPage: false,
     });
     await page.setViewportSize({ width: 390, height: 844 });
+    // The requested review remains open when the side panel becomes a mobile
+    // modal. Finish that interaction before returning to manuscript editing.
+    const reviewDrawer = page.getByRole("dialog", { name: "묶음 검토" });
+    await expect(reviewDrawer).toBeVisible();
+    await reviewDrawer
+      .getByRole("button", { name: "검토 닫기", exact: true })
+      .click();
+    await expect(reviewDrawer).toBeHidden();
+    await expect(frame.getByRole("textbox", { name: "T2 문단" })).toHaveText(
+      "차를 천천히 마셨어요",
+    );
     await page.screenshot({
       path: info.outputPath("canonical-editor-mobile.png"),
       fullPage: false,
