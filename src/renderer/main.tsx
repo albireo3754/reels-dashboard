@@ -1,3 +1,5 @@
+import "../shared/ui/tokens.css";
+import "../shared/ui/components.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import {CanonicalBlogEditor} from "../features/canonical-blog";

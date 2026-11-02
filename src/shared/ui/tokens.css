@@ -1,0 +1,97 @@
+/*
+ * Reels Dashboard design tokens.
+ * 화면 CSS는 픽셀 값 대신 이 토큰을 쓴다. 규칙은 docs/design-system.md 참고.
+ */
+:root {
+  /* Typography */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard",
+    "Noto Sans KR", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 11px; /* 배지, eyebrow, 카운트 */
+  --text-sm: 12px; /* 메타·도움말·라벨 */
+  --text-base: 13px; /* 본문·버튼·입력 */
+  --text-md: 14px; /* 강조 본문, 카드 제목 */
+  --text-lg: 16px; /* 섹션 제목(h3) */
+  --text-xl: 18px; /* 패널 제목(h2) */
+  --text-2xl: 22px; /* 큰 수치·빈 상태 제목 */
+  --text-3xl: 28px; /* 페이지 제목(h1) */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.55;
+  --tracking-tight: -0.02em;
+  --tracking-caps: 0.12em;
+
+  /* Color — neutral */
+  --color-bg: #f6f7f3;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f4f6f0;
+  --color-surface-sunken: #eef1e9;
+  --color-border: #e2e7df;
+  --color-border-strong: #c9d3c6;
+  --color-text: #22332c;
+  --color-text-muted: #5e6d64;
+  --color-text-subtle: #8a968c;
+  --color-text-on-accent: #ffffff;
+
+  /* Color — accent & status */
+  --color-primary: #386354;
+  --color-primary-hover: #224d3c;
+  --color-primary-soft: #e6eee4;
+  --color-primary-text: #2f5546;
+  --color-focus: #a8c5a7;
+  --color-danger: #a4503f;
+  --color-danger-hover: #893c2d;
+  --color-danger-soft: #fbefeb;
+  --color-danger-text: #8f3b2b;
+  --color-warning: #b67c36;
+  --color-warning-soft: #faf2e3;
+  --color-warning-text: #85581f;
+  --color-success: #5d8a4c;
+  --color-success-soft: #eaf2e3;
+
+  /* Spacing (4px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Shape */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(34 51 44 / 6%);
+  --shadow-md: 0 6px 20px rgb(34 51 44 / 8%);
+  --shadow-lg: 0 18px 50px rgb(16 39 29 / 18%);
+
+  /* Controls */
+  --control-sm: 28px;
+  --control-md: 34px;
+  --control-lg: 40px;
+
+  /* Legacy aliases — 기존 화면 CSS 호환용. 새 코드는 위 이름을 쓴다. */
+  --green: var(--color-primary);
+  --green-dark: var(--color-primary-hover);
+  --muted: var(--color-text-subtle);
+  --line: var(--color-border);
+  --paper: var(--color-surface);
+  --amber: var(--color-warning);
+  --text: var(--color-text);
+  --surface: var(--color-surface);
+  --border: var(--color-border);
+  --accent: var(--color-primary);
+}

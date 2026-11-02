@@ -4,7 +4,7 @@
   padding: 20px;
 }
 .execution-logs > p {
-  color: #56635b;
+  color: var(--color-text-muted);
 }
 .execution-logs select {
   margin-left: 8px;
@@ -12,10 +12,10 @@
 }
 .execution-log {
   border: 1px solid #cbd9d1;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   margin-top: 14px;
-  background: #fff;
+  background: var(--color-surface);
   overflow-wrap: anywhere;
 }
 .execution-log header {
@@ -25,7 +25,7 @@
 }
 .execution-log header span {
   flex-shrink: 0;
-  color: #48614f;
+  color: var(--color-text-muted);
 }
 .execution-log[data-status="failed"] header span {
   color: #a73333;
@@ -34,8 +34,8 @@
   border-left: 4px solid #428259;
 }
 .execution-log p {
-  font-size: 13px;
-  color: #59665e;
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
 }
 .execution-log progress {
   display: block;
@@ -52,17 +52,17 @@
   display: grid;
   grid-template-columns: 130px minmax(0, 1fr);
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .execution-log dd {
   margin: 0;
 }
 .execution-log ol {
   padding-left: 20px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .execution-log time {
-  color: #59665e;
+  color: var(--color-text-muted);
 }
 .execution-log pre {
   max-height: 260px;
@@ -70,8 +70,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 12px;
-  background: #f2f5f3;
-  font-size: 12px;
+  background: var(--color-surface-muted);
+  font-size: var(--text-sm);
 }
 @media (max-width: 600px) {
   .execution-logs {
