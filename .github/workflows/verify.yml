@@ -36,6 +36,7 @@ jobs:
       - run: npm run test:editor-engine
       - run: npm run build
       - run: npm run test:web
+      - run: npm run test:workflow-ui
       - run: REELS_EDITOR_QA=1 npm run test:electron
       - run: npm run package:mac
       - run: npm run audit:public

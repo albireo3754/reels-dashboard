@@ -61,6 +61,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@electron/rebuild": "4.2.1",
     "@modelcontextprotocol/client": "2.4.0",
     "@playwright/test": "1.64.1",
     "@types/node": "^22.19.0",
@@ -87,7 +88,8 @@
       "resources/branding/*.png",
       "package.json",
       "LICENSE",
-      "THIRD_PARTY_NOTICES.md"
+      "THIRD_PARTY_NOTICES.md",
+      "!node_modules/better-sqlite3/**"
     ],
     "extraResources": [
       {
@@ -116,7 +118,8 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/node-pty/**"
-    ]
+    ],
+    "beforeBuild": "./scripts/prepare-desktop-dependencies.mjs"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true

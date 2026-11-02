@@ -40,3 +40,9 @@ The changes around [Workdesk #41](https://github.com/albireo3754/workdesk/pull/4
 - Independent review found and fixed deferred inspection feedback loss, iframe interaction during inspection, repeated notification routing and workflow draft loss on menu navigation.
 
 Tests use synthetic workflows and background Electron profiles; they do not submit real model work, publish content or modify personal media. Native toast delivery, actual Finder Korean input and subjective visual preference remain manual verification boundaries. Full source-to-runtime native helper and editor builds passed; packaging follows the main merge.
+
+## Native dependency packaging boundary
+
+The Electron bundle calls the workflow service over its existing HTTP client; LangGraph and `better-sqlite3` execute in the separate Node server. The package's `beforeBuild` hook therefore rebuilds only the desktop runtime dependency, `node-pty`, for the requested Electron version/platform/architecture. It returns `false` only after that rebuild succeeds, preventing electron-builder's blanket rebuild from compiling the server-only SQLite binding against Electron. `better-sqlite3` is excluded from the app bundle; its source-checkout Node binding is left intact for the workflow server and tests.
+
+This fixes the observed Electron 45 packaging failure in SQLite's V8 `HolderV2`/`GetPrototypeV2` calls without disabling the PTY rebuild or changing workflow persistence. The hook follows the installed electron-builder 26.18 `beforeBuild` contract and `@electron/rebuild` 4.2.1 `onlyModules` option.
