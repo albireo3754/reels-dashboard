@@ -52,3 +52,5 @@ Returning `false` also makes dependency copying the application's responsibility
 ## Socket shutdown regression found during CI
 
 A timed-out client could finish after the socket host was released. Its callback used a weak host reference to return an acquired semaphore slot, allowing libdispatch to destroy a borrowed semaphore and terminate with signal 5. The callback now retains the semaphore independently and always returns its slot. A new lifetime test reproduced the original crash; the fix passed 20 fresh-process repetitions, all 102 Swift tests and preservation of the original 26 files/75 methods.
+
+CI also exercised the canonical editor below its 1080px drawer breakpoint. Successful review requests now open the result drawer; three Electron scenarios explicitly use 960×720 and follow the modal's open/close controls before saving or applying suggestions. The hidden-response failure was reproduced before this one-line behavior fix; all three scenarios and three related formatting/save-state browser checks passed afterward.

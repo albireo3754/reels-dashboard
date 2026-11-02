@@ -220,6 +220,7 @@ export function CanonicalBlogEditor() {
     setError("");
     try {
       await api("review", { revision: current.revision, bundleIds: ids });
+      setReviewOpen(true);
       setQueued((old) => [...new Set([...old, ...ids])]);
       setNotice(
         savedBeforeReview ? "변경 내용을 먼저 저장하고 검토를 요청했어요. 따로 저장하지 않아도 됩니다." : doc.format==="markup" ? "저장된 내용으로 검토를 요청했어요. 실행 상태와 결과가 자동으로 갱신됩니다." : "저장된 내용으로 검토를 요청했어요.",

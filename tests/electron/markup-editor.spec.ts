@@ -1,10 +1,25 @@
 import {parse} from "../../src/shared/blog-markup";
 import {paragraphNodes} from "../../src/shared/blog-markup-source";
-import {test,expect} from "@playwright/test";
+import {test,expect,type Page} from "@playwright/test";
 import {readFile,writeFile} from "node:fs/promises";
 import path from "node:path";
 import {launchApp,makeProfile,closeApp,cleanProfile} from "./helpers";
 import {markupFixture} from "../fixtures/markup-editor";
+
+async function openReview(page: Page) {
+  const toggle = page.getByRole("button", {name:"검토 보기",exact:true});
+  if (await toggle.isVisible()) {
+    if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+    await expect(page.getByRole("dialog", {name:"묶음 검토"})).toBeVisible();
+  }
+}
+async function closeReview(page: Page) {
+  const close = page.getByRole("button", {name:"검토 닫기",exact:true});
+  if (await close.isVisible()) {
+    await close.click();
+    await expect(page.getByRole("dialog", {name:"묶음 검토"})).toBeHidden();
+  }
+}
 
 test("desktop opens markup editor, saves text, reopens and preserves source grammar",async({},testInfo)=>{
   const profile=await makeProfile();let app;
@@ -17,6 +32,8 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
     const opened=app.waitForEvent("window");
     await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
     const editor=await opened,errors:string[]=[];
+    // Exercise the responsive drawer independently of the host display size.
+    await editor.setViewportSize({width:960,height:720});
     editor.on("pageerror",e=>errors.push(e.message));
     await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
     const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
@@ -42,6 +59,7 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
     await expect(editor.getByText("Disclosure should stand out",{exact:true})).toBeVisible();
     await editor.getByRole("checkbox",{name:"First 확인 완료",exact:true}).check();
     await expect(frame.getByRole("button",{name:"메모 1 · ✓ 1",exact:true})).toBeVisible();
+    await closeReview(editor);
     await editor.getByRole("button",{name:"정본 저장",exact:true}).click();
     await expect.poll(async()=>await readFile(config.canon,"utf8")).toContain("노랑배경");
     const annotations=JSON.parse(await readFile(config.canon+".annotations.json","utf8"));
@@ -53,6 +71,9 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
     const reopened=app.waitForEvent("window");
     await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
     const again=await reopened;
+    await again.setViewportSize({width:960,height:720});
+    await expect(again.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
+    await openReview(again);
     await expect(again.getByText("Disclosure should stand out",{exact:true})).toBeVisible();
     await expect(again.getByRole("checkbox",{name:"First 확인 완료",exact:true})).toBeChecked();
     await expect(again.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toContainText("Edited in app");
@@ -131,8 +152,10 @@ test("markup review button runs engine and refreshes completed results without r
     const opened=app.waitForEvent("window");
     await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
     const editor=await opened;
+    await editor.setViewportSize({width:960,height:720});
     await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
     await editor.getByRole("button",{name:"이 묶음 검토",exact:true}).click();
+    await expect(editor.getByRole("dialog",{name:"묶음 검토"})).toBeVisible();
     await expect(editor.getByText("검토 응답 도착",{exact:true})).toBeVisible({timeout:30000});
     await expect(editor.getByText("화면 확인 통과",{exact:true})).toBeVisible();
     await editor.getByText("묶음 평가 요약",{exact:true}).click();
@@ -160,7 +183,11 @@ test("independent proposals stay applicable after label recolor and sequential e
   app=await launchApp(profile);const main=await app.firstWindow();
   await main.getByRole("button",{name:"블로그",exact:true}).click();
   const opened=app.waitForEvent("window");await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
-  const editor=await opened,frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
+  const editor=await opened;
+  await editor.setViewportSize({width:960,height:720});
+  const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
+  await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
+  await openReview(editor);
   const cards=editor.locator(".ce-proposal");
   await expect(cards).toHaveCount(3);
   for(let i=0;i<3;i++)await expect(cards.nth(i).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
@@ -169,10 +196,13 @@ test("independent proposals stay applicable after label recolor and sequential e
     if(i<2)await expect(cards.nth(i+1).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
   }
   await expect(frame.locator('[data-tid="P2"]')).toHaveText("✅ Second line");
+  await closeReview(editor);
   await editor.getByRole("button",{name:"정본 저장",exact:true}).click();
   await expect.poll(async()=>await readFile(config.canon,"utf8")).toContain("✅");
   await expect(editor.getByText("정본과 미리보기를 저장했어요. 저장 전 사본도 보관했어요.",{exact:true})).toBeVisible();
   await editor.reload();
+  await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
+  await openReview(editor);
   await expect(editor.locator(".ce-proposal").nth(0)).toContainText("이미 본문에 반영");
   await expect(editor.locator(".ce-proposal").nth(1)).toContainText("이미 같은 서식");
   const saved=parse(await readFile(config.canon,"utf8"));
