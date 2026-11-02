@@ -24,8 +24,8 @@
   right: 14px;
 }
 .board-poster-empty {
-  color: #617257;
-  font-size: 13px;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
 }
 .board-view-label {
   position: absolute;
@@ -34,15 +34,15 @@
   background: #18251dd9;
   color: white;
   padding: 7px 10px;
-  border-radius: 20px;
-  font-size: 11px;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
 }
 .board-media-strip {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 10px 14px;
-  border-bottom: 1px solid #edf0e7;
+  border-bottom: 1px solid var(--color-border);
 }
 .board-media-strip > button:not(.board-media-count) {
   display: block;
@@ -50,7 +50,7 @@
   width: 42px;
   height: 44px;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 .board-media-strip img {
@@ -62,14 +62,14 @@
   display: flex;
   flex-direction: column;
   border: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin-left: auto;
   padding: 4px;
   background: transparent;
 }
 .board-media-count span {
-  color: #839178;
-  font-size: 10px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
 }
 .board-stage-progress {
   display: flex;
@@ -92,7 +92,7 @@
 }
 .board-stage-progress small {
   margin-left: 7px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 .board-thumbnail-placeholder {
@@ -101,12 +101,12 @@
   width: 100%;
   height: 100%;
   min-height: 40px;
-  color: #738369;
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
   background: #eef1e8;
 }
 .board-media-error {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 8px 15px;
 }
 .board-media-dialog {
@@ -116,9 +116,9 @@
   max-height: 92vh;
   padding: 24px;
   border: 1px solid #d7dfcd;
-  border-radius: 18px;
-  background: #f8faf5;
-  color: #30422e;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
   overflow: auto;
 }
 .board-media-dialog::backdrop {
@@ -132,10 +132,10 @@
 }
 .board-media-dialog header h2 {
   margin: 7px 0;
-  font-size: 23px;
+  font-size: var(--text-2xl);
 }
 .board-media-dialog header p {
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
   margin: 0;
 }
@@ -157,7 +157,7 @@
 .board-player-empty {
   height: min(57vh, 560px);
   background: #17231e;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,7 +167,7 @@
 .board-player-stage p {
   padding: 24px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .board-player-stage p button {
   margin: 14px auto 0;
@@ -194,16 +194,16 @@
 }
 .board-player-empty p,
 .board-player > p {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .board-player > h3 {
-  font-size: 15px;
+  font-size: var(--text-md);
   margin: 14px 0 5px;
   overflow-wrap: anywhere;
 }
 .board-player small {
-  font-size: 11px;
-  color: #85977b;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 .board-file-browser {
   min-width: 0;
@@ -216,7 +216,7 @@
 }
 .board-file-browser nav button {
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   max-width: 100%;
   overflow-wrap: anywhere;
 }
@@ -228,13 +228,13 @@
   margin-bottom: 14px;
 }
 .board-list-toolbar strong {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .board-list-toolbar label {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .board-list-toolbar select {
   width: 110px;
@@ -249,7 +249,7 @@
 .board-file-grid button {
   display: block;
   padding: 6px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   min-width: 0;
   text-align: left;
   background: white;
@@ -263,19 +263,19 @@
   width: 100%;
   height: 105px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 .board-file-grid strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin-top: 8px;
   line-height: 1.5;
 }
 .board-file-grid small {
   display: block;
-  font-size: 10px;
-  color: #839178;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin-top: 5px;
 }
 @media (max-width: 760px) {

@@ -31,12 +31,12 @@
 }
 .dev-drawer-header button {
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 .dev-drawer-hint {
   margin-right: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #69746c;
 }
 .dev-drawer-body {
@@ -49,8 +49,8 @@
 .dev-setup > summary {
   cursor: pointer;
   padding: 5px 2px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
 }
 .dev-setup[open] {
   display: grid;
@@ -58,7 +58,7 @@
 }
 .dev-workspace kbd {
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--text-xs);
   opacity: 0.65;
   margin-left: 6px;
 }
@@ -81,7 +81,7 @@
   flex-wrap: wrap;
   padding: 18px;
   background: #f2f4f0;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
 }
 .dev-connect > div {
   flex: 1;
@@ -92,7 +92,7 @@
   margin-top: 7px;
   overflow-wrap: anywhere;
   color: #69746c;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .dev-loop {
   display: flex;
@@ -115,12 +115,12 @@
 .dev-compose {
   padding: 20px;
   border: 1px solid #e0e5df;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: white;
 }
 .dev-compose > label {
   display: block;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin-bottom: 10px;
 }
 .dev-compose textarea {
@@ -143,11 +143,11 @@
 .dev-hint,
 .dev-preview-actions span {
   color: #69746c;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.7;
 }
 .dev-compose details {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #69746c;
 }
 .dev-compose pre {
@@ -156,7 +156,7 @@
 .dev-error {
   background: #fff0eb;
   padding: 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: #923d28;
 }
 .dev-panels {
@@ -170,7 +170,7 @@
 .dev-console {
   background: #151b27;
   color: #e3e9f3;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   min-width: 0;
 }
@@ -186,14 +186,14 @@
 }
 .dev-session-tabs > span {
   padding: 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .dev-session-tabs button,
 .dev-session-meta button {
   background: #222c3b;
   color: #cdd6e4;
   border-color: #3a465a;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 .dev-session-tabs button[aria-selected="true"] {
@@ -211,7 +211,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: #a4b3c7;
 }
 .dev-terminal {
@@ -229,7 +229,7 @@
 }
 .dev-preview {
   border: 1px solid #d9e0da;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: white;
 }
@@ -238,7 +238,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .dev-preview-bar strong {
   flex: 1;

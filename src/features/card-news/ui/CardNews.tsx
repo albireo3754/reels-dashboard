@@ -21,6 +21,7 @@ import {
   videoError,
 } from "../../../shared/card-news-model";
 import { drawCard } from "../model/frame";
+import { Notice } from "../../../shared/ui/primitives";
 import "./card-news.css";
 
 function VideoBackground({
@@ -331,10 +332,10 @@ export function CardNews({
         </div>
       </div>
       {!api && (
-        <p className="notice">
+        <Notice className="notice">
           브라우저에서는 문구·시간·미리보기를 연습할 수 있어요. 사진·음악 선택,
           저장, MP4 출력은 데스크톱 앱에서 제공해요.
-        </p>
+        </Notice>
       )}
       {error && (
         <p role="alert" className="error">

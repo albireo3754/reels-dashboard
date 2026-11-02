@@ -1,4 +1,5 @@
 import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
+import { EmptyState } from "../shared/ui/primitives";
 import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
 import { ProjectAnalysis } from "../features/media-analysis";
 import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
@@ -102,6 +103,9 @@ function Icon({ name }: { name: string }) {
     transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
     editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
     cards: "M6 3h15v16H6z M3 7v15h14 M9 8h9 M9 12h9 M9 16h5",
+    blog: "M5 3h10l4 4v14H5z M15 3v4h4 M8 11h8 M8 15h8 M8 19h5",
+    workflow: "M4 5h6v4H4z M14 15h6v4h-6z M4 15h6v4H4z M7 9v6 M10 17h4 M17 15v-4h-7",
+    logs: "M4 4h16v16H4z M8 9l3 3-3 3 M13 15h4",
     settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     arrow: "M5 12h14 M13 6l6 6-6 6",
     plus: "M12 5v14 M5 12h14",
@@ -145,13 +149,12 @@ function Empty({
   children: React.ReactNode;
 }) {
   return (
-    <div className="empty">
-      <div className="empty-orbit">
-        <Icon name="library" />
-      </div>
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </div>
+    <EmptyState
+      className="empty"
+      icon={<Icon name="library" />}
+      title={title}
+      description={children}
+    />
   );
 }
 

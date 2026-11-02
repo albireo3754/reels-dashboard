@@ -4,7 +4,7 @@
   margin: 12px 0;
   background: var(--surface, #fff);
   border: 1px solid var(--line, #dce2e7);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .conversation-day {
@@ -13,8 +13,8 @@
   gap: 12px;
   margin: 16px 12px 8px;
   color: var(--muted, #63716d);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 .conversation-day::before,
 .conversation-day::after {
@@ -26,7 +26,7 @@
 .conversation-day span {
   padding: 3px 10px;
   border: 1px solid var(--line, #e4e8e6);
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
 }
 .conversation-row {
   display: grid;
@@ -55,9 +55,9 @@
   height: 32px;
   background: #e6eee9;
   color: #245e4b;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 700;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
 }
 .conversation-body {
   min-width: 0;
@@ -69,11 +69,11 @@
   margin-bottom: 3px;
 }
 .conversation-body > header strong {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .conversation-body time,
 .conversation-hover-time {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--muted, #63716d);
 }
 .conversation-hover-time {
@@ -85,11 +85,11 @@
 }
 .conversation-title {
   margin-bottom: 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted, #63716d);
 }
 .conversation-status {
-  font-size: 12px;
+  font-size: var(--text-sm);
   margin-top: 5px;
   color: var(--muted, #63716d);
 }
@@ -114,8 +114,8 @@
   margin: 0;
   padding: 3px 7px;
   border: 1px solid var(--line, #dce2e7);
-  border-radius: 5px;
-  font-size: 11px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 .conversation-sr-only {
@@ -141,6 +141,6 @@
     height: 28px;
   }
   .conversation-hover-time {
-    font-size: 9px;
+    font-size: var(--text-xs);
   }
 }

@@ -12,7 +12,7 @@
   min-width: 0;
 }
 .editor-toolbar strong {
-  font-size: 15px;
+  font-size: var(--text-md);
   overflow-wrap: anywhere;
 }
 .editor-toolbar .eyebrow {
@@ -20,8 +20,8 @@
 }
 .editor-runtime {
   display: block;
-  font-size: 10px;
-  color: #8d9b80;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin-top: 6px;
 }
 .editor-toolbar button {
@@ -35,12 +35,12 @@
   margin: 0 0 22px;
 }
 .editor-recents > span {
-  font-size: 10px;
-  color: #9aa48d;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin-right: 5px;
 }
 .editor-recents button {
-  font-size: 10px;
+  font-size: var(--text-xs);
   max-width: 205px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51,7 +51,7 @@
 .editor-recents button.current {
   background: #e5eddc;
   border-color: #cbd9b9;
-  color: #69874c;
+  color: var(--color-text-muted);
 }
 .editor-start {
   text-align: center;
@@ -65,26 +65,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dbe6d0;
-  color: #90aa77;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
   border-radius: 23px;
   background: #f0f5e9;
   margin: 0 auto 25px;
 }
 .editor-start h2 {
-  font-size: 23px;
+  font-size: var(--text-2xl);
   margin-bottom: 15px;
 }
 .editor-start p {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.9;
 }
 .editor-start-steps {
   display: flex;
   justify-content: center;
   gap: 20px;
-  font-size: 10px;
-  color: #8b9e77;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin-top: 28px;
 }
 .editor-meta {
@@ -92,14 +92,14 @@
   align-items: center;
   gap: 13px;
   flex-wrap: wrap;
-  font-size: 10px;
-  color: #95a183;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin: 20px 0;
 }
 .editor-meta > span:not(:last-child):after {
   content: "·";
   padding-left: 13px;
-  color: #b6c1aa;
+  color: var(--color-text-subtle);
 }
 .editor-meta .hdr-label {
   color: #aa8b4f;
@@ -108,7 +108,7 @@
   color: #b28b4a;
 }
 .editor-meta .saved-label {
-  color: #79985a;
+  color: var(--color-text-subtle);
 }
 .editor-layout {
   display: grid;
@@ -128,20 +128,20 @@
   padding: 21px;
 }
 .editor-layout h2 {
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 .editor-badge {
-  font-size: 9px;
-  color: #91a178;
-  border: 1px solid #e0e8d5;
-  border-radius: 5px;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 3px 6px;
   white-space: nowrap;
 }
 .editor-video-stage,
 .editor-image-stage {
   background: #202b25;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -176,20 +176,20 @@
   accent-color: #6e8d53;
 }
 .editor-seek > label {
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 .editor-seek > label > input {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 7px 8px;
   margin-top: 4px;
 }
 .editor-seek > span {
   grid-column: 1/-1;
-  font-size: 9px;
-  color: #a0ac90;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 .editor-player-panel > .muted {
-  font-size: 10px !important;
+  font-size: var(--text-xs) !important;
 }
 .editor-preview-empty {
   min-height: 210px;
@@ -198,11 +198,11 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  background: #f6f8f1;
+  background: var(--color-surface-muted);
   border: 1px dashed #dde6d1;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   padding: 22px;
-  color: #97a77f;
+  color: var(--color-text-subtle);
 }
 .editor-preview-empty > span {
   font-size: 32px;
@@ -210,22 +210,22 @@
   margin-bottom: 18px;
 }
 .editor-preview-empty > p {
-  font-size: 11px;
-  color: #889d6d;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
 }
 .editor-preview-empty > small {
-  font-size: 9px;
-  color: #a8b499;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   margin-top: 8px;
 }
 .editor-controls-column label {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .editor-controls-column .form-grid {
   gap: 13px;
 }
 .editor-controls-column .checkbox-row {
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin: 17px 0 11px;
 }
 .editor-controls-column .form-grid + label {
@@ -238,18 +238,18 @@
   align-items: center;
 }
 .editor-controls-column .section-heading button {
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   padding: 8px 10px;
 }
 .editor-no-captions {
-  font-size: 11px;
-  color: #9da98c;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
   border: 1px dashed #e1e8d6;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 22px;
   margin-top: 19px !important;
-  background: #fafbf6;
+  background: var(--color-surface-muted);
 }
 .caption-cues {
   display: grid;
@@ -257,9 +257,9 @@
   margin-top: 20px;
 }
 .caption-cue {
-  background: #f6f8f1;
-  border: 1px solid #e3e9da;
-  border-radius: 9px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 15px;
 }
 .caption-cue-heading {
@@ -269,20 +269,20 @@
   margin-bottom: 8px;
 }
 .caption-cue-heading strong {
-  font-size: 11px;
-  color: #809664;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 .caption-cue-heading .quiet {
-  font-size: 9px;
+  font-size: var(--text-xs);
   padding: 4px 7px;
-  color: #ac997b;
+  color: var(--color-text-subtle);
 }
 .caption-cue .form-grid {
   margin-bottom: 13px;
 }
 .caption-cue input,
 .caption-cue textarea {
-  background: #fff;
+  background: var(--color-surface);
 }
 .caption-cue textarea {
   min-height: 70px;
@@ -295,11 +295,11 @@
   position: relative;
 }
 .editor-export h2 {
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 .editor-export p {
-  font-size: 10px;
-  color: #9aa78a;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
   margin-top: 7px;
 }
 .editor-export .button-row {
@@ -308,43 +308,43 @@
 }
 .editor-export button {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .editor-render-job {
   border-color: #cadbb8;
 }
 .editor-render-job h2 {
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 .editor-render-job .section-heading > span {
-  font-size: 13px;
-  color: #779958;
+  font-size: var(--text-base);
+  color: var(--color-text-subtle);
 }
 .editor-render-job progress {
   width: 100%;
   height: 10px;
   accent-color: #7c9c5f;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .editor-render-job p {
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin: 10px 0;
-  color: #8b9d77;
+  color: var(--color-text-subtle);
 }
 .editor-render-job button {
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin-top: 5px;
 }
 .job-failed {
   border-color: #e6cfb6;
 }
 .job-cancelled {
-  border-color: #dce0d6;
+  border-color: var(--color-border);
 }
 .asset-edit-button {
-  font-size: 9px;
+  font-size: var(--text-xs);
   padding: 6px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -401,10 +401,10 @@
     min-height: 300px;
   }
   .editor-player-panel > button {
-    font-size: 10px;
+    font-size: var(--text-xs);
   }
   .editor-layout .section-heading h2 {
-    font-size: 14px;
+    font-size: var(--text-md);
   }
 }
 @media (max-width: 560px) {
@@ -416,13 +416,13 @@
   }
   .editor-toolbar button {
     width: 100%;
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .editor-toolbar strong {
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .editor-runtime {
-    font-size: 9px;
+    font-size: var(--text-xs);
   }
   .editor-recents {
     gap: 6px;
@@ -431,28 +431,28 @@
     width: 100%;
   }
   .editor-recents button {
-    font-size: 9px;
+    font-size: var(--text-xs);
     max-width: 160px;
   }
   .editor-start {
     padding: 35px 20px;
   }
   .editor-start h2 {
-    font-size: 18px;
+    font-size: var(--text-xl);
   }
   .editor-start p {
-    font-size: 11px;
+    font-size: var(--text-sm);
   }
   .editor-start p br {
     display: none;
   }
   .editor-start-steps {
-    font-size: 8px;
+    font-size: var(--text-xs);
     gap: 12px;
   }
   .editor-meta {
     gap: 8px;
-    font-size: 9px;
+    font-size: var(--text-xs);
   }
   .editor-meta > span:not(:last-child):after {
     padding-left: 8px;
@@ -479,7 +479,7 @@
     flex-wrap: wrap;
   }
   .editor-controls-column .section-heading h2 {
-    font-size: 15px;
+    font-size: var(--text-md);
   }
   .editor-seek {
     grid-template-columns: 1fr 96px;

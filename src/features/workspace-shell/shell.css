@@ -26,7 +26,7 @@
   padding: 7px 9px;
   background: transparent;
   border-color: transparent;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .workspace-toolbar button:hover,
 .workspace-toolbar button[aria-current],
@@ -35,20 +35,20 @@
   background: #dfe6d8;
 }
 .workspace-toolbar .shell-icon {
-  font-size: 24px;
+  font-size: var(--text-2xl);
   line-height: 20px;
   width: 30px;
   padding: 6px;
 }
 .workspace-toolbar kbd {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .shell-dialog {
   color: inherit;
-  background: #f6f7f3;
+  background: var(--color-surface-muted);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 20px;
   width: min(600px, calc(100vw - 32px));
   max-height: min(700px, 80vh);
@@ -65,7 +65,7 @@
   margin-bottom: 16px;
 }
 .shell-dialog-heading h2 {
-  font-size: 17px;
+  font-size: var(--text-lg);
 }
 .shell-results {
   display: grid;
@@ -73,7 +73,7 @@
   margin-top: 14px;
 }
 .shell-results h3 {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
   margin: 12px 0 4px;
 }
@@ -92,14 +92,14 @@
 }
 .shell-search-help {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin: 8px 0 0;
 }
 .shell-results small {
   display: block;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .shell-results button > span {
   min-width: 0;
@@ -108,7 +108,7 @@
 .shell-results article {
   padding: 10px;
   background: white;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 @media (max-width: 560px) {
   .workspace-toolbar {

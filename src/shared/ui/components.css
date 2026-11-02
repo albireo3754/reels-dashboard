@@ -1,0 +1,439 @@
+/*
+ * Base elements and shared UI primitives built on tokens.css.
+ * React 래퍼는 src/shared/ui/primitives.tsx. 화면별 CSS는 배치만 다루고
+ * 글자 크기·색·버튼 모양은 여기서 정한다.
+ */
+
+/* ---------- Base ---------- */
+:root {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-synthesis: none;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-size: var(--text-base);
+  /* 한글 문장이 어절 중간에서 끊기지 않게 한다. 긴 경로·URL은 overflow-wrap이 처리. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+h1 {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+h2 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+h3 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+h4 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+small {
+  font-size: var(--text-sm);
+}
+
+/* ---------- Focus ---------- */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ---------- Button ----------
+ * 기본 button = secondary. 변형: .primary .danger .quiet(.ghost) .icon-button
+ * 크기: .small / .large. React: <Button variant size>.
+ */
+button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: 7px var(--space-4);
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+button:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border-strong);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+button.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-on-accent);
+}
+button.primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+button.danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-text-on-accent);
+}
+button.danger:hover {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
+}
+button.quiet,
+button.ghost,
+.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-muted);
+  padding: 6px var(--space-3);
+}
+button.quiet:hover,
+button.ghost:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+}
+button.small {
+  min-height: var(--control-sm);
+  padding: 4px var(--space-3);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+button.large {
+  min-height: var(--control-lg);
+  padding: 9px var(--space-5);
+}
+.icon-button {
+  padding: 0;
+  min-width: var(--control-md);
+  min-height: var(--control-md);
+  background: transparent;
+}
+
+/* ---------- Form controls ---------- */
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: 7px 11px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.4;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #b4c1b2;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-subtle);
+}
+input:read-only {
+  background: var(--color-surface-muted);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  accent-color: var(--color-primary);
+  flex: 0 0 auto;
+  padding: 0;
+}
+input[type="range"] {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--color-primary);
+}
+textarea {
+  resize: vertical;
+  min-height: 86px;
+}
+label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+label > input,
+label > select,
+label > textarea,
+label > .input-action,
+label > .digest {
+  margin-top: 6px;
+}
+label + label {
+  margin-top: var(--space-4);
+}
+.field-help,
+.ui-help {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-subtle);
+  line-height: var(--leading-normal);
+}
+
+/* ---------- Surfaces ---------- */
+.panel,
+.ui-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+  min-width: 0;
+}
+.panel > h2,
+.ui-card > h2 {
+  margin-bottom: var(--space-4);
+}
+.panel > p,
+.ui-card > p {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+  margin: var(--space-2) 0;
+}
+
+/* ---------- Text helpers ---------- */
+.eyebrow,
+.ui-eyebrow {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+.muted {
+  color: var(--color-text-subtle) !important;
+  font-size: var(--text-sm) !important;
+}
+.ui-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.ui-section-header > div {
+  min-width: 0;
+}
+.ui-section-header p {
+  margin-top: var(--space-1);
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+}
+.ui-section-header .ui-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ---------- Badge ---------- */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+.ui-badge[data-tone="primary"] {
+  background: var(--color-primary-soft);
+  border-color: transparent;
+  color: var(--color-primary-text);
+}
+.ui-badge[data-tone="warning"] {
+  background: var(--color-warning-soft);
+  border-color: transparent;
+  color: var(--color-warning-text);
+}
+.ui-badge[data-tone="danger"] {
+  background: var(--color-danger-soft);
+  border-color: transparent;
+  color: var(--color-danger-text);
+}
+
+/* ---------- Notice / alert ---------- */
+.notice,
+.error,
+.ui-notice {
+  display: block;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+.notice,
+.ui-notice[data-tone="info"],
+.ui-notice:not([data-tone]) {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+.error,
+.ui-notice[data-tone="danger"] {
+  background: var(--color-danger-soft);
+  border-color: #efd4c9;
+  color: var(--color-danger-text);
+}
+.ui-notice[data-tone="warning"] {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+
+/* ---------- Empty state ---------- */
+.empty,
+.ui-empty {
+  text-align: center;
+  padding: var(--space-10) var(--space-5);
+}
+.empty-orbit,
+.ui-empty-icon {
+  margin: 0 auto var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  border-radius: 50%;
+  color: var(--color-text-subtle);
+}
+.empty h3,
+.ui-empty h3 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+.empty p,
+.ui-empty p {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+  margin: var(--space-2) auto 0;
+  max-width: 420px;
+}
+.ui-empty .ui-actions {
+  margin-top: var(--space-5);
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Segmented control ---------- */
+.ui-segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+.ui-segmented > button {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+.ui-segmented > button[aria-pressed="true"],
+.ui-segmented > button[aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
