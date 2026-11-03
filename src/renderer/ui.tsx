@@ -16,6 +16,13 @@ export function Icon({ name }: { name: string }) {
     arrow: "M5 12h14 M13 6l6 6-6 6",
     plus: "M12 5v14 M5 12h14",
     check: "M5 12l4 4L19 6",
+    // Page with a folded corner and text lines: blog drafts.
+    blog: "M5 3h10l4 4v14H5z M15 3v4h4 M8 12h8 M8 16h5",
+    // Three connected steps: a running workflow.
+    workflow:
+      "M3 5h6v5H3z M15 14h6v5h-6z M9 7.5h3a3 3 0 0 1 3 3V14 M9 16.5h6 M3 14h6v5H3z",
+    // Terminal-style log lines.
+    logs: "M4 4h16v16H4z M7 9l3 3-3 3 M12 15h5",
   };
   return (
     <svg

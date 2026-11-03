@@ -13,7 +13,8 @@
   line-height: 1.55;
   --green: #386354;
   --green-dark: #224d3c;
-  --muted: #79867e;
+  --muted: #66735f;
+  --text-muted: #5f6c5c;
   --line: #e2e7df;
   --paper: #fff;
   --amber: #b67c36;
@@ -140,7 +141,7 @@ textarea {
 }
 input::placeholder,
 textarea::placeholder {
-  color: #a0aaa2;
+  color: #829085;
 }
 input:read-only {
   background: #f6f8f3;
@@ -191,7 +192,7 @@ label + label {
   margin: 52px 12px 12px;
   font-size: 10px;
   letter-spacing: 1px;
-  color: #98a18f;
+  color: var(--text-muted);
 }
 .nav-item {
   width: 100%;
@@ -200,7 +201,7 @@ label + label {
   background: transparent;
   padding: 13px 14px;
   border-radius: 10px;
-  color: #75816e;
+  color: var(--text-muted);
   font-weight: 500;
   margin: 3px 0;
   gap: 12px;
@@ -235,14 +236,14 @@ label + label {
 }
 .sidebar-bottom p {
   font-size: 10px;
-  color: #94a08c;
+  color: var(--text-muted);
   line-height: 1.7;
   margin: 9px 0 25px;
 }
 .version {
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 1.4px;
-  color: #a6af9f;
+  color: var(--text-muted);
 }
 .status-dot {
   width: 7px;
@@ -269,15 +270,15 @@ label + label {
   margin: 39px 0 30px;
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 2px;
   font-weight: 650;
-  color: #8b9b7b;
+  color: var(--text-muted);
   display: block;
   margin-bottom: 10px;
 }
 .page-heading p {
-  color: #8b9489;
+  color: var(--text-muted);
   font-size: 12px;
   margin-top: 11px;
 }
@@ -312,7 +313,7 @@ label + label {
 }
 .stat-card > span {
   font-size: 11px;
-  color: #86917f;
+  color: var(--text-muted);
 }
 .stat-card > strong {
   display: block;
@@ -325,21 +326,21 @@ label + label {
 .stat-card strong small {
   font-size: 11px;
   font-weight: 400;
-  color: #a1ac9a;
+  color: var(--text-muted);
   margin-left: 6px;
 }
 .stat-card p {
   font-size: 10px;
-  color: #a1aa9a;
+  color: var(--text-muted);
 }
 .stat-1 > strong {
-  color: #7a8857;
+  color: #68744a;
 }
 .stat-2 > strong {
-  color: #b89558;
+  color: #876b3a;
 }
 .stat-3 > strong {
-  color: #74978d;
+  color: #58766d;
 }
 .section-heading {
   display: flex;
@@ -351,12 +352,12 @@ label + label {
 .section-heading h2 > span {
   font-size: 12px;
   font-weight: 500;
-  color: #9ba991;
+  color: var(--text-muted);
   margin-left: 8px;
 }
 .section-heading p {
   font-size: 11px;
-  color: #99a18f;
+  color: var(--text-muted);
   margin-top: 5px;
 }
 .section-heading > p {
@@ -426,10 +427,10 @@ label + label {
 .stage-tag {
   display: inline-block;
   padding: 5px 9px;
-  font-size: 9px;
+  font-size: 10px;
   border-radius: 5px;
   background: #edf1e7;
-  color: #738062;
+  color: #636f55;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -445,15 +446,15 @@ label + label {
   background: #edf2e7;
 }
 .stage-review {
-  color: #a58242;
+  color: #846835;
   background: #faf2de;
 }
 .stage-published {
-  color: #4d887a;
+  color: #427468;
   background: #e6f2ed;
 }
 .stage-selected {
-  color: #7a775a;
+  color: #6d6a50;
   background: #efeee5;
 }
 .project-body {
@@ -463,17 +464,17 @@ label + label {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 9px;
-  color: #a1a997;
+  font-size: 10px;
+  color: var(--text-muted);
   margin-bottom: 8px;
   gap: 8px;
 }
 .share-indicator {
-  font-size: 8px;
+  font-size: 10px;
   border: 1px solid #e2e9db;
   padding: 2px 5px;
   border-radius: 4px;
-  color: #8b9e77;
+  color: var(--text-muted);
 }
 .project-body h3 {
   font-size: 15px;
@@ -483,7 +484,7 @@ label + label {
 .project-body > p {
   font-size: 11px;
   line-height: 1.8;
-  color: #8f9987;
+  color: var(--text-muted);
   margin-top: 10px;
   min-height: 40px;
 }
@@ -494,8 +495,8 @@ label + label {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid #eff1ea;
-  font-size: 9px;
-  color: #a8b09d;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 .project-footer a {
   font-size: 11px;
@@ -522,7 +523,7 @@ label + label {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #78915e;
+  color: #738b5a;
 }
 .library-callout strong {
   display: block;
@@ -532,18 +533,18 @@ label + label {
 .library-callout span {
   display: block;
   font-size: 10px;
-  color: #94a283;
+  color: var(--text-muted);
   margin-top: 5px;
 }
 .library-callout > svg:last-child {
   margin-left: auto;
-  color: #8b9c78;
+  color: #80926b;
 }
 .demo-banner {
   margin-top: 18px;
   padding: 9px 14px;
   background: #eaeede;
-  color: #889268;
+  color: #656d4d;
   border: 1px solid #e0e6cf;
   border-radius: 7px;
   font-size: 10px;
@@ -568,7 +569,7 @@ label + label {
 .alert.success {
   background: #edf4e9;
   border-color: #d8e5ce;
-  color: #607949;
+  color: #5c7446;
 }
 .alert .quiet {
   margin-left: auto;
@@ -581,7 +582,7 @@ label + label {
   align-items: center;
   gap: 9px;
   margin: 12px 0;
-  color: #7a8b67;
+  color: var(--text-muted);
   font-size: 12px;
 }
 .spinner {
@@ -610,12 +611,12 @@ label + label {
 }
 .panel > p {
   font-size: 12px;
-  color: #798970;
+  color: var(--text-muted);
   line-height: 1.9;
   margin: 10px 0;
 }
 .muted {
-  color: #8d9a80 !important;
+  color: var(--text-muted) !important;
   font-size: 11px !important;
 }
 .compact {
@@ -635,16 +636,16 @@ label + label {
   border: 1px solid #e0e8d4;
   background: #eff4e8;
   border-radius: 50%;
-  color: #93a47c;
+  color: #7c8f63;
 }
 .empty h3 {
   font-size: 15px;
   font-weight: 550;
-  color: #7b8b68;
+  color: var(--text-muted);
 }
 .empty p {
   font-size: 11px;
-  color: #a1ac95;
+  color: var(--text-muted);
   line-height: 1.9;
   margin: 10px auto 0;
   max-width: 390px;
@@ -665,12 +666,12 @@ label + label {
 .connection-strip strong {
   display: block;
   font-size: 12px;
-  color: #637951;
+  color: #61764f;
 }
 .connection-strip span:not(.status-dot) {
   display: block;
-  font-size: 9px;
-  color: #97a588;
+  font-size: 10px;
+  color: var(--text-muted);
   margin-top: 3px;
 }
 .connection-strip button {
@@ -697,7 +698,7 @@ label + label {
 .group-list .section-heading {
   padding: 5px 4px;
   font-size: 11px;
-  color: #91a080;
+  color: var(--text-muted);
 }
 .group-list h2 {
   font-size: 14px;
@@ -717,7 +718,7 @@ label + label {
 }
 .group-icon {
   padding: 4px;
-  color: #9bad85;
+  color: #7d9262;
 }
 .group-item > span:nth-child(2) {
   flex: 1;
@@ -728,15 +729,15 @@ label + label {
 }
 .group-item small {
   display: block;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
-  color: #8b9d7b;
+  color: var(--text-muted);
   line-height: 1.8;
 }
 .group-item > svg {
   width: 14px;
   margin-top: 8px;
-  color: #9ba98b;
+  color: #80926c;
 }
 .group-content {
   min-width: 0;
@@ -748,13 +749,13 @@ label + label {
   font-size: 16px;
 }
 .group-content .section-heading .eyebrow {
-  font-size: 8px;
+  font-size: 10px;
 }
 .evidence-summary {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #90a077;
+  color: var(--text-muted);
   margin: 18px 0 10px;
 }
 .evidence-grid {
@@ -782,28 +783,28 @@ label + label {
   overflow-wrap: anywhere;
 }
 .evidence-grid figcaption strong {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   display: block;
 }
 .evidence-grid small {
   display: block;
-  font-size: 8px;
-  color: #97a583;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 .ocr {
-  font-size: 9px;
-  color: #7a8e66;
+  font-size: 10px;
+  color: var(--text-muted);
   line-height: 1.5;
   margin: 5px 0;
 }
 .privacy-tag {
   display: inline-block;
-  font-size: 7px;
+  font-size: 10px;
   border-radius: 3px;
   padding: 2px 4px;
   background: #f4ecd8;
-  color: #ab8b50;
+  color: #7e663b;
   margin: 3px 3px 0 0;
 }
 .pagination {
@@ -812,7 +813,7 @@ label + label {
   align-items: center;
   margin-top: 18px;
   font-size: 10px;
-  color: #9aa88a;
+  color: var(--text-muted);
 }
 .pagination button {
   font-size: 10px;
@@ -822,11 +823,11 @@ label + label {
   display: flex;
   gap: 19px;
   font-size: 11px;
-  color: #94a582;
+  color: var(--text-muted);
   margin-bottom: 15px;
 }
 .selection-counts strong {
-  color: #658147;
+  color: #5d7742;
   font-size: 13px;
   margin-left: 4px;
 }
@@ -849,7 +850,7 @@ label + label {
   width: 33px;
   height: 37px;
   border-radius: 6px;
-  color: #9cae88;
+  color: #7a8f62;
   font-size: 14px;
 }
 .asset-info {
@@ -862,14 +863,14 @@ label + label {
   overflow-wrap: anywhere;
 }
 .asset-info span {
-  font-size: 9px;
-  color: #8e9f7b;
+  font-size: 10px;
+  color: var(--text-muted);
   display: block;
   line-height: 1.7;
 }
 .asset-info small {
-  font-size: 8px;
-  color: #a9b499;
+  font-size: 10px;
+  color: var(--text-muted);
   display: block;
 }
 .asset-row select {
@@ -910,7 +911,7 @@ label + label {
   align-items: center;
   gap: 5px;
   font-size: 10px;
-  color: #72934e;
+  color: #5d7840;
 }
 .verified svg {
   width: 15px;
@@ -928,7 +929,7 @@ label + label {
 }
 .inline-warning {
   font-size: 11px !important;
-  color: #b18d48 !important;
+  color: #876c37 !important;
   background: #fbf7e9;
   border-left: 3px solid #d7ba73;
   padding: 9px 12px;
@@ -958,21 +959,21 @@ label + label {
   width: 34px;
   height: 34px;
   background: #e0ebd4;
-  color: #73974e;
+  color: #6a8b48;
   border-radius: 9px;
   font-size: 25px;
   margin-bottom: 13px;
 }
 .type-icon.amber {
   background: #eee3ca;
-  color: #b5944a;
+  color: #987c3e;
 }
 .transfer-types h3 {
   font-size: 14px;
 }
 .transfer-types p {
   font-size: 11px;
-  color: #8f9b7c;
+  color: var(--text-muted);
   line-height: 1.8;
   margin-top: 8px;
 }
@@ -987,13 +988,13 @@ label + label {
 }
 .plan-summary span {
   display: block;
-  font-size: 9px;
-  color: #97a882;
+  font-size: 10px;
+  color: var(--text-muted);
   margin-bottom: 5px;
 }
 .plan-summary strong {
   font-size: 13px;
-  color: #627b48;
+  color: #5e7645;
   font-weight: 550;
   overflow-wrap: anywhere;
 }
@@ -1005,13 +1006,13 @@ label + label {
   border-radius: 7px;
   font-size: 10px;
   word-break: break-all;
-  color: #7c8f63;
+  color: #667551;
   font-weight: 400;
 }
 .file-path {
   font-size: 10px !important;
   overflow-wrap: anywhere;
-  color: #8d9b7d !important;
+  color: var(--text-muted) !important;
 }
 .checkbox-row {
   display: flex;
@@ -1026,14 +1027,14 @@ label + label {
   margin-top: 2px;
 }
 .destructive-check {
-  color: #a76c43;
+  color: #97613c;
   background: #faf2e8;
   padding: 12px;
   border-radius: 7px;
 }
 .json-details {
   font-size: 11px;
-  color: #8e9e7e;
+  color: var(--text-muted);
   margin: 16px 0;
 }
 .json-details summary {
@@ -1042,7 +1043,7 @@ label + label {
 }
 .json-details pre {
   background: #f3f6ed;
-  color: #738b59;
+  color: #61754b;
   padding: 15px;
   overflow: auto;
   max-height: 340px;
@@ -1058,14 +1059,14 @@ label + label {
   display: flex;
   flex-wrap: wrap;
   gap: 30px;
-  color: #98aa84;
+  color: var(--text-muted);
   font-size: 10px;
   padding: 10px 0;
 }
 .receipt-stats strong {
   display: block;
   font-size: 23px;
-  color: #6f914b;
+  color: #5c783e;
   font-weight: 500;
 }
 .desktop-notice {
@@ -1076,7 +1077,7 @@ label + label {
   border: 1px solid #dce7cc;
   border-radius: 12px;
   padding: 29px;
-  color: #77945a;
+  color: #5c7346;
 }
 .desktop-notice strong {
   font-size: 15px;
@@ -1084,7 +1085,7 @@ label + label {
 .desktop-notice p {
   font-size: 12px;
   line-height: 1.9;
-  color: #91a37b;
+  color: var(--text-muted);
   margin-top: 8px;
 }
 .settings-divider {
@@ -1097,7 +1098,7 @@ label + label {
 }
 .share-count {
   font-size: 10px;
-  color: #88a065;
+  color: #637548;
   border: 1px solid #dfe8d3;
   border-radius: 5px;
   padding: 4px 8px;
@@ -1141,7 +1142,7 @@ label + label {
   margin-bottom: 5px;
 }
 .warning-text {
-  color: #b39258 !important;
+  color: #866c3d !important;
 }
 @media (min-width: 1500px) {
   .main {
@@ -1304,7 +1305,7 @@ label + label {
     padding: 0 17px 18px;
   }
   .demo-banner {
-    font-size: 9px;
+    font-size: 10px;
     margin-top: 13px;
     padding: 7px 10px;
   }
@@ -1323,7 +1324,7 @@ label + label {
     margin-top: 8px;
   }
   .eyebrow {
-    font-size: 8px;
+    font-size: 10px;
     letter-spacing: 1.4px;
     margin-bottom: 8px;
   }
@@ -1350,7 +1351,7 @@ label + label {
     margin: 9px 0 6px;
   }
   .stat-card p {
-    font-size: 9px;
+    font-size: 10px;
   }
   .section-heading {
     gap: 10px;
@@ -1360,7 +1361,7 @@ label + label {
     font-size: 15px;
   }
   .section-heading > p {
-    font-size: 8px;
+    font-size: 10px;
   }
   .project-grid {
     gap: 12px;
@@ -1369,7 +1370,7 @@ label + label {
     height: 105px;
   }
   .project-art > .stage-tag {
-    font-size: 8px;
+    font-size: 10px;
     top: 10px;
     left: 10px;
     padding: 4px 6px;
@@ -1382,26 +1383,26 @@ label + label {
     padding: 12px;
   }
   .project-date {
-    font-size: 8px;
+    font-size: 10px;
     flex-wrap: wrap;
     gap: 4px;
   }
   .share-indicator {
-    font-size: 7px;
+    font-size: 10px;
     padding: 1px 3px;
   }
   .project-body h3 {
     font-size: 12px;
   }
   .project-body > p {
-    font-size: 9px;
+    font-size: 10px;
     min-height: 34px;
     margin-top: 7px;
   }
   .project-footer {
     margin-top: 10px;
     padding-top: 8px;
-    font-size: 8px;
+    font-size: 10px;
   }
   .project-footer .icon-button {
     padding: 3px;
@@ -1420,7 +1421,7 @@ label + label {
     font-size: 10px;
   }
   .library-callout span {
-    font-size: 9px;
+    font-size: 10px;
   }
   .callout-icon {
     width: 32px;
@@ -1490,7 +1491,7 @@ label + label {
     font-size: 12px;
   }
   .transfer-types p {
-    font-size: 9px;
+    font-size: 10px;
   }
   .transfer-types p br {
     display: none;
@@ -1519,7 +1520,7 @@ label + label {
     padding: 8px 10px;
   }
   .share-count {
-    font-size: 8px;
+    font-size: 10px;
   }
   .desktop-notice {
     padding: 20px;
@@ -1550,11 +1551,11 @@ label + label {
     font-size: 10px;
   }
   .asset-info span {
-    font-size: 8px;
+    font-size: 10px;
   }
   .asset-row select {
     width: 68px;
-    font-size: 9px;
+    font-size: 10px;
   }
   .button-row button {
     font-size: 11px;
@@ -1569,7 +1570,7 @@ label + label {
     font-size: 11px;
   }
   .file-path {
-    font-size: 9px !important;
+    font-size: 10px !important;
   }
   .empty {
     padding: 35px 10px;
@@ -1607,7 +1608,7 @@ label + label {
     font-size: 12px;
   }
   .share-indicator {
-    font-size: 9px;
+    font-size: 10px;
   }
   .project-art > .stage-tag {
     font-size: 10px;

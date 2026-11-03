@@ -718,7 +718,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         )}
         {notice && (
           <div className="alert success" role="status">
-            {notice}
+            <span>{notice}</span>
+            <button
+              className="quiet"
+              aria-label="알림 닫기"
+              onClick={() => setNotice("")}
+            >
+              ×
+            </button>
           </div>
         )}
         {busy && (
