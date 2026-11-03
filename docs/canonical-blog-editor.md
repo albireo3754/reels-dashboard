@@ -220,3 +220,8 @@ node --import tsx scripts/blog-review.ts import <project-id> <packet.json> <resu
 - 검증(2026-11-03, 합성 원고만): `npm run typecheck`, `npm run check:architecture`, `npm run build:web` 통과. 웹 Playwright(headless)의 `canonical-inline-diff`·`canonical-inline-review`·`canonical-tab-suggest`·`canonical-formatting` 26건 통과(2회 반복 포함). 데스크톱 1440·모바일 390 스크린샷을 확인했다. Electron spec(`tests/electron/markup-editor.spec.ts`)은 선택자만 바꿨고 이번에 실행하지 않았다.
 - 적대적 리뷰(누출·편집/IME·UX 세 관점)에서 확인된 항목을 고쳤다: 겹친 제안 표시의 Tab 적용 차단, 링크 글자 안 입력 시 커서 이동, 표시 팝오버가 대상 구절을 가림, 팝오버가 아래 글자 클릭을 막음, 팝오버 버튼 키보드 접근, 좁은 화면 표시 탭 영역, 서식 제안 낭독 내용, 고스트가 걸친 선택 문구 보고, 복사 시 서식 유실, 끌기 시작 시 표시 정리.
 - 2차 수정(2026-11-03): 표시가 있는 문단에서 링크 글자 일부에 서식 적용 시 범위가 링크 전체로 넓어지거나 사라지던 문제, 입력 직후 요청한 회색 추천이 diff 다시 그리기 때문에 `본문이 바뀌어…`로 버려지던 문제, 다시 그리기 뒤 뒤쪽 선택의 방향이 뒤집히던 문제, 마지막 사진·배치 메모를 Esc로 유지하면 포커스가 사라지던 문제, 키보드로 다른 묶음의 메모에 가도 패널이 이전 묶음에 머물던 문제를 고쳤다. `canonical-inline-diff`에 회귀 테스트 4개를 더했고, 수정 전 코드에서는 4개 모두 실패하는 것을 확인했다. 검증(합성 원고만, Homebrew Node 26): `typecheck`·`check:architecture`·`audit:public`(586 entries)·`build` 통과, 웹 Playwright(headless) 전체 120/120, `canonical-` spec 2회 반복 72/72, Electron background QA(`markup-editor`·`blog-scroll`·`workflow-embedded`·`dev-build-identity`) 7 통과·2 skip(실제 원고·live 시각 검토). `npm test`는 248/249로, 실패 1건(`face-mosaic`)은 이 worktree에 `native/editor-engine/.build/runtime/bin/ffmpeg`가 없어서 생긴 환경 문제다.
+
+
+## 빈 문단 삭제 — 2026-11-03
+
+마크업 원고에서 문단의 글을 모두 지운 뒤 빈 문단에서 Backspace(또는 Delete)를 한 번 더 누르면 그 문단이 화면에서 사라지고 커서는 이전 문단 끝(Delete는 다음 문단)으로 갑니다. 묶음에 남은 마지막 문단이면 기존 묶음 삭제와 같이 묶음 전체(사진 포함)가 사라집니다. 두 경우 모두 `삭제 취소`로 되돌릴 수 있고, 저장(⌘/Ctrl+S)할 때만 정본에서 빠집니다(`deleteParagraphs` 저장 패치, 문단이 모두 빠진 컨테이너 컴포넌트도 함께 제거). 한글 조합 중이거나 수정키를 누른 상태에서는 동작하지 않습니다. 검증: `tests/web/canonical-bundle-delete.spec.ts`.

@@ -8,7 +8,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import type {EditorConfig} from "./store";
-import {parse,serialize,validate,legend,type ParagraphNode,type MarkStyle} from "../../shared/blog-markup";
+import {parse,serialize,validate,legend,type ParagraphNode,type MarkStyle,type MarkupNode} from "../../shared/blog-markup";
 import {paragraphNodes,bundleHashes,reviewFresh,fingerprint} from "../../shared/blog-markup-source";
 import {load,save} from "../../shared/blog-markup-store";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
@@ -42,7 +42,7 @@ function edited(original:ParagraphNode,source:string):ParagraphNode{
   return result;
 }
 const stickerSchema=z.strictObject({id:z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/),preset:z.enum(STICKER_PRESETS.map(p=>p.id)),bundleId:z.string(),before:z.number().int().nonnegative(),note:z.string().max(120).optional()});
-const patchSchema=z.strictObject({deleteBundles:z.array(z.string()).max(100).optional(),stickers:z.array(stickerSchema).max(30).optional(),revision:z.string(),edits:z.array(z.strictObject({id:z.string(),source:z.string().min(1).max(20000)})).max(100),title:z.string().min(1).max(200).optional()});
+const patchSchema=z.strictObject({deleteBundles:z.array(z.string()).max(100).optional(),deleteParagraphs:z.array(z.string()).max(500).optional(),stickers:z.array(stickerSchema).max(30).optional(),revision:z.string(),edits:z.array(z.strictObject({id:z.string(),source:z.string().min(1).max(20000)})).max(100),title:z.string().min(1).max(200).optional()});
 export class MarkupStore {
   private bases=new Map<string,{text:string;fingerprint:string}>();
   constructor(readonly config:EditorConfig,private capture?: (bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>){}
@@ -136,6 +136,18 @@ body{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20p
     }
     if(patch.title!==undefined)doc.metadata!.title=patch.title;
     if(patch.stickers!==undefined)replaceStickers(doc,patch.stickers as StickerPlacement[]);
+    if(patch.deleteParagraphs?.length){
+      const remove=new Set(patch.deleteParagraphs);
+      if([...remove].some(id=>!paragraphs.some(p=>p.id===id)))throw new Error("삭제할 문단을 찾지 못했어요. 다시 불러와주세요.");
+      const drop=(nodes:MarkupNode[]):MarkupNode[]=>nodes.flatMap((n):MarkupNode[]=>{
+        if(n.kind==="paragraph")return remove.has(n.id)?[]:[n];
+        if(!n.children)return [n];
+        const children=n.children.filter(c=>!remove.has(c.id));
+        // A container whose paragraphs were all removed goes with them.
+        return children.length?[{...n,children}]:(n.children.length?[]:[n]);
+      });
+      for(const b of doc.bundles)b.nodes=drop(b.nodes);
+    }
     if(patch.deleteBundles?.length){
       const remove=new Set(patch.deleteBundles);
       if([...remove].some(id=>!doc.bundles.some(b=>b.id===id)))throw new Error("삭제할 묶음을 찾지 못했어요. 다시 불러와주세요.");

@@ -68,6 +68,10 @@ export function CanonicalBlogEditor() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   // Bundles removed on this screen; they leave the source only when saved.
   const [deleted, setDeleted] = useState<string[]>([]);
+  // Paragraphs removed with Backspace/Delete while empty; also only applied on save.
+  const [removedParas, setRemovedParas] = useState<string[]>([]);
+  // Undo order across bundle and paragraph removals ("삭제 취소" restores the latest).
+  const [removals, setRemovals] = useState<{ kind: "bundle" | "paragraph"; id: string }[]>([]);
   const [invalid, setInvalid] = useState<Record<string, string>>({});
   const [typography, setTypography] = useState<
     Record<string, { fontFamily: string; fontSize: number }>
@@ -161,6 +165,7 @@ export function CanonicalBlogEditor() {
   const dirty =
     stickersDirty ||
     deleted.length > 0 ||
+    removedParas.length > 0 ||
     Object.keys(edits).length > 0 ||
     Object.keys(invalid).length > 0 ||
     (!!doc && title !== doc.title);
@@ -206,9 +211,9 @@ export function CanonicalBlogEditor() {
             baseSizes: Object.fromEntries(
               Object.entries(typography).map(([id, t]) => [id, t.fontSize]),
             ),
-          }).filter((item) => !deleted.includes(item.bundleId))
+          }).filter((item) => !deleted.includes(item.bundleId) && !(item.paragraphId && removedParas.includes(item.paragraphId)))
         : [],
-    [doc, edits, decisions, changed, typography, deleted],
+    [doc, edits, decisions, changed, typography, deleted, removedParas],
   );
   const proposalsRef = useRef(proposals);
   proposalsRef.current = proposals;
@@ -225,7 +230,7 @@ export function CanonicalBlogEditor() {
       setFrameEpoch(v=>v+1);
       setSaveState("idle");setSavedForReview(false);setNotice("");
       setTitle(d.title);
-      setEdits({});setDeleted([]);
+      setEdits({});setDeleted([]);setRemovedParas([]);setRemovals([]);
       setSelectionFormat(undefined);
       setSelected((old) =>
         d.bundles.some((b: any) => b.id === old)
@@ -268,7 +273,8 @@ export function CanonicalBlogEditor() {
     try {
       const result = await api("save", {
         revision: doc.revision,
-        edits: Object.entries(edits).map(([id, source]) => ({ id, source })),
+        edits: Object.entries(edits).filter(([id]) => !removedParas.includes(id)).map(([id, source]) => ({ id, source })),
+        ...(removedParas.length ? { deleteParagraphs: removedParas } : {}),
         ...(title !== doc.title ? { title } : {}),
         ...(stickersDirty ? {stickers} : {}),
         ...(deleted.length ? { deleteBundles: deleted } : {}),
@@ -276,7 +282,7 @@ export function CanonicalBlogEditor() {
       setDoc(result.document);setStickers(result.document.stickers??[]);
       setFrameEpoch(v=>v+1);setSaveState("idle");setSavedForReview(reason==="review");
       setTitle(result.document.title);
-      setEdits({});setDeleted([]);
+      setEdits({});setDeleted([]);setRemovedParas([]);setRemovals([]);
       setChanged((old) => old.filter((id) => result.document.bundles.some((b: { id: string }) => b.id === id)));
       setSelected((old) => result.document.bundles.some((b: { id: string }) => b.id === old) ? old : (result.document.bundles[0]?.id ?? ""));
       handledRef.current = new Set();
@@ -413,6 +419,7 @@ export function CanonicalBlogEditor() {
     if (live.length <= 1) return setError("마지막 묶음은 지울 수 없어요.");
     const next = [...deleted, id];
     setDeleted(next);
+    setRemovals((old) => [...old, { kind: "bundle", id }]);
     send({ type: "hide-bundles", ids: next });
     // The neighbours now meet each other, so their transition needs review.
     setChanged((old) => [...new Set([...old, ...[live[i - 1], live[i + 1]].filter(Boolean).map((b) => b!.id)])].filter((x) => !next.includes(x)));
@@ -422,14 +429,46 @@ export function CanonicalBlogEditor() {
     setError("");
     setNotice(`‘${live[i].name}’ 묶음을 지웠어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장하거나 삭제 취소를 눌러주세요.`);
   }
+  function removeParagraph(id: string) {
+    if (!doc || busy || doc.format !== "markup") return;
+    const p = doc.paragraphs.find((x) => x.id === id);
+    const bundle = doc.bundles.find((b) => b.paragraphIds.includes(id));
+    if (!p || !bundle || deleted.includes(bundle.id) || removedParas.includes(id)) return;
+    const live = bundle.paragraphIds.filter((x) => !removedParas.includes(x));
+    // The bundle's last paragraph: remove the whole bundle (photos included), undoable.
+    if (live.length <= 1) return deleteBundle(bundle.id);
+    const next = [...removedParas, id];
+    setRemovedParas(next);
+    setRemovals((old) => [...old, { kind: "paragraph", id }]);
+    setInvalid((old) => { const n = { ...old }; delete n[id]; return n; });
+    send({ type: "hide-paragraphs", ids: next });
+    const i = doc.bundles.findIndex((b) => b.id === bundle.id);
+    setChanged((old) => [...new Set([...old, ...doc.bundles.slice(Math.max(0, i - 1), i + 2).map((b) => b.id)])].filter((x) => !deleted.includes(x)));
+    setQueued([]);
+    setError("");
+    setNotice("빈 문단을 지웠어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장하거나 삭제 취소를 눌러주세요.");
+  }
   function undoDelete() {
-    const next = deleted.slice(0, -1);
-    const restored = deleted.at(-1);
+    const last = removals.at(-1);
+    if (!last) return;
+    setRemovals(removals.slice(0, -1));
+    if (last.kind === "paragraph") {
+      const next = removedParas.filter((x) => x !== last.id);
+      setRemovedParas(next);
+      send({ type: "hide-paragraphs", ids: next });
+      setNotice("문단 삭제를 취소했어요.");
+      return;
+    }
+    const next = deleted.filter((x) => x !== last.id);
     setDeleted(next);
     send({ type: "hide-bundles", ids: next });
-    if (restored) setSelected(restored);
+    setSelected(last.id);
     setNotice("묶음 삭제를 취소했어요.");
   }
+  const removeParaRef = useRef(removeParagraph);
+  removeParaRef.current = removeParagraph;
+  const removedParasRef = useRef(removedParas);
+  removedParasRef.current = removedParas;
   const deleteRef = useRef(deleteBundle);
   deleteRef.current = deleteBundle;
   const deletedRef = useRef(deleted);
@@ -475,6 +514,7 @@ export function CanonicalBlogEditor() {
         if (suggestRef.current) cancelSuggestRef.current();
         if(doc.format==="markup")sendStickers();
         send({ type: "hide-bundles", ids: deletedRef.current });
+        send({ type: "hide-paragraphs", ids: removedParasRef.current });
         send({ type: "lock", locked: busyRef.current });
         send({ type: "proposals", items: proposalsRef.current, locked: busyRef.current });
       }
@@ -505,6 +545,7 @@ export function CanonicalBlogEditor() {
         setHeight(Math.min(100000, Math.max(500, m.height)));
       if (m.type === "save") saveShortcutRef.current();
       if (m.type === "delete-bundle" && typeof m.bundleId === "string") deleteRef.current(m.bundleId);
+      if (m.type === "remove-paragraph" && typeof m.id === "string") removeParaRef.current(m.id);
       if (m.type === "select" && doc.bundles.some((b) => b.id === m.bundleId))
         setSelected(m.bundleId);
       if (m.type === "scroll" && Number.isFinite(m.top) && frame.current)
@@ -749,7 +790,7 @@ export function CanonicalBlogEditor() {
           >
             묶음 삭제
           </button>}
-          {deleted.length > 0 && <button disabled={busy} onClick={undoDelete}>삭제 취소 ({deleted.length})</button>}
+          {removals.length > 0 && <button disabled={busy} onClick={undoDelete}>삭제 취소 ({removals.length})</button>}
           <button aria-label="이 묶음 검토" title={dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다"} disabled={busy} onClick={() => void request("selected")}>
             {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
           </button>
@@ -773,7 +814,7 @@ export function CanonicalBlogEditor() {
           <span role="alert">{error}</span>
         ) : (
           notice ||
-          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
+          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · 빈 문단에서 Backspace 문단 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
         )}
       </div>
       {doc.format==="markup" && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})}/></div>}
