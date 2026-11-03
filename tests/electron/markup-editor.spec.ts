@@ -110,15 +110,21 @@ test("real configured manuscript renders read-only with photos and no source wri
         const data=await (await editor.request.get(new URL("/api/blog/document",editor.url()).href)).json();
         const {findingApplicability}=await import("../../src/shared/review-applicability");
         const current=data.reviews.find((r:any)=>r.bundleId===latest.bundleId).findings.filter((f:any)=>!["withdrawn","rejected","obsolete"].includes(f.status));
-        // Apply buttons live on the inline cards next to the target paragraph, not in the panel.
+        // Apply buttons live in the in-text proposal popover (opened from the panel's "본문에서 보기"), not in the panel.
+        const hint=frame.locator('[data-review-ui="hint"]');
         for(const f of current){
           const id=f.proposal?.tid??f.proposal?.entry?.id;
           const expected=findingApplicability(f,data.paragraphs.find((p:any)=>p.id===id)?.source).canApply;
-          const apply=frame.locator(`.rv-card[data-proposal="${f.id}"]`).getByRole("button",{name:"적용",exact:true});
+          const reveal=editor.locator(`.ce-proposal[data-proposal="${f.id}"]`).getByRole("button",{name:"본문에서 보기",exact:true});
+          if(!await reveal.count()){expect(expected).toBe(false);continue;}
+          await reveal.click();
+          await expect(hint).toHaveAttribute("data-pid",f.id);
+          const apply=hint.getByRole("button",{name:"적용",exact:true});
           if(expected)await expect(apply).toBeEnabled();
           else if(await apply.count())await expect(apply).toBeDisabled();
         }
-        expect(await frame.locator("[data-tid]").evaluateAll(ps=>ps.some(p=>!!p.querySelector("[data-review-ui]")))).toBe(false);
+        // In-text review nodes are empty, non-editable decorations: the manuscript text is untouched.
+        expect(await frame.locator("[data-tid]").evaluateAll(ps=>ps.every(p=>[...p.querySelectorAll("[data-review-ui]")].every(n=>["ins","marker"].includes(n.getAttribute("data-review-ui")!)&&n.textContent===""&&n.getAttribute("contenteditable")==="false")))).toBe(true);
 
       }
     }
@@ -193,13 +199,17 @@ test("independent proposals stay applicable after label recolor and sequential e
   await openReview(editor);
   await expect(editor.locator(".ce-proposal")).toHaveCount(3);
   await closeReview(editor);
-  // Proposals are applied from the inline cards next to P2; each apply re-validates the rest.
-  const ids=["checks","color1","color2"],inline=(id:string)=>frame.locator(`.rv-card[data-proposal="${id}"]`);
-  for(const id of ids)await expect(inline(id).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
+  // Proposals are applied from the in-text diff/marker popover in P2; each apply re-validates the rest.
+  const ids=["checks","color1","color2"],inline=(id:string)=>frame.locator(`[data-review-ui="ins"][data-pid="${id}"],[data-review-ui="marker"][data-pid="${id}"]`);
+  const hint=frame.locator('[data-review-ui="hint"]'),apply=hint.getByRole("button",{name:"적용",exact:true});
+  // A dispatched click opens the popover even when another proposal's popover covers the target.
+  const activate=async(id:string)=>{await inline(id).first().dispatchEvent("click");await expect(hint).toHaveAttribute("data-pid",id);};
+  for(const id of ids){await activate(id);await expect(apply).toBeEnabled();}
   for(let i=0;i<3;i++){
-    await inline(ids[i]).getByRole("button",{name:"적용",exact:true}).click();
+    await activate(ids[i]);
+    await apply.click();
     await expect(inline(ids[i])).toHaveCount(0);
-    if(i<2)await expect(inline(ids[i+1]).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
+    if(i<2){await activate(ids[i+1]);await expect(apply).toBeEnabled();}
   }
   await expect(frame.locator('[data-tid="P2"]')).toHaveText("✅ Second line");
   await editor.getByRole("button",{name:"정본 저장",exact:true}).click();
@@ -208,7 +218,7 @@ test("independent proposals stay applicable after label recolor and sequential e
   await editor.reload();
   await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
   await expect(frame.locator('[data-tid="P2"]')).toHaveText("✅ Second line");
-  await expect(frame.locator(".rv-card")).toHaveCount(0);
+  await expect(frame.locator('[data-review-ui="ins"],[data-review-ui="marker"],[data-review-ui="hint"]')).toHaveCount(0);
   expect(await frame.locator('[data-tid="P2"]').innerHTML()).not.toMatch(/rv-|data-review-ui/);
   await openReview(editor);
   for(let i=0;i<3;i++){

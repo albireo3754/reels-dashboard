@@ -97,17 +97,30 @@ test("selection formatting survives palette focus, saves exact sizes and clears 
     await expect(page.getByLabel("글자 크기", { exact: true })).toHaveValue(
       "24",
     );
-    // The legacy review has no text receipt, so its format proposal is shown
-    // inline next to T1 as a locked card with the reason instead of a panel comparison.
-    const proposal = frame.locator('.rv-card[data-proposal="f1"]');
-    await expect(proposal).toBeVisible();
-    await expect(proposal.locator(".rv-reason-line")).toBeVisible();
-    await expect(
-      proposal.getByRole("button", { name: "적용", exact: true }),
-    ).toBeDisabled();
+    // The legacy review has no text receipt, so its format proposal is stale
+    // ("본문 변경됨"): the manuscript draws nothing for it (no in-text diff, marker
+    // or popover) and the panel explains why, with apply locked.
+    await page.waitForTimeout(600);
     expect(
       await paragraph.evaluate((el) => !!el.querySelector("[data-review-ui]")),
     ).toBe(false);
+    await expect(frame.locator('[data-review-ui][data-pid="f1"]')).toHaveCount(0);
+    await expect(frame.locator('[data-review-ui="hint"]')).toHaveCount(0);
+    const proposal = page.locator('.ce-proposal[data-proposal="f1"]');
+    await expect(proposal).toBeVisible();
+    await expect(proposal).toHaveAttribute("data-state", "changed");
+    await expect(proposal.locator(".ce-chip")).toHaveText("본문 변경됨");
+    await expect(proposal.locator(".ce-proposal-reason")).toBeVisible();
+    await expect(
+      proposal.getByRole("button", { name: "적용", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      proposal.getByRole("button", { name: "본문에서 보기", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      proposal.getByRole("button", { name: "현재 유지", exact: true }),
+    ).toBeEnabled();
+    await expect(paragraph).toHaveText("벤치에서 잠시 쉬었어요바람이 좋았어요");
     await page.screenshot({ path: info.outputPath("formatting-desktop.png") });
     await page.setViewportSize({ width: 1024, height: 768 });
     await expect(

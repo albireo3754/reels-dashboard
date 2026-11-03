@@ -32,7 +32,13 @@ const frameOf=(page:Page)=>page.frameLocator('iframe[title="정본 본문 편집
 
 /** Focus a paragraph and put a collapsed caret at a plain-text offset (review UI nodes are skipped). */
 async function caretTo(page:Page,tid:string,offset:number|"end"){
- await frameOf(page).locator(`[data-tid="${tid}"]`).click({position:{x:2,y:2}});
+ // The active proposal's floating popover may cover this paragraph's first line. Clicking
+ // there would press a popover button, so only click when the point is not covered by
+ // review UI; the caret and focus are set explicitly below either way.
+ const para=frameOf(page).locator(`[data-tid="${tid}"]`);
+ await para.scrollIntoViewIfNeeded();
+ const covered=await para.evaluate(p=>{const r=p.getBoundingClientRect(),hit=p.ownerDocument.elementFromPoint(r.left+2,r.top+2);return !!hit&&!p.contains(hit);});
+ if(!covered)await para.click({position:{x:2,y:2}});
  await iframe(page).evaluate((el:HTMLIFrameElement,[tid,offset])=>{
   const d=el.contentDocument!,w=el.contentWindow!,p=d.querySelector<HTMLElement>(`[data-tid="${tid}"]`)!;
   p.focus();
@@ -97,12 +103,28 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    await page.setViewportSize({width:1440,height:1000});
    await page.goto(server.url+"/?blogEditor=1");
    const frame=frameOf(page);
-   const card=(id:string)=>frame.locator(`.rv-card[data-proposal="${id}"]`);
+   const ins=(id:string)=>frame.locator(`[data-review-ui="ins"][data-pid="${id}"]`);
+   const marker=(id:string)=>frame.locator(`[data-review-ui="marker"][data-pid="${id}"]`);
    const hint=frame.locator('[data-review-ui="hint"]');
+   const applyBtn=hint.locator('button[data-act="apply"]'),keepBtn=hint.locator('button[data-act="keep"]');
+   const live=frame.locator('[data-review-ui="live"]');
    const save=page.getByRole("button",{name:"정본 저장",exact:true});
    const list=page.locator(".ce-proposal");
-   await expect(card("ending")).toBeVisible();
-   await expect(card("label").locator(".rv-reason-line")).toContainText("링크");
+   // Cursor-style in-text diff: inserted words are empty non-editable spans (text via ::after),
+   // deleted characters a CSS highlight; the blocked link proposal is a warning marker.
+   await expect(ins("ending")).toHaveCount(1);
+   await expect(ins("ending")).toBeVisible();
+   await expect(ins("ending")).toHaveAttribute("data-text","다");
+   await expect(ins("ending")).toHaveAttribute("contenteditable","false");
+   await expect(ins("ending")).toHaveAttribute("aria-hidden","true");
+   expect(await ins("ending").evaluate(e=>e.textContent)).toBe("");
+   await expect(marker("label")).toHaveClass(/rv-warn/);
+   await expect(marker("label")).toHaveAttribute("data-label","⚠ 확인 필요");
+   expect(await iframe(page).evaluate((el:HTMLIFrameElement)=>{
+    const h=(el.contentWindow as any).CSS.highlights.get("rv-del");
+    return h?[...h].map((r:Range)=>r.toString()):[];
+   })).toEqual(expect.arrayContaining(["어요"]));
+   expect(await plain(page,"P3")).toBe(P3);
 
    // No proposal in P2: no hint. First Tab only jumps to the next proposal (Copilot NES style).
    await caretTo(page,"P2","end");
@@ -114,13 +136,23 @@ test.describe("Tab over review proposals (layer 1)",()=>{
 
    // Caret on a proposal: polite hint popover under the target with the compact diff and key help.
    await expect(hint).toBeVisible();
-   await expect(hint).toHaveAttribute("role","status");
-   await expect(hint).toHaveAttribute("aria-live","polite");
-   await expect(hint).toContainText("Tab 적용");
-   await expect(hint).toContainText("Esc 유지");
-   await expect(hint).toContainText("어요");
+   await expect(hint).toHaveCount(1);
+   await expect(hint).toHaveAttribute("data-pid","ending");
+   await expect(hint).toHaveAttribute("role","group");
+   await expect(hint).toHaveAttribute("aria-label","AI 제안");
+   await expect(applyBtn).toBeEnabled();
+   await expect(applyBtn).toHaveAttribute("aria-label","적용");
+   await expect(applyBtn.locator("kbd")).toHaveText("Tab");
+   await expect(keepBtn).toHaveAttribute("aria-label","현재 유지");
+   await expect(keepBtn.locator("kbd")).toHaveText("Esc");
+   await expect(hint.locator(".rv-why")).toContainText("제안: 쉬었다");
    await expect(hint.getByRole("button",{name:"다시 검토"})).toHaveCount(1);
-   expect(await frame.locator('[data-tid="P3"]').evaluate(p=>!p.querySelector("[data-review-ui]"))).toBe(true);
+   // The polite live region (not the popover) announces the key help.
+   await expect(live).toHaveAttribute("aria-live","polite");
+   await expect(live).toContainText("Tab 적용, Esc 유지");
+   // Active proposal: its inserted span is marked active and its range has the focus highlight.
+   await expect(ins("ending")).toHaveClass(/rv-active/);
+   expect(await iframe(page).evaluate((el:HTMLIFrameElement)=>{const h=(el.contentWindow as any).CSS.highlights.get("rv-focus");return h?[...h].map((r:Range)=>r.toString()):[];})).toEqual(["쉬었어요"]);
    const placement=await iframe(page).evaluate((el:HTMLIFrameElement)=>{
     const d=el.contentDocument!,h=d.querySelector<HTMLElement>('[data-review-ui="hint"]')!.getBoundingClientRect(),p=d.querySelector('[data-tid="P3"]')!.getBoundingClientRect();
     return {below:h.top>=p.top,near:h.top<=p.bottom+80,inside:h.left>=0&&h.right<=d.documentElement.clientWidth+1};
@@ -131,15 +163,17 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    // Tab on an applicable proposal applies it through the normal path and moves to the next one.
    await page.keyboard.press("Tab");
    await expect.poll(()=>plain(page,"P3")).toBe("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
-   await expect(card("ending")).toHaveCount(0);
+   await expect(ins("ending")).toHaveCount(0);
    await expect(save).toBeEnabled();
    expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
    await expect.poll(()=>caret(page)).toEqual({tid:"P4",offset:0,focused:true});
-   await expect(hint).toContainText("진했");
+   await expect(hint).toHaveAttribute("data-pid","menuA");
+   await expect(hint.locator(".rv-why")).toContainText("진했");
+   await expect(ins("menuA").first()).toHaveAttribute("data-text",/진했/);
 
    // Esc keeps the current text (screen-only decision) and moves on.
    await page.keyboard.press("Escape");
-   await expect(card("menuA")).toHaveCount(0);
+   await expect(ins("menuA")).toHaveCount(0);
    expect(await plain(page,"P4")).toBe(P4);
    await expect(list.filter({hasText:"아메리카노는 진했어요"})).toHaveAttribute("data-state","decided");
    await expect.poll(()=>caret(page)).toEqual({tid:"P4",offset:P4.indexOf("케이크도"),focused:true});
@@ -153,28 +187,49 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    expect(await plain(page,"P4")).toBe(P4);
    expect(await plain(page,"P5")).toBe(P5);
 
-   // Apply menuC, then today; the next jump skips the blocked P6 proposal and lands on P7.
+   // Apply menuC, then today. The next stop is the blocked P6 link proposal: shown (marker + popover
+   // with the reason, apply disabled, "Tab 다음"), but Tab never applies it and skips on to P7.
    await page.keyboard.press("Tab");
    await expect.poll(()=>plain(page,"P4")).toBe("아메리카노는 맛있었어요. 케이크까지 맛있었어요.");
    await expect.poll(()=>caret(page)).toEqual({tid:"P5",offset:P5.indexOf("정말"),focused:true});
    await page.keyboard.press("Tab");
    await expect.poll(()=>plain(page,"P5")).toBe("오늘은 아주 좋았어요.");
+   await expect.poll(()=>caret(page)).toEqual({tid:"P6",offset:P6_TEXT.length,focused:true});
+   await expect(hint).toHaveAttribute("data-pid","label");
+   await expect(hint).toHaveClass(/rv-hint-blocked/);
+   await expect(hint.locator(".rv-reason-line")).toContainText("링크");
+   await expect(applyBtn).toBeDisabled();
+   await expect(hint.locator(".rv-keys")).toContainText("Tab 다음");
+   await expect(marker("label")).toHaveClass(/rv-active/);
+   await page.keyboard.press("Tab");
    await expect.poll(()=>caret(page)).toEqual({tid:"P7",offset:0,focused:true});
    expect(await plain(page,"P6")).toBe(P6_TEXT);
-   await expect(card("label").locator(".rv-reason-line")).toContainText("링크");
-   await expect(card("label").getByRole("button",{name:"적용",exact:true})).toBeDisabled();
+   await expect(marker("label")).toHaveCount(1);
+   await expect(list.filter({hasText:"new"}).first()).not.toHaveAttribute("data-state",/applied|decided/);
+   await expect(hint).toHaveAttribute("data-pid","coffee");
 
    // IME: a Tab keydown during composition (or keyCode 229) is ignored and not consumed.
    expect(await keydown(page,"P7",{key:"Tab",code:"Tab",isComposing:true})).toBe(false);
    expect(await keydown(page,"P7",{key:"Tab",code:"Tab",keyCode:229})).toBe(false);
    await page.waitForTimeout(200);
    expect(await plain(page,"P7")).toBe(P7);
-   await expect(card("coffee")).toBeVisible();
+   await expect(ins("coffee")).toHaveCount(1);
 
    // Esc keeps the last proposal; with nothing ahead or behind, Tab/Shift+Tab are not trapped.
    await page.keyboard.press("Escape");
-   await expect(card("coffee")).toHaveCount(0);
+   await expect(ins("coffee")).toHaveCount(0);
    expect(await plain(page,"P7")).toBe(P7);
+   await caretTo(page,"P8","end");
+   await expect(hint).toHaveCount(0);
+   expect(await keydown(page,"P8",{key:"Tab",code:"Tab"})).toBe(false);
+   // Only the blocked P6 proposal is still pending behind: Shift+Tab goes back to it; Esc keeps it.
+   await page.keyboard.press("Shift+Tab");
+   await expect.poll(()=>caret(page)).toEqual({tid:"P6",offset:P6_TEXT.length,focused:true});
+   await expect(hint).toHaveAttribute("data-pid","label");
+   await page.keyboard.press("Escape");
+   await expect(marker("label")).toHaveCount(0);
+   expect(await plain(page,"P6")).toBe(P6_TEXT);
+   // Nothing ahead or behind now: Tab/Shift+Tab keep their default.
    await caretTo(page,"P8","end");
    await expect(hint).toHaveCount(0);
    expect(await keydown(page,"P8",{key:"Tab",code:"Tab"})).toBe(false);
@@ -209,14 +264,93 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    await page.setViewportSize({width:390,height:844});
    await page.goto(server.url+"/?blogEditor=1");
    const frame=frameOf(page);
-   await expect(frame.locator('.rv-card[data-proposal="menuA"]')).toBeVisible();
+   await expect(frame.locator('[data-review-ui="ins"][data-pid="menuA"]').first()).toBeVisible();
    await caretTo(page,"P4",0);
    const hint=frame.locator('[data-review-ui="hint"]');
    await expect(hint).toBeVisible();
-   await expect(hint).toContainText("Tab 적용");
+   await expect(hint).toHaveAttribute("data-pid","menuA");
+   await expect(hint.locator('button[data-act="apply"] kbd')).toHaveText("Tab");
+   await expect(hint.locator('button[data-act="keep"] kbd')).toHaveText("Esc");
    await expect.poll(()=>noOverflow(page)).toBe(true);
    await hint.scrollIntoViewIfNeeded();
    await page.screenshot({path:info.outputPath("tab-hint-mobile.png")});
+   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
+  }finally{await server?.close();await rm(root,{recursive:true,force:true});}
+ });
+});
+
+test.describe("inline diff popover (layer 1)",()=>{
+ test("tapping an inserted word on a 390px phone opens the popover inside the paper, off the target line",async({browser},info)=>{
+  test.setTimeout(60_000);
+  const root=await mkdtemp(path.join(os.tmpdir(),"tab-review-tap-"));let server;
+  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const page=await context.newPage();
+  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
+  try{
+   const config={...await markupFixture(root),review:path.join(root,"reviews.json")};
+   await writeFile(config.canon,SOURCE);
+   await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"합성 문장 제안",verdict:"needs-work",basedOn:bundleHashes(parse(SOURCE)).B1,findings:FINDINGS}]}));
+   server=await startCanonicalEditor(config);
+   await page.goto(server.url+"/?blogEditor=1");
+   const frame=frameOf(page);
+   const target=frame.locator('[data-review-ui="ins"][data-pid="menuA"]').first();
+   const hint=frame.locator('[data-review-ui="hint"]');
+   await expect(target).toBeVisible();
+   await expect(hint).toHaveCount(0);
+   await target.scrollIntoViewIfNeeded();
+   await target.tap();
+   await expect(hint).toBeVisible();
+   await expect(hint).toHaveAttribute("data-pid","menuA");
+   await expect(target).toHaveClass(/rv-active/);
+   await expect.poll(()=>caret(page)).toEqual({tid:"P4",offset:0,focused:true});
+   const geo=await iframe(page).evaluate((el:HTMLIFrameElement)=>{
+    const d=el.contentDocument!,w=el.contentWindow as any;
+    const h=d.querySelector<HTMLElement>('[data-review-ui="hint"]')!.getBoundingClientRect();
+    const paper=(d.querySelector("main")||d.body).getBoundingClientRect();
+    const focus=w.CSS.highlights.get("rv-focus");
+    const rects:DOMRect[]=[...(focus?[...focus]:[]) as Range[]].flatMap(r=>[...r.getClientRects()]);
+    for(const e of d.querySelectorAll<HTMLElement>('[data-review-ui="ins"][data-pid="menuA"]'))rects.push(...e.getClientRects());
+    const line=rects.filter(r=>r.width||r.height);
+    const overlaps=line.some(r=>h.left<r.right&&r.left<h.right&&h.top<r.bottom&&r.top<h.bottom);
+    return {lines:line.length>0,inside:h.left>=paper.left-1&&h.right<=paper.right+1,overlaps};
+   });
+   expect(geo).toEqual({lines:true,inside:true,overlaps:false});
+   await expect.poll(()=>noOverflow(page)).toBe(true);
+   await page.screenshot({path:info.outputPath("tap-popover-mobile.png")});
+   expect(await plain(page,"P4")).toBe(P4);
+   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
+   expect(errors).toEqual([]);
+  }finally{await context.close();await server?.close();await rm(root,{recursive:true,force:true});}
+ });
+
+ test("'이유' in the popover toggles the explanation and aria-expanded without moving the caret",async({page})=>{
+  test.setTimeout(60_000);
+  const root=await mkdtemp(path.join(os.tmpdir(),"tab-review-why-"));let server;
+  try{
+   const config={...await markupFixture(root),review:path.join(root,"reviews.json")};
+   await writeFile(config.canon,SOURCE);
+   await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"합성 문장 제안",verdict:"needs-work",basedOn:bundleHashes(parse(SOURCE)).B1,findings:FINDINGS}]}));
+   server=await startCanonicalEditor(config);
+   await page.setViewportSize({width:1440,height:1000});
+   await page.goto(server.url+"/?blogEditor=1");
+   const frame=frameOf(page);
+   await expect(frame.locator('[data-review-ui="ins"][data-pid="today"]').first()).toBeVisible();
+   await caretTo(page,"P5",P5.indexOf("정말"));
+   const hint=frame.locator('[data-review-ui="hint"]'),why=hint.locator(".rv-why"),btn=hint.locator('button[data-act="why"]');
+   await expect(hint).toHaveAttribute("data-pid","today");
+   await expect(why).toBeHidden();
+   await expect(btn).toHaveAttribute("aria-expanded","false");
+   await btn.click();
+   await expect(why).toBeVisible();
+   await expect(why).toContainText("today: 문장을 다듬어요.");
+   await expect(why).toContainText("제안: 아주 좋았어요");
+   await expect(btn).toHaveAttribute("aria-expanded","true");
+   await expect.poll(()=>caret(page)).toEqual({tid:"P5",offset:P5.indexOf("정말"),focused:true});
+   await btn.click();
+   await expect(why).toBeHidden();
+   await expect(btn).toHaveAttribute("aria-expanded","false");
+   await expect(hint).toHaveAttribute("data-pid","today");
+   expect(await plain(page,"P5")).toBe(P5);
    expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
   }finally{await server?.close();await rm(root,{recursive:true,force:true});}
  });
@@ -534,6 +668,82 @@ test.describe("manual suggest with ghost text (layer 2)",()=>{
    await page.keyboard.press("Escape");
    await expect(ghost).toHaveCount(0);
    expect(await readFile(config.canon,"utf8")).toBe(SOURCE5);
+   expect(errors).toEqual([]);
+  }finally{
+   await server?.close();await engine.close();
+   if(previousUrl===undefined)delete process.env.REELS_WORKFLOW_URL;else process.env.REELS_WORKFLOW_URL=previousUrl;
+   await rm(root,{recursive:true,force:true});
+  }
+ });
+
+ test("ghost suggestion in a paragraph with an inline diff owns Tab/Esc and the diff returns after idle",async({page},info)=>{
+  test.setTimeout(90_000);
+  const root=await mkdtemp(path.join(os.tmpdir(),"tab-suggest-diff-"));let server;
+  const engine=await fakeSuggestEngine();
+  const previousUrl=process.env.REELS_WORKFLOW_URL;process.env.REELS_WORKFLOW_URL=engine.url;
+  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
+  try{
+   const config={...await markupFixture(root),review:path.join(root,"reviews.json")};
+   await writeFile(config.canon,SOURCE);
+   await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"합성 문장 제안",verdict:"needs-work",basedOn:bundleHashes(parse(SOURCE)).B1,findings:FINDINGS}]}));
+   server=await startCanonicalEditor(config);
+   await page.setViewportSize({width:1440,height:1000});
+   await page.goto(server.url+"/?blogEditor=1");
+   const frame=frameOf(page);
+   const ghost=frame.locator('[data-review-ui="ghost"]');
+   const hint=frame.locator('[data-review-ui="hint"]');
+   const p7ins=frame.locator('[data-tid="P7"] [data-review-ui="ins"]');
+   const coffee=frame.locator('[data-review-ui="ins"][data-pid="coffee"]');
+   const proposal=page.locator('.ce-proposal[data-proposal="coffee"]');
+   const save=page.getByRole("button",{name:"정본 저장",exact:true});
+   const suggestButton=page.locator("button",{hasText:"추천 받기"});
+   await expect(coffee).toHaveCount(1);
+   const pendingState=await proposal.getAttribute("data-state");
+   expect(pendingState).not.toMatch(/applied|decided/);
+
+   // Caret on the proposal (right after its target phrase, before the period): its popover is open.
+   const AT=P7.indexOf(".");
+   await caretTo(page,"P7",AT);
+   await expect(hint).toHaveAttribute("data-pid","coffee");
+
+   // (1) Alt+\: ghost shows; the paragraph's diff spans and the popover step aside while it is visible.
+   engine.state.next={delay:300,suggestions:[" 무시할 회색 문장이에요."]};
+   await page.keyboard.press("Alt+Backslash");
+   await expect(ghost).toContainText("무시할 회색 문장이에요.");
+   await expect(p7ins).toHaveCount(0);
+   await expect(hint).toHaveCount(0);
+   // Other paragraphs keep their diffs.
+   await expect(frame.locator('[data-review-ui="ins"][data-pid="ending"]')).toHaveCount(1);
+   await page.waitForTimeout(700);
+   await expect(p7ins).toHaveCount(0);
+   await page.screenshot({path:info.outputPath("ghost-over-diff.png")});
+
+   // (2) Esc closes the ghost (not a keep decision), and the diff comes back after the idle re-check.
+   await page.keyboard.press("Escape");
+   await expect(ghost).toHaveCount(0);
+   expect(await plain(page,"P7")).toBe(P7);
+   await expect(coffee).toHaveCount(1,{timeout:3000});
+   await expect(proposal).toHaveAttribute("data-state",pendingState!);
+   await expect(save).toBeDisabled();
+
+   // (3) Button request: Tab accepts the ghost, not the proposal under the caret.
+   engine.state.next={delay:300,suggestions:[" 수락할 회색 문장이에요."]};
+   await caretTo(page,"P7",AT);
+   await expect(hint).toHaveAttribute("data-pid","coffee");
+   await suggestButton.click();
+   await expect(ghost).toContainText("수락할 회색 문장이에요.");
+   await expect(p7ins).toHaveCount(0);
+   await page.keyboard.press("Tab");
+   await expect(ghost).toHaveCount(0);
+   await expect.poll(()=>plain(page,"P7")).toMatch(/^커피를 마셨어요\s?수락할 회색 문장이에요\.\.$/);
+   expect(await plain(page,"P7")).not.toContain("천천히");
+   await expect(save).toBeEnabled();
+   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
+   // The proposal is still pending and its diff is drawn again once typing is idle.
+   await expect(proposal).toHaveAttribute("data-state",pendingState!);
+   await expect(coffee).toHaveCount(1,{timeout:3000});
+   await expect(coffee).toHaveAttribute("data-text",/천천히/);
+   expect(engine.received).toHaveLength(2);
    expect(errors).toEqual([]);
   }finally{
    await server?.close();await engine.close();

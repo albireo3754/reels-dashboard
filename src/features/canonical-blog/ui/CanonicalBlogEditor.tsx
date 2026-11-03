@@ -35,14 +35,20 @@ async function api(action: string, input?: unknown, signal?: AbortSignal) {
 const SUGGEST_STALE="본문이 바뀌어 추천을 버렸어요. 다시 요청해주세요.";
 const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
 const clip=(text:string,limit:number)=>text.length>limit?text.slice(0,limit)+"…":text;
-/** Whether the frame shows a card for this proposal next to its target. */
-function hasBodyCard(item:InlineProposal,doc:CanonicalDocument){
-  if(item.state==="applied"||item.state==="decided")return false;
-  return item.kind==="note"?doc.bundles.some(b=>b.id===item.bundleId):!!item.paragraphId;
+/**
+ * Whether the frame draws this proposal in the manuscript: an in-text diff at the
+ * target phrase, or a small marker (format, note, blocked). Stale proposals (the
+ * target text changed) are not drawn; the panel explains them.
+ */
+function hasBodyMark(item:InlineProposal,doc:CanonicalDocument){
+  if(item.state==="applied"||item.state==="decided"||item.state==="changed")return false;
+  if(item.kind==="note")return !!item.paragraphId||doc.bundles.some(b=>b.id===item.bundleId);
+  return !!item.paragraphId;
 }
 function proposalChip(item:InlineProposal):{label:string;tone:string}{
   if(item.state==="decided")return item.decision==="현재 유지"?{label:"현재 유지",tone:"kept"}:{label:item.decision??"적용 · 저장 전",tone:"applied"};
   if(item.state==="applied")return {label:"반영됨",tone:"applied"};
+  if(item.state==="changed")return {label:"본문 변경됨",tone:"blocked"};
   if(item.kind==="note")return {label:"의견",tone:"note"};
   if(item.canApply)return {label:"적용 가능",tone:"available"};
   return {label:"위치 확인 불가",tone:"blocked"};
@@ -629,7 +635,7 @@ export function CanonicalBlogEditor() {
   const review = doc?.reviews.find((r) => r.bundleId === selected);
   const reviewItems = proposals.filter((i) => i.bundleId === selected);
   const reviewCounts = {
-    body: reviewItems.filter((i) => hasBodyCard(i, doc!)).length,
+    body: reviewItems.filter((i) => hasBodyMark(i, doc!)).length,
     available: reviewItems.filter((i) => i.canApply).length,
     check: reviewItems.filter((i) => !i.canApply && !["applied", "decided"].includes(i.state)).length,
   };
@@ -767,7 +773,7 @@ export function CanonicalBlogEditor() {
           <span role="alert">{error}</span>
         ) : (
           notice ||
-          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · Tab 다음 제안·적용 · Esc 현재 유지 · Shift+Tab 이전 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
+          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
         )}
       </div>
       {doc.format==="markup" && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})}/></div>}
@@ -865,7 +871,7 @@ export function CanonicalBlogEditor() {
             {review?.generatedAt&&<p>{review.provider??"AI"} · {new Date(review.generatedAt).toLocaleString()}</p>}
           </>}
           <p className="ce-review-note">
-            제안은 본문의 해당 문장 바로 아래에 표시돼요. 본문에서 적용하거나 현재 유지를 고르세요.
+            문장 제안은 본문의 해당 구절에 바로 표시돼요(빨간 취소선은 삭제, 초록 밑줄은 추가). 구절을 누르거나 Tab으로 이동해 적용·유지를 고르세요. 서식(✦ 서식)은 구절 뒤, 겹친 제안(✦ 겹친 제안)은 먼저 표시된 제안 뒤, 메모(✦ 메모)와 확인 필요(⚠)는 문단 끝이나 사진 옆에 작은 표시로 나오고, 누르면 열려요. 본문이 바뀐 제안은 본문에 표시하지 않아요.
           </p>
           {doc.format!=="markup" && queued.includes(selected) && (
             <p role="status">검토 요청됨 · 엔진 처리 대기</p>
@@ -899,7 +905,7 @@ export function CanonicalBlogEditor() {
               <ul className="ce-proposal-list" aria-label="AI 제안 목록">
                 {reviewItems.map((item) => {
                   const chip = proposalChip(item);
-                  const body = hasBodyCard(item, doc);
+                  const body = hasBodyMark(item, doc);
                   const settled = item.state === "decided" || item.state === "applied";
                   return (
                     <li key={item.id} className="ce-proposal" data-state={item.state} data-proposal={item.id}>
