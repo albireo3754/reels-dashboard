@@ -86,6 +86,12 @@ function serialize(root){
  for(const child of root.childNodes)walk(child);
  return runs;
 }
+/** Run fingerprint that ignores where text nodes happen to be split (review nodes split them). */
+function runsKey(runs){
+ const out=[];
+ for(const r of runs){const k=JSON.stringify(r.style||{}),last=out.at(-1);if(last&&last.k===k)last.text+=r.text;else out.push({k,text:r.text});}
+ return JSON.stringify(out);
+}
 function change(el){if(ghost&&ghost.p===el)removeGhost();send({type:'change',id:el.dataset.tid,runs:serialize(el)});}
 document.addEventListener('click',e=>{
  const node=e.target.closest('[data-node-index]');
@@ -109,10 +115,17 @@ document.addEventListener('click',e=>{if(e.target.closest('a'))e.preventDefault(
 function formatRange(command,value){removeGhost();if(!selected||!savedRange||savedRange.collapsed||selected.contentEditable!=='true')return;
   // Take the paragraph's review nodes out first so execCommand never wraps or copies them.
   if(selected.querySelector('[data-review-ui]')){
+   // A live clone follows the node removal/normalize, so a selection inside a link label
+   // (where plain offsets only reach the link's start or end) keeps its exact endpoints.
+   const live=savedRange.cloneRange(),len=live.toString().length;
    const map=plainMap(selected),a=offsetOf(selected,savedRange.startContainer,savedRange.startOffset,map),b=offsetOf(selected,savedRange.endContainer,savedRange.endOffset,map);
    holdParagraph(selected);
-   const m2=plainMap(selected),s=boundary(m2,a,false),t=boundary(m2,b,true);if(!s||!t)return;
-   savedRange=document.createRange();savedRange.setStart(s[0],s[1]);savedRange.setEnd(t[0],t[1]);
+   const ok=(n,o)=>n&&n.nodeType===3&&n.isConnected&&selected.contains(n)&&!n.parentElement.closest('[data-review-ui]')&&o<=n.length;
+   if(ok(live.startContainer,live.startOffset)&&ok(live.endContainer,live.endOffset)&&!live.collapsed&&live.toString().length===len)savedRange=live;
+   else{
+    const m2=plainMap(selected),s=boundary(m2,a,false),t=boundary(m2,b,true);if(!s||!t)return;
+    savedRange=document.createRange();savedRange.setStart(s[0],s[1]);savedRange.setEnd(t[0],t[1]);
+   }
   }else if(review.items.length)holdParagraph(selected);
   const range=savedRange.cloneRange();selected.focus();const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
   document.execCommand('styleWithCSS',false,'true');
@@ -317,6 +330,8 @@ function saveSel(){
  // which side of a style boundary it sits on, so they are only the fallback.
  return {p,a:offsetOf(p,r.startContainer,r.startOffset,map),b:offsetOf(p,r.endContainer,r.endOffset,map),
   sc:r.startContainer,so:r.startOffset,ec:r.endContainer,eo:r.endOffset,
+  // A backward selection (Shift+ArrowLeft) keeps its anchor on the right.
+  back:!r.collapsed&&(sel.anchorNode!==r.startContainer||sel.anchorOffset!==r.startOffset),
   inLink:insideLink(p,r.startContainer,r.startOffset,map)||insideLink(p,r.endContainer,r.endOffset,map)};
 }
 function restoreSel(s){
@@ -329,11 +344,18 @@ function restoreSel(s){
  const ok=(n,o)=>n&&n.nodeType===3&&n.isConnected&&s.p.contains(n)&&!n.parentElement.closest('[data-review-ui]')&&o<=n.length;
  if(ok(s.sc,s.so)&&ok(s.ec,s.eo)){
   const r=document.createRange();
-  try{r.setStart(s.sc,s.so);r.setEnd(s.ec,s.eo);if(r.toString().length===Math.abs(s.b-s.a)||s.inLink){const sel=getSelection();sel.removeAllRanges();sel.addRange(r);return;}}catch{}
+  try{r.setStart(s.sc,s.so);r.setEnd(s.ec,s.eo);if(r.toString().length===Math.abs(s.b-s.a)||s.inLink){selectRange(r,s.back);return;}}catch{}
  }
  // Inside a link label an offset maps only to the link's start: leave the caret alone.
  if(s.inLink)return;
  setCaret(s.p,s.a,s.b,false);
+ if(s.back){const sel=getSelection();if(sel.rangeCount)selectRange(sel.getRangeAt(0),true);}
+}
+/** Selects a range, anchored at its end when back is set (keeps the selection's direction). */
+function selectRange(r,back){
+ const sel=getSelection();
+ if(back&&!r.collapsed){sel.setBaseAndExtent(r.endContainer,r.endOffset,r.startContainer,r.startOffset);return;}
+ sel.removeAllRanges();sel.addRange(r);
 }
 /** Removes p's in-text review nodes and re-joins the text nodes they split. */
 function removeDecor(p){
@@ -458,7 +480,7 @@ function renderReview(){
 // plainMap() skip it, and the ghost is removed (and split text re-joined) before any
 // edit is reported. Nothing changes in the manuscript until the writer explicitly accepts.
 const isMac=/Mac|iPhone|iPad/.test(navigator.platform||'');
-const nav={focusId:'',focusP:null,focusAt:-1,after:null,timer:0,key:'',hint:null,bar:null,live:null,active:null,returnTo:null};
+const nav={focusId:'',focusP:null,focusAt:-1,after:null,timer:0,key:'',hint:null,bar:null,live:null,active:null,returnTo:null,origin:null};
 const sug={pending:null,spinner:null};
 function ensureReviewStyle(){if(!document.querySelector('style[data-review-ui]')){const s=document.createElement('style');s.dataset.reviewUi='style';s.textContent=reviewCss;document.head.append(s);}}
 function focusHighlight(range){if(!canHighlight)return;if(range){const h=new Highlight(range);h.priority=3;CSS.highlights.set('rv-focus',h);}else CSS.highlights.delete('rv-focus');}
@@ -658,8 +680,16 @@ function updateNav(){
 }
 function goTo(t){
  nav.focusId=t.item.id;
- if(t.p){nav.focusP=t.p;nav.focusAt=t.mode==='inline'?t.start:t.end;setCaret(t.p,nav.focusAt,nav.focusAt,true);}
- else{nav.focusP=null;nav.focusAt=-1;t.el.focus({preventScroll:true});}
+ if(t.p){nav.origin=null;nav.focusP=t.p;nav.focusAt=t.mode==='inline'?t.start:t.end;setCaret(t.p,nav.focusAt,nav.focusAt,true);}
+ else{
+  // Remember where the writer came from: the marker can disappear (kept/decided) and focus must return to the text.
+  const a=document.activeElement;if(a&&a.matches&&a.matches('[data-tid]')){const s=saveSel();if(s)nav.origin=s;}
+  nav.focusP=null;nav.focusAt=-1;t.el.focus({preventScroll:true});
+  // focusin only reports paragraphs: tell the host this note's bundle is now the selected one.
+  const b=[...document.querySelectorAll('[data-bundle]')].find(e=>e.dataset.bundle===t.item.bundleId);
+  if(b){document.querySelectorAll('.active').forEach(x=>x.classList.remove('active'));b.classList.add('active');}
+  send({type:'select',bundleId:t.item.bundleId});
+ }
  const rect=rectOf(t);
  send({type:'reveal',top:rect.top+scrollY,bottom:rect.bottom+scrollY+150});
  updateNav();
@@ -682,7 +712,25 @@ function resolveAfter(){
  if(next){goTo(next);return;}
  const p=a.pid&&paragraphOf(a.pid);
  if(p&&p.isContentEditable&&a.action==='apply')setCaret(p,a.start+a.len,a.start+a.len,true);
+ else{
+  // The decided proposal's marker took focus with it: go back to the text instead of leaving focus on <body>.
+  const f=document.activeElement;
+  if(!f||f===document.body||!f.isConnected)returnToText(nav.origin,a.pi);
+ }
+ nav.origin=null;
  updateNav();
+}
+/** Focus the writer's previous caret, or else the editable paragraph nearest to slot pi. */
+function returnToText(o,pi){
+ if(o&&o.p&&o.p.isConnected&&o.p.isContentEditable){o.p.focus({preventScroll:true});restoreSel(o);if(!getSelection().rangeCount||!o.p.contains(getSelection().anchorNode))setCaret(o.p,o.a,o.b,false);return;}
+ const ps=[...document.querySelectorAll('[data-tid]')];
+ const ok=p=>p&&p.isContentEditable&&p.dataset.tid!=='$title';
+ const i=Math.floor(pi);
+ // The paragraph just before the note (caret at its end), else the one after it.
+ let p=null;for(let k=Math.min(i,ps.length-1);k>=0&&!p;k--)if(ok(ps[k]))p=ps[k];
+ for(let k=Math.max(0,i+1);k<ps.length&&!p;k++)if(ok(ps[k]))p=ps[k];
+ if(!p)return;
+ const end=plainMap(p).text.length;setCaret(p,end,end,true);
 }
 /** Panel "본문에서 보기": caret (or focus) on the proposal and its popover open. */
 function revealProposal(id){
@@ -716,7 +764,7 @@ function startSuggest(){
  if(c.inLink){send({type:'suggest-error',message:'링크 글자 안에서는 추천할 수 없어요. 링크 앞이나 뒤에 커서를 두고 다시 요청해주세요.'});return;}
  // With a selection, the suggestion continues from its end.
  const runs=serialize(p),token=Math.random().toString(36).slice(2)+Date.now().toString(36);
- sug.pending={token,p,offset:c.offset,start:c.start,collapsed:c.collapsed,key:JSON.stringify(runs)};
+ sug.pending={token,p,offset:c.offset,start:c.start,collapsed:c.collapsed,key:runsKey(runs)};
  hideHint();showSpinner(p,c.offset);
  send({type:'suggest',token,id:p.dataset.tid,runs,offset:c.offset});
 }
@@ -728,7 +776,7 @@ function suggestResult(m){
  const c=caretInfo();
  // Discard when anything the request was based on moved: paragraph text, caret or selection, focus, lock or revision.
  // Focus is checked live (selected/getSelection outlive a blur), so a late answer never pulls focus back.
- const fresh=!m.stale&&document.contains(q.p)&&selected===q.p&&document.activeElement===q.p&&!review.locked&&q.p.isContentEditable&&JSON.stringify(serialize(q.p))===q.key&&!!c&&c.p===q.p&&c.offset===q.offset&&c.start===q.start&&c.collapsed===q.collapsed&&!c.inLink;
+ const fresh=!m.stale&&document.contains(q.p)&&selected===q.p&&document.activeElement===q.p&&!review.locked&&q.p.isContentEditable&&runsKey(serialize(q.p))===q.key&&!!c&&c.p===q.p&&c.offset===q.offset&&c.start===q.start&&c.collapsed===q.collapsed&&!c.inLink;
  if(!fresh){send({type:'suggest-done',token:q.token,outcome:'stale'});return;}
  if(!list.length){send({type:'suggest-done',token:q.token,outcome:'empty'});updateNav();return;}
  showGhost(q.p,q.offset,list,0);

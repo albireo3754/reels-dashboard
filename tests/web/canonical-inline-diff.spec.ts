@@ -1,4 +1,5 @@
 import {test,expect,type Page,type FrameLocator} from "@playwright/test";
+import {createServer} from "node:http";
 import {mkdtemp,writeFile,readFile,rm} from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -36,16 +37,18 @@ const mark=(frame:FrameLocator,id:string)=>frame.locator(`[data-review-ui="ins"]
 const hintOf=(frame:FrameLocator)=>frame.locator('[data-review-ui="hint"]');
 
 interface Setup{config:Awaited<ReturnType<typeof markupFixture>>&{review:string};close:()=>Promise<void>}
-async function setup(page:Page,{width=1440,height=1000,source=SOURCE,findings=FINDINGS as unknown[]}={}):Promise<Setup>{
+async function setup(page:Page,{width=1440,height=1000,source=SOURCE,findings=FINDINGS as unknown[],reviews}:{width?:number;height?:number;source?:string;findings?:unknown[];reviews?:{bundleId:string;findings:unknown[]}[]}={}):Promise<Setup>{
   const root=await mkdtemp(path.join(os.tmpdir(),"inline-diff-"));
   const config={...await markupFixture(root),review:path.join(root,"reviews.json")};
   await writeFile(config.canon,source);
-  await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"합성 제안",verdict:"needs-work",basedOn:bundleHashes(parse(source)).B1,findings}]}));
+  const hashes=bundleHashes(parse(source));
+  await writeFile(config.review,JSON.stringify({reviews:(reviews??[{bundleId:"B1",findings}]).map(r=>({bundleId:r.bundleId,summary:"합성 제안",verdict:"needs-work",basedOn:hashes[r.bundleId],findings:r.findings}))}));
   const server=await startCanonicalEditor(config);
   // Record every 'change' message the frame posts to the host page.
   await page.addInitScript(()=>{
     if(window!==window.top)return;
-    (window as any).__changes=[];
+    (window as any).__changes=[];(window as any).__selects=[];
+    window.addEventListener("message",e=>{if(e.data?.editor&&e.data.type==="select")(window as any).__selects.push(e.data.bundleId);});
     window.addEventListener("message",e=>{if(e.data?.editor&&e.data.type==="change")(window as any).__changes.push({id:e.data.id,text:(e.data.runs??[]).map((r:{text:string})=>r.text).join(""),raw:JSON.stringify(e.data)});});
   });
   await page.setViewportSize({width,height});
@@ -616,5 +619,109 @@ test.describe("inline diff review regressions",()=>{
       await frameOf(page).locator('[data-review-ui="marker"][data-pid="color"]').tap();
       await expect(hintOf(frameOf(page))).toHaveAttribute("data-pid","color");
     }finally{await s.close();await ctx.close();}
+  });
+});
+
+// Regressions for the 2026-11-03 fix-stage findings (selection fidelity, ghost freshness, note focus/selection).
+test.describe("inline diff review regressions (fix stage 2)",()=>{
+  /** Selects [a,b) of the link label's text node in P7, focused, and lets the frame record it. */
+  async function selectInLink(page:Page,a:number,b:number){
+    await iframe(page).evaluate((el:HTMLIFrameElement,[a,b])=>{
+      const d=el.contentDocument!,p=d.querySelector<HTMLElement>('[data-tid="P7"]')!,t=p.querySelector("a")!.firstChild!;
+      p.focus();const r=d.createRange();r.setStart(t,a);r.setEnd(t,b);
+      const sel=el.contentWindow!.getSelection()!;sel.removeAllRanges();sel.addRange(r);
+    },[a,b] as const);
+    await page.waitForTimeout(80);
+  }
+  const boldIn=(page:Page,tid:string)=>iframe(page).evaluate((el:HTMLIFrameElement,tid)=>{
+    const d=el.contentDocument!,p=d.querySelector(`[data-tid="${tid}"]`)!;let out="";
+    const w=d.createTreeWalker(p,NodeFilter.SHOW_TEXT);for(let n=w.nextNode();n;n=w.nextNode()){const e=n.parentElement!;if(e.closest("[data-review-ui]"))continue;if(Number(getComputedStyle(e).fontWeight)>=700)out+=n.textContent;}
+    return out;
+  },tid);
+  const sendFormat=(page:Page)=>iframe(page).evaluate((el:HTMLIFrameElement)=>el.contentWindow!.postMessage({editor:true,type:"format",command:"bold"},location.origin));
+
+  test("formatting a partial link-label selection in a decorated paragraph formats exactly that text",async({page})=>{
+    const s=await setup(page);
+    try{
+      const frame=frameOf(page);
+      await expect(mark(frame,"label")).toHaveCount(1);
+      // "cafe" ends at the label's end; "ld c" ends inside it. Plain offsets would widen/collapse both.
+      await selectInLink(page,4,8);
+      await sendFormat(page);
+      await expect.poll(()=>boldIn(page,"P7")).toBe("cafe");
+      await expect(frame.locator('[data-tid="P7"] a')).toHaveText("old cafe");
+      await selectInLink(page,1,3);
+      await sendFormat(page);
+      await expect.poll(()=>boldIn(page,"P7")).toBe("ldcafe");
+      await expect(frame.locator('[data-tid="P7"] a')).toHaveText("old cafe");
+    }finally{await s.close();}
+  });
+
+  test("a backward selection keeps its direction across the idle redraw",async({page})=>{
+    const s=await setup(page);
+    try{
+      const frame=frameOf(page);
+      await caretTo(page,"P3","end");
+      await page.keyboard.type("!");
+      await page.keyboard.press("Shift+ArrowLeft");
+      await page.keyboard.press("Shift+ArrowLeft");
+      // The redraw splits the text node holding the selection (the inserted word comes before it).
+      await expect(mark(frame,"ending")).toHaveCount(1,{timeout:3000});
+      await page.waitForTimeout(200);
+      // The anchor stays on the right (where the selection started), not re-set forward.
+      const dir=await iframe(page).evaluate((el:HTMLIFrameElement)=>{const s=el.contentWindow!.getSelection()!;return {text:s.toString(),backward:s.anchorNode===s.focusNode&&s.anchorOffset>s.focusOffset,direction:(s as any).direction??"backward"};});
+      expect(dir).toEqual({text:".!",backward:true,direction:"backward"});
+      await page.keyboard.press("Shift+ArrowLeft");
+      const sel=await iframe(page).evaluate((el:HTMLIFrameElement)=>el.contentWindow!.getSelection()!.toString());
+      expect(sel).toBe("요.!");
+    }finally{await s.close();}
+  });
+
+  test("keeping the last standalone note returns focus to the text and the note selects its bundle",async({page})=>{
+    const source=SOURCE.replace(/\n<\/Bundle>\n$/,"\n</Bundle>\n\n<Bundle id=\"B2\" name=\"Second\" question=\"why\">\n<Photo file=\"photo.png\" alt=\"Second photo\"/>\n\n¶ Q1\n두 번째 묶음이에요.\n</Bundle>\n");
+    const note={id:"b2-note",axis:"사진",severity:"참고",observation:"photo.png 사진을 문단 뒤로 옮겨요."};
+    const s=await setup(page,{source,reviews:[{bundleId:"B1",findings:[text("ending","P3","쉬었어요","쉬었다")]},{bundleId:"B2",findings:[note]}]});
+    try{
+      const frame=frameOf(page),marker=frame.locator('[data-review-ui="marker"][data-pid="b2-note"]');
+      await expect(marker).toHaveCount(1);
+      await caretTo(page,"P6","end");
+      await page.evaluate(()=>{(window as any).__selects=[];});
+      // Tab from the last B1 paragraph goes to B2's note: the host must hear that B2 is selected.
+      await page.keyboard.press("Tab");
+      await expect(hintOf(frame)).toHaveAttribute("data-pid","b2-note");
+      expect(await marker.evaluate(m=>m.ownerDocument.activeElement===m)).toBe(true);
+      await expect.poll(()=>page.evaluate(()=>(window as any).__selects as string[])).toContain("B2");
+      // Esc keeps the note; it was the last proposal ahead, so focus goes back to where the writer was.
+      await page.keyboard.press("Escape");
+      await expect(marker).toHaveCount(0);
+      await expect.poll(()=>caret(page)).toEqual({tid:"P6",offset:P6.length});
+      await page.keyboard.type("Z");
+      await expect(frame.locator('[data-tid="P6"]')).toHaveText(P6+"Z");
+    }finally{await s.close();}
+  });
+  test("a manual suggestion requested right after an edit survives the idle redraw of the paragraph's diff",async({page})=>{
+    // Fake suggest-inline backend: answers after 1.2s, well after the 400ms redraw.
+    const engine=createServer(async(req,res)=>{let b="";for await(const c of req)b+=c;
+      if(req.url!=="/api/workflows/suggest-inline"){res.writeHead(404);res.end("{}");return;}
+      await new Promise(r=>setTimeout(r,1200));if(res.destroyed)return;
+      res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({id:JSON.parse(b).id,suggestions:[" 다시 오고 싶어요."]}));});
+    await new Promise<void>(r=>engine.listen(0,"127.0.0.1",r));
+    const previous=process.env.REELS_WORKFLOW_URL;process.env.REELS_WORKFLOW_URL="http://127.0.0.1:"+(engine.address() as {port:number}).port;
+    let s:Setup|undefined;
+    try{
+      s=await setup(page);
+      const frame=frameOf(page),ghost=frame.locator('[data-review-ui="ghost"]');
+      await caretTo(page,"P3","end");
+      // The edit takes P3's diff out (text nodes re-joined); the request goes out before it is drawn again.
+      await page.keyboard.type("!");
+      await page.keyboard.press("Alt+Backslash");
+      await expect(frame.locator('[data-review-ui="spinner"]')).toBeVisible();
+      await expect(mark(frame,"ending")).toHaveCount(1,{timeout:3000});
+      await expect(ghost).toHaveText(" 다시 오고 싶어요.",{timeout:10_000});
+      await expect(page.getByText("본문이 바뀌어 추천을 버렸어요.",{exact:false})).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(ghost).toHaveCount(0);
+      await expect(frame.locator('[data-tid="P3"]')).toHaveText(P3+"!");
+    }finally{await s?.close();if(previous===undefined)delete process.env.REELS_WORKFLOW_URL;else process.env.REELS_WORKFLOW_URL=previous;await new Promise<void>(r=>{engine.closeAllConnections();engine.close(()=>r());});}
   });
 });
