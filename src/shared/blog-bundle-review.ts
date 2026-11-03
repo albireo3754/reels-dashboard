@@ -30,23 +30,6 @@ export function bundlesOf(draft: BlogDraft): Bundle[] {
   }
   return result;
 }
-export function snapshot(draft: BlogDraft): string {
-  return JSON.stringify({
-    projectId: draft.projectId,
-    blocks: draft.blocks,
-    style: draft.style ?? {},
-    groups: bundlesOf(draft).map(({ blocks, ...g }) => g),
-  });
-}
-/** Include neighbours: changing a transition invalidates both sides, not the entire article. */
-export function bundleSnapshot(draft: BlogDraft, id: string): string {
-  const bundles = bundlesOf(draft),
-    i = bundles.findIndex((b) => b.id === id);
-  return JSON.stringify({
-    style: draft.style ?? {},
-    context: bundles.slice(Math.max(0, i - 1), i + 2),
-  });
-}
 export interface ReviewRequest {
   schemaVersion: 1;
   kind: "blog.bundle-review.request";
@@ -81,7 +64,6 @@ export const reviewResult = z.strictObject({
     .max(300),
 });
 export type ReviewResult = z.infer<typeof reviewResult>;
-export type Finding = z.infer<typeof finding>;
 export function sameBlock(a: BlogBlock | undefined, b: BlogBlock): boolean {
   return (
     !!a &&

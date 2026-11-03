@@ -1,7 +1,6 @@
 import {
   followupManifestSchema,
   openFollowupsInput,
-  type Followups,
 } from "../../shared/followups";
 import {
   experienceFormSchema,

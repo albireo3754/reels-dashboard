@@ -18,8 +18,7 @@ import {
   Notification,
 } from "electron";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -50,8 +49,8 @@ import {
   resolveGrantedFile,
   safeDocumentName,
 } from "../shared/lib/storage";
-import { toSnapshot, validateDashboard } from "../shared/data";
-import type { Arguments, CommandMethod, Inspection } from "../shared/contracts";
+import { toSnapshot } from "../shared/data";
+import type { Arguments, Inspection } from "../shared/contracts";
 import { createDemoBridge } from "../shared/demo";
 if (process.env.REELS_USER_DATA)
   app.setPath("userData", path.resolve(process.env.REELS_USER_DATA));

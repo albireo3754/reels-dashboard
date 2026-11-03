@@ -53,11 +53,6 @@ export const BLOG_MARKUP_VERSION = 1 as const;
 export const SE_FONT_STEPS = [11, 13, 15, 16, 19, 24, 26, 28, 30, 32, 34, 38, 45] as const;
 export type SeFontStep = (typeof SE_FONT_STEPS)[number];
 
-/** 모바일 뷰어 글자 확대(text-scale-1)에서 본문 문단의 실제 px. */
-export const SE_MOBILE_TEXT_SCALE: Record<SeFontStep, number> = {
-  11: 13, 13: 15, 15: 17, 16: 18, 19: 21, 24: 26, 26: 28, 28: 30, 30: 32, 32: 34, 34: 36, 38: 40, 45: 47,
-};
-
 export type SizeRole = "up" | "strong-up" | "title" | "down" | "aside";
 
 /**

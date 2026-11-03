@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { parse, serialize, type MarkupDoc, type MarkupBundle, type ParagraphNode } from "./blog-markup";
+import { parse, serialize, type MarkupDoc, type MarkupBundle } from "./blog-markup";
 
 export const fingerprint = (text: string) => createHash("sha256").update(text).digest("hex");
 export const paragraphNodes = (doc: MarkupDoc) => doc.bundles.flatMap(b => b.nodes.flatMap(n => n.kind === "paragraph" ? [n] : n.children ?? []));

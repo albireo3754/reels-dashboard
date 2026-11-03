@@ -8,7 +8,6 @@ import type {
   DashboardBridge,
   Decision,
   Group,
-  Inspection,
   PlanEnvelope,
   Snapshot,
 } from "./contracts";

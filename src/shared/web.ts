@@ -1,9 +1,5 @@
-import type { DashboardBridge, Snapshot } from "./contracts";
-import { fromSnapshot, toSnapshot } from "./data";
-export function parseSnapshot(value: unknown): Snapshot {
-  const dashboard = fromSnapshot(value);
-  return toSnapshot(dashboard, dashboard.updatedAt);
-}
+import type { DashboardBridge } from "./contracts";
+import { fromSnapshot } from "./data";
 export function createWebBridge(): DashboardBridge {
   const desktopOnly = async (): Promise<never> => {
     throw new Error("이 작업은 데스크톱 앱에서 사용할 수 있어요.");

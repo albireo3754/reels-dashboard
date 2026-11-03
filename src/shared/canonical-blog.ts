@@ -68,12 +68,6 @@ export interface CanonicalDocument {
   frameVersion: string;
   fontCss?: string;
 }
-const decode = (s: string) =>
-  s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
 export const escapeHtml = (s: string) =>
   s
     .replace(/&/g, "&amp;")

@@ -1,5 +1,5 @@
 import type {VisualEvidence} from "../../shared/markup-review";
-import {paragraphSource,findingApplicability} from "../../shared/review-applicability";
+import {paragraphSource} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {AnnotationStore} from "./annotations";
 import {readFile,writeFile,realpath,mkdir,rename,readdir,stat} from "node:fs/promises";
@@ -11,7 +11,7 @@ import {parse,serialize,validate,legend,type ParagraphNode,type MarkStyle} from 
 import {paragraphNodes,bundleHashes,reviewFresh,fingerprint} from "../../shared/blog-markup-source";
 import {load,save} from "../../shared/blog-markup-store";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
-import {readInline,inlineSource,escapeHtml,cssColor,type InlineRun,type CanonicalDocument} from "../../shared/canonical-blog";
+import {readInline,escapeHtml,cssColor,type CanonicalDocument} from "../../shared/canonical-blog";
 
 const colorHex=(value:string)=>cssColor(value)?.replace(/rgb\((\d+),(\d+),(\d+)\)/,(_,r,g,b)=>"#"+[r,g,b].map(n=>Number(n).toString(16).padStart(2,"0")).join(""));
 function edited(original:ParagraphNode,source:string):ParagraphNode{

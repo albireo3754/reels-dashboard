@@ -21,7 +21,6 @@ import {
 import {
   executeWorkflowInput,
   type SdkJob,
-  type WorkflowRun,
 } from "../../shared/workflow";
 import { WorkflowRuntime } from "./runtime";
 import {
