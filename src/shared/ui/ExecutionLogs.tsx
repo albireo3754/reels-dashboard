@@ -1,3 +1,4 @@
+import { koreanDateTime } from "../lib/format";
 import { useEffect, useState } from "react";
 import {
   executionStatusLabels,
@@ -6,7 +7,7 @@ import {
 } from "../execution-log";
 import "./execution-logs.css";
 
-const time = (value: string) => new Date(value).toLocaleString("ko-KR");
+const time = (value: string) => koreanDateTime(value);
 export function ExecutionLogView({ log }: { log: ExecutionLog }) {
   return (
     <article className="execution-log" data-status={log.status}>

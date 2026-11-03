@@ -1,3 +1,4 @@
+import { localDate } from "../shared/lib/format";
 import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
@@ -630,7 +631,7 @@ export class CardNewsService implements CardNewsBridge {
           ...existing,
           id: existing?.id ?? plan.id,
           title: existing?.title ?? plan.title,
-          date: existing?.date ?? new Date().toISOString().slice(0, 10),
+          date: existing?.date ?? localDate(),
           dateBasis: existing?.dateBasis ?? ("record" as const),
           stage:
             existing?.stage === "published"

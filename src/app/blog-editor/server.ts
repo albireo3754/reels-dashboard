@@ -1,3 +1,4 @@
+import { readJsonBody } from "../lib/http";
 import { errorMessage } from "../../shared/lib/errors";
 import type {VisualEvidence} from "../../shared/markup-review";
 import {MarkupReviewWorker} from "./review-worker";
@@ -43,13 +44,7 @@ export async function startCanonicalEditor(
           !req.headers["content-type"]?.startsWith("application/json")
         )
           return json(403, { error: "Same-origin JSON required" });
-        let body = "";
-        for await (const c of req) {
-          body += c;
-          if (Buffer.byteLength(body) > 512000)
-            throw new Error("본문이 너무 커요.");
-        }
-        const v = JSON.parse(body);
+        const v = await readJsonBody(req, 512000, "본문이 너무 커요.");
         if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.update(v));
         if (u.pathname === "/api/blog/save")
           return json(200, await store.save(v));

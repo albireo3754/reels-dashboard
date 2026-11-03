@@ -1,3 +1,4 @@
+import { localDate } from "../../../shared/lib/format";
 import { writeFileAtomic } from "../../../shared/lib/fs";
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
@@ -294,7 +295,7 @@ export class EditorService implements EditorBridge {
         ...old,
         id: old?.id ?? project.id,
         title: old?.title ?? project.source.name,
-        date: old?.date ?? new Date().toLocaleDateString("en-CA"),
+        date: old?.date ?? localDate(),
         stage: old?.stage === "published" ? ("published" as const) : stage,
         resources: [
           ...(old?.resources ?? []).filter(

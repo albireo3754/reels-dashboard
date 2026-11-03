@@ -1,3 +1,4 @@
+import { localDate } from "./lib/format";
 import { demoRouteMap } from "./route-map-demo";
 import { createDemoEditor, demoVideo } from "./editor-demo";
 import type {
@@ -362,7 +363,7 @@ export function createDemoBridge(
       const item = {
         id: project.id,
         title: previous?.title ?? project.source.name,
-        date: previous?.date ?? new Date().toLocaleDateString("en-CA"),
+        date: previous?.date ?? localDate(),
         stage,
         nextAction:
           stage === "review"

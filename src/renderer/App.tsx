@@ -1,3 +1,4 @@
+import { koreanDateTime, localDate } from "../shared/lib/format";
 import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
 import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
@@ -82,16 +83,13 @@ const permissions: Record<string, string> = {
   restricted: "시스템에서 제한됨",
   unknown: "상태 확인 필요",
 };
-const localDate = () => new Date().toLocaleDateString("en-CA");
 const readableTime = (v?: string) =>
-  v
-    ? new Date(v).toLocaleString("ko-KR", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "시각 미상";
+  koreanDateTime(v, "시각 미상", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 const asRecord = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 const asStrings = (v: unknown): string[] =>

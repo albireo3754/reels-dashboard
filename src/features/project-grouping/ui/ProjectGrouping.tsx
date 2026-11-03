@@ -1,3 +1,4 @@
+import { koreanDateTime } from "../../../shared/lib/format";
 import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useState } from "react";
 import type {
@@ -74,7 +75,7 @@ export function ProjectGrouping({
           <summary>출력 버전 보기</summary>
           <ul>{project.production.exports.map(output => <li key={output.id}>
             {project.resources?.find(r => r.path === output.path && r.role === output.role)?.label ?? output.role}
-            {" · "}{new Date(output.recordedAt).toLocaleString("ko-KR")}
+            {" · "}{koreanDateTime(output.recordedAt)}
           </li>)}</ul>
         </details>
       )}

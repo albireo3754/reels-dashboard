@@ -1,3 +1,4 @@
+import { readBody, RequestTooLargeError } from "../lib/http";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { AiAttempt } from "../../shared/ai-observation";
@@ -102,14 +103,14 @@ export const openCodexProbe: CodexProbeFactory = async (attempt, changed) => {
       return;
     }
     try {
-      let body = "";
-      for await (const chunk of req) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 4 * 1024 * 1024) {
-          res.writeHead(413);
-          res.end();
-          return;
-        }
+      let body: string;
+      try {
+        body = await readBody(req, 4 * 1024 * 1024);
+      } catch (error) {
+        if (!(error instanceof RequestTooLargeError)) throw error;
+        res.writeHead(413);
+        res.end();
+        return;
       }
       if (consumeCodexMetadata(JSON.parse(body), attempt)) changed();
       res.writeHead(200, { "Content-Type": "application/json" });
