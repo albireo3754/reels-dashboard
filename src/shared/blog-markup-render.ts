@@ -1,5 +1,6 @@
 import { type MarkupDoc, type ParagraphNode, type ComponentNode } from "./blog-markup";
-const esc=(s:unknown)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#x27;");
+import { escapeHtml } from "./canonical-blog";
+const esc=(s:unknown)=>escapeHtml(String(s??""));
 const safeUrl=(s:string)=> /^(https?:\/\/[^\s]+|(?!(?:[a-z]+:|\/\/))[^\s]*)$/i.test(s)?s:"";
 function inline(s:string) {
   return esc(s).replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,(_,label,url)=>`<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`);

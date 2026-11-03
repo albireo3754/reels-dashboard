@@ -1,5 +1,6 @@
 /** Today's (or `at`'s) calendar date in the machine's time zone, as YYYY-MM-DD. */
-export const localDate = (at: Date = new Date()) => at.toLocaleDateString("en-CA");
+export const localDate = (at: Date = new Date()) =>
+  at.toLocaleDateString("en-CA");
 
 /** Full Korean date and time, or `fallback` when the value is missing or invalid. */
 export function koreanDateTime(

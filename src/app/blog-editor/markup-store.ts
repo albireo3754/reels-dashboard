@@ -12,9 +12,8 @@ import {parse,serialize,validate,legend,type ParagraphNode,type MarkStyle} from 
 import {paragraphNodes,bundleHashes,reviewFresh,fingerprint} from "../../shared/blog-markup-source";
 import {load,save} from "../../shared/blog-markup-store";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
-import {readInline,escapeHtml,cssColor,type CanonicalDocument} from "../../shared/canonical-blog";
+import {readInline,escapeHtml,cssHex,type CanonicalDocument} from "../../shared/canonical-blog";
 
-const colorHex=(value:string)=>cssColor(value)?.replace(/rgb\((\d+),(\d+),(\d+)\)/,(_,r,g,b)=>"#"+[r,g,b].map(n=>Number(n).toString(16).padStart(2,"0")).join(""));
 function edited(original:ParagraphNode,source:string):ParagraphNode{
   const runs=readInline(source),text=runs.map(r=>r.text).join("");
   if(/[<>]/.test(text)||/\n\s*\n/.test(text))throw new Error("문단 내부의 빈 문단·HTML은 지원하지 않아요.");
@@ -26,8 +25,8 @@ function edited(original:ParagraphNode,source:string):ParagraphNode{
       if(i){line++;column=0;}
       if(part&&Object.keys(run.style).length){
         const style:MarkStyle={};
-        if(run.style.color)style.color=colorHex(run.style.color);
-        if(run.style.background)style.background=colorHex(run.style.background);
+        if(run.style.color)style.color=cssHex(run.style.color);
+        if(run.style.background)style.background=cssHex(run.style.background);
         if(run.style.weight===700)style.weight=700;
         if(run.style.size)style.size=run.style.size;
         const old=original.marks.find(m=>original.lines[m.line].slice(m.start,m.end)===part);

@@ -73,12 +73,21 @@ export const escapeHtml = (s: string) =>
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 export function cssColor(value: string): string | undefined {
   if (/^#[\da-f]{6}$/i.test(value)) return value.toLowerCase();
   const m = value.match(/^rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)$/);
   if (!m || m.slice(1).some((v) => Number(v) > 255)) return undefined;
   return `rgb(${m.slice(1).map(Number).join(",")})`;
+}
+/** {@link cssColor} normalized to lowercase #rrggbb. */
+export function cssHex(value: string): string | undefined {
+  const color = cssColor(value);
+  const rgb = color?.match(/^rgb\((\d+),(\d+),(\d+)\)$/);
+  return rgb
+    ? "#" + rgb.slice(1).map((n) => Number(n).toString(16).padStart(2, "0")).join("")
+    : color;
 }
 export function readInline(source: string): InlineRun[] {
   const runs: InlineRun[] = [];

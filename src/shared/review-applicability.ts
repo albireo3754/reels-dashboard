@@ -1,4 +1,4 @@
-import {readInline,inlineSource,cssColor,type InlineRun,type InlineStyle,type CanonicalFinding} from "./canonical-blog";
+import {readInline,inlineSource,cssHex,type InlineRun,type InlineStyle,type CanonicalFinding} from "./canonical-blog";
 import type {ParagraphNode} from "./blog-markup";
 export function paragraphSource(p:ParagraphNode):string{
  const runs:InlineRun[]=[];
@@ -15,7 +15,7 @@ export function paragraphSource(p:ParagraphNode):string{
 }
 const plain=(source:string)=>readInline(source).map(r=>r.text).join("");
 const normalized=(style:InlineStyle)=>{
- const color=(s?:string)=>s?cssColor(s)?.replace(/rgb\((\d+),(\d+),(\d+)\)/,(_,r,g,b)=>"#"+[r,g,b].map(n=>Number(n).toString(16).padStart(2,"0")).join("")):undefined;
+ const color=(s?:string)=>s?cssHex(s):undefined;
  return {color:color(style.color),background:color(style.background),weight:style.weight,size:style.size};
 };
 function styles(source:string){

@@ -1,6 +1,7 @@
 import {
   readInline,
   restyle,
+  cssHex,
   type CanonicalFinding,
   type InlineRun,
 } from "../../../shared/canonical-blog";
@@ -44,12 +45,7 @@ function Sample({
 }
 function colorName(value: string | undefined, fallback: string) {
   if (!value) return fallback;
-  const rgb = value.match(/\d+/g);
-  const hex = value.startsWith("#")
-    ? value
-    : rgb
-      ? "#" + rgb.map((n) => Number(n).toString(16).padStart(2, "0")).join("")
-      : value;
+  const hex = cssHex(value) ?? value;
   return (
     (
       {
