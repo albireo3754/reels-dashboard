@@ -11,7 +11,12 @@ export type Tab =
   | "transfers"
   | "settings";
 
-type Page = { label: string; eyebrow: string; title: string; description: string };
+type Page = {
+  label: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+};
 
 /** Navigation label and page heading copy for each workspace screen. */
 export const pages: Record<Tab, Page> = {
