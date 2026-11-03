@@ -1,5 +1,6 @@
+import { writeFileAtomic } from "../shared/lib/fs";
 import { spawn, type IPty } from "node-pty";
-import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -135,10 +136,9 @@ export class Workbench {
       const workspace = await validateWorkspace(directory);
       await mkdir(this.root, { recursive: true });
       const file = path.join(this.root, "workbench.json");
-      await writeFile(`${file}.tmp`, JSON.stringify({ workspace }), {
+      await writeFileAtomic(file, JSON.stringify({ workspace }), {
         mode: 0o600,
       });
-      await rename(`${file}.tmp`, file);
       this.workspace = workspace;
       this.sessions.clear();
       this.emit({ type: "changed" });

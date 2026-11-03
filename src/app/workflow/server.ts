@@ -1,3 +1,4 @@
+import { errorMessage } from "../../shared/lib/errors";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -138,7 +139,7 @@ export async function startWorkflowServer(options: {
       });
       res.end(await readFile(file));
     } catch (e) {
-      json(400, { error: e instanceof Error ? e.message : String(e) });
+      json(400, { error: errorMessage(e) });
     }
   });
   try {

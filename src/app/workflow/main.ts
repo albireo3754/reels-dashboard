@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { errorMessage } from "../../shared/lib/errors";
 import { startWorkflowServer } from "./server";
 import { workflowRequest } from "./client";
 
@@ -60,6 +61,6 @@ try {
       "Usage: workflow serve | list | capabilities | get <id> | restart <id> | job <id> | stop <id> | create/submit/execute/review-bundles <json-file|->",
     );
 } catch (e) {
-  console.error(e instanceof Error ? e.message : e);
+  console.error(errorMessage(e));
   process.exitCode = 1;
 }

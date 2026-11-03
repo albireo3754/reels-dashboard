@@ -1,9 +1,9 @@
+import { writeJsonAtomic } from "../../shared/lib/fs";
 import {paragraphSource} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {paragraphNodes} from "../../shared/blog-markup-source";
-import {readFile,writeFile,readdir,open,rename,unlink,mkdir,stat} from "node:fs/promises";
+import {readFile,readdir,open,unlink,mkdir,stat} from "node:fs/promises";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
 import {workflowRequest} from "../workflow/client";
 import {markupReviewInput,validateMarkupReview} from "../../shared/markup-review";
 import {parse} from "../../shared/blog-markup";
@@ -11,11 +11,7 @@ import {bundleHashes} from "../../shared/blog-markup-source";
 import type {EditorConfig} from "./store";
 import type {SdkJob} from "../../shared/workflow";
 type Call=(action:"review-markup"|"job",input:unknown)=>Promise<any>;
-async function atomic(file:string,value:unknown){
- const temp=file+"."+randomUUID()+".tmp";
- try{await writeFile(temp,JSON.stringify(value,null,2)+"\n",{flag:"wx"});await rename(temp,file);}
- finally{await unlink(temp).catch(e=>{if(e.code!=="ENOENT")throw e;});}
-}
+const atomic=(file:string,value:unknown)=>writeJsonAtomic(file,value);
 export class MarkupReviewWorker{
  private timer?:ReturnType<typeof setInterval>;
  private running?:Promise<void>;

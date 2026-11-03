@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import type { DashboardBridge, Project } from "../../../shared/contracts";
 import { ROUTE_MAP_FILENAME, type LocalRouteMap } from "../../../shared/route-map";
@@ -20,7 +21,7 @@ function RouteDialog({ project, bridge, close }: { project: Project; bridge: Das
   }, []);
   useEffect(() => {
     let live = true;
-    const load = () => bridge.routeMap!.load(project.id).then(value => { if (live) { setLoaded(value); setError(""); } }).catch(e => { if (live) setError(e instanceof Error ? e.message : "지도를 불러오지 못했어요."); });
+    const load = () => bridge.routeMap!.load(project.id).then(value => { if (live) { setLoaded(value); setError(""); } }).catch(e => { if (live) setError(errorMessage(e, "지도를 불러오지 못했어요.")); });
     void load(); const timer = setInterval(() => void load(), 30000);
     return () => { live = false; clearInterval(timer); };
   }, [bridge, project.id, retry]);
@@ -39,7 +40,7 @@ function RouteMedia({ bridge, projectId, file, name }: { bridge: DashboardBridge
   useEffect(() => {
     if (!requested || !file || !bridge.contentMedia) return;
     let live = true;
-    bridge.contentMedia.open(projectId, file).then(value => { if (live) setMedia(value); }).catch(e => { if (live) setError(e instanceof Error ? e.message : "원본을 열지 못했어요."); });
+    bridge.contentMedia.open(projectId, file).then(value => { if (live) setMedia(value); }).catch(e => { if (live) setError(errorMessage(e, "원본을 열지 못했어요.")); });
     return () => { live = false; };
   }, [bridge, projectId, file, requested]);
   if (!file) return <p className="route-map-small">이 촬영분의 원본은 아직 연결되지 않았어요. Photos에서 촬영일과 파일명으로 확인할 수 있어요.</p>;

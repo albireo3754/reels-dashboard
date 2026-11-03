@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import {
   templateContent,
@@ -125,7 +126,7 @@ export function CardNews({
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -215,9 +216,7 @@ export function CardNews({
           ),
         );
       } catch (e) {
-        throw new Error(
-          `${i + 1}번 카드: ${e instanceof Error ? e.message : e}`,
-        );
+        throw new Error(`${i + 1}번 카드: ${errorMessage(e)}`);
       }
     }
     setFrames(next);

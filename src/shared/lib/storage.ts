@@ -1,13 +1,7 @@
-import {
-  mkdir,
-  readFile,
-  writeFile,
-  rename,
-  realpath,
-  lstat,
-} from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { writeJsonAtomic } from "./fs";
 import { emptyDashboard, type Dashboard } from "../contracts";
 import { validateDashboard } from "../data";
 export function safeDocumentName(name: unknown): string {
@@ -81,13 +75,8 @@ export class LocalStore {
     await writeFile(file, json + "\n", { flag: "wx", mode: 0o600 });
     return realpath(file);
   }
-  async atomic(file: string, data: unknown) {
-    const temp = file + "." + randomUUID() + ".tmp";
-    await writeFile(temp, JSON.stringify(data, null, 2) + "\n", {
-      flag: "wx",
-      mode: 0o600,
-    });
-    await rename(temp, file);
+  atomic(file: string, data: unknown) {
+    return writeJsonAtomic(file, data, { mode: 0o600 });
   }
 }
 export async function resolveGrantedFile(

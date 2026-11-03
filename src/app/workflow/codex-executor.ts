@@ -1,3 +1,5 @@
+import { sha256Hex } from "../../shared/lib/hash";
+import { errorMessage } from "../../shared/lib/errors";
 import {markupReviewInput,markupReviewResult,reviewDocument,validateMarkupReview} from "../../shared/markup-review";
 import {
   Codex,
@@ -8,7 +10,7 @@ import {
   type UserInput,
 } from "@openai/codex-sdk";
 import { z } from "zod";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, realpath, readFile } from "node:fs/promises";
 import path from "node:path";
 import { blogDraft } from "../../shared/blog";
@@ -165,7 +167,7 @@ export class CodexExecutor {
     this.runtime.saveJob(job);
   }
   private safeError(error: unknown) {
-    let message = error instanceof Error ? error.message : String(error);
+    let message = errorMessage(error);
     const key = configuredApiKey(this.env);
     if (key) message = message.split(key).join("[redacted]");
     return message.replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 2000);
@@ -236,9 +238,7 @@ export class CodexExecutor {
         const file = await realpath(path.join(run.workspace, name));
         if (
           !file.startsWith(run.workspace + path.sep) ||
-          createHash("sha256")
-            .update(await readFile(file))
-            .digest("hex") !== expected
+          sha256Hex(await readFile(file)) !== expected
         )
           throw new Error(
             "STALE_INPUT: source changed during SDK execution; results were not applied",
@@ -315,7 +315,7 @@ export class CodexExecutor {
   async reviewMarkup(raw:unknown){
     const input=markupReviewInput.parse(raw),doc=reviewDocument(input.source);
     if(new Set(input.bundleIds).size!==input.bundleIds.length||input.bundleIds.some(id=>!doc.bundles.some(b=>b.id===id)))throw new Error("Invalid markup bundle selection");
-    const inputHash=createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    const inputHash=sha256Hex(JSON.stringify(input));
     let existing:SdkJob|undefined;
     try{existing=this.runtime.getJob(input.id);}catch(e){if((e as Error).message!=="Unknown SDK job")throw e;}
     if(existing){if(existing.inputHash!==inputHash)throw new Error("Request ID reused with different content");return existing;}
@@ -342,7 +342,7 @@ export class CodexExecutor {
       const file=await realpath(evidence.path);
       if(file!==path.resolve(evidence.path)||!file.endsWith(".png"))throw new Error("Invalid screenshot path");
       const bytes=await readFile(file);
-      if(bytes.length>12*1024*1024||!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||createHash("sha256").update(bytes).digest("hex")!==evidence.sha256)throw new Error("Screenshot hash/format mismatch");
+      if(bytes.length>12*1024*1024||!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||sha256Hex(bytes)!==evidence.sha256)throw new Error("Screenshot hash/format mismatch");
     }
     const job={...this.job("bundle-review"),id:input.id,role:"markup-review",inputHash};
     this.runtime.saveJob(job);

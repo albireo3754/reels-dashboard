@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { ExperienceForm } from "./ExperienceForm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -106,7 +107,7 @@ function ConnectedWorkflowPanel({
       await fn();
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

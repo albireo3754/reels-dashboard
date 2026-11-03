@@ -1,3 +1,4 @@
+import { errorMessage } from "../../shared/lib/errors";
 import type {VisualEvidence} from "../../shared/markup-review";
 import {MarkupReviewWorker} from "./review-worker";
 import { AnnotationStore } from "./annotations";
@@ -130,7 +131,7 @@ export async function startCanonicalEditor(
       });
       res.end(await readFile(file));
     } catch (e) {
-      json(409, { error: e instanceof Error ? e.message : String(e) });
+      json(409, { error: errorMessage(e) });
     }
   });
   await new Promise<void>((resolve, reject) => {

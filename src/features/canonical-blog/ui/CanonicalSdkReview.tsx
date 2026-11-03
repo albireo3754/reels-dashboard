@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import {
   readInline,
@@ -88,7 +89,7 @@ export function CanonicalSdkReview({
         }),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setStarting(false);
     }
@@ -113,12 +114,12 @@ export function CanonicalSdkReview({
               );
             setResult(validateResult(next.result, pending.request));
           } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            setError(errorMessage(e));
           }
         } else if (next.status === "running") timer = setTimeout(poll, 1000);
       } catch (e) {
         if (live) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(errorMessage(e));
           timer = setTimeout(poll, 3000);
         }
       }

@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useState } from "react";
 import type { WorkflowRun } from "../../../shared/workflow";
 import type { ExperienceAnswer } from "../../../shared/experience";
@@ -105,7 +106,7 @@ export function ExperienceForm({
       );
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

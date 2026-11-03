@@ -1,3 +1,4 @@
+import { errorMessage } from "./errors";
 import { createConnection, createServer, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
 import {
@@ -66,7 +67,7 @@ export async function startAgentSocket(
         } catch (error) {
           socket.end(
             JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             }) + "\n",
           );
         }

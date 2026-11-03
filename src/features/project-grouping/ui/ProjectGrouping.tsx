@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useState } from "react";
 import type {
   Dashboard,
@@ -45,7 +46,7 @@ export function ProjectGrouping({
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

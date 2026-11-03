@@ -1,3 +1,4 @@
+import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
@@ -18,7 +19,6 @@ import {
   Notification,
 } from "electron";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -95,13 +95,11 @@ async function awaitReady() {
     "PhotosIndex.app/Contents/MacOS/PhotosIndex",
   );
   const binaryFingerprint = await readFile(nativeBinary)
-    .then((b) => createHash("sha256").update(b).digest("hex"))
+    .then((b) => sha256Hex(b))
     .catch(() => "missing");
   const socket = path.join(
     os.tmpdir(),
-    `reels-${process.getuid?.() ?? 0}-${createHash("sha256")
-      .update(root + "|" + nativeRoot + "|" + binaryFingerprint)
-      .digest("hex")
+    `reels-${process.getuid?.() ?? 0}-${sha256Hex(root + "|" + nativeRoot + "|" + binaryFingerprint)
       .slice(0, 12)}.sock`,
   );
   const native = new NativeClient({

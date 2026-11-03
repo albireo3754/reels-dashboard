@@ -1,8 +1,9 @@
+import { writeFileAtomic } from "../../shared/lib/fs";
 import type {VisualEvidence} from "../../shared/markup-review";
 import {paragraphSource} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {AnnotationStore} from "./annotations";
-import {readFile,writeFile,realpath,mkdir,rename,readdir,stat} from "node:fs/promises";
+import {readFile,writeFile,realpath,mkdir,readdir,stat} from "node:fs/promises";
 import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -135,7 +136,7 @@ body{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20p
       const x=await this.inputs();
       const media=path.relative(path.dirname(this.config.layout),x.media).split(path.sep).join("/")+"/";
       const html=x.layout.replace(/<article[^>]*>[\s\S]*?<\/article>/,()=>renderHtml(x.doc,{media}));
-      const temp=this.config.layout+"."+randomUUID()+".tmp";await writeFile(temp,html);await rename(temp,this.config.layout);
+      await writeFileAtomic(this.config.layout,html);
     }catch(e){warning="정본은 저장됐지만 미리보기 갱신 실패: "+String(e);}
     const document=await this.load();document.warnings!.push(...result.warnings,...(warning?[warning]:[]));
     return {document};

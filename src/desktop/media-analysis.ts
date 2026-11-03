@@ -1,6 +1,8 @@
+import { sha256Hex } from "../shared/lib/hash";
+import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedExecFile } from "../shared/lib/logged-process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -28,7 +30,7 @@ import {
   CodexImageAnalyzer,
   type ImageAnalyzer,
 } from "./analysis-provider";
-const hash = (v: string) => createHash("sha256").update(v).digest("hex");
+const hash = sha256Hex;
 const photos = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
 const videos = new Set([".mov", ".mp4", ".m4v"]);
 export class MediaAnalysis {
@@ -423,7 +425,7 @@ export class MediaAnalysis {
               ...[...new Set(samples.map((s) => s.sourcePath))].map(
                 (sourcePath) => ({
                   sourcePath,
-                  message: e instanceof Error ? e.message : "분석 실패",
+                  message: errorMessage(e, "분석 실패"),
                 }),
               ),
             );

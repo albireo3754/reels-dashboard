@@ -1,3 +1,4 @@
+import { sha256Hex } from "../../shared/lib/hash";
 import {
   readFile,
   stat,
@@ -9,7 +10,7 @@ import {
   open,
 } from "node:fs/promises";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   readInline,
@@ -31,7 +32,7 @@ export interface EditorConfig {
   port?: number;
   assetFiles?: string[];
 }
-const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+const hash = sha256Hex;
 const key = (g: any) =>
   g.photo
     ? "photo:" + g.photo

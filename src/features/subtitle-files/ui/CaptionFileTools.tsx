@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import type { CaptionCue } from "../../../shared/editor";
 import {
@@ -78,8 +79,7 @@ export function CaptionFileTools({
         return;
       setPending({ fileName: file.name, data, contextKey: expected });
     } catch (e) {
-      if (current === generation.current)
-        setError(e instanceof Error ? e.message : String(e));
+      if (current === generation.current) setError(errorMessage(e));
     } finally {
       if (current === generation.current) setReading(false);
     }
@@ -118,7 +118,7 @@ export function CaptionFileTools({
       setError("");
       setNotice("현재 자막의 문구와 시간을 SRT로 저장했어요.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }
   return (

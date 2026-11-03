@@ -1,3 +1,4 @@
+import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
 import { editOwner, recordExports } from "../shared/production-project";
@@ -677,7 +678,7 @@ export class CardNewsService implements CardNewsBridge {
         job.state = "cancelled";
       } else {
         job.state = "failed";
-        job.error = e instanceof Error ? e.message : String(e);
+        job.error = errorMessage(e);
       }
     } finally {
       await rm(temporary, { force: true }).catch(() => {});
