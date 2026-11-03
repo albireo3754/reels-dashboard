@@ -1,3 +1,4 @@
+import {inputFormTools} from "../../../shared/input-form-tools";
 import type { MergeProjectsInput, LinkEditInput } from "../../../shared/production-project";
 import type { ContentInput } from "../../../shared/local-resources";
 import type {
@@ -30,6 +31,8 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  forms?: import("../../../shared/workflow").WorkflowBridge;
+  inputForms?: {open(input:unknown):Promise<unknown>};
   blog?: {
     extract(input: unknown): Promise<unknown>;
     results(): Promise<unknown>;
@@ -77,7 +80,12 @@ export function createAgentDispatch(ports: AgentPorts) {
     if (!Object.hasOwn(toolDefinitions, name))
       throw new Error("UNKNOWN_TOOL: 지원하지 않는 도구예요.");
     const input = toolDefinitions[name as ToolName].input.parse(args) as any;
+    const formTool = inputFormTools.find(tool=>tool[1]===name);
+    if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
+      case "reels_open_input_form":
+        if(!ports.inputForms)throw new Error("UNSUPPORTED");
+        return ports.inputForms.open(input);
       case "reels_extract_blog_reference":
         if (!ports.blog) throw new Error("UNSUPPORTED");
         return ports.blog.extract(input);

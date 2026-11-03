@@ -1,8 +1,11 @@
+import {InputFormWindows} from "./input-form-window";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
 import { workflowRequest } from "../app/workflow/client";
-import { workflowAction } from "../shared/workflow";
+import { workflowAction, type WorkflowAction } from "../shared/workflow";
+import { DesktopWorkflowHost } from "./workflow-host";
+import { liveWindow, ShutdownSequence } from "./shutdown";
 import { WorkflowNotifications } from "./workflow-notifications";
 import { BlogExtractor } from "./blog-extractor";
 import { MediaAnalysis } from "./media-analysis";
@@ -37,6 +40,7 @@ import {
 } from "./development-mode";
 import { readMobileBriefingStatus } from "./mobile-briefing";
 import { installApplicationIdentity } from "./application-identity";
+import { APP_NAME, DEV_BUILD_ARGUMENT, appDisplayName } from "./build-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia } from "../features/content-library";
@@ -55,7 +59,16 @@ import type { Arguments, CommandMethod, Inspection } from "../shared/contracts";
 import { createDemoBridge } from "../shared/demo";
 if (process.env.REELS_USER_DATA)
   app.setPath("userData", path.resolve(process.env.REELS_USER_DATA));
-app.setName("Reels Dashboard");
+app.setName(APP_NAME);
+// Unpackaged source builds show "Reels Dashboard Dev". Pin the userData path
+// resolved under the original name first so the rename never moves app data
+// or the single-instance lock.
+const displayName = appDisplayName(app.isPackaged);
+if (displayName !== APP_NAME) {
+  const userData = app.getPath("userData");
+  app.setName(displayName);
+  app.setPath("userData", userData);
+}
 const backgroundQA = process.env.REELS_BACKGROUND_QA === "1";
 if (backgroundQA && process.platform === "darwin")
   app.setActivationPolicy("accessory");
@@ -114,6 +127,17 @@ async function awaitReady() {
   });
   const demo = createDemoBridge();
   const agentSession = new AgentSession();
+  const inputForms = new InputFormWindows(backgroundQA);
+  // Embedded workflow server: started before anything reads REELS_WORKFLOW_URL.
+  const workflowHost = new DesktopWorkflowHost({
+    webRoot: path.join(app.getAppPath(), "dist"),
+    openForm: (formId) => inputForms.open({ formId }),
+  });
+  const workflowStatus = await workflowHost.start();
+  if (workflowStatus.message)
+    console.warn(`Workflow server (${workflowStatus.state}): ${workflowStatus.message}`);
+  const requestWorkflow = (action: WorkflowAction, input?: unknown) =>
+    workflowHost.request(() => workflowRequest(action, input));
   let closeAgent: (() => Promise<void>) | undefined;
   const emit = (name: string, value: unknown) => {
     if (window && !window.isDestroyed()) window.webContents.send(name, value);
@@ -123,7 +147,7 @@ async function awaitReady() {
   const workflowToasts = new Set<Notification>();
   const workflowNotifications = new WorkflowNotifications({
     enabled: !backgroundQA && !fixture,
-    list: () => workflowRequest("list"),
+    list: () => requestWorkflow("list"),
     isActive: () => !!window && !window.isDestroyed() && window.isVisible() && window.isFocused(),
     setBadge: (count) => { app.setBadgeCount(count); },
     open: (runId) => {
@@ -311,30 +335,65 @@ async function awaitReady() {
   const demoDocuments = new Map<string, string>();
   let queue: Promise<unknown> = Promise.resolve();
   let activeOperations = 0;
-  let quitting = false;
+  const shutdown = new ShutdownSequence();
+  // The dashboard window may already be destroyed (only editor windows left, or
+  // none at all), so dialogs fall back to no parent instead of a dead window.
+  const messageBox = (options: Electron.MessageBoxSyncOptions) => {
+    const parent = liveWindow(window);
+    return parent
+      ? dialog.showMessageBoxSync(parent, options)
+      : dialog.showMessageBoxSync(options);
+  };
+  const workBusy = () =>
+    activeOperations > 0 || editorService.busy || cardNews.busy;
+  const confirmAbortJobs = () =>
+    messageBox({
+      type: "warning",
+      buttons: ["취소", "종료"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "실행 중인 AI 작업이 있어요.",
+      detail:
+        "지금 종료하면 진행 중인 AI 작업이 중단되고, 다음 실행 때 중단됨으로 표시돼요.",
+    }) === 1;
+  // Set when the dashboard close guard already asked; consumed by the next before-quit.
+  let jobAbortConfirmed = false;
   app.on("before-quit", (event) => {
-    if (quitting) return;
+    if (shutdown.mayQuit()) return;
+    // Every quit during cleanup (e.g. window-all-closed after the editors close) waits.
     event.preventDefault();
-    if (activeOperations > 0 || editorService.busy || cardNews.busy) {
-      dialog.showMessageBoxSync(window, {
+    if (shutdown.started) return;
+    const confirmed = jobAbortConfirmed;
+    jobAbortConfirmed = false;
+    if (workBusy()) {
+      messageBox({
         type: "info",
         message: "진행 중인 작업이 끝난 뒤 종료해주세요.",
       });
       return;
     }
-    quitting = true;
+    if (workflowHost.runningJobs() > 0 && !confirmed && !confirmAbortJobs())
+      return;
     workflowNotifications.dispose();
     for (const toast of workflowToasts) toast.close();
     workflowToasts.clear();
     workbench?.dispose();
     blogResults.dispose();
     boardMedia.dispose();
-    void editorService
-      .dispose()
-      .then(() => canonicalEditor.dispose())
-      .then(() => closeAgent?.())
-      .then(() => native.dispose())
-      .finally(() => app.quit());
+    void shutdown.run(
+      () =>
+        editorService
+          .dispose()
+          .then(() => canonicalEditor.dispose())
+          .then(() =>
+            workflowHost
+              .dispose()
+              .catch((error) => console.error("Workflow server close failed:", error)),
+          )
+          .then(() => closeAgent?.())
+          .then(() => native.dispose()),
+      () => app.quit(),
+    );
   });
   const handle = (name: string, fn: (...args: any[]) => unknown) =>
     ipcMain.handle(`reels:${name}`, async (event, ...args) => {
@@ -346,12 +405,14 @@ async function awaitReady() {
       return fn(...args);
     });
   handle("executionLogs:list", () => logs.list());
-  handle("workflow:request", (action, input) => workflowRequest(workflowAction.parse(action), input));
+  handle("workflow:request", (action, input) => requestWorkflow(workflowAction.parse(action), input));
+  handle("workflow:hostStatus", () => workflowHost.status());
   handle("workflow:pendingOpen", () => workflowOpen);
   handle("workflow:ackOpen", (sequence) => {
     if (workflowOpen?.sequence === sequence) workflowOpen = null;
   });
-  handle("blog:openCanonical", () => canonicalEditor.open());
+  handle("blog:canonicalProjects", () => canonicalEditor.projects());
+  handle("blog:openCanonical", (projectId) => canonicalEditor.open(projectId));
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
   handle("blog:results", () => blogResults.list());
   handle("blog:readResult", (id) => blogResults.read(id));
@@ -638,7 +699,7 @@ async function awaitReady() {
       minWidth: 760,
       minHeight: 600,
       backgroundColor: "#10131c",
-      title: "Reels Dashboard",
+      title: displayName,
       webPreferences: {
         ...(backgroundQA ? { backgroundThrottling: false } : {}),
         preload: path.join(__dirname, "preload.cjs"),
@@ -648,6 +709,7 @@ async function awaitReady() {
         additionalArguments: [
           ...(fixture ? ["--reels-demo"] : []),
           ...(developmentMode ? [DEVELOPMENT_MODE_ARGUMENT] : []),
+          ...(app.isPackaged ? [] : [DEV_BUILD_ARGUMENT]),
         ],
       },
     });
@@ -690,15 +752,23 @@ async function awaitReady() {
       (_webContents, _permission, callback) => callback(false),
     );
     window.on("close", (event) => {
-      if (
-        (activeOperations > 0 || editorService.busy || cardNews.busy) &&
-        !quitting
-      ) {
+      if (shutdown.started) return;
+      if (workBusy()) {
         event.preventDefault();
-        dialog.showMessageBoxSync(window, {
+        messageBox({
           type: "info",
           message: "진행 중인 작업이 끝난 뒤 닫아주세요.",
         });
+        return;
+      }
+      // Closing the dashboard quits the app, which aborts embedded SDK jobs: ask here,
+      // while the window still exists, and quit only on 종료.
+      if (workflowHost.runningJobs() > 0) {
+        event.preventDefault();
+        if (confirmAbortJobs()) {
+          jobAbortConfirmed = true;
+          app.quit();
+        }
       }
     });
     void window.loadFile(path.join(app.getAppPath(), "dist/index.html"));
@@ -711,7 +781,7 @@ async function awaitReady() {
     window.show();
     window.focus();
   };
-  if (!backgroundQA) installApplicationIdentity(showWindow);
+  if (!backgroundQA) installApplicationIdentity(showWindow, displayName, !app.isPackaged);
   workflowNotifications.start();
   app.on("second-instance", showWindow);
   if (!fixture)
@@ -720,6 +790,8 @@ async function awaitReady() {
       session: agentSession,
       dashboard: () => store.load(),
       content: contentLibrary,
+      inputForms,
+      forms: { request: requestWorkflow },
       analysis,
       blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
       preview: async (project, time, kind) => {

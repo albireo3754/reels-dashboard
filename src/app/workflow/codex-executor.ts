@@ -28,6 +28,12 @@ import {
   CodexObserver,
   type CodexObservationPort,
 } from "../observability/codex-observer";
+import {
+  buildSuggestPrompt,
+  cleanSuggestions,
+  inlineSuggestInput,
+  inlineSuggestResult,
+} from "../../shared/inline-suggest";
 
 // Backend-only; no key is returned to clients or written to a project file.
 export function codexEnvironment(
@@ -115,6 +121,23 @@ const bundleInput = z.strictObject({
 const bundleOutput = z.strictObject({
   resultJson: z.string().min(1).max(1000000),
 });
+const reasoningEffort = z.enum([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+  "persistent",
+]);
+/** Options for transient (non-job) SDK calls such as inline suggestions. */
+interface GenerateOptions {
+  /** false: keep the job in memory only; nothing is written to SQLite. */
+  persist?: boolean;
+  model?: string;
+  reasoning?: z.infer<typeof reasoningEffort>;
+}
 
 export class CodexExecutor {
   // Reserve request IDs while asynchronous screenshot validation is in progress.
@@ -127,6 +150,8 @@ export class CodexExecutor {
     string,
     { controller: AbortController; promise: Promise<void> }
   >();
+  /** In-flight synchronous inline suggestions; aborted on close. */
+  private suggesting = new Set<AbortController>();
   constructor(
     private runtime: WorkflowRuntime,
     private root: string,
@@ -134,6 +159,10 @@ export class CodexExecutor {
     private env: NodeJS.ProcessEnv = process.env,
     private observer: CodexObservationPort = new CodexObserver(),
   ) {}
+  /** In-flight SDK work that closing the server would interrupt. */
+  get running() {
+    return this.active.size + this.suggesting.size;
+  }
   capabilities() {
     return {
       sdk: true,
@@ -208,7 +237,81 @@ export class CodexExecutor {
     return this.runtime.getJob(id);
   }
   async close() {
+    for (const controller of this.suggesting)
+      controller.abort(new Error("Workflow server closing"));
     await Promise.all([...this.active.keys()].map((id) => this.stop(id)));
+  }
+  /**
+   * Manual inline suggestion: a short, synchronous SDK call. No SQLite job, no
+   * artifacts, no file writes. Aborts on timeout or when the caller disconnects.
+   */
+  async suggestInline(raw: unknown, clientSignal?: AbortSignal) {
+    const input = inlineSuggestInput.parse(raw);
+    if (this.suggesting.size >= 4)
+      throw new Error("추천 요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.");
+    const started = Date.now();
+    const timeoutMs = z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(600000)
+      .catch(90000)
+      .parse(this.env.REELS_SUGGEST_TIMEOUT_MS ?? 90000);
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () =>
+        controller.abort(
+          new Error(
+            `SUGGEST_TIMEOUT: 추천이 ${Math.round(timeoutMs / 1000)}초 안에 끝나지 않아 중단했어요.`,
+          ),
+        ),
+      timeoutMs,
+    );
+    const onClientAbort = () =>
+      controller.abort(new Error("SUGGEST_CANCELLED: 추천 요청이 취소됐어요."));
+    if (clientSignal?.aborted) onClientAbort();
+    else clientSignal?.addEventListener("abort", onClientAbort, { once: true });
+    this.suggesting.add(controller);
+    const job: SdkJob = {
+      ...this.job("inline-suggest"),
+      id: input.id,
+      role: "inline-suggest",
+    };
+    try {
+      const workspace = path.join(this.root, "inline-suggest");
+      await mkdir(workspace, { recursive: true, mode: 0o700 });
+      const output = await this.generate(
+        job,
+        buildSuggestPrompt(input),
+        z.toJSONSchema(inlineSuggestResult),
+        workspace,
+        controller.signal,
+        [],
+        {
+          persist: false,
+          model:
+            this.env.REELS_SUGGEST_MODEL || this.env.REELS_CODEX_MODEL || undefined,
+          reasoning: reasoningEffort
+            .catch("low")
+            .parse(this.env.REELS_SUGGEST_REASONING_EFFORT ?? "low"),
+        },
+      );
+      controller.signal.throwIfAborted();
+      return {
+        id: input.id,
+        suggestions: cleanSuggestions(output, input),
+        elapsedMs: Date.now() - started,
+        authModes: job.authModes,
+      };
+    } catch (error) {
+      if (controller.signal.aborted)
+        throw new Error(this.safeError(controller.signal.reason));
+      throw new Error(this.safeError(error));
+    } finally {
+      clearTimeout(timer);
+      clientSignal?.removeEventListener("abort", onClientAbort);
+      this.suggesting.delete(controller);
+    }
   }
   async execute(raw: unknown) {
     const input = executeWorkflowInput.parse(raw);
@@ -221,7 +324,7 @@ export class CodexExecutor {
     job.role = run.stage;
     this.save(job);
     this.launch(job, async (signal) => {
-      const prompt = `Perform only this workflow task. Read the workspace instructions and listed evidence using read-only tools. Do not edit source files, publish, send messages, or invoke other workflows. Return candidate/report file contents in artifacts; the host will save them as new files. For reviews return pass/revise/blocked; for other stages done/blocked. If actual visual evidence cannot be inspected, return blocked, not pass. Refer to the latest candidate files in history, not an older draft.\n${JSON.stringify({ task: run.task, instructions: run.instructions, trackedFiles: run.trackedFiles, history: run.history })}`;
+      const prompt = `Perform only this workflow task. Read the workspace instructions and listed evidence using read-only tools. Do not edit source files, publish, send messages, or invoke other workflows. Return candidate/report file contents in artifacts; the host will save them as new files under .workflow-results/${job.id}/ relative to the workspace. Markdown image links must resolve from that output folder: for workspace media/photo.jpg use ../../media/photo.jpg, not media/photo.jpg. Verify image targets against tracked inputs. For reviews return pass/revise/blocked; for other stages done/blocked. If actual visual evidence cannot be inspected, return blocked, not pass. Refer to the latest candidate files in history, not an older draft.\n${JSON.stringify({ task: run.task, instructions: run.instructions, trackedFiles: run.trackedFiles, history: run.history })}`;
       const output = outputSchema.parse(
         await this.generate(
           job,
@@ -372,7 +475,17 @@ export class CodexExecutor {
     workspace: string,
     signal: AbortSignal,
     images: Array<{path:string;bundleId:string;width:number;sha256:string}>=[],
+    options: GenerateOptions = {},
   ) {
+    // Transient calls keep progress in memory only (no SQLite job row).
+    const note = (message?: string) => {
+      if (options.persist !== false) return this.save(job, message);
+      if (message)
+        job.events = [
+          ...job.events,
+          { at: new Date().toISOString(), message },
+        ].slice(-100);
+    };
     const key = configuredApiKey(this.env);
     const modes: SdkJob["authModes"] = key
       ? ["api-key", "codex-login"]
@@ -380,20 +493,10 @@ export class CodexExecutor {
     for (const mode of modes) {
       signal.throwIfAborted();
       let startedWork = false;
-      const requestedModel = this.env.REELS_CODEX_MODEL;
-      const requestedReasoning = z
-        .enum([
-          "minimal",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra",
-          "persistent",
-        ])
-        .optional()
-        .parse(this.env.REELS_CODEX_REASONING_EFFORT);
+      const requestedModel = options.model ?? this.env.REELS_CODEX_MODEL;
+      const requestedReasoning =
+        options.reasoning ??
+        reasoningEffort.optional().parse(this.env.REELS_CODEX_REASONING_EFFORT);
       const observation = await this.observer.begin({
         observation: job.observation!,
         jobId: job.id,
@@ -404,13 +507,12 @@ export class CodexExecutor {
         role: job.role ?? job.kind,
         requestedModel,
         requestedReasoning,
-        changed: () => this.save(job),
+        changed: () => note(),
       });
       let attemptStatus: "completed" | "failed" | "cancelled" = "failed";
       let failureType: string | undefined;
       job.authModes.push(mode);
-      this.save(
-        job,
+      note(
         mode === "api-key"
           ? "API 키 인증으로 실행"
           : "저장된 Codex 로그인으로 실행",
@@ -480,8 +582,7 @@ export class CodexExecutor {
               final = event.item.text;
               startedWork = true;
             }
-            this.save(
-              job,
+            note(
               event.item.type === "agent_message"
                 ? "응답 작성 중"
                 : `작업 이벤트: ${event.item.type}`,
@@ -512,7 +613,7 @@ export class CodexExecutor {
           !signal.aborted &&
           canFallback(this.safeError(error), startedWork)
         ) {
-          this.save(job, "API 인증/사용량 오류: 저장된 Codex 로그인으로 전환");
+          note("API 인증/사용량 오류: 저장된 Codex 로그인으로 전환");
           continue;
         }
         throw error;

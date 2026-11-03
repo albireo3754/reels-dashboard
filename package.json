@@ -38,7 +38,8 @@
     "start:workflow-mcp": "node --import tsx src/app/workflow/mcp.ts",
     "test:workflow": "node --import tsx --test tests/unit/workflow*.test.ts",
     "test:workflow-ui": "npm run build:web && playwright test --config playwright.workflow.config.ts",
-    "blog:editor": "node --import tsx src/app/blog-editor/main.ts"
+    "blog:editor": "node --import tsx src/app/blog-editor/main.ts",
+    "forms": "node --import tsx src/app/workflow/forms-cli.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.6.0",

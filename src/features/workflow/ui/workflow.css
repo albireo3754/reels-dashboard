@@ -277,3 +277,42 @@
   white-space: pre;
   overflow-wrap: normal;
 }
+.workflow-surfaces {
+  display: flex;
+  gap: 8px;
+  max-width: 1180px;
+  margin: 12px auto;
+  padding: 0 20px;
+}
+.workflow-surfaces button {
+  padding: 10px 16px;
+  border: 1px solid #c9d3d0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.workflow-surfaces [aria-pressed="true"] {
+  background: #245e4b;
+  color: white;
+}
+
+.workflow-open-notice {
+  max-width: 1180px;
+  margin: 12px auto;
+  padding: 0 20px;
+  overflow-wrap: anywhere;
+}
+
+/* Desktop workflow host problem (outdated separate server, start failure). */
+.workflow-host-notice {
+  max-width: 1180px;
+  margin: 12px auto;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  background: rgba(194, 65, 12, 0.12);
+  color: inherit;
+  line-height: 1.5;
+}

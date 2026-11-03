@@ -1,3 +1,4 @@
+import type { StickerPlacement, StickerAnchor } from "./blog-stickers";
 /** Inline canonical prose: only the existing bold, highlight, span and link grammar. */
 export interface InlineStyle {
   color?: string;
@@ -56,6 +57,9 @@ export interface CanonicalReview {
   findings: CanonicalFinding[];
 }
 export interface CanonicalDocument {
+  nativeClipboard?: boolean;
+  stickers?: StickerPlacement[];
+  stickerAnchors?: StickerAnchor[];
   savedAt?: string;
   format?: "markup";
   warnings?: string[];

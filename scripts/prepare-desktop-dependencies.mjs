@@ -1,6 +1,9 @@
 import { rebuild } from "@electron/rebuild";
 
-/** Electron uses PTY directly; SQLite belongs to the separate Node workflow server. */
+/**
+ * Electron uses PTY directly. The embedded workflow server uses node:sqlite, so
+ * better-sqlite3 (bundled JS only, never instantiated) needs no Electron rebuild.
+ */
 export default async function prepareDesktopDependencies(context) {
   console.info("Preparing node-pty for Electron; keeping headless SQLite on Node.");
   await rebuild({

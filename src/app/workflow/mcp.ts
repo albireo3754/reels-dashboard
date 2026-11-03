@@ -1,4 +1,5 @@
 import { mcpResult, mcpError } from "../../shared/mcp-result";
+import { inputFormTools } from "../../shared/input-form-tools";
 import { openFollowupsInput } from "../../shared/followups";
 import {
   saveExperienceInput,
@@ -24,6 +25,34 @@ const handle = serveStdio(() => {
         "Coordinate work performed by the current session, or explicitly execute one pending step with Codex SDK. Create/get a workflow and read its task before manual work or execute. execute returns an asynchronous job; inspect job until terminal status. Do not also submit or restart while an SDK job is running. The SDK uses saved login without a key; a configured API key takes priority with limited auth/quota fallback. Review stages must not edit tracked inputs. On STALE_INPUT use restart and review fresh inputs. ready is not published. No automatic next-step execution or publication.",
     },
   );
+  for (const [
+    action,
+    name,
+    inputSchema,
+    description,
+    readOnly,
+  ] of inputFormTools) {
+    server.registerTool(
+      name,
+      {
+        description,
+        inputSchema,
+        annotations: {
+          readOnlyHint: readOnly,
+          destructiveHint: false,
+          openWorldHint: false,
+        },
+      },
+      async (input: unknown): Promise<CallToolResult> => {
+        try {
+          const result = await workflowRequest(action, input);
+          return mcpResult(result);
+        } catch (error) {
+          return mcpError(error);
+        }
+      },
+    );
+  }
   const tools = [
     [
       "followups-open",

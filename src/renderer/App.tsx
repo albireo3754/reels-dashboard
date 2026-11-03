@@ -760,6 +760,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     <div className="app-shell compact-shell" data-terminal={drawerMode}>
       <WorkspaceToolbar
         desktop={typeof window.reels !== "undefined"}
+        devBuild={window.reels?.devBuild === true}
         navigation={navigation}
         items={[...navigationItems, ["settings", "설정"]]}
         projects={dashboard.projects}

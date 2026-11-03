@@ -1,3 +1,4 @@
+import { FormInbox } from "./FormInbox";
 import { ExperienceForm } from "./ExperienceForm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -37,12 +38,115 @@ export function WorkflowPanel({
         </a>
       </section>
     );
-  return <ConnectedWorkflowPanel openRunRequest={openRunRequest} />;
+  return <SharedWorkspace openRunRequest={openRunRequest} />;
+}
+type OpenRunRequest = { runId: string; sequence: number };
+/** Desktop only: why the app cannot use its workflow server (outdated or failed to start). */
+function useWorkflowHostNotice() {
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    let active = true;
+    void window.reels?.workflow
+      ?.hostStatus?.()
+      .then((status) => {
+        if (active && (status.state === "stale" || status.state === "error"))
+          setMessage(status.message ?? "워크플로 서버에 연결하지 못했어요.");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  return message;
+}
+function SharedWorkspace({
+  openRunRequest,
+}: {
+  openRunRequest?: OpenRunRequest;
+}) {
+  const [runFormDirty, setRunFormDirty] = useState(false);
+  const [inboxDirty, setInboxDirty] = useState(false);
+  const [view, setView] = useState(
+    new URLSearchParams(location.search).has("form") ? "forms" : "runs",
+  );
+  const [formsVisited, setFormsVisited] = useState(view === "forms");
+  const [runRequest, setRunRequest] = useState<OpenRunRequest>();
+  const [notice, setNotice] = useState("");
+  const hostNotice = useWorkflowHostNotice();
+  const handledRequest = useRef<number | undefined>(undefined);
+  const formDirty = runFormDirty || inboxDirty;
+  useEffect(() => {
+    if (!openRunRequest || handledRequest.current === openRunRequest.sequence)
+      return;
+    handledRequest.current = openRunRequest.sequence;
+    if (formDirty) {
+      setNotice(
+        "다른 작업의 알림이 도착했어요. 작성 중인 답변을 먼저 저장한 뒤 알림을 다시 열어주세요.",
+      );
+      return;
+    }
+    setNotice("");
+    setRunRequest(openRunRequest);
+    setView("runs");
+  }, [openRunRequest, formDirty]);
+  return (
+    <>
+      {hostNotice && (
+        <p className="workflow-host-notice" role="alert">
+          {hostNotice}
+        </p>
+      )}
+      <nav className="workflow-surfaces" aria-label="작업 보기">
+        <button
+          aria-pressed={view === "runs"}
+          disabled={formDirty}
+          onClick={() => {
+            setView("runs");
+            setNotice("");
+          }}
+        >
+          대시보드 실행
+        </button>
+        <button
+          aria-pressed={view === "forms"}
+          disabled={formDirty}
+          onClick={() => {
+            setFormsVisited(true);
+            setView("forms");
+            setNotice("");
+          }}
+        >
+          입력폼·답변·결과
+        </button>
+      </nav>
+      {notice && (
+        <p className="workflow-open-notice" role="status">
+          {notice}
+        </p>
+      )}
+      {formsVisited && (
+        <div hidden={view !== "forms"}>
+          <FormInbox onDirtyChange={setInboxDirty} />
+        </div>
+      )}
+      <div hidden={view !== "runs"}>
+        <ConnectedWorkflowPanel
+          openRunRequest={runRequest}
+          onDirtyChange={setRunFormDirty}
+          formDirty={formDirty}
+        />
+      </div>
+    </>
+  );
 }
 function ConnectedWorkflowPanel({
   openRunRequest,
+  onDirtyChange,
+  formDirty,
 }: {
-  openRunRequest?: { runId: string; sequence: number };
+  openRunRequest?: OpenRunRequest;
+  onDirtyChange: (dirty: boolean) => void;
+  formDirty: boolean;
 }) {
   const openRunId = openRunRequest?.runId;
   const resultDrafts = useRef(new Map<string, ResultDraft>());
@@ -86,7 +190,7 @@ function ConnectedWorkflowPanel({
     )
       return;
     handledOpenRun.current = openRunRequest?.sequence;
-    if (run?.runId !== openRunId && run?.stage === "experience") {
+    if (run?.runId !== openRunId && formDirty) {
       setOpenNotice(
         "다른 작업의 알림이 도착했어요. 작성 중인 경험 답변을 저장한 뒤 작업 목록에서 열어주세요.",
       );
@@ -98,7 +202,7 @@ function ConnectedWorkflowPanel({
     }
     setSelected(openRunId);
     setOpenNotice("");
-  }, [openRunId, openRunRequest?.sequence, runs, run?.runId, run?.stage]);
+  }, [openRunId, openRunRequest?.sequence, runs, run?.runId, formDirty]);
   const perform = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -120,7 +224,7 @@ function ConnectedWorkflowPanel({
             이 세션에서 결과를 제출하거나, Codex로 현재 단계를 실행할 수 있어요.
           </p>
         </div>
-        <button onClick={() => setCreating(!creating)}>
+        <button disabled={formDirty} onClick={() => setCreating(!creating)}>
           {creating ? "닫기" : "새 워크플로"}
         </button>
       </header>
@@ -199,6 +303,7 @@ function ConnectedWorkflowPanel({
           {runs.map((r) => (
             <button
               key={r.runId}
+              disabled={formDirty}
               aria-pressed={run?.runId === r.runId}
               onClick={() => {
                 setSelected(r.runId);
@@ -301,7 +406,9 @@ function ConnectedWorkflowPanel({
                   "visual_review",
                 ].includes(run.stage) && (
                   <button
-                    disabled={busy || run.execution?.status === "running"}
+                    disabled={
+                      busy || formDirty || run.execution?.status === "running"
+                    }
                     onClick={() =>
                       void perform(() =>
                         request("followups-open", {
@@ -363,7 +470,8 @@ function ConnectedWorkflowPanel({
                   {run.stage === "experience" && run.experience ? (
                     <ExperienceForm
                       key={run.task.taskId}
-                      run={run}
+                      record={run.experience}
+                      onDirtyChange={onDirtyChange}
                       onSaved={refresh}
                     />
                   ) : (
@@ -425,7 +533,9 @@ function ConnectedWorkflowPanel({
               )}
               {run.status !== "cancelled" && (
                 <button
-                  disabled={busy || run.execution?.status === "running"}
+                  disabled={
+                    busy || formDirty || run.execution?.status === "running"
+                  }
                   onClick={() =>
                     void perform(() =>
                       request("/restart", { runId: run.runId }),

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardBridge } from "../shared/contracts";
 import type { WorkbenchBridge } from "../shared/workbench";
 import { DEVELOPMENT_MODE_ARGUMENT } from "./development-mode";
+import { DEV_BUILD_ARGUMENT } from "./build-identity";
 const invoke = (name: string, ...args: unknown[]) =>
   ipcRenderer.invoke(`reels:${name}`, ...args);
 const subscribe = (name: string, callback: (value: any) => void) => {
@@ -31,6 +32,7 @@ const bridge: DashboardBridge = {
   executionLogs: { list: () => invoke("executionLogs:list") },
   workflow: {
     request: (action, input) => invoke("workflow:request", action, input),
+    hostStatus: () => invoke("workflow:hostStatus"),
     onOpen: (callback) => {
       let active = true;
       let delivered = 0;
@@ -45,7 +47,7 @@ const bridge: DashboardBridge = {
       return () => { active = false; unsubscribe(); };
     },
   },
-  blog: { openCanonical: () => invoke("blog:openCanonical"), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
+  blog: { canonicalProjects: () => invoke("blog:canonicalProjects"), openCanonical: id => invoke("blog:openCanonical", id), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
   analysis: {
     mosaicSample: (projectId, sampleId) => invoke("analysis:mosaicSample", projectId, sampleId),
     mosaicExport: (input) => invoke("analysis:mosaicExport", input),
@@ -72,6 +74,7 @@ const bridge: DashboardBridge = {
     open: () => invoke("mobileBriefing:open"),
   },
   mode: process.argv.includes("--reels-demo") ? "demo" : "desktop",
+  devBuild: process.argv.includes(DEV_BUILD_ARGUMENT),
   contentMedia: {
     list: (id, folder, offset) =>
       invoke("contentMedia:list", id, folder, offset),

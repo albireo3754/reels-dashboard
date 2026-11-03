@@ -4,6 +4,7 @@ import type {Project} from '../../../shared/contracts';
 import type {ContentMediaBridge,ContentMediaItem} from '../../../shared/content-media';
 import './blog.css';
 import {BlogReferences} from './BlogReferences';
+import {BlogProjects} from './BlogProjects';
 import {importSpec} from './import-spec';
 
 function Rich({text,spans=[]}:{text:string;spans?:BlogSpan[]}) {
@@ -37,7 +38,7 @@ function Photo({api,projectId,path,alt}:{api:ContentMediaBridge;projectId:string
   return error?<p>연결된 사진을 읽지 못했어요.</p>:url?<img src={url} alt={alt}/>:<p>사진 불러오는 중…</p>;
 }
 export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[]}) {
-  const [mode,setMode]=useState<'draft'|'reference'>('draft');
+  const [mode,setMode]=useState<'projects'|'draft'|'reference'>('projects');
   const [sourceTools,setSourceTools]=useState(true);
   const [projectId,setProjectId]=useState(''); const project=projects.find(p=>p.id===projectId);
   const [draft,setDraft]=useState<BlogDraft>(); const [dirty,setDirty]=useState(false); const [busy,setBusy]=useState(false);
@@ -52,7 +53,7 @@ export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:Conte
   const list=async(directory:string,offset=0)=>{if(!projectId || !media)return;try{const page=await media.list(projectId,directory||undefined,offset);setItems(offset?old=>[...old,...page.items]:page.items);setNext(page.nextOffset);}catch(e){setError(String(e));}};
   if(!api || !media)return <section className="blog-workspace"><p>블로그 작업은 데스크톱 앱에서 사용할 수 있어요.</p></section>;
   return <section className="blog-workspace" aria-label="블로그 작업">
-    <h2>블로그 작업</h2><div className="blog-reference-toolbar"><button disabled={busy||!api.openCanonical} onClick={async()=>{setBusy(true);setError('');try{await api.openCanonical?.();}catch(e){setError(String(e));}finally{setBusy(false);}}}>정본 스마트 에디터 열기</button><button aria-pressed={mode==='draft'} onClick={()=>setMode('draft')}>원고·배치</button><button aria-pressed={mode==='reference'} onClick={()=>setMode('reference')}>레퍼런스 추출·탐색</button></div><div hidden={mode!=='reference'}><BlogReferences api={api}/></div><div hidden={mode!=='draft'}><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
+    <h2>블로그 작업</h2><div className="blog-reference-toolbar"><button aria-pressed={mode==='projects'} onClick={()=>setMode('projects')}>프로젝트</button><button aria-pressed={mode==='draft'} onClick={()=>setMode('draft')}>원고·배치</button><button aria-pressed={mode==='reference'} onClick={()=>setMode('reference')}>레퍼런스 추출·탐색</button></div><div hidden={mode!=='projects'}><BlogProjects api={api}/></div><div hidden={mode!=='reference'}><BlogReferences api={api}/></div><div hidden={mode!=='draft'}><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
     <label>프로젝트 <select aria-label="블로그 프로젝트" value={projectId} disabled={busy} onChange={e=>void switchProject(e.target.value)}><option value="">프로젝트 선택</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
     {project && draft && <>
       <details className="blog-source-tools" open={sourceTools} onToggle={e=>setSourceTools(e.currentTarget.open)}><summary>원고·사진 가져오기 및 블록 배치</summary><div className="blog-columns"><div>

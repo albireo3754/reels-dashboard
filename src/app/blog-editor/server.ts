@@ -3,6 +3,7 @@ import {MarkupReviewWorker} from "./review-worker";
 import { AnnotationStore } from "./annotations";
 import { MarkupStore } from "./markup-store";
 import {proxyWorkflow} from "./workflow-proxy";
+import {handleSuggest,type SuggestCall} from "./inline-suggest";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -12,12 +13,19 @@ export async function startCanonicalEditor(
   config: EditorConfig,
   webRoot = path.resolve("dist"),
   capture?: (url:string,bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>,
+  nativeClipboard?: (text:string)=>void | Promise<void>,
+  deps: {suggest?: SuggestCall} = {},
 ) {
   const store = config.format === "markup" ? new MarkupStore(config,capture?((ids,dir,rev)=>capture("http://127.0.0.1:"+(server.address() as {port:number}).port+"/api/blog/frame",ids,dir,rev)):undefined) : new CanonicalStore(config);
   await store.load();
   const annotations = config.format === "markup" ? new AnnotationStore(config.canon) : undefined;
   const worker = config.format === "markup" ? new MarkupReviewWorker(config) : undefined;
+  let closing = false;
+  const active = new Set<import("node:http").ServerResponse>();
   const server = createServer(async (req, res) => {
+    active.add(res);
+    res.once("close", () => active.delete(res));
+    if (closing) res.shouldKeepAlive = false;
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     const json = (code: number, value: unknown) => {
@@ -50,8 +58,25 @@ export async function startCanonicalEditor(
         }
         const v = JSON.parse(body);
         if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.update(v));
-        if (u.pathname === "/api/blog/save")
-          return json(200, await store.save(v));
+        if (u.pathname === "/api/blog/copy-sticker-plan" && nativeClipboard) {
+          if (typeof v.text !== "string" || !v.text.trim() || v.text.length > 20000) throw new Error("잘못된 배치 메모");
+          await nativeClipboard(v.text);
+          return json(200, {ok:true});
+        }
+        if (u.pathname === "/api/blog/save") {
+          const result=await store.save(v);
+          return json(200, {...result,document:{...result.document,...(nativeClipboard?{nativeClipboard:true}:{})}});
+        }
+        if (u.pathname === "/api/blog/suggest") {
+          // Synchronous, read-only; abort the engine call when the editor cancels.
+          const controller = new AbortController();
+          res.once("close", () => {
+            if (!res.writableFinished) controller.abort();
+          });
+          const result = await handleSuggest(store instanceof MarkupStore ? store : undefined, v, controller.signal, deps.suggest);
+          if (res.destroyed) return;
+          return json(result.status, result.body);
+        }
         if (u.pathname === "/api/blog/review") {
           const request=await store.request(v);void worker?.tick();
           return json(200, request);
@@ -64,7 +89,7 @@ export async function startCanonicalEditor(
       if (u.pathname === "/api/blog/review-status" && worker)
         return json(200,{requests:await worker.status(),reviews:(await store.load()).reviews});
       if (u.pathname === "/api/blog/document")
-        return json(200, await store.load());
+        return json(200, {...await store.load(),...(nativeClipboard?{nativeClipboard:true}:{})});
       if (u.pathname === "/api/blog/frame") {
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
@@ -142,9 +167,21 @@ export async function startCanonicalEditor(
     url: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
     close: async () => {
       await worker?.close();
-      return new Promise<void>((resolve, reject) =>
-        server.close((e) => (e ? reject(e) : resolve())),
-      );
+      // A page that keeps polling (review-status every 1.5s) reuses its keep-alive socket
+      // forever, so server.close() alone may never finish. Answer in-flight requests with
+      // "Connection: close", drop idle sockets, and force the rest after a short grace period.
+      closing = true;
+      for (const res of active) if (!res.headersSent) res.shouldKeepAlive = false;
+      return new Promise<void>((resolve, reject) => {
+        const force = setTimeout(() => server.closeAllConnections(), 2000);
+        force.unref();
+        server.close((e) => {
+          clearTimeout(force);
+          if (e) reject(e);
+          else resolve();
+        });
+        server.closeIdleConnections();
+      });
     },
   };
 }

@@ -1,9 +1,16 @@
+import { openFormInput } from "../../shared/input-forms";
+import { callAgent } from "../../shared/lib/agent-socket";
+import os from "node:os";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { WorkflowRuntime } from "./runtime";
 import { CodexExecutor, type SdkFactory } from "./codex-executor";
-import { sdkJobIdInput } from "../../shared/workflow";
+import {
+  sdkJobIdInput,
+  workflowAction,
+  WORKFLOW_PROTOCOL_VERSION,
+} from "../../shared/workflow";
 import { configureObservation } from "../observability/configure";
 
 export async function startWorkflowServer(options: {
@@ -12,8 +19,16 @@ export async function startWorkflowServer(options: {
   webRoot?: string;
   sdkFactory?: SdkFactory;
   sdkEnv?: NodeJS.ProcessEnv;
+  openForm?: (formId: string) => Promise<unknown>;
+  /** True when hosted inside the desktop app instead of `npm run start:server`. */
+  embedded?: boolean;
 }) {
   const runtime = await WorkflowRuntime.open(options.root);
+  // Storage identity for the desktop handshake: a client shares this server only
+  // when its own data dir resolves to the same path.
+  const dataRoot = await realpath(options.root).catch(() =>
+    path.resolve(options.root),
+  );
   const telemetry = await configureObservation(
     options.sdkEnv ?? process.env,
   ).catch(async (error) => {
@@ -60,6 +75,15 @@ export async function startWorkflowServer(options: {
         return json(200, {
           ...executor.capabilities(),
           observability: { version: 1, ...telemetry.configuration },
+          // Clients compare protocol + actions to detect an outdated server, and the
+          // data root to avoid sharing a server that uses another data dir.
+          server: {
+            protocol: WORKFLOW_PROTOCOL_VERSION,
+            actions: workflowAction.options,
+            root: dataRoot,
+            pid: process.pid,
+            embedded: options.embedded ?? false,
+          },
         });
       if (url.pathname === "/api/workflows/job" && req.method === "GET") {
         const { jobId } = sdkJobIdInput.parse({
@@ -83,6 +107,49 @@ export async function startWorkflowServer(options: {
         }
         const input = JSON.parse(body);
         switch (url.pathname) {
+          case "/api/workflows/forms-list":
+            return json(200, runtime.listForms(input));
+          case "/api/workflows/form-create":
+            return json(200, await runtime.createForm(input));
+          case "/api/workflows/form-get":
+            return json(200, runtime.getForm(input));
+          case "/api/workflows/form-save":
+            return json(200, await runtime.saveForm(input));
+          case "/api/workflows/form-results":
+            return json(200, runtime.formResults(input));
+          case "/api/workflows/form-apply":
+            return json(200, await runtime.applyForm(input));
+          case "/api/workflows/form-wait":
+            return json(200, await runtime.waitForm(input));
+          case "/api/workflows/form-artifact":
+            return json(200, await runtime.formArtifact(input));
+          case "/api/workflows/form-media":
+            return json(200, await runtime.formMedia(input));
+          case "/api/workflows/form-sync":
+            return json(200, await runtime.syncForm(input));
+          case "/api/workflows/form-open": {
+            const request = openFormInput.parse(input);
+            runtime.getForm({ formId: request.formId });
+            if (request.surface === "desktop")
+              await (
+                options.openForm ??
+                ((id) =>
+                  callAgent(
+                    process.env.REELS_USER_DATA ??
+                      path.join(
+                        os.homedir(),
+                        "Library/Application Support/Reels Dashboard",
+                      ),
+                    "reels_open_input_form",
+                    { formId: id },
+                  ))
+              )(request.formId);
+            return json(200, {
+              formId: request.formId,
+              url: `http://${host}/?workflow=1&form=${encodeURIComponent(request.formId)}`,
+              opened: request.surface === "desktop",
+            });
+          }
           case "/api/workflows/create":
             return json(200, await runtime.create(input));
           case "/api/workflows/followups-open":
@@ -101,6 +168,23 @@ export async function startWorkflowServer(options: {
             return json(200, await executor.reviewMarkup(input));
           case "/api/workflows/review-bundles":
             return json(200, await executor.reviewBundles(input));
+          case "/api/workflows/suggest-inline": {
+            // Synchronous and transient: abort the SDK call when the caller goes away.
+            const controller = new AbortController();
+            res.once("close", () => {
+              if (!res.writableFinished)
+                controller.abort(new Error("Client disconnected"));
+            });
+            try {
+              return json(
+                200,
+                await executor.suggestInline(input, controller.signal),
+              );
+            } catch (error) {
+              if (res.destroyed) return;
+              throw error;
+            }
+          }
           case "/api/workflows/stop":
             return json(
               200,
@@ -154,7 +238,10 @@ export async function startWorkflowServer(options: {
   const address = server.address() as { port: number };
   return {
     url: `http://127.0.0.1:${address.port}`,
+    /** SDK jobs and inline suggestions that closing this server would interrupt. */
+    runningJobs: () => executor.running,
     close: async () => {
+      runtime.stopFormWaits();
       await executor.close();
       await telemetry.close();
       await new Promise<void>((resolve, reject) =>

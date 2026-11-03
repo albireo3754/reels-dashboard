@@ -1,3 +1,4 @@
+import { replaceStickers, stickerPlan } from "./blog-stickers";
 import { parseDocument } from "yaml";
 /**
  * 블로그 리뷰 마크업 (blog-markup v1)
@@ -98,7 +99,7 @@ export const DEFAULT_PALETTE: readonly PaletteEntry[] = [
 
 export type ComponentTag =
   | "Photo" | "Collage" | "Heading" | "Title" | "PriceBox" | "VisitCard" | "Info" | "Source"
-  | "Divider" | "Map" | "QuestionCard" | "Tags";
+  | "Divider" | "Map" | "QuestionCard" | "Tags" | "Sticker";
 
 export interface ComponentSpec {
   /** 대응하는 SmartEditor 컴포넌트(se-* 클래스). */
@@ -114,6 +115,7 @@ export interface ComponentSpec {
 }
 
 export const COMPONENTS: Record<ComponentTag, ComponentSpec> = {
+  Sticker: { smartEditor: "se-sticker (기본 스티커에서 직접 선택)", preview: "StickerSlot (자리 표시)", draft: null, form: "self", attrs: ["id", "preset", "note?"], example: '<Sticker id="s1" preset="yum" note="기본 · 먹고 만족하는 표정"/>' },
   Photo: { smartEditor: "se-image", preview: "PhotoBlock", draft: "image", form: "self", attrs: ["file", "alt", "ratio?", "pair?"], example: '<Photo file="grill.jpg" alt="그릴에서 굽는 모습"/>' },
   Collage: { smartEditor: "se-imageGroup se-l-collage", preview: "PhotoCollage4", draft: "image (합성 한 장, 개별 사진 정보 손실)", form: "self", attrs: ["layout", "files", "alts?"], example: '<Collage layout="2x2" files="a.jpg · b.jpg · c.jpg · d.jpg"/>' },
   Heading: { smartEditor: "se-quotation se-l-quotation_line", preview: "SectionHeading", draft: "text role=heading", form: "text", attrs: [], example: "<Heading>디저트</Heading>" },
@@ -497,6 +499,8 @@ function paragraphs(doc: MarkupDoc): Located[] {
 export function validate(doc: MarkupDoc, opts: ValidateOptions = {}): MarkupIssue[] {
   const { bodyFontHasBold = false, phoneLineChars = PHONE_LINE_CHARS, bodyPx = 16 } = opts;
   const issues: MarkupIssue[] = [];
+  try { replaceStickers(structuredClone(doc), stickerPlan(doc)); }
+  catch (error) { issues.push({ level: "error", where: "Sticker", message: String(error) }); }
   const ids = new Set<string>();
   for (const b of doc.bundles) {
     if (ids.has(b.id)) issues.push({ level: "error", where: b.id, message: "묶음 id 중복" });

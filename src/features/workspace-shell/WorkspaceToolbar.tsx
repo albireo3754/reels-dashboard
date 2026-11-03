@@ -15,6 +15,7 @@ export function WorkspaceToolbar({
   onTerminal,
   settingsActive,
   desktop,
+  devBuild,
   inspecting,
   onInspect,
 }: {
@@ -28,6 +29,7 @@ export function WorkspaceToolbar({
   onTerminal?: () => void;
   settingsActive: boolean;
   desktop: boolean;
+  devBuild?: boolean;
   inspecting?: boolean;
   onInspect?: () => void;
 }) {
@@ -40,6 +42,10 @@ export function WorkspaceToolbar({
       if (panel === "search") dialog.current?.querySelector("input")?.focus();
     } else dialog.current?.close();
   }, [panel]);
+  useEffect(() => {
+    if (devBuild && !document.title.endsWith(" Dev"))
+      document.title = `${document.title} Dev`;
+  }, [devBuild]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.isComposing || event.repeat || event.altKey) return;
@@ -80,6 +86,14 @@ export function WorkspaceToolbar({
         aria-label="작업공간 도구"
       >
         <div className="shell-tools-left">
+          {devBuild && (
+            <span
+              className="dev-build-badge"
+              title="소스에서 실행한 개발 빌드예요. 설치된 앱과 별개로 동작해요."
+            >
+              DEV
+            </span>
+          )}
           <button
             className="shell-icon"
             aria-label="뒤로"

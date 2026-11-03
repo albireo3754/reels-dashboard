@@ -13,9 +13,24 @@ export async function launchApp(
   envOverrides: Record<string, string | undefined> = {},
 ): Promise<ElectronApplication> {
   const env: Record<string, string> = {};
+  // The app embeds a workflow server unless REELS_WORKFLOW_URL is set. Never let a
+  // parent shell's workflow settings point QA at the user's real server (4318) or data.
+  const workflowKeys = [
+    "REELS_WORKFLOW_URL",
+    "REELS_WORKFLOW_PORT",
+    "REELS_WORKFLOW_DATA",
+  ];
   for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === "string" && key !== "ELECTRON_RUN_AS_NODE")
+    if (
+      typeof value === "string" &&
+      key !== "ELECTRON_RUN_AS_NODE" &&
+      !workflowKeys.includes(key)
+    )
       env[key] = value;
+  }
+  if (envOverrides.REELS_WORKFLOW_URL === undefined) {
+    env.REELS_WORKFLOW_PORT = "0";
+    env.REELS_WORKFLOW_DATA = join(profile, "workflow-data");
   }
   env.REELS_BACKGROUND_QA =
     process.env.REELS_ELECTRON_HEADED === "1" ? "0" : "1";

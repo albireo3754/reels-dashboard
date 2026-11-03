@@ -1,9 +1,11 @@
+import { StickerPlanner } from "./StickerPlanner";
+import { stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
 import {findingApplicability,replaceInlineText} from "../../../shared/review-applicability";
 import {UserAnnotations,type AnnotationTarget} from "./UserAnnotations";
 import { FormattingToolbar, type SelectionFormat } from "./FormattingToolbar";
-import { FormatComparison } from "./FormatComparison";
 import { CanonicalSdkReview } from "./CanonicalSdkReview";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {planInlineProposals,proposalSignature,type InlineProposal} from "../../../shared/inline-review";
 import {
   inlineHtml,
   inlineSource,
@@ -14,7 +16,7 @@ import {
   type InlineRun,
 } from "../../../shared/canonical-blog";
 import "./canonical-editor.css";
-async function api(action: string, input?: unknown) {
+async function api(action: string, input?: unknown, signal?: AbortSignal) {
   const r = await fetch(
     `/api/blog/${action}`,
     input
@@ -22,17 +24,44 @@ async function api(action: string, input?: unknown) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
+          signal,
         }
-      : undefined,
+      : { signal },
   );
   const value = await r.json();
   if (!r.ok) throw new Error(value.error ?? "작업에 실패했어요.");
   return value;
 }
+const SUGGEST_STALE="본문이 바뀌어 추천을 버렸어요. 다시 요청해주세요.";
+const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
+const clip=(text:string,limit:number)=>text.length>limit?text.slice(0,limit)+"…":text;
+/** Whether the frame shows a card for this proposal next to its target. */
+function hasBodyCard(item:InlineProposal,doc:CanonicalDocument){
+  if(item.state==="applied"||item.state==="decided")return false;
+  return item.kind==="note"?doc.bundles.some(b=>b.id===item.bundleId):!!item.paragraphId;
+}
+function proposalChip(item:InlineProposal):{label:string;tone:string}{
+  if(item.state==="decided")return item.decision==="현재 유지"?{label:"현재 유지",tone:"kept"}:{label:item.decision??"적용 · 저장 전",tone:"applied"};
+  if(item.state==="applied")return {label:"반영됨",tone:"applied"};
+  if(item.kind==="note")return {label:"의견",tone:"note"};
+  if(item.canApply)return {label:"적용 가능",tone:"available"};
+  return {label:"위치 확인 불가",tone:"blocked"};
+}
+function proposalSummary(item:InlineProposal){
+  if(item.kind==="text")return `${clip(item.before??"",40)} → ${item.after?clip(item.after,40):"(삭제)"}`;
+  if(item.kind==="format")return `“${clip(item.phrase??"",40)}” 서식`;
+  return clip(item.observation.split("\n")[0]??"",80);
+}
 export function CanonicalBlogEditor() {
   const [annotationTarget,setAnnotationTarget]=useState<AnnotationTarget>();
   const [doc, setDoc] = useState<CanonicalDocument>();
+  const [stickers,setStickers]=useState<StickerPlacement[]>([]);
+  const [stickerOpen,setStickerOpen]=useState(false);
+  const [stickerTarget,setStickerTarget]=useState("");
+  const stickersRef=useRef(stickers);stickersRef.current=stickers;
   const [edits, setEdits] = useState<Record<string, string>>({});
+  // Bundles removed on this screen; they leave the source only when saved.
+  const [deleted, setDeleted] = useState<string[]>([]);
   const [invalid, setInvalid] = useState<Record<string, string>>({});
   const [typography, setTypography] = useState<
     Record<string, { fontFamily: string; fontSize: number }>
@@ -122,12 +151,22 @@ export function CanonicalBlogEditor() {
     };
   }, [narrow, reviewOpen]);
   const frame = useRef<HTMLIFrameElement>(null);
+  const stickersDirty=!!doc && JSON.stringify(stickers)!==JSON.stringify(doc.stickers??[]);
   const dirty =
+    stickersDirty ||
+    deleted.length > 0 ||
     Object.keys(edits).length > 0 ||
     Object.keys(invalid).length > 0 ||
     (!!doc && title !== doc.title);
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  const docRef = useRef(doc);
+  docRef.current = doc;
+  // Manual inline suggestion ("✦ 추천 받기"): one request at a time, cancellable.
+  // The frame owns the caret, spinner and ghost text; nothing reaches edits until
+  // the writer accepts (an ordinary insert that arrives as a "change").
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestRef = useRef<{ requestId: string; token: string; controller: AbortController } | null>(null);
   useEffect(() => {
     frame.current?.contentWindow?.postMessage(
       { editor: true, type: "lock", locked: busy },
@@ -139,16 +178,48 @@ export function CanonicalBlogEditor() {
       { editor: true, ...data },
       location.origin,
     );
+  const sendStickers=()=>send({type:"stickers",items:stickersRef.current.map(s=>({...s,html:stickerHtml(s)}))});
+  useEffect(()=>{if(doc?.format==="markup")sendStickers();},[stickers,doc?.frameVersion]);
+  function changeStickers(next:StickerPlacement[]){
+    setChanged(old=>[...new Set([...old,...stickers.map(s=>s.bundleId),...next.map(s=>s.bundleId)])]);
+    setStickers(next);setQueued([]);
+  }
+  const editsRef = useRef(edits);
+  editsRef.current = edits;
+  // Review-only descriptors for every stored review. They are recomputed after
+  // each edit/apply, so the rest of a paragraph's proposals are re-validated
+  // against the newest text. They never enter edits, the saved body or outputs.
+  const proposals = useMemo(
+    () =>
+      doc
+        ? planInlineProposals({
+            doc,
+            edits,
+            decisions,
+            changed,
+            baseSizes: Object.fromEntries(
+              Object.entries(typography).map(([id, t]) => [id, t.fontSize]),
+            ),
+          }).filter((item) => !deleted.includes(item.bundleId))
+        : [],
+    [doc, edits, decisions, changed, typography, deleted],
+  );
+  const proposalsRef = useRef(proposals);
+  proposalsRef.current = proposals;
+  const handledRef = useRef(new Set<string>());
+  useEffect(() => {
+    send({ type: "proposals", items: proposals, locked: busy });
+  }, [proposals, busy]);
   async function load() {
     setBusy(true);
     setError("");
     try {
       const d = await api("document");
-      setDoc(d);
+      setDoc(d);setStickers(d.stickers??[]);setStickerTarget("");
       setFrameEpoch(v=>v+1);
       setSaveState("idle");setSavedForReview(false);setNotice("");
       setTitle(d.title);
-      setEdits({});
+      setEdits({});setDeleted([]);
       setSelectionFormat(undefined);
       setSelected((old) =>
         d.bundles.some((b: any) => b.id === old)
@@ -157,6 +228,7 @@ export function CanonicalBlogEditor() {
       );
       setChanged([]);
       setDecisions({});
+      handledRef.current = new Set();
       setQueued([]);
       setInvalid({});
     } catch (e) {
@@ -192,11 +264,16 @@ export function CanonicalBlogEditor() {
         revision: doc.revision,
         edits: Object.entries(edits).map(([id, source]) => ({ id, source })),
         ...(title !== doc.title ? { title } : {}),
+        ...(stickersDirty ? {stickers} : {}),
+        ...(deleted.length ? { deleteBundles: deleted } : {}),
       });
-      setDoc(result.document);
+      setDoc(result.document);setStickers(result.document.stickers??[]);
       setFrameEpoch(v=>v+1);setSaveState("idle");setSavedForReview(reason==="review");
       setTitle(result.document.title);
-      setEdits({});
+      setEdits({});setDeleted([]);
+      setChanged((old) => old.filter((id) => result.document.bundles.some((b: { id: string }) => b.id === id)));
+      setSelected((old) => result.document.bundles.some((b: { id: string }) => b.id === old) ? old : (result.document.bundles[0]?.id ?? ""));
+      handledRef.current = new Set();
       setSelectionFormat(undefined);
       setNotice(
         "정본과 미리보기를 저장했어요. 저장 전 사본도 보관했어요.",
@@ -209,9 +286,87 @@ export function CanonicalBlogEditor() {
       setBusy(false);
     }
   }
-  async function request(scope: "selected" | "changed") {
+  function cancelSuggest(message?: string) {
+    const s = suggestRef.current;
+    if (!s) return;
+    suggestRef.current = null;
+    s.controller.abort();
+    setSuggesting(false);
+    send({ type: "suggest-cancel", token: s.token });
+    if (message) setNotice(message);
+  }
+  async function runSuggest(token: string, paragraphId: unknown, runs: unknown, offset: unknown) {
+    const d = docRef.current;
+    if (!d) return;
+    const fail = (message: string) => {
+      send({ type: "suggest-result", token, error: true });
+      setError(message);
+    };
+    if (d.format !== "markup") return fail("이 형식에서는 추천을 지원하지 않아요.");
+    if (busyRef.current) return fail("저장이나 검토 준비가 끝난 뒤 다시 요청해주세요.");
+    if (typeof paragraphId !== "string" || !d.paragraphs.some((p) => p.id === paragraphId) || !Array.isArray(runs) || typeof offset !== "number" || !Number.isInteger(offset) || offset < 0)
+      return fail("추천할 문단을 찾지 못했어요. 본문 문단을 클릭한 뒤 다시 요청해주세요.");
+    let source: string;
+    try {
+      source = inlineSource(runs as InlineRun[]);
+      readInline(source);
+    } catch (e) {
+      return fail("이 문단의 입력 오류를 고친 뒤 추천을 요청해주세요. " + errorText(e));
+    }
+    suggestRef.current?.controller.abort();
+    const controller = new AbortController(),
+      requestId = crypto.randomUUID(),
+      revision = d.revision;
+    suggestRef.current = { requestId, token, controller };
+    setSuggesting(true);
+    setError("");
+    setNotice("커서 위치에 이어 쓸 문장을 추천받는 중이에요. Esc로 취소할 수 있어요.");
+    try {
+      const result = await api("suggest", { requestId, revision, paragraphId, source, offset }, controller.signal);
+      if (suggestRef.current?.requestId !== requestId) return;
+      const suggestions = (Array.isArray(result?.suggestions) ? result.suggestions : [])
+        .map((s: unknown) => (typeof s === "string" ? s : (s as { text?: unknown } | null)?.text))
+        .filter((s: unknown): s is string => typeof s === "string" && !!s.trim())
+        .slice(0, 3);
+      // A save/reload in the meantime means the caret context is gone; the frame
+      // re-checks the paragraph text, caret and focus itself.
+      const stale =
+        docRef.current?.revision !== revision ||
+        (typeof result?.paragraphId === "string" && result.paragraphId !== paragraphId) ||
+        (typeof result?.offset === "number" && result.offset !== offset);
+      send({ type: "suggest-result", token, suggestions, stale });
+    } catch (e) {
+      if (controller.signal.aborted || suggestRef.current?.requestId !== requestId) return;
+      send({ type: "suggest-result", token, error: true });
+      setError("추천을 받지 못했어요. " + errorText(e));
+    } finally {
+      if (suggestRef.current?.requestId === requestId) {
+        suggestRef.current = null;
+        setSuggesting(false);
+      }
+    }
+  }
+  const runSuggestRef = useRef(runSuggest);
+  runSuggestRef.current = runSuggest;
+  const cancelSuggestRef = useRef(cancelSuggest);
+  cancelSuggestRef.current = cancelSuggest;
+  useEffect(() => {
+    // Saving, reloading or reviewing replaces the frame: drop a pending request.
+    if (busy) cancelSuggestRef.current();
+  }, [busy]);
+  useEffect(() => {
+    if (!suggesting) return;
+    const key = (e: KeyboardEvent) => {
+      // Esc that ends an IME composition (e.g. Korean in a host field) is not a cancel.
+      if (e.key === "Escape" && !e.defaultPrevented && !e.isComposing && e.keyCode !== 229) cancelSuggestRef.current("추천 요청을 취소했어요.");
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [suggesting]);
+  useEffect(() => () => suggestRef.current?.controller.abort(), []);
+  async function request(scope: "selected" | "changed", only?: string[]) {
     if (!doc || busy) return;
-    const ids = scope === "selected" ? [selected] : changed;
+    const ids = (only ?? (scope === "selected" ? [selected] : changed)).filter((id) => !deleted.includes(id));
     if (!ids.length) return;
     const savedBeforeReview=dirty;
     const current = savedBeforeReview ? await save("review") : doc;
@@ -243,6 +398,54 @@ export function CanonicalBlogEditor() {
   },[doc?.format]);
   const requestRef = useRef(request);
   requestRef.current = request;
+  function deleteBundle(id: string) {
+    if (!doc || busy) return;
+    if (doc.format !== "markup") return setError("이 형식에서는 묶음 삭제를 지원하지 않아요.");
+    const live = doc.bundles.filter((b) => !deleted.includes(b.id));
+    const i = live.findIndex((b) => b.id === id);
+    if (i < 0) return;
+    if (live.length <= 1) return setError("마지막 묶음은 지울 수 없어요.");
+    const next = [...deleted, id];
+    setDeleted(next);
+    send({ type: "hide-bundles", ids: next });
+    // The neighbours now meet each other, so their transition needs review.
+    setChanged((old) => [...new Set([...old, ...[live[i - 1], live[i + 1]].filter(Boolean).map((b) => b!.id)])].filter((x) => !next.includes(x)));
+    setQueued([]);
+    const neighbour = live[i + 1] ?? live[i - 1];
+    if (selected === id && neighbour) setSelected(neighbour.id);
+    setError("");
+    setNotice(`‘${live[i].name}’ 묶음을 지웠어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장하거나 삭제 취소를 눌러주세요.`);
+  }
+  function undoDelete() {
+    const next = deleted.slice(0, -1);
+    const restored = deleted.at(-1);
+    setDeleted(next);
+    send({ type: "hide-bundles", ids: next });
+    if (restored) setSelected(restored);
+    setNotice("묶음 삭제를 취소했어요.");
+  }
+  const deleteRef = useRef(deleteBundle);
+  deleteRef.current = deleteBundle;
+  const deletedRef = useRef(deleted);
+  deletedRef.current = deleted;
+  function saveShortcut() {
+    if (busyRef.current) return;
+    if (Object.keys(invalid).length) return setError("입력 오류가 있는 문단을 고친 뒤 저장해주세요.");
+    if (!dirty) return setNotice("저장할 변경이 없어요.");
+    void save();
+  }
+  const saveShortcutRef = useRef(saveShortcut);
+  saveShortcutRef.current = saveShortcut;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === "KeyS" && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        saveShortcutRef.current();
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
   useEffect(() => {
     const listener = (e: MessageEvent) => {
       if (
@@ -258,11 +461,44 @@ export function CanonicalBlogEditor() {
         setAnnotationTarget({id:m.id,text:m.text,context:m.context,checked:!!m.checked,requestId:crypto.randomUUID()});
         setReviewOpen(true);
       }
+      if(m.type==="sticker-anchor" && doc.stickerAnchors?.some(a=>a.bundleId===m.bundleId && a.before===m.before))setStickerTarget(stickerKey(m));
       if (m.type === "typography") setTypography(m.styles);
       if (m.type === "selection") setSelectionFormat(m.selection ?? undefined);
-      if (m.type === "ready") send({ type: "lock", locked: busyRef.current });
+      if (m.type === "ready") {
+        // A reloaded frame has no spinner or caret for an old request.
+        if (suggestRef.current) cancelSuggestRef.current();
+        if(doc.format==="markup")sendStickers();
+        send({ type: "hide-bundles", ids: deletedRef.current });
+        send({ type: "lock", locked: busyRef.current });
+        send({ type: "proposals", items: proposalsRef.current, locked: busyRef.current });
+      }
+      if (m.type === "proposal-action" && typeof m.id === "string" && (m.action === "apply" || m.action === "keep")) {
+        const item = proposalsRef.current.find((i) => i.id === m.id);
+        if (!item || busyRef.current || handledRef.current.has(item.id) || item.state === "decided") return;
+        const finding = doc.reviews.find((r) => r.bundleId === item.bundleId)?.findings.find((f) => f.id === item.findingId);
+        // The click refers to the proposal the frame displayed. If polling replaced
+        // the finding behind the same id meanwhile, refuse instead of applying
+        // (or hiding) content the user never saw.
+        if (!finding || typeof m.sig !== "string" || m.sig !== proposalSignature(finding) || m.sig !== item.sig) {
+          setError("제안 내용이 방금 바뀌었어요. 본문에 다시 표시된 제안을 확인한 뒤 선택해주세요.");
+          return;
+        }
+        if (m.action === "keep") {
+          // Keeping never touches the body; it only hides the proposal on this screen.
+          handledRef.current.add(item.id);
+          setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
+          return;
+        }
+        if (!item.canApply) {
+          setError(item.reason || "이 제안은 지금 적용할 수 없어요.");
+          return;
+        }
+        if (applyRef.current(finding, item.id)) handledRef.current.add(item.id);
+      }
       if (m.type === "height" && Number.isFinite(m.height))
         setHeight(Math.min(100000, Math.max(500, m.height)));
+      if (m.type === "save") saveShortcutRef.current();
+      if (m.type === "delete-bundle" && typeof m.bundleId === "string") deleteRef.current(m.bundleId);
       if (m.type === "select" && doc.bundles.some((b) => b.id === m.bundleId))
         setSelected(m.bundleId);
       if (m.type === "scroll" && Number.isFinite(m.top) && frame.current)
@@ -279,6 +515,33 @@ export function CanonicalBlogEditor() {
         });
       if (m.type === "review")
         void requestRef.current(m.scope === "changed" ? "changed" : "selected");
+      if (m.type === "review-bundle" && typeof m.bundleId === "string" && doc.bundles.some((b) => b.id === m.bundleId)) {
+        setSelected(m.bundleId);
+        void requestRef.current("selected", [m.bundleId]);
+      }
+      if (m.type === "reveal" && Number.isFinite(m.top) && Number.isFinite(m.bottom) && frame.current) {
+        // Scroll only when the target is outside the visible area below the sticky chrome.
+        const chrome = parseFloat(root.current?.style.getPropertyValue("--ce-chrome-height") ?? "") || 160;
+        const base = frame.current.getBoundingClientRect().top;
+        const top = base + m.top, bottom = base + m.bottom;
+        if (top < chrome + 8 || bottom > window.innerHeight - 8)
+          window.scrollTo({ top: window.scrollY + top - chrome - Math.max(24, (window.innerHeight - chrome) * 0.3), behavior: "smooth" });
+      }
+      if (m.type === "suggest" && typeof m.token === "string")
+        void runSuggestRef.current(m.token, m.id, m.runs, m.offset);
+      if (m.type === "suggest-cancel" && typeof m.token === "string" && suggestRef.current?.token === m.token) {
+        cancelSuggestRef.current(m.stale ? SUGGEST_STALE : m.notify ? "추천 요청을 취소했어요." : undefined);
+      }
+      if (m.type === "suggest-error" && typeof m.message === "string") {
+        setError("");
+        setNotice(m.message);
+      }
+      if (m.type === "suggest-done") {
+        if (m.outcome === "stale") setNotice(SUGGEST_STALE);
+        else if (m.outcome === "empty") setNotice("이 위치에 추천할 문장이 없어요.");
+        else if (m.outcome === "shown")
+          setNotice(`회색 추천${m.count > 1 ? ` ${m.count}개` : ""} · Tab 수락 · ⌘/Ctrl+→ 한 어절${m.count > 1 ? " · ⌥/Alt+] 다른 추천" : ""} · Esc 닫기. 수락 전에는 본문이 바뀌지 않아요.`);
+      }
       if (m.type === "change")
         try {
           if (!Array.isArray(m.runs)) return;
@@ -318,13 +581,15 @@ export function CanonicalBlogEditor() {
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
   }, [doc]);
-  function apply(f: CanonicalFinding) {
-    if (!doc || busy) return;
+  function apply(f: CanonicalFinding, key = f.id): boolean {
+    if (!doc || busy) return false;
     const p = f.proposal;
     const id = p?.tid ?? p?.entry?.id;
     const original = doc.paragraphs.find((t) => t.id === id);
-    if (!p || !original) return;
-    let source = edits[original.id] ?? original.source;
+    if (!p || !original) return false;
+    // editsRef is updated synchronously below so back-to-back applies in one
+    // paragraph re-validate against the newest text, not a stale render.
+    let source = editsRef.current[original.id] ?? original.source;
     try {
       if(doc.format==="markup"){const state=findingApplicability(f,source);if(!state.canApply)throw new Error(state.reason);}
       const runs = readInline(source),
@@ -348,15 +613,31 @@ export function CanonicalBlogEditor() {
           );
         source = replaceInlineText(source,start,start+p.before.length,p.after);
       } else throw new Error("이 제안은 본문에서 직접 수정해주세요.");
+      editsRef.current={...editsRef.current,[original.id]:source};
       setEdits(old=>({...old,[original.id]:source}));
       send({ type: "replace", id: original.id, html: inlineHtml(source) });
-      setDecisions((old) => ({ ...old, [f.id]: "적용 · 저장 전" }));
+      setDecisions((old) => ({ ...old, [key]: "적용 · 저장 전" }));
       setNotice("본문에 반영했어요. 아직 저장 전입니다. 정본 저장 또는 저장 후 검토를 눌러주세요.");
+      return true;
     } catch (e) {
       setError(String(e));
+      return false;
     }
   }
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
   const review = doc?.reviews.find((r) => r.bundleId === selected);
+  const reviewItems = proposals.filter((i) => i.bundleId === selected);
+  const reviewCounts = {
+    body: reviewItems.filter((i) => hasBodyCard(i, doc!)).length,
+    available: reviewItems.filter((i) => i.canApply).length,
+    check: reviewItems.filter((i) => !i.canApply && !["applied", "decided"].includes(i.state)).length,
+  };
+  function revealProposal(item: InlineProposal) {
+    if (narrow) setReviewOpen(false);
+    setSelected(item.bundleId);
+    send({ type: "reveal-proposal", id: item.id });
+  }
   const bundle = doc?.bundles.find((b) => b.id === selected);
   const format = (command: string, value?: string) =>
     send({ type: "format", command, value });
@@ -424,6 +705,25 @@ export function CanonicalBlogEditor() {
           onFormat={format}
         />
         <div className="ce-review-actions">
+          <button
+            className="ce-suggest"
+            aria-keyshortcuts="Alt+Backslash"
+            aria-busy={suggesting || undefined}
+            title={doc.format === "markup" ? "커서 위치에 이어 쓸 문장을 추천받아요 (⌥\\)" : "이 형식에서는 추천을 지원하지 않아요. 마크업 원고에서 사용할 수 있어요."}
+            disabled={doc.format !== "markup" || busy || suggesting}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => send({ type: "suggest-start" })}
+          >
+            {suggesting ? (
+              <>
+                <span className="ce-spin" aria-hidden="true" />
+                추천 중… (Esc 취소)
+              </>
+            ) : (
+              "✦ 추천 받기"
+            )}
+          </button>
+          {doc.format==="markup" && <button aria-expanded={stickerOpen} aria-controls="ce-sticker-planner" onClick={()=>setStickerOpen(!stickerOpen)}>스티커 ({stickers.length})</button>}
           <label>
             본문 폭{" "}
             <select
@@ -435,6 +735,15 @@ export function CanonicalBlogEditor() {
               <option value={900}>PC</option>
             </select>
           </label>
+          {doc.format==="markup" && <button
+            aria-keyshortcuts="Delete"
+            title="선택한 묶음을 지웁니다. 본문에서 묶음의 글 밖(사진·이름표)을 클릭한 뒤 Delete/Backspace로도 지울 수 있어요. 저장해야 정본에 반영됩니다."
+            disabled={busy || !bundle || doc.bundles.length - deleted.length <= 1}
+            onClick={() => deleteBundle(selected)}
+          >
+            묶음 삭제
+          </button>}
+          {deleted.length > 0 && <button disabled={busy} onClick={undoDelete}>삭제 취소 ({deleted.length})</button>}
           <button aria-label="이 묶음 검토" title={dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다"} disabled={busy} onClick={() => void request("selected")}>
             {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
           </button>
@@ -458,9 +767,10 @@ export function CanonicalBlogEditor() {
           <span role="alert">{error}</span>
         ) : (
           notice ||
-          "사진과 강조가 보이는 본문을 클릭해 바로 수정하세요. 검토는 버튼 또는 ⌘/Ctrl + Enter로 요청해요."
+          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · Tab 다음 제안·적용 · Esc 현재 유지 · Shift+Tab 이전 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
         )}
       </div>
+      {doc.format==="markup" && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})}/></div>}
       <button
         className="ce-outline-toggle"
         aria-expanded={outlineOpen}
@@ -482,10 +792,16 @@ export function CanonicalBlogEditor() {
           aria-label="정본 묶음"
         >
           <h2>글의 흐름</h2>
-          {doc.bundles.map((b, i) => (
+          {doc.bundles.filter((b) => !deleted.includes(b.id)).map((b, i) => (
             <button
               aria-pressed={b.id === selected}
               key={b.id}
+              onKeyDown={(e) => {
+                if ((e.key === "Delete" || e.key === "Backspace") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                  e.preventDefault();
+                  deleteBundle(b.id);
+                }
+              }}
               onClick={() => {
                 setSelected(b.id);
                 setOutlineOpen(false);
@@ -512,6 +828,7 @@ export function CanonicalBlogEditor() {
           <iframe
             ref={frame}
             title="정본 본문 편집"
+            scrolling="no"
             src={`/api/blog/frame?v=${doc.revision}&layout=${doc.frameVersion}&reload=${frameEpoch}`}
             style={{ width: `min(100%, ${width}px)`, height }}
           />
@@ -548,7 +865,7 @@ export function CanonicalBlogEditor() {
             {review?.generatedAt&&<p>{review.provider??"AI"} · {new Date(review.generatedAt).toLocaleString()}</p>}
           </>}
           <p className="ce-review-note">
-            검토 버튼으로 실행한 결과예요. 문장에 적용하려면 제안을 선택하세요.
+            제안은 본문의 해당 문장 바로 아래에 표시돼요. 본문에서 적용하거나 현재 유지를 고르세요.
           </p>
           {doc.format!=="markup" && queued.includes(selected) && (
             <p role="status">검토 요청됨 · 엔진 처리 대기</p>
@@ -574,91 +891,58 @@ export function CanonicalBlogEditor() {
                   {doc.format==="markup"?"검토 뒤 내용이 달라졌어요. 각 제안의 대상 구절을 따로 확인합니다.":"검토 당시와 문장이 달라요. 이전 제안의 적용은 잠겨 있어요."}
                 </p>
               )}
-              {review.findings
-                .filter(
-                  (f) =>
-                    !["withdrawn", "rejected", "obsolete"].includes(
-                      f.status ?? "",
-                    ),
-                )
-                .map((f) => {
-                  const targetId=f.proposal?.tid??f.proposal?.entry?.id;
-                  const availability=doc.format==="markup"?findingApplicability(f,edits[targetId??""]??doc.paragraphs.find(p=>p.id===targetId)?.source):undefined;
+              {reviewItems.length > 0 && (
+                <p className="ce-proposal-counts" role="status">
+                  본문 제안 {reviewCounts.body} · 적용 가능 {reviewCounts.available} · 확인 필요 {reviewCounts.check}
+                </p>
+              )}
+              <ul className="ce-proposal-list" aria-label="AI 제안 목록">
+                {reviewItems.map((item) => {
+                  const chip = proposalChip(item);
+                  const body = hasBodyCard(item, doc);
+                  const settled = item.state === "decided" || item.state === "applied";
                   return (
-                  <article key={f.id} className="ce-proposal">
-                    {availability ? (
-                      <p className={availability.canApply?"ce-review-note":"ce-warning"}>{availability.reason}</p>
-                    ) : f.fresh === false && <p className="ce-warning">문장 또는 서식·구성이 바뀐 이전 제안이에요.</p>}
-                    <small>
-                      {f.axis} · {f.severity}
-                    </small>
-
-                    {f.proposal?.before && <del>{f.proposal.before}</del>}
-                    {f.proposal?.after !== undefined && (
-                      <ins>{f.proposal.after}</ins>
-                    )}
-                    {f.proposal?.entry && (
-                      <FormatComparison
-                        finding={f}
-                        typography={typography[f.proposal.entry.id]}
-                        source={
-                          edits[f.proposal.entry.id] ??
-                          doc.paragraphs.find(
-                            (p) => p.id === f.proposal?.entry?.id,
-                          )?.source
-                        }
-                      />
-                    )}
-                    {!f.proposal?.entry && f.proposal?.before === undefined && (
-                      <p>{f.observation}</p>
-                    )}
-                    <div className="ce-proposal-actions">
-                      <button
-                        disabled={
-                          busy ||
-                          (availability ? !availability.canApply : (f.fresh === false || !review.freshText || changed.includes(selected))) ||
-                          !!decisions[f.id] ||
-                          !["text", "emphasis"].includes(
-                            f.proposal?.layer ?? "",
-                          )
-                        }
-                        onClick={() => apply(f)}
-                      >
-                        적용
-                      </button>
-                      <button
-                        disabled={busy || !!decisions[f.id]}
-                        onClick={() =>
-                          setDecisions((old) => ({
-                            ...old,
-                            [f.id]: "현재 유지",
-                          }))
-                        }
-                      >
-                        현재 유지
-                      </button>
-                      <button
-                        onClick={() => {
-                          setReviewOpen(false);
-                          send({
-                            type: "focus",
-                            id:
-                              f.proposal?.tid ??
-                              f.proposal?.entry?.id ??
-                              bundle?.paragraphIds[0],
-                          });
-                        }}
-                      >
-                        본문에서 보기
-                      </button>
-                    </div>
-                    {decisions[f.id] && <p>{decisions[f.id]}</p>}
-                    <details className="ce-proposal-evidence">
-                      <summary>제안 이유</summary>
-                      <p>{f.observation}</p>
-                    </details>
-                  </article>
-                );})}
+                    <li key={item.id} className="ce-proposal" data-state={item.state} data-proposal={item.id}>
+                      <div className="ce-proposal-head">
+                        <span className={`ce-chip is-${chip.tone}`}>{chip.label}</span>
+                        <small>{[item.severity, item.axis].filter(Boolean).join(" · ")}</small>
+                      </div>
+                      <p className="ce-proposal-line">{proposalSummary(item)}</p>
+                      {item.state !== "decided" && item.kind !== "note" && !item.canApply && (
+                        <p className="ce-warning ce-proposal-reason">{item.reason}</p>
+                      )}
+                      {(body || !settled) && (
+                        <div className="ce-proposal-actions">
+                          {body ? (
+                            <button onClick={() => revealProposal(item)}>본문에서 보기</button>
+                          ) : (
+                            <button
+                              disabled={busy}
+                              onClick={() => {
+                                handledRef.current.add(item.id);
+                                setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
+                              }}
+                            >
+                              현재 유지
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <details className="ce-proposal-evidence">
+                        <summary>제안 이유</summary>
+                        <p>{item.observation}</p>
+                        {item.kind !== "note" && <p>{item.reason}</p>}
+                        {item.kind === "text" && (
+                          <dl className="ce-proposal-full">
+                            <dt>원문</dt><dd>{item.before}</dd>
+                            <dt>제안</dt><dd>{item.after || "(삭제)"}</dd>
+                          </dl>
+                        )}
+                      </details>
+                    </li>
+                  );
+                })}
+              </ul>
             </>
           ) : (
             <p>저장된 검토가 없어요. 준비되면 이 묶음 검토를 눌러주세요.</p>

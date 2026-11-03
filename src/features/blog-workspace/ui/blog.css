@@ -1,4 +1,8 @@
 .blog-workspace {padding: 20px;}
+.blog-project-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;max-width:1100px;}
+.blog-project-card {border:1px solid var(--border,#ddd);border-radius:12px;padding:20px;min-width:0;}
+.blog-project-card h4 {font-size:18px;margin:12px 0;overflow-wrap:anywhere;}
+.blog-project-card>span,.blog-project-card>p {font-size:13px;opacity:.7;}
 .blog-workspace label {display:inline-flex;gap:8px;align-items:center;margin:8px;}
 .blog-workspace button {margin:4px;}
 .blog-columns {display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}

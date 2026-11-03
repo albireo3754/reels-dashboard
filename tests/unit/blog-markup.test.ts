@@ -108,7 +108,7 @@ test("잘못된 마크업은 행 번호와 함께 거부한다", () => {
     assert.throws(() => parse(src), (e: unknown) => e instanceof MarkupParseError && re.test(e.message));
   bad('<Bundle id="a" name="n">\n¶ P1\n⟦가⟧¹\n</Bundle>', /각주 없는 강조/);
   bad('<Bundle id="a" name="n">\n¶ P1\n가\n  ² 굵게\n</Bundle>', /본문에 없는 각주/);
-  bad('<Bundle id="a" name="n">\n<Sticker/>\n</Bundle>', /모르는 컴포넌트/);
+  bad('<Bundle id="a" name="n">\n<Unknown/>\n</Bundle>', /모르는 컴포넌트/);
   bad('<Bundle id="a" name="n">\n¶ P1\n가\n  ※ 메모\n나\n</Bundle>', /각주·메모 뒤에 텍스트/);
   bad('<Bundle id="a" name="n">\n<Heading/>\n</Bundle>', /text 형식/);
   bad("¶ P1\n가", /Bundle 밖/);

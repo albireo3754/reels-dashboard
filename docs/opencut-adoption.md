@@ -1,5 +1,7 @@
 # OpenCut 조사와 필요한 기능 적용
 
+2026-11-02: 외부 편집기의 파일 접근을 위해 [등록 미디어의 로컬 편집용 사본 준비](local-editor-handoff.md)를 추가했다. Dashboard 자료 권한 검증과 복사 검증을 재사용하는 CLI이며, OpenCut 전체 편집기를 Dashboard에 통합한 것은 아니다.
+
 2026-10-28. 사용자가 지정한 대상은 **OpenCut(opencut.app)**이에요. 이름이 비슷한 `ishandutta2007/open-capcut`도 확인했지만 별도 프로젝트이며 코드 반입 대상이 아니에요.
 
 ## 확인한 정본
