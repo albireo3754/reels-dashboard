@@ -1106,19 +1106,20 @@ label + label {
 .panel label + button {
   margin-top: 20px;
 }
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
+.project-dialog {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  overflow: visible;
+}
+.project-dialog::backdrop {
   background: #24352a69;
   backdrop-filter: blur(4px);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
 }
 .modal {
-  width: 530px;
+  width: min(530px, 100%);
   max-height: calc(100vh - 48px);
   overflow: auto;
   border: 1px solid #e1e8d7;
@@ -1530,8 +1531,9 @@ label + label {
   .desktop-notice p {
     font-size: 11px;
   }
-  .modal-backdrop {
-    padding: 15px;
+  .project-dialog {
+    max-width: calc(100vw - 30px);
+    max-height: calc(100vh - 30px);
   }
   .modal {
     padding: 23px;
@@ -1631,4 +1633,7 @@ label + label {
   .compact-shell .main { padding-left: 17px; padding-right: 17px; }
 }
 
-.compact-shell .modal-backdrop { z-index: 200; }
+.local-resources .resource-path {
+  display: block;
+  overflow-wrap: anywhere;
+}

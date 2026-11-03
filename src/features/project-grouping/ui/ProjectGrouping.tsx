@@ -99,6 +99,7 @@ export function ProjectGrouping({
         </select>
       </label>
       <button
+        type="button"
         disabled={!editKey || disabled || busy}
         onClick={() =>
           run(async () => {
@@ -142,6 +143,7 @@ export function ProjectGrouping({
       )}
       {error && <p role="alert">{error}</p>}
       <button
+        type="button"
         disabled={!target || disabled || busy}
         onClick={() =>
           run(async () => {

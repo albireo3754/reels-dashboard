@@ -134,3 +134,30 @@ test("demo sync rejects HTTP and clears the token after successful synthetic syn
   const stored = await page.evaluate(() => JSON.stringify(localStorage));
   expect(stored).not.toContain("synthetic-test-token");
 });
+
+test("content record dialog is modal, closes on Escape and saves on Enter", async ({
+  page,
+}) => {
+  await openDemo(page);
+  const create = page.getByRole("button", { name: "새 콘텐츠", exact: true });
+  await create.click();
+  const dialog = page.getByRole("dialog", { name: "콘텐츠 기록" });
+  const title = dialog.getByLabel("콘텐츠 제목", { exact: true });
+  await expect(title).toBeFocused();
+  // Focus stays inside the modal: tabbing past the last control never reaches the page.
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+  expect(
+    await dialog.evaluate((el) => el.contains(document.activeElement)),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(create).toBeFocused();
+
+  await create.click();
+  await title.fill("Enter saved synthetic project");
+  await title.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Enter saved synthetic project", exact: true }),
+  ).toBeVisible();
+});

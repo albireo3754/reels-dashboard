@@ -1,10 +1,3 @@
-import { koreanDateTime, localDate } from "../shared/lib/format";
-import { errorMessage } from "../shared/lib/errors";
-import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
-import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
-import { ProjectAnalysis } from "../features/media-analysis";
-import { WorkspaceToolbar, useWorkspaceNavigation } from "../features/workspace-shell";
-import { ProjectGrouping } from "../features/project-grouping";
 import {
   lazy,
   Suspense,
@@ -24,26 +17,36 @@ import type {
   Inspection,
   PlanEnvelope,
   Project,
-  Stage,
   Status,
 } from "../shared/contracts";
 import { emptyDashboard } from "../shared/contracts";
+import { decisionFileSchema } from "../shared/decision";
 import type { EditorProject } from "../shared/editor";
+import { errorMessage } from "../shared/lib/errors";
+import { koreanDateTime, localDate } from "../shared/lib/format";
+import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
+import { BlogWorkspace } from "../features/blog-workspace";
+import { CardNews } from "../features/card-news";
 import {
   BoardToolbar,
-  ContentMediaCard,
-  StageProgress,
   defaultBoardQuery,
   parseBoardQuery,
   selectBoardProjects,
   type BoardQuery,
 } from "../features/content-board";
-import { BlogWorkspace } from "../features/blog-workspace";
-import { ContentRouteMap } from "../features/route-map";
+import type { DrawerMode } from "../features/dev-workspace";
+import { ProjectGrouping } from "../features/project-grouping";
+import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
+import {
+  WorkspaceToolbar,
+  useWorkspaceNavigation,
+} from "../features/workspace-shell";
 import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
-import { CardNews } from "../features/card-news";
-import type { DrawerMode } from "../features/dev-workspace";
+import { pages, permissionLabels, type Tab } from "./pages";
+import { ProjectCard } from "./ProjectCard";
+import { ProjectDialog } from "./ProjectDialog";
+import { Empty, Icon, JSONDetails, asRecord, asStrings } from "./ui";
 const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
 const DevWorkspace = lazy(() =>
   import("../features/dev-workspace").then((m) => ({
@@ -51,37 +54,11 @@ const DevWorkspace = lazy(() =>
   })),
 );
 
-type Tab =
-  | "dashboard"
-  | "library"
-  | "editor"
-  | "cards"
-  | "workflow"
-  | "logs"
-  | "blog"
-  | "transfers"
-  | "settings";
 type Choice = "undecided" | "included" | "excluded";
 type ActivePlan = {
   kind: "export" | "move";
   path: string;
   envelope: PlanEnvelope;
-};
-const stages: Record<Stage, string> = {
-  idea: "아이디어",
-  captured: "촬영 완료",
-  selected: "촬영본 선택",
-  editing: "편집 중",
-  review: "검토 대기",
-  published: "게시 완료",
-};
-const permissions: Record<string, string> = {
-  "not-determined": "아직 요청하지 않음",
-  authorized: "허용됨",
-  limited: "일부 사진만 허용",
-  denied: "접근 거부됨",
-  restricted: "시스템에서 제한됨",
-  unknown: "상태 확인 필요",
 };
 const readableTime = (v?: string) =>
   koreanDateTime(v, "시각 미상", {
@@ -90,70 +67,6 @@ const readableTime = (v?: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-const asRecord = (v: unknown): Record<string, unknown> =>
-  v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-const asStrings = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-function Icon({ name }: { name: string }) {
-  const paths: Record<string, string> = {
-    dashboard: "M3 3h7v7H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 14h7v7H3z",
-    library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
-    transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
-    editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
-    cards: "M6 3h15v16H6z M3 7v15h14 M9 8h9 M9 12h9 M9 16h5",
-    settings: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
-    arrow: "M5 12h14 M13 6l6 6-6 6",
-    plus: "M12 5v14 M5 12h14",
-    check: "M5 12l4 4L19 6",
-  };
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={paths[name] || paths.dashboard} />
-    </svg>
-  );
-}
-function JSONDetails({
-  data,
-  label = "자세한 결과",
-}: {
-  data: unknown;
-  label?: string;
-}) {
-  return (
-    <details className="json-details">
-      <summary>{label}</summary>
-      <pre>{JSON.stringify(data, null, 2)}</pre>
-    </details>
-  );
-}
-function Empty({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="empty">
-      <div className="empty-orbit">
-        <Icon name="library" />
-      </div>
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </div>
-  );
-}
-
 export function App({ bridge }: { bridge: DashboardBridge }) {
   const navigation = useWorkspaceNavigation<Tab>(new URLSearchParams(location.search).has("workflow") ? "workflow" : "dashboard");
   const { current: tab, navigate: setTab } = navigation;
@@ -463,30 +376,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         throw new Error(
           "현재 그룹·색인과 같은 분류 파일을 선택해주세요. 날짜를 다시 색인했다면 기존 분류도 다시 확인해야 해요.",
         );
-      if (
-        d.schemaVersion !== 1 ||
-        !Array.isArray(d.includedAssetIDs) ||
-        !Array.isArray(d.excludedAssetIDs) ||
-        !Array.isArray(d.evidenceReferences) ||
-        !Array.isArray(d.unknowns) ||
-        [
-          ...d.includedAssetIDs,
-          ...d.excludedAssetIDs,
-          ...d.evidenceReferences,
-          ...d.unknowns,
-        ].some((v) => typeof v !== "string") ||
-        typeof d.label !== "string" ||
-        typeof d.confidence !== "number"
-      )
+      const parsed = decisionFileSchema.safeParse(d);
+      if (!parsed.success)
         throw new Error("ModelDecision 형식의 분류 파일이 필요해요.");
+      const decision = parsed.data;
       await bridge.request("decisions.validate", { file: doc.path });
       invalidate();
-      setLabel(d.label);
-      setConfidence(String(d.confidence));
-      setUnknowns(asStrings(d.unknowns).join("\n"));
-      setReferences(asStrings(d.evidenceReferences));
-      const included = asStrings(d.includedAssetIDs),
-        excluded = asStrings(d.excludedAssetIDs);
+      setLabel(decision.label);
+      setConfidence(String(decision.confidence));
+      setUnknowns(decision.unknowns.join("\n"));
+      setReferences(decision.evidenceReferences);
+      const included = decision.includedAssetIDs,
+        excluded = decision.excludedAssetIDs;
       setChoices(
         Object.fromEntries(
           detail.assets.map((a) => [
@@ -614,32 +515,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       shared: false,
     });
   };
-  useEffect(() => {
-    if (!editingProject) return;
-    const listener = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) {
-        setEditingProject(null);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const elements = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "[role=dialog] button:not(:disabled), [role=dialog] input:not(:disabled), [role=dialog] select:not(:disabled), [role=dialog] textarea:not(:disabled)",
-        ),
-      );
-      const first = elements[0],
-        last = elements.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener("keydown", listener);
-    return () => document.removeEventListener("keydown", listener);
-  }, [editingProject, busy]);
   const totals = useMemo(
     () => ({
       all: dashboard.projects.length,
@@ -693,7 +568,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       <div>
         <strong>
           {status
-            ? `Photos ${permissions[status.permission] || status.permission}`
+            ? `Photos ${permissionLabels[status.permission] || status.permission}`
             : "네이티브 연결 확인 필요"}
         </strong>
         <span>
@@ -712,40 +587,19 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       )}
     </div>
   );
-  const titles: Record<Tab, string> = {
-    dashboard: "작업의 흐름을 한눈에",
-    library: "다음 이야기를 골라요",
-    editor: "선택한 장면을 완성해요",
-    cards: "읽는 속도에 맞춰 이야기를 전해요",
-    logs: "실행 중인 처리와 종료 이력",
-    workflow: "작업을 이어가고, 검토를 쌓아요",
-    blog: "원고와 사진을 함께 살펴봐요",
-    transfers: "확인하고, 안전하게 옮겨요",
-    settings: "내 작업 환경",
-  };
-  const descriptions: Record<Tab, string> = {
-    logs: "앱에서 실행한 영상 처리의 진행과 결과를 확인해요.",
-    workflow: "세션에서 수행하는 제작 작업의 순서와 검토 이력을 관리해요.",
-    dashboard: "촬영부터 게시까지, 지금 필요한 다음 작업을 확인해요.",
-    cards: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
-    blog: "원고와 사진의 순서를 정하고 미리 확인해요.",
-    library:
-      "Apple Photos에서 날짜별 촬영본을 찾고 콘텐츠에 사용할 장면을 골라요.",
-    transfers: "원본을 유지하는 복사와 검증 후 이동을 구분해서 실행해요.",
-    editor:
-      "장소 안내 묶음과 본문 자막을 더하고, 선택한 시점으로 표지를 만들어요.",
-    settings: "로컬 연결과 모바일에서 볼 현황의 공유 범위를 관리해요.",
-  };
-  const navigationItems: [Tab, string][] = [
-    ["dashboard", "대시보드"],
-    ["library", "촬영 보관함"],
-    ["editor", "영상 편집"],
-    ["cards", "카드뉴스 릴스"],
-    ["blog", "블로그"],
-    ["workflow", "워크플로"],
-    ["transfers", "내보내기"],
-    ...(bridge.executionLogs ? [["logs", "실행 로그"] as [Tab, string]] : []),
+  const navigationTabs: Tab[] = [
+    "dashboard",
+    "library",
+    "editor",
+    "cards",
+    "blog",
+    "workflow",
+    "transfers",
+    ...(bridge.executionLogs ? (["logs"] as const) : []),
   ];
+  const navigationItems = navigationTabs.map(
+    (key): [Tab, string] => [key, pages[key].label],
+  );
   const navigateTo = (key: Tab) => {
     setTab(key);
     if (key === "dashboard") refreshDashboard();
@@ -757,7 +611,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       <WorkspaceToolbar
         desktop={typeof window.reels !== "undefined"}
         navigation={navigation}
-        items={[...navigationItems, ["settings", "설정"]]}
+        items={[...navigationItems, ["settings", pages.settings.label]]}
         projects={dashboard.projects}
         onNavigate={key => navigateTo(key as Tab)}
         onJump={navigation.jump}
@@ -820,27 +674,9 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         )}
         <div className="page-heading">
           <div className="shell-page-description">
-            <span className="eyebrow">
-              {tab === "dashboard"
-                ? "YOUR CREATIVE FLOW"
-                : tab === "library"
-                  ? "FROM YOUR CAMERA"
-                  : tab === "editor"
-                    ? "MAKE YOUR REEL"
-                    : tab === "cards"
-                      ? "CARD NEWS · TIMING & MUSIC"
-                      : tab === "workflow"
-                        ? "워크플로"
-                      : tab === "logs"
-                        ? "실행 로그"
-                      : tab === "blog"
-                        ? "BLOG WORKSPACE"
-                        : tab === "transfers"
-                          ? "REVIEW & TRANSFER"
-                          : "WORKSPACE SETTINGS"}
-            </span>
-            <h1>{titles[tab]}</h1>
-            <p>{descriptions[tab]}</p>
+            <span className="eyebrow">{pages[tab].eyebrow}</span>
+            <h1>{pages[tab].title}</h1>
+            <p>{pages[tab].description}</p>
           </div>
           {tab === "dashboard" && !readOnly && (
             <button className="primary" onClick={newProject} disabled={!!busy}>
@@ -978,113 +814,26 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   className={`project-grid ${boardQuery.view === "list" ? "board-list" : ""}`}
                 >
                   {boardProjects.slice(0, boardLimit).map((project, i) => (
-                    <article className="project-card" key={project.id}>
-                      <ContentMediaCard
-                        key={project.id + JSON.stringify(project.resources)}
-                        project={project}
-                        bridge={bridge}
-                        index={i}
-                      />
-                      <div className="project-body">
-                        <ContentRouteMap project={project} bridge={bridge} />
-                        <ProjectAnalysis project={project} bridge={bridge} />
-                        <span className="project-date">
-                          {project.dateBasis === "capture"
-                            ? "촬영 "
-                            : project.dateBasis === "publication"
-                              ? "게시 "
-                              : project.dateBasis === "record"
-                                ? "기록 "
-                                : ""}
-                          {project.date || "날짜 미정"}
-                          {project.shared && (
-                            <span className="share-indicator">모바일 공유</span>
-                          )}
-                        </span>
-                        <h3>{project.title}</h3>
-                        <StageProgress project={project} />
-                        <p>
-                          {project.nextAction || "다음 할 일을 정해보세요."}
-                        </p>
-                        {!readOnly && Boolean(project.resources?.length) && (
-                          <details className="local-resources">
-                            <summary>
-                              연결 자료 {project.resources!.length}개
-                            </summary>
-                            {project.localNotes && <p>{project.localNotes}</p>}
-                            <ul>
-                              {project.resources!.map((resource) => (
-                                <li key={`${resource.role}:${resource.path}`}>
-                                  <span>
-                                    {
-                                      {
-                                        footage: "촬영본",
-                                        final: "완성본",
-                                        cover: "표지",
-                                        draft: "시안",
-                                        document: "문서",
-                                        folder: "폴더",
-                                      }[resource.role]
-                                    }{" "}
-                                    · {resource.label}
-                                  </span>
-                                  <button
-                                    disabled={!bridge.revealResource || !!busy}
-                                    onClick={() =>
-                                      run("자료 위치 열기", async () => {
-                                        await bridge.revealResource!(
-                                          project.id,
-                                          resource.path,
-                                        );
-                                      })
-                                    }
-                                  >
-                                    위치 열기
-                                  </button>
-                                  <small
-                                    style={{
-                                      display: "block",
-                                      overflowWrap: "anywhere",
-                                    }}
-                                  >
-                                    {resource.path}
-                                  </small>
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
-                        <div className="project-footer">
-                          {project.publicURL ? (
-                            <a
-                              href={project.publicURL}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              게시물 보기 ↗
-                            </a>
-                          ) : (
-                            <span>
-                              {project.stage === "published"
-                                ? "게시 링크를 추가해주세요."
-                                : "작업을 이어가요"}
-                            </span>
-                          )}
-                          {!readOnly && (
-                            <button
-                              className="icon-button"
-                              aria-label={`${project.title} 수정`}
-                              onClick={() => {
-                                setEditingRevision(dashboard.updatedAt);
-                                setEditingProject({ ...project });
-                              }}
-                            >
-                              <Icon name="arrow" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </article>
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      bridge={bridge}
+                      index={i}
+                      readOnly={readOnly}
+                      busy={!!busy}
+                      onEdit={() => {
+                        setEditingRevision(dashboard.updatedAt);
+                        setEditingProject({ ...project });
+                      }}
+                      onReveal={
+                        bridge.revealResource
+                          ? (path) =>
+                              run("자료 위치 열기", () =>
+                                bridge.revealResource!(project.id, path),
+                              )
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -1848,152 +1597,36 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         )}
       </main>
       {editingProject && (
-        <div
-          className="modal-backdrop"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !busy) setEditingProject(null);
-          }}
+        <ProjectDialog
+          project={editingProject}
+          onChange={setEditingProject}
+          onCancel={() => setEditingProject(null)}
+          onSave={saveProject}
+          busy={!!busy}
+          error={error}
         >
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="project-title"
-          >
-            <div className="section-heading">
-              <h2 id="project-title">콘텐츠 기록</h2>
-              <button
-                className="icon-button"
-                aria-label="콘텐츠 기록 닫기"
-                onClick={() => setEditingProject(null)}
-                disabled={!!busy}
-              >
-                ×
-              </button>
-            </div>
-            <label>
-              콘텐츠 제목
-              <input
-                autoFocus
-                value={editingProject.title}
-                onChange={(e) =>
-                  setEditingProject({
-                    ...editingProject,
-                    title: e.target.value,
-                  })
-                }
-                disabled={!!busy}
-              />
-            </label>
-            {error && (
-              <div className="alert error" role="alert">
-                {error}
-              </div>
-            )}
-            <div className="form-grid">
-              <label>
-                콘텐츠 날짜
-                <input
-                  type="date"
-                  value={editingProject.date}
-                  onChange={(e) =>
-                    setEditingProject({
-                      ...editingProject,
-                      date: e.target.value,
-                    })
-                  }
-                  disabled={!!busy}
-                />
-              </label>
-              <label>
-                진행 단계
-                <select
-                  value={editingProject.stage}
-                  onChange={(e) =>
-                    setEditingProject({
-                      ...editingProject,
-                      stage: e.target.value as Stage,
-                    })
-                  }
-                  disabled={!!busy}
-                >
-                  {Object.entries(stages).map(([key, name]) => (
-                    <option value={key} key={key}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label>
-              다음 할 일
-              <textarea
-                value={editingProject.nextAction}
-                onChange={(e) =>
-                  setEditingProject({
-                    ...editingProject,
-                    nextAction: e.target.value,
-                  })
-                }
-                disabled={!!busy}
-              />
-            </label>
-            <label>
-              게시 링크
-              <input
-                type="url"
-                value={editingProject.publicURL}
-                onChange={(e) =>
-                  setEditingProject({
-                    ...editingProject,
-                    publicURL: e.target.value,
-                  })
-                }
-                placeholder="https://"
-                disabled={!!busy}
-              />
-            </label>
-            {bridge.projects && dashboard.projects.some(p => p.id === editingProject.id) && (
+          {bridge.projects &&
+            dashboard.projects.some((p) => p.id === editingProject.id) && (
               <ProjectGrouping
                 key={editingProject.id}
                 api={bridge.projects}
                 project={editingProject}
                 dashboard={dashboard}
-                disabled={!!busy || JSON.stringify(editingProject) !== JSON.stringify(dashboard.projects.find(p => p.id === editingProject.id))}
-                onComplete={(next, message) => { setDashboard(next); setEditingProject(null); setNotice(message); }}
+                disabled={
+                  !!busy ||
+                  JSON.stringify(editingProject) !==
+                    JSON.stringify(
+                      dashboard.projects.find((p) => p.id === editingProject.id),
+                    )
+                }
+                onComplete={(next, message) => {
+                  setDashboard(next);
+                  setEditingProject(null);
+                  setNotice(message);
+                }}
               />
             )}
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={editingProject.shared}
-                onChange={(e) =>
-                  setEditingProject({
-                    ...editingProject,
-                    shared: e.target.checked,
-                  })
-                }
-                disabled={!!busy}
-              />
-              모바일에 공유
-            </label>
-            <p className="muted compact">
-              공유를 켠 콘텐츠의 요약만 내보내기와 Sites 동기화에 포함돼요.
-            </p>
-            <div className="button-row end">
-              <button onClick={() => setEditingProject(null)} disabled={!!busy}>
-                취소
-              </button>
-              <button
-                className="primary"
-                onClick={saveProject}
-                disabled={!!busy}
-              >
-                저장
-              </button>
-            </div>
-          </section>
-        </div>
+        </ProjectDialog>
       )}
     </div>
   );
