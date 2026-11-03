@@ -90,6 +90,8 @@ export interface DashboardBridge {
   readonly editor: EditorBridge;
   readonly agent?: AgentUiBridge;
   readonly mode: "desktop" | "demo" | "web";
+  /** True in an unpackaged source build (npm start); shown as a DEV badge. */
+  readonly devBuild?: boolean;
   request<T = unknown>(method: CommandMethod, args?: Arguments): Promise<T>;
   saveDocument(name: string, data: unknown): Promise<string>;
   openDocument(): Promise<OpenDocument | null>;

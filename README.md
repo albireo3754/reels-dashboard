@@ -60,9 +60,13 @@ The desktop editor exposes a local stdio MCP server for project lookup, partial 
 
 사진과 조사 자료를 먼저 준비한 뒤 직접 경험을 한 폼으로 받아 초안에 연결할 수 있다. [경험 수집 워크플로](docs/experience-intake.md).
 
+## Shared input forms
+
+Dashboard workflows and Codex sessions share the same versioned forms, user answers and application results. Sessions can create/open/wait/read forms through MCP or `npm run forms` without creating a workflow. See [shared forms and tools](docs/shared-input-forms.md).
+
 ## Headless workflows
 
-Blog editorial loops can run through LangGraph with a local web server, CLI and independent MCP server. Tasks can be performed by the current Codex session or explicitly run through the Codex TypeScript SDK. Saved Codex login works without an API key; a configured key takes priority. Run `npm run build:web` then `npm run start:server`. See [workflow control and scope](docs/workflows.md). Native Photos/editor features retain their existing platform requirements.
+Blog editorial loops can run through LangGraph with a local web server, CLI and independent MCP server. Tasks can be performed by the current Codex session or explicitly run through the Codex TypeScript SDK. Saved Codex login works without an API key; a configured key takes priority. The desktop app starts the workflow server itself. For browser/CLI/MCP use without the app, run `npm run build:web` then `npm run start:server`. See [workflow control and scope](docs/workflows.md) and [desktop embedded server](docs/workflows.md#desktop-embedded-server--2026-11-03). Native Photos/editor features retain their existing platform requirements.
 
 ## Run locally
 
@@ -75,6 +79,8 @@ npm run build:editor
 npm run build
 npm start
 ```
+
+A source build started with `npm start` (unpackaged Electron) is labelled **Reels Dashboard Dev**: window and editor titles, the About panel and tray menu, a `DEV` Dock badge and a `DEV` chip at the left of the workspace toolbar. Only the displayed name changes; the app-data directory (or `REELS_USER_DATA`) and the single-instance lock stay where they were. A packaged app keeps the plain product name.
 
 Local builds use **Developer ID Application** signing for the PhotosIndex helper, with the existing `dev.pray.PhotosIndex` identifier. The signer discovers one unique valid identity or uses `PHOTOSINDEX_SIGNING_IDENTITY` to select one by its complete name. Missing or ambiguous identities fail the build; there is no local ad-hoc fallback. See [stable Photos permissions and signing](docs/native-signing.md).
 

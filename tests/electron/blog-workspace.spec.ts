@@ -14,7 +14,7 @@ test('blog imports selected spec after review, previews local photo and persists
   const project={id:'blog-test',title:'블로그 테스트',date:'2026-10-31',stage:'review',nextAction:'',publicURL:'',shared:false,resources:[{role:'document',path:doc,label:'원고'},{role:'folder',path:media,label:'사진'}]};
   await writeFile(path.join(profile,'dashboard.json'),JSON.stringify({schemaVersion:1,updatedAt:'2026-10-31T00:00:00.000Z',projects:[project]}));
   app=await launchApp(profile,false);let page=await app.firstWindow();
-  await page.getByRole('button',{name:'블로그',exact:true}).click();await expect(page.getByText('BLOG WORKSPACE',{exact:true})).toBeVisible();await page.getByLabel('블로그 프로젝트').selectOption(project.id);
+  await page.getByRole('button',{name:'블로그',exact:true}).click();await page.getByRole('button',{name:'원고·배치',exact:true}).click();await page.getByLabel('블로그 프로젝트',{exact:true}).selectOption(project.id);
   await page.getByLabel('블로그 원고').selectOption(doc);await page.getByRole('button',{name:'원고 열기'}).click();
   await page.getByLabel('블로그 사진 폴더').selectOption(media);
   const source=page.getByLabel('원고 내용 선택');await source.evaluate((el:HTMLTextAreaElement)=>{const start=el.value.indexOf('```json');const end=el.value.indexOf('```',start+7)+3;el.setSelectionRange(start,end);});
@@ -29,7 +29,7 @@ test('blog imports selected spec after review, previews local photo and persists
   await page.locator('.blog-preview').screenshot({path:testInfo.outputPath('blog-preview.png')});
   await page.getByRole('button',{name:'배치 저장'}).click();await expect(page.getByText('배치를 저장했어요.')).toBeVisible();
   await page.getByRole('button',{name:'대시보드',exact:true}).click();await page.getByRole('button',{name:'블로그',exact:true}).click();await expect(page.locator('.blog-preview h3')).toHaveText('제목');
-  await closeApp(app);app=await launchApp(profile,false);page=await app.firstWindow();await page.getByRole('button',{name:'블로그',exact:true}).click();await page.getByLabel('블로그 프로젝트').selectOption(project.id);await expect(page.locator('.blog-preview h3')).toHaveText('제목');
+  await closeApp(app);app=await launchApp(profile,false);page=await app.firstWindow();await page.getByRole('button',{name:'블로그',exact:true}).click();await page.getByRole('button',{name:'원고·배치',exact:true}).click();await page.getByLabel('블로그 프로젝트',{exact:true}).selectOption(project.id);await expect(page.locator('.blog-preview h3')).toHaveText('제목');
   expect(await readFile(doc,'utf8')).toBe(raw);
  } finally {if(app)await closeApp(app);await cleanProfile(profile);}
 });

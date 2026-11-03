@@ -17,10 +17,19 @@ import {
   StateGraph,
   interrupt,
 } from "@langchain/langgraph";
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import type { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import { openNodeSqliteSaver } from "./sqlite-checkpointer";
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { resolveFile, hashes } from "./files";
+import { InputFormService } from "./input-form-service";
+import { mediaSceneInputs, validateStoryMediaSubmission } from "./story-media";
+import {
+  formIdInput,
+  createFormInput,
+  saveFormInput,
+  type InputFormRecord,
+} from "../../shared/input-forms";
 import { mkdir, realpath, stat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -41,7 +50,7 @@ const intakeInstruction = `
 const State = Annotation.Root({ run: Annotation<WorkflowRun>() });
 const instructions: Record<WorkflowStage, string> = {
   prepare:
-    "작업공간 지침과 원본 근거를 읽고 확인된 사실·레퍼런스·미확인 항목을 기록하세요. 경험을 만들어내지 마세요.",
+    "작업공간 지침과 원본 근거를 읽고 확인된 사실·레퍼런스·미확인 항목을 기록하세요. 경험을 만들어내지 마세요. 사진 기반 신규 글/전체 구성은 소유 미디어의 관련 장면 전체를 확인하고 media-scenes.json을 evidence에 포함하세요: {version:1,scenes:[{id,source,preview,observed,contextNotes:[]}]}. 비슷한 컷은 장면으로 묶되 미선택 주변 장면도 후보에 남기세요. source에는 원본/촬영ID·영상 시점, preview에는 실제로 본 JPEG/PNG/WebP의 작업공간 루트 기준 상대 경로를 쓰세요. 저장된 분석의 장소 관계·촬영 맥락과 출처는 contextNotes에 보존하고 화면 관찰 observed와 구분하세요. 메타데이터는 탐색 근거이며 실제 이미지 확인을 대신하지 않습니다. 사진 없는 작업에는 이 파일을 만들지 않습니다.",
   experience:
     "사진과 조사 근거를 보고 직접 경험을 한 번에 답해주세요. 기억나지 않음·본문 제외도 선택할 수 있어요. 답변을 제출하면 추가 요청을 분류하고 필요한 작업을 처리한 뒤 초안을 작성합니다.",
   requests:
@@ -49,49 +58,35 @@ const instructions: Record<WorkflowStage, string> = {
   followup:
     "현재 추가 작업 하나를 처리하고 결과·제한·초안 반영 방법을 근거 파일에 남기세요. 처리하지 못한 작업은 blocked로 제출합니다. 읽기전용 SDK의 범위를 벗어나는 탐색/쓰기/조사는 제작 세션에서 수행합니다. 자료 없음도 조사 범위와 증거를 확인한 결과로 기록할 수 있지만 미실행을 완료로 표시하지 마세요.",
   draft:
-    "준비된 근거와 제출된 experience-answers JSON/Markdown을 읽어 로컬 초안을 작성하세요. 사용자 답변 원문과 주체를 보존하고 unknown/omit은 감상으로 채우지 마세요. 결과 파일과 변경 내용을 기록하세요.",
+    "준비된 근거와 제출된 experience-answers JSON/Markdown을 읽어 로컬 초안을 작성하세요. 사진 기반 글은 먼저 전체 장면 미리보기·분석·사용자 경험을 연결해 사진 선택/묶음/순서를 정한 뒤 그 구성으로 문장을 쓰세요. 레퍼런스는 문체·문장 전개의 참고이며 우리 장면이나 경험을 대신하지 않습니다. media-scenes.json이 있으면 story-media-plan.json을 초안과 함께 evidence에 제출하세요: {version:1,inventory:'추적된 작업공간 상대 경로',decisions:[{sceneId,decision:'use|omit|hold',reason,handling,group,role,experienceRefs:[],resolveWhen}]}. 모든 sceneId를 한 번씩 결정하고 use에는 group/role, hold에는 재검토 조건 resolveWhen을 쓰세요. decisions의 use 순서와 같은 group은 초안의 사진 순서·묶음입니다. hold는 이번 초안에서는 미사용이며 초안 자체를 막는 누락은 blocked로 보고하세요. handling은 원본 유지/크롭 등 처리 판단이고 장면 채택 이유와 구분합니다. 실제 이미지를 못 봤으면 사진 구성을 완료했다고 하지 마세요. 자료·기존 답변으로도 모르는 사진 의미·장소 관계·경험·사용자 의도가 구성에 영향을 주면 현재 대화나 경험 폼으로 짧게 질문하세요. 모른다는 이유로 유용한 장면을 조용히 빼거나 경험을 추측하지 말고, 답과 무관한 작업은 계속하세요. 사용자 답변 원문과 주체를 보존하고 unknown/omit은 감상으로 채우지 마세요.",
   review:
-    "원본 근거와 작성 기준으로 현재 문안을 검토하세요. 구체적인 근거와 함께 통과·수정 필요·보류를 판단하세요. 검토 중인 입력 파일은 수정하지 마세요.",
+    "원본 근거와 작성 기준으로 현재 문안을 검토하세요. 사진 기반 전체 구성은 장면 목록·선택 계획·초안의 사진 ID/역할/순서가 연결됐는지 확인하고, 빠졌으면 구성 보완으로 돌리세요. 텍스트만 받은 리뷰는 이미지 선택·시각 품질을 확인한 것으로 보고하지 않습니다. 구체적인 근거와 함께 통과·수정 필요·보류를 판단하세요. 검토 중인 입력 파일은 수정하지 마세요.",
   revise:
-    "앞선 리뷰의 지적을 문안에 반영하세요. 사용자 정정을 보존하고 변경 내용을 기록하세요.",
+    "앞선 리뷰의 지적을 문안에 반영하세요. 사용자 정정을 보존하고 변경 내용을 기록하세요. 사진 구성을 바꾸면 갱신한 story-media-plan.json을 제출하고, 문구만 고치면 기존 계획을 유지하세요.",
   layout:
-    "문안과 선택한 자산으로 로컬 화면을 구성하거나 수정하세요. 실제 렌더링을 확인하고 결과 파일을 기록하세요.",
+    "문안과 선택한 자산으로 로컬 화면을 구성하거나 수정하세요. story-media-plan.json의 채택·순서·group 묶음을 이어받아 크롭/크기/서식을 다듬고, 선택한 장면을 조용히 빼지 마세요. 출력 미디어 기록에 sceneId를 연결하고 선택/묶음 변경은 기존 배치 보고서에 sceneId와 이유를 남기세요. 실제 렌더링을 확인하고 결과 파일을 기록하세요.",
   visual_review:
     "실제 미리보기를 필요한 화면 폭에서 확인하세요. 캡처와 판단 근거를 남기고 통과·수정 필요·보류를 선택하세요. 검토 중인 입력 파일은 수정하지 마세요.",
 };
-
-async function resolveFile(workspace: string, relative: string) {
-  if (path.isAbsolute(relative) || relative.split(/[\\/]/).includes(".."))
-    throw new Error("Use workspace-relative paths without '..'");
-  const resolved = await realpath(path.join(workspace, relative));
-  if (!resolved.startsWith(workspace + path.sep))
-    throw new Error("File escapes workspace");
-  if (!(await stat(resolved)).isFile())
-    throw new Error("Expected a file: " + relative);
-  return resolved;
-}
-async function hashes(workspace: string, files: string[]) {
-  const entries = await Promise.all(
-    files.map(async (name) => {
-      const file = await resolveFile(workspace, name);
-      const hash = createHash("sha256");
-      for await (const chunk of createReadStream(file)) hash.update(chunk);
-      return [name, hash.digest("hex")];
-    }),
-  );
-  return Object.fromEntries(entries) as Record<string, string>;
-}
 
 /** One headless server owns the runtime. CLI, MCP and browser are clients of that server. */
 export class WorkflowRuntime {
   private saver: SqliteSaver;
   private db: DatabaseSync;
   private graph;
+  private forms: InputFormService;
   private queue: Promise<unknown> = Promise.resolve();
 
   static async open(root: string) {
     await mkdir(root, { recursive: true, mode: 0o700 });
-    return new WorkflowRuntime(root);
+    const runtime = new WorkflowRuntime(root);
+    try {
+      await runtime.list();
+      return runtime;
+    } catch (e) {
+      await runtime.close();
+      throw e;
+    }
   }
   private constructor(root: string) {
     this.db = new DatabaseSync(path.join(root, "runs.sqlite"));
@@ -159,9 +154,7 @@ export class WorkflowRuntime {
         });
     }
     try {
-      this.saver = SqliteSaver.fromConnString(
-        path.join(root, "checkpoints.sqlite"),
-      );
+      this.saver = openNodeSqliteSaver(path.join(root, "checkpoints.sqlite"));
     } catch (e) {
       this.db
         .prepare("DELETE FROM owner WHERE id=1 AND pid=?")
@@ -169,6 +162,7 @@ export class WorkflowRuntime {
       this.db.close();
       throw e;
     }
+    this.forms = new InputFormService(this.db);
     const work = async ({ run }: { run: WorkflowRun }) => {
       // No side effects before interrupt: a resumed node begins again here.
       const response = interrupt({
@@ -386,7 +380,7 @@ export class WorkflowRuntime {
       ...snapshot.values.run,
       checkpoint: snapshot.config.configurable?.checkpoint_id ?? "",
       execution: this.latestJob(runId),
-      experience: this.getExperience(runId),
+      experience: this.getExperience(runId, snapshot.values.run.workspace),
     };
   }
   async list() {
@@ -402,6 +396,16 @@ export class WorkflowRuntime {
       if (!(await stat(workspace)).isDirectory())
         throw new Error("Workspace must be a directory");
       await hashes(workspace, input.trackedFiles);
+      const sharedForm = input.inputFormId
+        ? this.forms.get(input.inputFormId)
+        : undefined;
+      if (
+        sharedForm &&
+        (sharedForm.workspace !== workspace || sharedForm.workflowRunId)
+      )
+        throw new Error(
+          "FORM_BOUND: use an unbound form in the same workspace",
+        );
       const runId = randomUUID();
       const run: WorkflowRun = {
         ...input,
@@ -409,7 +413,21 @@ export class WorkflowRuntime {
         runId,
         revisions: 0,
         sequence: 0,
-        stage: "prepare",
+        stage: sharedForm
+          ? sharedForm.status === "submitted"
+            ? "requests"
+            : "experience"
+          : "prepare",
+        collectExperience: sharedForm ? true : input.collectExperience,
+        trackedFiles: sharedForm
+          ? [
+              ...new Set([
+                ...input.trackedFiles,
+                ...Object.keys(sharedForm.sourceHashes),
+                ...sharedForm.exports,
+              ]),
+            ]
+          : input.trackedFiles,
         status: "waiting",
         history: [],
         textApproval: {},
@@ -417,8 +435,10 @@ export class WorkflowRuntime {
         task: null,
         checkpoint: "",
       };
+      run.trackedFiles = [...new Set([...run.trackedFiles, ...await mediaSceneInputs(workspace, run.trackedFiles)])];
       await this.graph.invoke({ run }, this.config(runId));
       this.db.prepare("INSERT INTO runs VALUES (?)").run(runId);
+      if (sharedForm) this.forms.bind(sharedForm.formId, runId);
       return this.get({ runId });
     });
   }
@@ -457,6 +477,15 @@ export class WorkflowRuntime {
           );
       }
       await hashes(run.workspace, input.evidence);
+      if (run.stage === "prepare" && input.outcome === "done") {
+        const previews = await mediaSceneInputs(run.workspace, [...run.trackedFiles, ...input.evidence]);
+        input.evidence = [...new Set([...input.evidence, ...previews])];
+      }
+      if (["draft", "revise"].includes(run.stage) && input.outcome === "done") {
+        const previousPlan = run.history.filter(r => ["draft", "revise"].includes(r.stage) && r.outcome === "done")
+          .flatMap(r => Object.keys(r.evidence)).filter(file => path.basename(file) === "story-media-plan.json").at(-1);
+        await validateStoryMediaSubmission(run.workspace, run.task.inputHashes, input.evidence, run.stage === "draft", previousPlan);
+      }
       if (run.stage === "requests" && input.outcome === "done")
         await this.readFollowupManifest(run, input.evidence);
       if (
@@ -477,28 +506,33 @@ export class WorkflowRuntime {
         const form = experienceFormSchema.parse(
           JSON.parse(await readFile(formFile, "utf8")),
         );
-        const images = form.questions.flatMap((q) =>
-          q.images.map((i) => i.path),
-        );
-        for (const image of images)
-          await this.checkedImage(run.workspace, image);
-        input.evidence = [...new Set([...input.evidence, ...images])];
-        this.putExperience(run.runId, {
+        const registered = await this.forms.registerWorkflow(
+          run.runId,
+          run.workspace,
           form,
-          revision: 0,
-          answers: [],
-          status: "draft",
-          exports: [],
-          updatedAt: new Date().toISOString(),
-          sourceHashes: await hashes(run.workspace, [
-            ...new Set([...run.trackedFiles, ...input.evidence]),
+          [...new Set([...run.trackedFiles, ...input.evidence])],
+        );
+        input.evidence = [
+          ...new Set([
+            ...input.evidence,
+            ...Object.keys(registered.sourceHashes),
           ]),
-        });
+        ];
       }
       await this.graph.invoke(
         new Command({ resume: input }),
         this.config(run.runId),
       );
+      if (["draft", "revise"].includes(run.stage) && input.outcome === "done") {
+        const form = this.getExperience(run.runId);
+        if (form?.status === "submitted")
+          await this.forms.apply({
+            formId: form.formId,
+            expectedRevision: form.revision,
+            summary: input.summary,
+            evidence: input.evidence,
+          });
+      }
       return this.get({ runId: run.runId });
     });
   }
@@ -513,6 +547,7 @@ export class WorkflowRuntime {
       const stage = run.status === "ready" ? "review" : run.stage;
       const next = {
         ...run,
+        trackedFiles: [...new Set([...run.trackedFiles, ...await mediaSceneInputs(run.workspace, run.trackedFiles)])],
         stage,
         status: "waiting" as const,
         task: null,
@@ -599,147 +634,123 @@ export class WorkflowRuntime {
       return this.get({ runId: run.runId });
     });
   }
-  private getExperience(runId: string): ExperienceRecord | undefined {
-    const row = this.db
-      .prepare("SELECT data FROM experience_records WHERE run_id=?")
-      .get(runId) as { data: string } | undefined;
-    return row ? JSON.parse(row.data) : undefined;
-  }
-  private putExperience(runId: string, record: ExperienceRecord) {
-    this.db
-      .prepare(
-        "INSERT INTO experience_records(run_id,data) VALUES(?,?) ON CONFLICT(run_id) DO UPDATE SET data=excluded.data",
-      )
-      .run(runId, JSON.stringify(record));
-  }
-  private async checkedImage(workspace: string, relative: string) {
-    const file = await resolveFile(workspace, relative);
-    const type = (
-      {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-      } as Record<string, string>
-    )[path.extname(file).toLowerCase()];
-    if (!type || (await stat(file)).size > 4000000)
-      throw new Error("Use a JPEG/PNG/WebP preview under 4 MB");
-    return { file, type };
-  }
-  async experienceMedia(raw: unknown) {
-    const input = experienceMediaInput.parse(raw);
-    const run = await this.get({ runId: input.runId });
-    const record = run.experience;
-    const image = record?.form.questions.find((q) => q.id === input.questionId)
-      ?.images[input.imageIndex];
-    if (!image || !record) throw new Error("Unknown question image");
-    const current = await hashes(run.workspace, [image.path]);
-    if (current[image.path] !== record.sourceHashes[image.path])
-      throw new Error("STALE_INPUT: 질문 사진이 변경됐어요.");
-    const { file, type } = await this.checkedImage(run.workspace, image.path);
-    return {
-      dataUrl: `data:${type};base64,${(await readFile(file)).toString("base64")}`,
-    };
+  private getExperience(
+    runId: string,
+    workspace?: string,
+  ): InputFormRecord | undefined {
+    return workspace
+      ? this.forms.forWorkflow(runId, workspace)
+      : this.forms.list({}).find((r) => r.workflowRunId === runId);
   }
   async saveExperience(raw: unknown) {
     return this.serialize(async () => {
       const input = saveExperienceInput.parse(raw);
       const run = await this.get({ runId: input.runId });
-      this.assertNotExecuting(run.runId);
       if (
-        run.stage !== "experience" ||
         run.status !== "waiting" ||
+        run.stage !== "experience" ||
         run.task?.taskId !== input.taskId
       )
         throw new Error("STALE_TASK: 현재 경험 폼을 다시 열어주세요.");
-      const record = run.experience;
-      if (
-        !record ||
-        record.revision !== input.expectedRevision ||
-        record.status !== "draft"
-      )
-        throw new Error(
-          "STALE_FORM: 다른 창에서 저장됐어요. 입력을 복사한 뒤 다시 열어주세요.",
-        );
-      const ids = input.answers.map((a) => a.questionId);
-      if (
-        new Set(ids).size !== ids.length ||
-        ids.some((id) => !record.form.questions.some((q) => q.id === id))
-      )
-        throw new Error("Unknown or duplicate question ID");
-      if (input.submit) {
-        for (const q of record.form.questions) {
-          const a = input.answers.find((a) => a.questionId === q.id);
-          if (q.required && !a)
-            throw new Error(
-              "답변하거나 기억나지 않음·본문 제외를 선택해주세요: " + q.prompt,
-            );
-          if (a?.status === "answered" && !a.text.trim())
-            throw new Error("빈 답변: " + q.prompt);
-        }
-        const current = await hashes(
-          run.workspace,
-          Object.keys(record.sourceHashes),
-        );
-        if (JSON.stringify(current) !== JSON.stringify(record.sourceHashes))
-          throw new Error(
-            "STALE_INPUT: 질문의 근거가 바뀌었어요. 새 워크플로에서 다시 준비해주세요. 임시저장한 답변은 유지됩니다.",
-          );
-      }
-      const next: ExperienceRecord = {
-        ...record,
+      if (!run.experience) throw new Error("Unknown input form");
+      await this.saveFormInner({
+        formId: run.experience.formId,
+        expectedRevision: input.expectedRevision,
         answers: input.answers,
-        revision: record.revision + 1,
-        updatedAt: new Date().toISOString(),
-      };
-      if (input.submit) {
-        next.status = "submitted";
-        const base = `experience-answers-${run.runId}-${randomUUID()}`;
-        next.exports = [base + ".json", base + ".md"];
-        const snapshot = {
-          version: 1,
-          runId: run.runId,
-          title: run.title,
-          ...next,
-        };
-        const markdown =
-          "# 직접 경험 답변\n\n" +
-          "사용자 입력 원문. 미확인·제외 답변을 경험으로 보충하지 않는다.\n\n" +
-          record.form.questions
-            .map((q) => {
-              const a = input.answers.find((a) => a.questionId === q.id);
-              return `## ${q.prompt}\n\n상태: ${a?.status ?? "unanswered"}\n\n${a?.text ?? ""}\n`;
-            })
-            .join("\n");
-        await writeFile(
-          path.join(run.workspace, next.exports[0]),
-          JSON.stringify(snapshot, null, 2),
-          { flag: "wx", mode: 0o600 },
-        );
-        await writeFile(path.join(run.workspace, next.exports[1]), markdown, {
-          flag: "wx",
-          mode: 0o600,
-        });
+        submit: input.submit,
+      });
+      return this.get({ runId: run.runId });
+    });
+  }
+  async experienceMedia(raw: unknown) {
+    const input = experienceMediaInput.parse(raw);
+    const run = await this.get({ runId: input.runId });
+    if (!run.experience) throw new Error("Unknown input form");
+    return this.forms.media({
+      formId: run.experience.formId,
+      questionId: input.questionId,
+      imageIndex: input.imageIndex,
+    });
+  }
+  async createForm(raw: unknown) {
+    return this.serialize(() => this.forms.create(raw));
+  }
+  listForms(raw: unknown) {
+    return { forms: this.forms.list(raw) };
+  }
+  getForm(raw: unknown) {
+    return this.forms.get(formIdInput.parse(raw).formId);
+  }
+  formResults(raw: unknown) {
+    return this.forms.results(formIdInput.parse(raw).formId);
+  }
+  waitForm(raw: unknown) {
+    return this.forms.wait(raw);
+  }
+  stopFormWaits() {
+    this.forms.closeWaits();
+  }
+  formArtifact(raw: unknown) {
+    return this.forms.artifact(raw);
+  }
+  formMedia(raw: unknown) {
+    return this.forms.media(raw);
+  }
+  async applyForm(raw: unknown) {
+    return this.serialize(async () => {
+      const r = this.getForm({ formId: (raw as { formId: string }).formId });
+      if (r.workflowRunId) this.assertNotExecuting(r.workflowRunId);
+      return this.forms.apply(raw);
+    });
+  }
+  async saveForm(raw: unknown) {
+    return this.serialize(() => this.saveFormInner(raw));
+  }
+  private async saveFormInner(raw: unknown) {
+    const input = saveFormInput.parse(raw);
+    const r = this.forms.get(input.formId);
+    if (r.workflowRunId) {
+      this.assertNotExecuting(r.workflowRunId);
+      const run = await this.get({ runId: r.workflowRunId });
+      if (run.stage !== "experience" || run.status !== "waiting")
+        throw new Error("STALE_TASK: workflow is no longer accepting answers");
+    }
+    const saved = await this.forms.save(input);
+    if (saved.status === "submitted") await this.syncFormInner(saved.formId);
+    return this.forms.get(saved.formId);
+  }
+  async syncForm(raw: unknown) {
+    return this.serialize(() =>
+      this.syncFormInner(formIdInput.parse(raw).formId),
+    );
+  }
+  private async syncFormInner(id: string) {
+    const r = this.forms.get(id);
+    if (r.workflowRunId && r.status === "submitted") {
+      this.assertNotExecuting(r.workflowRunId);
+      const run = await this.get({ runId: r.workflowRunId });
+      if (run.stage === "experience" && run.status === "waiting") {
+        await hashes(run.workspace, r.exports);
         await this.graph.invoke(
           new Command({
             resume: {
               runId: run.runId,
-              taskId: input.taskId,
+              taskId: run.task!.taskId,
               outcome: "done",
               summary:
-                "사용자가 경험 폼을 제출했습니다. 원문과 미확인·제외 상태를 보존했습니다.",
-              evidence: next.exports,
+                "사용자가 공통 폼에 답변을 제출했습니다. 원문과 미확인·제외 상태를 보존했습니다.",
+              evidence: r.exports,
             },
           }),
           this.config(run.runId),
         );
       }
-      this.putExperience(run.runId, next);
-      return this.get({ runId: run.runId });
-    });
+    }
+    return this.forms.get(id);
   }
   async close() {
     await this.queue;
+    this.forms.closeWaits();
     this.saver.db.close();
     this.db.prepare("DELETE FROM owner WHERE id=1 AND pid=?").run(process.pid);
     this.db.close();

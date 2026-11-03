@@ -13,12 +13,13 @@ test("bundled brand assets load at both tray scales and activation restores the 
       const icon = nativeImage.createFromPath(`${root}/app.png`);
       return {
         name: app.getName(),
+        packaged: app.isPackaged,
         icon: icon.getSize(),
         tray: tray.getSize(),
         scales: tray.getScaleFactors(),
       };
     });
-    expect(assets.name).toBe("Reels Dashboard");
+    expect(assets.name).toBe(assets.packaged ? "Reels Dashboard" : "Reels Dashboard Dev");
     expect(assets.icon).toEqual({ width: 1024, height: 1024 });
     expect(assets.tray).toEqual({ width: 18, height: 18 });
     expect(assets.scales).toEqual([1, 2]);

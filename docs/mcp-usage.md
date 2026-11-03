@@ -155,3 +155,7 @@ Before `reels_start_analysis`, follow [context intake](media-analysis.md#context
 ### Dashboard MCP versus analyzer MCP
 
 `reels_*` tools operate the dashboard from the user's agent. The Codex image analyzer instead receives an invocation-local `reels_analysis` MCP with only `get_analysis_context({})`. This serves a frozen batch snapshot and does not connect to the dashboard's editing or job-start tools. Do not register the full dashboard MCP inside the analyzer. See [isolation scope and verification](media-analysis.md#isolated-codex-invocation-with-a-batch-mcp--2026-10-31).
+
+## Shared input forms — 2026-11-02
+
+`reels_open_input_form {formId}` opens/focuses the common form/result window in the native Dashboard. Creation, saved replies, bounded waiting and application results are exposed by the shared workflow-server MCP `reels_form_*` tools and `npm run forms`. They do not require creating a workflow. See [contracts and CLI](shared-input-forms.md).

@@ -1,3 +1,4 @@
+import { inputFormActions } from "./input-forms";
 import { z } from "zod";
 
 export const workflowStages = [
@@ -28,6 +29,7 @@ export const createWorkflowInput = z.strictObject({
   workspace: z.string().min(1),
   instructions: z.string().trim().min(1).max(20000),
   trackedFiles: z.array(z.string().min(1)).min(1).max(100),
+  inputFormId: z.string().uuid().optional(),
   collectExperience: z.boolean().default(false),
   maxRevisions: z.number().int().min(1).max(5).default(2),
 });
@@ -45,6 +47,7 @@ export const executeWorkflowInput = z.strictObject({
 });
 export const sdkJobIdInput = z.strictObject({ jobId: z.string().uuid() });
 export const workflowAction = z.enum([
+  ...inputFormActions,
   "list",
   "get",
   "create",
@@ -56,19 +59,45 @@ export const workflowAction = z.enum([
   "capabilities",
   "review-bundles",
   "review-markup",
+  "suggest-inline",
   "experience-save",
   "experience-media",
   "followups-open",
 ]);
 export type WorkflowAction = z.infer<typeof workflowAction>;
+/**
+ * Workflow server protocol version, reported as `capabilities.server.protocol`.
+ * Bump it whenever a handler's request/response semantics change, even if
+ * `workflowAction` stays the same, so a long-running standalone server with older
+ * handler code is reported as stale instead of being reused. Dev and installed
+ * builds of the same protocol share one server and data dir by design.
+ */
+export const WORKFLOW_PROTOCOL_VERSION = 2;
+/** Shown when the server answering the workflow URL predates this app's actions. */
+export const STALE_WORKFLOW_SERVER_MESSAGE =
+  "실행 중인 워크플로 서버가 이전 버전이에요. 따로 실행한 서버(npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
+/** Shown when the server answering the workflow URL speaks a newer protocol than this app. */
+export const NEWER_WORKFLOW_SERVER_MESSAGE =
+  "실행 중인 워크플로 서버가 이 앱보다 새 버전이에요. 앱을 업데이트하거나 그 서버(다른 앱 또는 npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
+/**
+ * How the desktop app reaches the workflow server: started in-process (embedded),
+ * reused from another compatible app/server (shared), pinned by REELS_WORKFLOW_URL
+ * (external), or unusable (stale/error).
+ */
+export interface WorkflowHostStatus {
+  state: "external" | "embedded" | "shared" | "stale" | "error";
+  url: string;
+  message?: string;
+}
 export interface WorkflowBridge {
   request(action: WorkflowAction, input?: unknown): Promise<any>;
   onOpen?(callback: (runId: string) => void): () => void;
+  hostStatus?(): Promise<WorkflowHostStatus>;
 }
 export interface SdkJob {
   inputHash?: string;
   id: string;
-  kind: "workflow" | "bundle-review";
+  kind: "workflow" | "bundle-review" | "inline-suggest";
   runId?: string;
   taskId?: string;
   status: "running" | "completed" | "failed" | "cancelled" | "interrupted";
@@ -101,7 +130,8 @@ export interface WorkflowTask {
 export interface WorkflowRun {
   followups?: import("./followups").Followups;
   collectExperience?: boolean;
-  experience?: import("./experience").ExperienceRecord;
+  inputFormId?: string;
+  experience?: import("./input-forms").InputFormRecord;
   runId: string;
   title: string;
   workspace: string;

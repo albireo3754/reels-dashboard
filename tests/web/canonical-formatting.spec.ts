@@ -97,7 +97,17 @@ test("selection formatting survives palette focus, saves exact sizes and clears 
     await expect(page.getByLabel("글자 크기", { exact: true })).toHaveValue(
       "24",
     );
-    await expect(page.getByLabel("서식 변경 전후")).toBeVisible();
+    // The legacy review has no text receipt, so its format proposal is shown
+    // inline next to T1 as a locked card with the reason instead of a panel comparison.
+    const proposal = frame.locator('.rv-card[data-proposal="f1"]');
+    await expect(proposal).toBeVisible();
+    await expect(proposal.locator(".rv-reason-line")).toBeVisible();
+    await expect(
+      proposal.getByRole("button", { name: "적용", exact: true }),
+    ).toBeDisabled();
+    expect(
+      await paragraph.evaluate((el) => !!el.querySelector("[data-review-ui]")),
+    ).toBe(false);
     await page.screenshot({ path: info.outputPath("formatting-desktop.png") });
     await page.setViewportSize({ width: 1024, height: 768 });
     await expect(

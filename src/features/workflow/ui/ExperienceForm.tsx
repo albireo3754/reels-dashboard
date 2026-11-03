@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import type { WorkflowRun } from "../../../shared/workflow";
+import type { InputFormRecord } from "../../../shared/input-forms";
 import type { ExperienceAnswer } from "../../../shared/experience";
 import { workflowCall } from "../../../shared/workflow-client";
 
 function QuestionImage({
-  runId,
+  formId,
   questionId,
   index,
   caption,
 }: {
-  runId: string;
+  formId: string;
   questionId: string;
   index: number;
   caption: string;
@@ -18,8 +18,8 @@ function QuestionImage({
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    void workflowCall("experience-media", {
-      runId,
+    void workflowCall("form-media", {
+      formId,
       questionId,
       imageIndex: index,
     })
@@ -32,7 +32,7 @@ function QuestionImage({
     return () => {
       active = false;
     };
-  }, [runId, questionId, index]);
+  }, [formId, questionId, index]);
   return (
     <figure>
       {src ? (
@@ -44,20 +44,42 @@ function QuestionImage({
     </figure>
   );
 }
+function ResultArtifact({ formId, file }: { formId: string; file: string }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  return (
+    <details
+      onToggle={(event) => {
+        if (event.currentTarget.open && !text && !error)
+          void workflowCall("form-artifact", { formId, path: file })
+            .then((r) => setText(r.text))
+            .catch((e) => setError(e.message));
+      }}
+    >
+      <summary>결과 문서 읽기 · {file.split("/").at(-1)}</summary>
+      {error ? <p role="alert">{error}</p> : <pre>{text || "불러오는 중"}</pre>}
+    </details>
+  );
+}
 export function ExperienceForm({
-  run,
+  record,
   onSaved,
+  onDirtyChange,
 }: {
-  run: WorkflowRun;
+  record: InputFormRecord;
   onSaved: () => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const record = run.experience!;
   const [answers, setAnswers] = useState<ExperienceAnswer[]>(record.answers);
   const [revision, setRevision] = useState(record.revision);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -68,6 +90,12 @@ export function ExperienceForm({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
+  useEffect(() => {
+    if (!dirty) {
+      setAnswers(record.answers);
+      setRevision(record.revision);
+    }
+  }, [record.revision]);
   const update = (questionId: string, patch: Partial<ExperienceAnswer>) => {
     setDirty(true);
     setMessage("");
@@ -89,18 +117,17 @@ export function ExperienceForm({
     setError("");
     setMessage("");
     try {
-      const result: WorkflowRun = await workflowCall("experience-save", {
-        runId: run.runId,
-        taskId: run.task!.taskId,
+      const result: InputFormRecord = await workflowCall("form-save", {
+        formId: record.formId,
         expectedRevision: revision,
         answers,
         submit,
       });
-      setRevision(result.experience!.revision);
+      setRevision(result.revision);
       setDirty(false);
       setMessage(
         submit
-          ? "답변을 제출했어요. 추가 요청 확인 단계에 연결됐습니다."
+          ? "답변을 제출했어요. 작업자가 같은 답변을 이어받을 수 있어요."
           : "답변을 임시저장했어요.",
       );
       await onSaved();
@@ -110,6 +137,55 @@ export function ExperienceForm({
       setBusy(false);
     }
   };
+  if (record.status === "submitted" && !dirty)
+    return (
+      <section className="experience-form" aria-label="제출된 답변">
+        <h4>{record.form.title}</h4>
+        <p role="status">
+          {record.applications.length
+            ? "답변 반영 기록이 있어요"
+            : "답변 제출 완료 · 반영 대기"}
+        </p>
+        {record.form.questions.map((q) => {
+          const a = record.answers.find((a) => a.questionId === q.id);
+          return (
+            <details key={q.id}>
+              <summary>
+                {q.section} ·{" "}
+                {a?.status === "answered"
+                  ? "답변"
+                  : a?.status === "unknown"
+                    ? "기억나지 않음"
+                    : a?.status === "omit"
+                      ? "본문 제외"
+                      : "미응답"}
+              </summary>
+              <p>{q.prompt}</p>
+              <p style={{ whiteSpace: "pre-wrap" }}>{a?.text || "내용 없음"}</p>
+            </details>
+          );
+        })}
+        <h4>반영 결과</h4>
+        {record.applications.map((a, i) => (
+          <article key={i}>
+            <p>{a.summary}</p>
+            <small>{new Date(a.at).toLocaleString()}</small>
+            <ul>
+              {Object.keys(a.evidence).map((file) => (
+                <li key={file}>
+                  <ResultArtifact formId={record.formId} file={file} />
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+        {!record.applications.length && (
+          <p>
+            아직 반영 결과가 등록되지 않았어요. 답변 원문은 저장되어 있습니다.
+          </p>
+        )}
+      </section>
+    );
   return (
     <form
       className="experience-form"
@@ -153,7 +229,7 @@ export function ExperienceForm({
               {q.images.map((img, index) => (
                 <QuestionImage
                   key={img.path}
-                  runId={run.runId}
+                  formId={record.formId}
                   questionId={q.id}
                   index={index}
                   caption={img.caption}

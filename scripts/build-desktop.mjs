@@ -5,8 +5,7 @@ import { chmod } from "node:fs/promises";
 if (process.platform === "darwin") {
   await chmod(`node_modules/node-pty/prebuilds/darwin-${process.arch}/spawn-helper`, 0o755);
 }
-await build({
-  entryPoints: ["src/desktop/main.ts", "src/desktop/preload.ts", "src/desktop/analysis-context-mcp.ts"],
+const desktop = {
   bundle: true,
   platform: "node",
   format: "cjs",
@@ -15,7 +14,17 @@ await build({
   outdir: "dist-electron",
   outExtension: { ".js": ".cjs" },
   sourcemap: true,
+};
+// main embeds the workflow server. ESM-only deps such as @openai/codex-sdk call
+// createRequire(import.meta.url) at load; in a CJS bundle import.meta is empty, so give
+// them the bundle's own file URL. Not applied to the sandboxed preload (no __filename).
+await build({
+  ...desktop,
+  entryPoints: ["src/desktop/main.ts", "src/desktop/analysis-context-mcp.ts"],
+  define: { "import.meta.url": "__reelsImportMetaUrl" },
+  inject: ["scripts/import-meta-url-shim.mjs"],
 });
+await build({ ...desktop, entryPoints: ["src/desktop/preload.ts"] });
 
 // Restore viewer copied into each blog extraction result folder (served by BlogResults.preview).
 await build({

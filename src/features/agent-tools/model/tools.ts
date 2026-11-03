@@ -1,3 +1,5 @@
+import {inputFormTools} from "../../../shared/input-form-tools";
+import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
 import { mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
@@ -24,7 +26,10 @@ const nativeID = z
   .min(1)
   .max(500)
   .refine((v) => !v.includes("\0"));
+const formDefinitions = Object.fromEntries(inputFormTools.map(([_action,name,input,description,readOnly])=>[name,{input,description,readOnly}])) as Record<typeof inputFormTools[number][1], {input:typeof inputFormTools[number][2];description:string;readOnly:boolean}>;
 export const toolDefinitions = {
+  ...formDefinitions,
+  reels_open_input_form: {description:"Open or focus the shared input form/result window in the Dashboard. Requires a form created by the common forms service; does not start a workflow or edit answers.",input:formIdInput,readOnly:false},
   reels_start_analysis: {
     description:
       "Analyze a linked project folder with the selected image analyzer. Sends sampled images to the provider using existing CLI login. Async: query analysis for progress; never automatically retry uncertain starts. Photos and three video stills per source, no motion/audio claims.",

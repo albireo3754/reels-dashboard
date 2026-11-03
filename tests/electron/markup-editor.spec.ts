@@ -25,12 +25,12 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
   const profile=await makeProfile();let app;
   try{
     const config=await markupFixture(profile);
-    await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
     app=await launchApp(profile);
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
     const opened=app.waitForEvent("window");
-    await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+    await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
     const editor=await opened,errors:string[]=[];
     // Exercise the responsive drawer independently of the host display size.
     await editor.setViewportSize({width:960,height:720});
@@ -69,7 +69,7 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
     expect(errors).toEqual([]);
     await editor.close();
     const reopened=app.waitForEvent("window");
-    await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+    await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
     const again=await reopened;
     await again.setViewportSize({width:960,height:720});
     await expect(again.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
@@ -86,12 +86,12 @@ test("real configured manuscript renders read-only with photos and no source wri
   const config=JSON.parse(await readFile(process.env.REELS_MARKUP_CONFIG!,"utf8"));
   const original=await readFile(config.canon,"utf8");
   try{
-    await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
     app=await launchApp(profile);
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
     const opened=app.waitForEvent("window");
-    await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+    await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
     const editor=await opened;
     await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
     const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
@@ -110,12 +110,15 @@ test("real configured manuscript renders read-only with photos and no source wri
         const data=await (await editor.request.get(new URL("/api/blog/document",editor.url()).href)).json();
         const {findingApplicability}=await import("../../src/shared/review-applicability");
         const current=data.reviews.find((r:any)=>r.bundleId===latest.bundleId).findings.filter((f:any)=>!["withdrawn","rejected","obsolete"].includes(f.status));
-        for(let i=0;i<current.length;i++){
-          const f=current[i],id=f.proposal?.tid??f.proposal?.entry?.id;
+        // Apply buttons live on the inline cards next to the target paragraph, not in the panel.
+        for(const f of current){
+          const id=f.proposal?.tid??f.proposal?.entry?.id;
           const expected=findingApplicability(f,data.paragraphs.find((p:any)=>p.id===id)?.source).canApply;
-          if(expected)await expect(editor.locator(".ce-proposal").nth(i).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
-          else await expect(editor.locator(".ce-proposal").nth(i).getByRole("button",{name:"적용",exact:true})).toBeDisabled();
+          const apply=frame.locator(`.rv-card[data-proposal="${f.id}"]`).getByRole("button",{name:"적용",exact:true});
+          if(expected)await expect(apply).toBeEnabled();
+          else if(await apply.count())await expect(apply).toBeDisabled();
         }
+        expect(await frame.locator("[data-tid]").evaluateAll(ps=>ps.some(p=>!!p.querySelector("[data-review-ui]")))).toBe(false);
 
       }
     }
@@ -129,7 +132,7 @@ test("markup review button runs engine and refreshes completed results without r
   const profile=await makeProfile();let app,server;
   try{
     const config={...await markupFixture(profile),review:path.join(profile,"reviews.json")};
-    await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
     server=await startWorkflowServer({root:path.join(profile,"workflow"),port:0,sdkEnv:{},sdkFactory:()=>({
       startThread:()=>({async runStreamed(prompt){
         const input=JSON.parse((typeof prompt==="string"?prompt:(prompt[0] as {text:string}).text).split("\nInput: ")[1].split("\nReturn resultJson")[0]);
@@ -150,7 +153,7 @@ test("markup review button runs engine and refreshes completed results without r
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
     const opened=app.waitForEvent("window");
-    await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+    await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
     const editor=await opened;
     await editor.setViewportSize({width:960,height:720});
     await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
@@ -179,32 +182,39 @@ test("independent proposals stay applicable after label recolor and sequential e
   ];
   await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"Independent suggestions",verdict:"needs-work",basedOn,findings}]}));
   await writeFile(config.canon,original.replace("적갈","초록"));
-  await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+  await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
   app=await launchApp(profile);const main=await app.firstWindow();
   await main.getByRole("button",{name:"블로그",exact:true}).click();
-  const opened=app.waitForEvent("window");await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+  const opened=app.waitForEvent("window");await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
   const editor=await opened;
   await editor.setViewportSize({width:960,height:720});
   const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
   await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
   await openReview(editor);
-  const cards=editor.locator(".ce-proposal");
-  await expect(cards).toHaveCount(3);
-  for(let i=0;i<3;i++)await expect(cards.nth(i).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
+  await expect(editor.locator(".ce-proposal")).toHaveCount(3);
+  await closeReview(editor);
+  // Proposals are applied from the inline cards next to P2; each apply re-validates the rest.
+  const ids=["checks","color1","color2"],inline=(id:string)=>frame.locator(`.rv-card[data-proposal="${id}"]`);
+  for(const id of ids)await expect(inline(id).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
   for(let i=0;i<3;i++){
-    await cards.nth(i).getByRole("button",{name:"적용",exact:true}).click();
-    if(i<2)await expect(cards.nth(i+1).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
+    await inline(ids[i]).getByRole("button",{name:"적용",exact:true}).click();
+    await expect(inline(ids[i])).toHaveCount(0);
+    if(i<2)await expect(inline(ids[i+1]).getByRole("button",{name:"적용",exact:true})).toBeEnabled();
   }
   await expect(frame.locator('[data-tid="P2"]')).toHaveText("✅ Second line");
-  await closeReview(editor);
   await editor.getByRole("button",{name:"정본 저장",exact:true}).click();
   await expect.poll(async()=>await readFile(config.canon,"utf8")).toContain("✅");
   await expect(editor.getByText("정본과 미리보기를 저장했어요. 저장 전 사본도 보관했어요.",{exact:true})).toBeVisible();
   await editor.reload();
   await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
+  await expect(frame.locator('[data-tid="P2"]')).toHaveText("✅ Second line");
+  await expect(frame.locator(".rv-card")).toHaveCount(0);
+  expect(await frame.locator('[data-tid="P2"]').innerHTML()).not.toMatch(/rv-|data-review-ui/);
   await openReview(editor);
-  await expect(editor.locator(".ce-proposal").nth(0)).toContainText("이미 본문에 반영");
-  await expect(editor.locator(".ce-proposal").nth(1)).toContainText("이미 같은 서식");
+  for(let i=0;i<3;i++){
+    await expect(editor.locator(".ce-proposal").nth(i)).toHaveAttribute("data-state","applied");
+    await expect(editor.locator(".ce-proposal").nth(i)).toContainText("반영됨");
+  }
   const saved=parse(await readFile(config.canon,"utf8"));
   const p=paragraphNodes(saved).find(p=>p.id==="P2")!;
   expect(p.marks.map(m=>m.style.color)).toEqual(["#85613f","#0096dc"]);
@@ -219,10 +229,10 @@ test("explicit live visual review consumes rendered evidence and never edits man
  const config=JSON.parse(await readFile(process.env.REELS_MARKUP_CONFIG!,"utf8"));
  const original=await readFile(config.canon,"utf8"),doc=parse(original),id=process.env.REELS_LIVE_VISUAL_BUNDLE!;
  try{
-  await writeFile(path.join(profile,"canonical-blog.json"),JSON.stringify(config));
+  await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
   app=await launchApp(profile);
   const main=await app.firstWindow();await main.getByRole("button",{name:"블로그",exact:true}).click();
-  const opened=app.waitForEvent("window");await main.getByRole("button",{name:"정본 스마트 에디터 열기",exact:true}).click();
+  const opened=app.waitForEvent("window");await main.getByRole("button",{name:"프로젝트 열기",exact:true}).click();
   const editor=await opened;
   await expect(editor.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
   await editor.getByRole("navigation",{name:"정본 묶음"}).getByRole("button").nth(doc.bundles.findIndex(b=>b.id===id)).click();

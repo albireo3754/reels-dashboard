@@ -1,21 +1,13 @@
-import {paragraphSource} from "../../shared/review-applicability";
-import {reviewDocument} from "../../shared/markup-review";
-import {paragraphNodes} from "../../shared/blog-markup-source";
-import {readFile,writeFile,readdir,open,rename,unlink,mkdir,stat} from "node:fs/promises";
+import {readFile,readdir,open,unlink,mkdir,stat} from "node:fs/promises";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
 import {workflowRequest} from "../workflow/client";
+import {atomic,storeMarkupReviews} from "./review-store";
 import {markupReviewInput,validateMarkupReview} from "../../shared/markup-review";
 import {parse} from "../../shared/blog-markup";
 import {bundleHashes} from "../../shared/blog-markup-source";
 import type {EditorConfig} from "./store";
 import type {SdkJob} from "../../shared/workflow";
 type Call=(action:"review-markup"|"job",input:unknown)=>Promise<any>;
-async function atomic(file:string,value:unknown){
- const temp=file+"."+randomUUID()+".tmp";
- try{await writeFile(temp,JSON.stringify(value,null,2)+"\n",{flag:"wx"});await rename(temp,file);}
- finally{await unlink(temp).catch(e=>{if(e.code!=="ENOENT")throw e;});}
-}
 export class MarkupReviewWorker{
  private timer?:ReturnType<typeof setInterval>;
  private running?:Promise<void>;
@@ -75,16 +67,7 @@ export class MarkupReviewWorker{
       if(job.status!=="completed"){r.status=job.status;r.error=job.error??"검토가 완료되지 않았어요.";}
       else{
         const result=validateMarkupReview(job.result,input);
-        const reviewLock=await open(this.config.review+".lock","wx");
-        try{
-          let stored:any={schemaVersion:1,reviews:[]};
-          try{stored=JSON.parse(await readFile(this.config.review,"utf8"));}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
-          const generatedAt=job.updatedAt;
-          const original=paragraphNodes(reviewDocument(input.source));
-          const reviews=result.reviews.map(review=>({...review,basedOn:r.basedOn[review.bundleId],generatedAt,requestId:r.id,provider:"Codex",jobId:job.id,visualSourceFingerprint:input.visualEvidence[0]?.sourceFingerprint,screenshots:input.visualEvidence.flatMap((e,index)=>e.bundleId===review.bundleId?[{width:e.width,index}]:[]),findings:review.findings.map(f=>{const p=original.find(p=>p.id===(f.proposal?.layer==="text"?f.proposal.tid:f.proposal?.layer==="emphasis"?f.proposal.entry.id:undefined));return {...f,status:"proposed",...(p?{sourceAtReview:paragraphSource(p)}:{})};})}));
-          stored.reviews=[...(stored.reviews??[]).filter((review:any)=>!input.bundleIds.includes(review.bundleId)),...reviews];
-          await atomic(this.config.review,stored);
-        }finally{await reviewLock.close();await unlink(this.config.review+".lock");}
+        await storeMarkupReviews(this.config.review,input,r.basedOn,result,{generatedAt:job.updatedAt,provider:"Codex",jobId:job.id});
         const current=bundleHashes(parse(await readFile(this.config.canon,"utf8")));
         r.status=input.bundleIds.some(id=>current[id]?.fullHash!==r.basedOn[id]?.fullHash)?"stale":"completed";
         r.result=result;r.completedAt=new Date().toISOString();
