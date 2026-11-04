@@ -4,6 +4,7 @@ import { AnnotationStore } from "./annotations";
 import { MarkupStore } from "./markup-store";
 import {proxyWorkflow} from "./workflow-proxy";
 import {handleSuggest,type SuggestCall} from "./inline-suggest";
+import {handleChat,type ChatCall} from "./blog-chat";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -14,7 +15,7 @@ export async function startCanonicalEditor(
   webRoot = path.resolve("dist"),
   capture?: (url:string,bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>,
   nativeClipboard?: (text:string)=>void | Promise<void>,
-  deps: {suggest?: SuggestCall} = {},
+  deps: {suggest?: SuggestCall; chat?: ChatCall} = {},
 ) {
   const store = config.format === "markup" ? new MarkupStore(config,capture?((ids,dir,rev)=>capture("http://127.0.0.1:"+(server.address() as {port:number}).port+"/api/blog/frame",ids,dir,rev)):undefined) : new CanonicalStore(config);
   await store.load();
@@ -74,6 +75,16 @@ export async function startCanonicalEditor(
             if (!res.writableFinished) controller.abort();
           });
           const result = await handleSuggest(store instanceof MarkupStore ? store : undefined, v, controller.signal, deps.suggest);
+          if (res.destroyed) return;
+          return json(result.status, result.body);
+        }
+        if (u.pathname === "/api/blog/chat") {
+          // Synchronous, read-only; abort the engine call when the editor cancels.
+          const controller = new AbortController();
+          res.once("close", () => {
+            if (!res.writableFinished) controller.abort();
+          });
+          const result = await handleChat(store instanceof MarkupStore ? store : undefined, v, controller.signal, deps.chat);
           if (res.destroyed) return;
           return json(result.status, result.body);
         }

@@ -179,6 +179,16 @@ The workflow/SDK/observability snapshot passed 95 unit tests, 2 headless workflo
 
 Verification (2026-11-03): `tests/unit/workflow-suggest.test.ts` (7) passed within `npm test` 220/220 on Homebrew Node 26. A live probe ran on a separate port (never 4318) with the real SDK, saved Codex login (`authModes: ["codex-login"]`), the default model and effort `low`, using synthetic Korean text. Calls that returned took 5.3–12.2 s. Examples: `일요일 아침에 동네 공원을 ` → `걸었어요.`; `돌아오는 길에 빵집에 들러 ` before `집에 와서…` → `빵을 사서 `. End-of-paragraph positions usually returned an empty list, because the prompt forbids inventing new facts. Many calls in the same window produced no SDK event after `turn.started` and ended at the 90 s timeout. A plain `codex exec` with the same default model also stalled for 90 s at that time, so the stalls were attributed to backend or account latency, not to this action.
 
+## Selection chat (`chat-blog`) — 2026-11-04
+
+`chat-blog` is the second **synchronous, transient** action, used by the markup blog editor's [구절 채팅](canonical-blog-editor.md#구절-채팅--2026-11-04). It is served at `POST /api/workflows/chat-blog` and called by the editor server through `workflowRequest`.
+
+- Input (`blogChatInput`, `src/shared/blog-chat.ts`): `{id: uuid, title ≤300, question 1..2000, history ≤12 × {role, text ≤4000}, attachments ≤5 × {paragraphId, quote ≤2000, paragraph ≤20000}, context ≤60000, rules ≤20000, guidance ≤60000}`. `paragraph` is the plain text the writer currently sees (unsaved edits included); `context` is the bundles around the attached paragraphs (or the selected bundle) with unsaved attached paragraphs substituted.
+- Execution: `CodexExecutor.chatBlog(input, signal?)` — same read-only, no-network SDK turn and auth fallback as `suggestInline`, sharing its concurrency cap. `outputSchema` is `blogChatResult` (`{reply ≤4000, rewrites ≤3 × {paragraphId, quote, replacement}}`). The prompt (`buildChatPrompt`) treats manuscript, annotations and history as data and only QUESTION as the request; rewrites must quote the attached paragraph exactly and use only facts in the manuscript.
+- Settings: `REELS_CHAT_MODEL` (falls back to `REELS_CODEX_MODEL`), `REELS_CHAT_REASONING_EFFORT` (default `medium`), `REELS_CHAT_TIMEOUT_MS` (default 120000).
+- Output: `{id, reply, rewrites, elapsedMs, authModes}` after `cleanChatResult`, which drops rewrites whose paragraph is not attached or whose quote is missing or ambiguous in that paragraph, and strips markup from replacements.
+- **No persistence**, as with `suggest-inline`. `WORKFLOW_PROTOCOL_VERSION` is now 3, so a server started before this action is reported as stale and must be restarted.
+
 ## Desktop embedded server — 2026-11-03
 
 The desktop app now runs the workflow server inside its Electron main process (`src/desktop/workflow-host.ts`). You no longer need to start `npm run start:server` next to the app. Because the server is part of the app build, it cannot run older code than the app.

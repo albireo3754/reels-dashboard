@@ -34,6 +34,12 @@ import {
   inlineSuggestInput,
   inlineSuggestResult,
 } from "../../shared/inline-suggest";
+import {
+  blogChatInput,
+  blogChatResult,
+  buildChatPrompt,
+  cleanChatResult,
+} from "../../shared/blog-chat";
 
 // Backend-only; no key is returned to clients or written to a project file.
 export function codexEnvironment(
@@ -300,6 +306,74 @@ export class CodexExecutor {
       return {
         id: input.id,
         suggestions: cleanSuggestions(output, input),
+        elapsedMs: Date.now() - started,
+        authModes: job.authModes,
+      };
+    } catch (error) {
+      if (controller.signal.aborted)
+        throw new Error(this.safeError(controller.signal.reason));
+      throw new Error(this.safeError(error));
+    } finally {
+      clearTimeout(timer);
+      clientSignal?.removeEventListener("abort", onClientAbort);
+      this.suggesting.delete(controller);
+    }
+  }
+  /**
+   * Selection chat: a short, synchronous SDK call over the attached phrases. Like
+   * suggestInline it keeps no SQLite job, artifacts or file writes, and shares the
+   * same concurrency budget.
+   */
+  async chatBlog(raw: unknown, clientSignal?: AbortSignal) {
+    const input = blogChatInput.parse(raw);
+    if (this.suggesting.size >= 4)
+      throw new Error("요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.");
+    const started = Date.now();
+    const timeoutMs = z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(600000)
+      .catch(120000)
+      .parse(this.env.REELS_CHAT_TIMEOUT_MS ?? 120000);
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () =>
+        controller.abort(
+          new Error(
+            `CHAT_TIMEOUT: 답변이 ${Math.round(timeoutMs / 1000)}초 안에 끝나지 않아 중단했어요.`,
+          ),
+        ),
+      timeoutMs,
+    );
+    const onClientAbort = () =>
+      controller.abort(new Error("CHAT_CANCELLED: 질문을 취소했어요."));
+    if (clientSignal?.aborted) onClientAbort();
+    else clientSignal?.addEventListener("abort", onClientAbort, { once: true });
+    this.suggesting.add(controller);
+    const job: SdkJob = { ...this.job("blog-chat"), id: input.id, role: "blog-chat" };
+    try {
+      const workspace = path.join(this.root, "blog-chat");
+      await mkdir(workspace, { recursive: true, mode: 0o700 });
+      const output = await this.generate(
+        job,
+        buildChatPrompt(input),
+        z.toJSONSchema(blogChatResult),
+        workspace,
+        controller.signal,
+        [],
+        {
+          persist: false,
+          model: this.env.REELS_CHAT_MODEL || this.env.REELS_CODEX_MODEL || undefined,
+          reasoning: reasoningEffort
+            .catch("medium")
+            .parse(this.env.REELS_CHAT_REASONING_EFFORT ?? "medium"),
+        },
+      );
+      controller.signal.throwIfAborted();
+      return {
+        id: input.id,
+        ...cleanChatResult(output, input),
         elapsedMs: Date.now() - started,
         authModes: job.authModes,
       };

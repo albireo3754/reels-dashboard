@@ -185,6 +185,19 @@ export async function startWorkflowServer(options: {
               throw error;
             }
           }
+          case "/api/workflows/chat-blog": {
+            const controller = new AbortController();
+            res.once("close", () => {
+              if (!res.writableFinished)
+                controller.abort(new Error("Client disconnected"));
+            });
+            try {
+              return json(200, await executor.chatBlog(input, controller.signal));
+            } catch (error) {
+              if (res.destroyed) return;
+              throw error;
+            }
+          }
           case "/api/workflows/stop":
             return json(
               200,

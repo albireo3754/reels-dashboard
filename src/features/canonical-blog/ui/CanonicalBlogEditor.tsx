@@ -2,6 +2,8 @@ import { StickerPlanner } from "./StickerPlanner";
 import { stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
 import {findingApplicability,replaceInlineText} from "../../../shared/review-applicability";
 import {UserAnnotations,type AnnotationTarget} from "./UserAnnotations";
+import {BlogChat,type ChatAttachment} from "./BlogChat";
+import {CHAT_LIMITS,type BlogChatRewrite} from "../../../shared/blog-chat";
 import { FormattingToolbar, type SelectionFormat } from "./FormattingToolbar";
 import { CanonicalSdkReview } from "./CanonicalSdkReview";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -60,6 +62,9 @@ function proposalSummary(item:InlineProposal){
 }
 export function CanonicalBlogEditor() {
   const [annotationTarget,setAnnotationTarget]=useState<AnnotationTarget>();
+  // Phrases attached to the selection chat with `채팅에 추가` (screen only).
+  const [chatAttachments,setChatAttachments]=useState<ChatAttachment[]>([]);
+  const [chatFocus,setChatFocus]=useState("");
   const [doc, setDoc] = useState<CanonicalDocument>();
   const [stickers,setStickers]=useState<StickerPlacement[]>([]);
   const [stickerOpen,setStickerOpen]=useState(false);
@@ -506,6 +511,16 @@ export function CanonicalBlogEditor() {
         setAnnotationTarget({id:m.id,text:m.text,context:m.context,checked:!!m.checked,requestId:crypto.randomUUID()});
         setReviewOpen(true);
       }
+      if(m.type==="chat-attach"&&doc.format==="markup"&&typeof m.id==="string"&&typeof m.text==="string"&&m.text.trim()&&m.text.length<=CHAT_LIMITS.quote&&doc.paragraphs.some(p=>p.id===m.id)&&!removedParasRef.current.includes(m.id)){
+        const quote=m.text as string,paragraphId=m.id as string;
+        setChatAttachments(old=>{
+          if(old.some(a=>a.paragraphId===paragraphId&&a.quote===quote))return old;
+          // Keep the newest phrases within the request limit.
+          return [...old,{key:crypto.randomUUID(),paragraphId,quote}].slice(-CHAT_LIMITS.attachments);
+        });
+        setChatFocus(crypto.randomUUID());
+        setReviewOpen(true);
+      }
       if(m.type==="sticker-anchor" && doc.stickerAnchors?.some(a=>a.bundleId===m.bundleId && a.before===m.before))setStickerTarget(stickerKey(m));
       if (m.type === "typography") setTypography(m.styles);
       if (m.type === "selection") setSelectionFormat(m.selection ?? undefined);
@@ -673,6 +688,47 @@ export function CanonicalBlogEditor() {
   }
   const applyRef = useRef(apply);
   applyRef.current = apply;
+  /** Current (possibly unsaved) source of a paragraph, or undefined when it is gone. */
+  function chatSource(id:string){
+    if(!doc||removedParas.includes(id))return undefined;
+    const p=doc.paragraphs.find(x=>x.id===id);
+    if(!p||deleted.includes(doc.bundles.find(b=>b.paragraphIds.includes(id))?.id??""))return undefined;
+    return editsRef.current[id]??p.source;
+  }
+  function chatPlain(id:string){
+    const source=chatSource(id);
+    return source===undefined?undefined:readInline(source).map(r=>r.text).join("");
+  }
+  /** `본문에 반영` from the chat: same replace path as review proposals. Returns an error message on failure. */
+  function applyChatRewrite(rw:BlogChatRewrite):string|undefined{
+    if(!doc||busy)return "지금은 본문을 바꿀 수 없어요. 잠시 후 다시 시도해주세요.";
+    const source=chatSource(rw.paragraphId);
+    if(source===undefined)return "문단이 지워졌거나 찾을 수 없어요.";
+    try{
+      const plain=readInline(source).map(r=>r.text).join("");
+      const start=plain.indexOf(rw.quote);
+      if(start<0)return "구절이 본문에서 바뀌었어요. 다시 선택해 물어보세요.";
+      if(plain.indexOf(rw.quote,start+1)>=0)return "같은 구절이 문단에 여러 번 있어요. 본문에서 직접 고쳐주세요.";
+      const next=replaceInlineText(source,start,start+rw.quote.length,rw.replacement);
+      readInline(next);
+      editsRef.current={...editsRef.current,[rw.paragraphId]:next};
+      const original=doc.paragraphs.find(p=>p.id===rw.paragraphId)!;
+      setEdits(old=>{const n={...old};if(next===original.source)delete n[rw.paragraphId];else n[rw.paragraphId]=next;return n;});
+      send({type:"replace",id:rw.paragraphId,html:inlineHtml(next)});
+      const i=doc.bundles.findIndex(b=>b.paragraphIds.includes(rw.paragraphId));
+      setChanged(old=>[...new Set([...old,...doc.bundles.slice(Math.max(0,i-1),i+2).map(b=>b.id)])].filter(x=>!deleted.includes(x)));
+      setQueued([]);setError("");
+      setNotice("채팅 제안을 본문에 반영했어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장해주세요.");
+      return undefined;
+    }catch(e){return errorText(e);}
+  }
+  async function saveChatMemo(input:{paragraphId:string;quote:string;context:string;note:string}){
+    const r=await fetch("/api/blog/annotations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"add",id:crypto.randomUUID(),...input,checked:false})});
+    const value=await r.json();
+    if(!r.ok)throw new Error(value.error??"메모를 저장하지 못했어요.");
+    send({type:"annotations-changed"});
+    setNotice("답변을 구절 메모로 남겼어요. 메모는 원고와 따로 비공개로 저장돼요.");
+  }
   const review = doc?.reviews.find((r) => r.bundleId === selected);
   const reviewItems = proposals.filter((i) => i.bundleId === selected);
   const reviewCounts = {
@@ -895,6 +951,11 @@ export function CanonicalBlogEditor() {
           >
             닫기 ×
           </button>
+          {doc.format==="markup"&&<BlogChat attachments={chatAttachments} revision={doc.revision} bundleId={selected||undefined} disabled={busy} focusToken={chatFocus}
+            sourceOf={chatSource} plainOf={chatPlain}
+            onRemove={key=>setChatAttachments(old=>old.filter(a=>a.key!==key))}
+            onSent={keys=>setChatAttachments(old=>old.filter(a=>!keys.includes(a.key)))}
+            onApply={applyChatRewrite} onMemo={saveChatMemo} onJump={id=>send({type:"focus",id})}/>}
           {doc.format==="markup"&&<UserAnnotations target={annotationTarget} revision={doc.revision} onChanged={()=>send({type:"annotations-changed"})} onClose={()=>setAnnotationTarget(undefined)} onJump={id=>send({type:"focus",id})}/>}
           <small>선택한 묶음</small>
           <h2>{bundle?.name}</h2>

@@ -614,3 +614,29 @@ summary:focus-visible {
     animation-duration: 2.4s;
   }
 }
+
+/* Selection chat (`채팅에 추가`). Screen-only; never enters the manuscript. */
+.ce-chat{border-bottom:1px solid #ccd8cf;padding-bottom:18px;margin-bottom:20px}
+.ce-chat h3{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:17px;margin:0 0 8px}
+.canonical-editor .ce-chat-reset{font-size:12px;padding:4px 8px}
+.ce-chat-help{font-size:13px;line-height:1.6;color:#4f5a52;margin:0 0 10px}
+.ce-chat-log{list-style:none;margin:0 0 10px;padding:0;max-height:min(52vh,520px);overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.ce-chat-turn{padding:9px 11px;border-radius:9px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.ce-chat-turn p{margin:0;white-space:pre-wrap}
+.ce-chat-turn.is-user{background:#eef3f8;border:1px solid #d3dde8;margin-left:18px}
+.ce-chat-turn.is-assistant{background:#fff;border:1px solid #d8e0d9;margin-right:18px}
+.ce-chat-turn blockquote{margin:0 0 6px;padding:5px 9px;border-left:3px solid #71947a;background:#f0f6ec;font-size:12px}
+.canonical-editor .ce-chat-jump{min-height:0;font:600 11px/1.4 ui-monospace,monospace;padding:1px 5px;margin-right:4px;border:1px solid #bfcebb;border-radius:4px;background:#fff;color:#4d6c55;cursor:pointer}
+.ce-chat-rewrite{margin-top:8px;padding:8px;border:1px dashed #b9cbbc;border-radius:7px;background:#fbfcfa}
+.ce-chat-rewrite del{color:#9b3a2c;background:#fbe9e5;text-decoration-thickness:1px}
+.ce-chat-rewrite ins{color:#25603f;background:#e4f3e7;text-decoration:none;border-bottom:1px solid #6aa57f}
+.ce-chat-rewrite button,.ce-chat-memo{margin-top:6px;font-size:12px;padding:5px 9px;min-height:32px}
+.ce-chat-rewrite small{display:block;color:#9b3a2c;margin-top:4px}
+.ce-chat-error{font-size:13px;color:#9b3a2c}
+.ce-chat-chips{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px;padding:0}
+.ce-chat-chips li{display:flex;align-items:center;gap:2px;max-width:100%;padding:2px 2px 2px 8px;border:1px solid #bfcebb;border-radius:999px;background:#edf4e9;font-size:12px;color:#33513d}
+.ce-chat-chips span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ce-chat-chips button{border:0;background:transparent;font-size:14px;line-height:1;padding:4px 7px;min-width:28px;min-height:28px;cursor:pointer;color:#4d6c55}
+.ce-chat textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;padding:9px 10px;font:inherit;font-size:14px;border:1px solid #b9cbbc;border-radius:7px;resize:vertical}
+.ce-chat-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.ce-chat-actions small{color:#6b756d;font-size:11px}

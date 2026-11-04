@@ -60,6 +60,7 @@ export const workflowAction = z.enum([
   "review-bundles",
   "review-markup",
   "suggest-inline",
+  "chat-blog",
   "experience-save",
   "experience-media",
   "followups-open",
@@ -72,7 +73,7 @@ export type WorkflowAction = z.infer<typeof workflowAction>;
  * handler code is reported as stale instead of being reused. Dev and installed
  * builds of the same protocol share one server and data dir by design.
  */
-export const WORKFLOW_PROTOCOL_VERSION = 2;
+export const WORKFLOW_PROTOCOL_VERSION = 3;
 /** Shown when the server answering the workflow URL predates this app's actions. */
 export const STALE_WORKFLOW_SERVER_MESSAGE =
   "실행 중인 워크플로 서버가 이전 버전이에요. 따로 실행한 서버(npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
@@ -97,7 +98,7 @@ export interface WorkflowBridge {
 export interface SdkJob {
   inputHash?: string;
   id: string;
-  kind: "workflow" | "bundle-review" | "inline-suggest";
+  kind: "workflow" | "bundle-review" | "inline-suggest" | "blog-chat";
   runId?: string;
   taskId?: string;
   status: "running" | "completed" | "failed" | "cancelled" | "interrupted";

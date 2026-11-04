@@ -21,6 +21,18 @@ quickButton('적갈색',()=>formatRange('foreColor','#a64132'));
 quickButton('노랑 형광펜',()=>formatRange('hiliteColor','#fff8b2'));
 if(document.documentElement.dataset.markup==='true')quickButton('메모',()=>annotate(false));
 if(document.documentElement.dataset.markup==='true')quickButton('✓ 체크',()=>annotate(true));
+if(document.documentElement.dataset.markup==='true')quickButton('채팅에 추가',()=>attachToChat());
+function attachToChat(){
+ removeGhost();
+ if(!selected||!savedRange||savedRange.collapsed||selected.contentEditable!=='true'||selected.dataset.tid==='$title')return;
+ // Review UI (diff, markers, ghost) never enters the quote.
+ // Line breaks count as \n, links as their label: the same plain text the host reads from the source.
+ const frag=savedRange.cloneContents();frag.querySelectorAll('[data-review-ui]').forEach(n=>n.remove());
+ frag.querySelectorAll('br').forEach(n=>n.replaceWith('\n'));
+ const text=(frag.textContent??'').trim();if(!text)return;
+ send({type:'chat-attach',id:selected.dataset.tid,text});
+ quick.style.display='none';
+}
 function annotate(checked){
  removeGhost();
  if(!selected||!savedRange||savedRange.collapsed||selected.contentEditable!=='true')return;
