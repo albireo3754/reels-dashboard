@@ -32,7 +32,7 @@ import {
 import os from "node:os";
 import { syncSnapshot } from "./sync";
 import { Workbench, PREVIEW_URL } from "./workbench";
-import { matchWorkbenchShortcut } from "../shared/workbench-shortcuts";
+import { DEFAULT_KEYMAP, matchAction } from "../shared/keymap";
 import {
   developmentModeEnabled,
   DEVELOPMENT_MODE_ARGUMENT,
@@ -711,18 +711,25 @@ async function awaitReady() {
       },
     });
     if (developmentMode) {
-      // Capture at the host so shortcuts also work while the cross-origin
-      // preview iframe has focus. Only the trusted top renderer receives actions.
+      // Host-scope actions (HOST_ACTIONS) are matched here in the main process,
+      // not by a renderer keydown listener as upstream workdesk does: the
+      // cross-origin preview iframe and xterm hold keyboard focus, so the top
+      // renderer would never see these keys. Only the trusted top renderer
+      // receives the action name; renderer-scope actions are left to it.
       window.webContents.on("before-input-event", (event, input) => {
         if (input.type !== "keyDown") return;
-        const action = matchWorkbenchShortcut({
-          code: input.code,
-          metaKey: input.meta,
-          ctrlKey: input.control,
-          altKey: input.alt,
-          shiftKey: input.shift,
-          isComposing: input.isComposing,
-        });
+        const action = matchAction(
+          DEFAULT_KEYMAP,
+          {
+            code: input.code,
+            metaKey: input.meta,
+            ctrlKey: input.control,
+            altKey: input.alt,
+            shiftKey: input.shift,
+            isComposing: input.isComposing,
+          },
+          "host",
+        );
         if (!action) return;
         // Suppress native menu/iframe/xterm handling and key-repeat duplication.
         event.preventDefault();

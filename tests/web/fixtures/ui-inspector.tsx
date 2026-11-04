@@ -2,11 +2,13 @@ import { createRoot } from "react-dom/client";
 import { App } from "../../../src/renderer/App";
 import { createDemoBridge } from "../../../src/shared/demo";
 import type { WorkbenchBridge } from "../../../src/shared/workbench";
-import type { WorkbenchAction } from "../../../src/shared/workbench-shortcuts";
+import type { KeyAction } from "../../../src/shared/keymap";
+import { ShortcutsProvider } from "../../../src/shared/ui/shortcuts";
+import { UiInspector } from "../../../src/features/ui-inspector";
 import "../../../src/renderer/styles.css";
 const bridge = createDemoBridge();
 if (new URLSearchParams(location.search).has("enabled")) {
-  const listeners = new Set<(action: WorkbenchAction) => void>();
+  const listeners = new Set<(action: KeyAction) => void>();
   const state = {
     workspace: "/tmp/synthetic-reels-source",
     sessions: [],
@@ -44,8 +46,34 @@ if (new URLSearchParams(location.search).has("enabled")) {
   document.addEventListener("keydown", (event) => {
     if (event.metaKey && event.shiftKey && event.code === "KeyC") {
       event.preventDefault();
-      listeners.forEach((callback) => callback({ type: "inspect" }));
+      listeners.forEach((callback) => callback("inspectUi"));
     }
   });
 }
-createRoot(document.getElementById("root")!).render(<App bridge={bridge} />);
+// `standalone` mounts only the inspector and keeps it mounted after onClose,
+// so a test can count onClose/onFeedback calls and see whether an Escape
+// still reaches document listeners (App's modal Esc, the blog editor's Esc).
+const counts = { close: 0, feedback: [] as string[], documentEscape: 0, cancel: 0 };
+Object.assign(window, { inspectorCounts: counts });
+const params = new URLSearchParams(location.search);
+createRoot(document.getElementById("root")!).render(
+  <ShortcutsProvider host={bridge.workbench}>
+    {params.has("standalone") ? (
+      <>
+        <button type="button">합성 대상</button>
+        <UiInspector
+          onClose={() => counts.close++}
+          onFeedback={(text) => counts.feedback.push(text)}
+        />
+      </>
+    ) : (
+      <App bridge={bridge} />
+    )}
+  </ShortcutsProvider>,
+);
+if (params.has("standalone")) {
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") counts.documentEscape++;
+  });
+  document.addEventListener("cancel", () => counts.cancel++, true);
+}

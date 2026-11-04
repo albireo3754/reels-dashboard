@@ -1,3 +1,5 @@
+import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
+import { goToTab } from "../shared/keymap";
 import {
   lazy,
   Suspense,
@@ -34,7 +36,11 @@ import {
   selectBoardProjects,
   type BoardQuery,
 } from "../features/content-board";
-import type { DrawerMode } from "../features/dev-workspace";
+import {
+  DevWorkspace,
+  workbenchShortcutTarget,
+  type DrawerMode,
+} from "../features/dev-workspace";
 import { ProjectGrouping } from "../features/project-grouping";
 import { WorkflowPanel, useWorkflowNotifications } from "../features/workflow";
 import {
@@ -48,11 +54,6 @@ import { ProjectCard } from "./ProjectCard";
 import { ProjectDialog } from "./ProjectDialog";
 import { Empty, Icon, JSONDetails, asRecord, asStrings } from "./ui";
 const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
-const DevWorkspace = lazy(() =>
-  import("../features/dev-workspace").then((m) => ({
-    default: m.DevWorkspace,
-  })),
-);
 
 type Choice = "undecided" | "included" | "excluded";
 type ActivePlan = {
@@ -79,9 +80,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const feedbackSequence = useRef(0);
   const acknowledgeFeedback = useCallback((id: number) => setFeedbackDrafts((drafts) => drafts.filter((draft) => draft.id !== id)), []);
   const closeInspector = useCallback(() => setInspecting(false), []);
-  useEffect(() => bridge.workbench?.onShortcut((action) => {
-    if (action.type === "inspect") setInspecting((active) => !active);
-  }), [bridge.workbench]);
+  // Arrives only from the dev desktop host (or the ?enabled=1 web fixture).
+  useShortcut("inspectUi", () => setInspecting((active) => !active));
   const [editorProject, setEditorProject] = useState<EditorProject | null>(
     null,
   );
@@ -600,6 +600,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const navigationItems = navigationTabs.map(
     (key): [Tab, string] => [key, pages[key].label],
   );
+  // ⌘1-9 reach these screens through DevWorkspace (dev host only); the hint
+  // asks the same rule DevWorkspace's handler does, from the lifted drawer mode.
+  const screenHint = (index: number) => {
+    const action = goToTab(index + 1);
+    return bridge.workbench &&
+      workbenchShortcutTarget(
+        { mode: drawerMode, screens: navigationItems.length },
+        action,
+      )?.kind === "screen"
+      ? action
+      : undefined;
+  };
   const navigateTo = (key: Tab) => {
     setTab(key);
     if (key === "dashboard") refreshDashboard();
@@ -632,7 +644,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       <aside className="sidebar">
         <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
-          {navigationItems.map(([key, text]) => (
+          {navigationItems.map(([key, text], index) => (
             <button
               key={key}
               aria-label={text}
@@ -646,6 +658,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               {key === "dashboard" && (
                 <small aria-hidden="true">{totals.all}</small>
               )}
+              <ShortcutHint action={screenHint(index)} />
             </button>
           ))}
         </nav>
@@ -1289,6 +1302,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   const item = navigationItems[index];
                   if (item) navigateTo(item[0]);
                 }}
+                screens={navigationItems.length}
                 openSite={bridge.mobileBriefing?.open}
               />
             </Suspense>

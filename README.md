@@ -42,9 +42,11 @@ All **26 upstream test files / 75 tests** are preserved byte-for-byte. The nativ
 
 ## Compact workspace
 
-Workflow reports now use Slack-style message rows and safe Markdown rendering. Developer mode adds **화면 검사** (`⌘⇧C`) to turn a selected element and comment into a reviewable Codex request. Search keyboard access, background workflow notifications and concurrent-review protection are included. See [Workdesk adoption and coverage](docs/workdesk-adoption.md).
+Workflow reports now use Slack-style message rows and safe Markdown rendering. Developer mode adds **화면 검사** (`⇧⌘C`) to turn a selected element and comment into a reviewable Codex request. Search keyboard access, background workflow notifications and concurrent-review protection are included. See [Workdesk adoption and coverage](docs/workdesk-adoption.md).
 
 The window uses a compact toolbar: back/forward, screen history and menu/content search on the left; settings and the opt-in terminal on the right. The large introductory titles and sidebar development/settings entries are removed. See [window layout and terminal controls](docs/workspace-shell.md).
+
+All shortcuts come from one keymap (`src/shared/keymap.ts`), match the physical key with exact modifiers, and show a hint on the matching control while ⌘ is held. `⌘K` / `Ctrl+K` opens search; `⌘[` / `⌘]` and the mouse back/forward buttons step the toolbar history. In developer mode `⌘N/T/W/1–9` drive the terminal drawer, `⇧⌘C` starts inspection, `Esc` ends it and `Enter` sends an inspection comment (`Shift+Enter` for a new line). Renderer shortcuts, mouse buttons and hints do not reach the app while the preview iframe has focus. See [shortcut rules](docs/architecture.md#shortcuts) and [toolbar shortcuts](docs/workspace-shell.md#단축키--2026-11-04).
 
 Project photo/frame metadata analysis supports a replaceable image analyzer, source timestamps, human corrections and search through the desktop/MCP. See [metadata analysis](docs/media-analysis.md).
 

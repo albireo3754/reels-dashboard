@@ -1,7 +1,7 @@
-import { mkdir, readFile, writeFile, realpath, lstat } from "node:fs/promises";
+import { mkdir, writeFile, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { writeJsonAtomic } from "./fs";
+import { readJsonFile, writeJsonAtomic } from "./fs";
 import { emptyDashboard, type Dashboard } from "../contracts";
 import { validateDashboard } from "../data";
 export function safeDocumentName(name: unknown): string {
@@ -24,17 +24,11 @@ export class LocalStore {
     });
   }
   async load(): Promise<Dashboard> {
-    try {
-      return validateDashboard(
-        JSON.parse(
-          await readFile(path.join(this.root, "dashboard.json"), "utf8"),
-        ),
-      );
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT")
-        return { ...emptyDashboard(), updatedAt: "1970-01-01T00:00:00.000Z" };
-      throw e;
-    }
+    return readJsonFile(
+      path.join(this.root, "dashboard.json"),
+      validateDashboard,
+      () => ({ ...emptyDashboard(), updatedAt: "1970-01-01T00:00:00.000Z" }),
+    );
   }
   async update(
     change: (current: Dashboard) => Dashboard | Promise<Dashboard>,

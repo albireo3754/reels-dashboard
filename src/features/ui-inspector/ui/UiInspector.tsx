@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { formatKey } from "../../../shared/keymap";
+import {
+  ShortcutHint,
+  useKeymap,
+  useShortcut,
+} from "../../../shared/ui/shortcuts";
 import {
   feedbackPrompt,
   inspectTarget,
@@ -20,6 +26,25 @@ export function UiInspector({
   const dialog = useRef<HTMLDialogElement>(null);
   const exitButton = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef(document.activeElement);
+  // One inspect session = one mount. Escape can reach both the exitInspect
+  // shortcut and the modal dialog's cancel event, so close at most once.
+  const closed = useRef(false);
+  const close = useCallback(() => {
+    if (closed.current) return;
+    closed.current = true;
+    onClose();
+  }, [onClose]);
+  // The submit handler is synchronous; this marks a sent comment until the
+  // cleared value commits, so a second Enter in the same tick is ignored.
+  const submitting = useRef(false);
+  useLayoutEffect(() => {
+    submitting.current = false;
+  }, [comment]);
+  // Mounted only while inspecting, so registration is the liveness. The
+  // provider's capture listener runs before the document listeners below and
+  // stops propagation, which keeps App and editor Escape handlers from firing.
+  useShortcut("exitInspect", close);
+  const exitKey = formatKey(useKeymap().exitInspect[0]);
   useEffect(() => {
     document.documentElement.classList.add("reels-inspecting");
     return () => document.documentElement.classList.remove("reels-inspecting");
@@ -76,14 +101,7 @@ export function UiInspector({
         setSelected(inspectTarget(event.target));
     };
     const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.isComposing) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onClose();
-      } else if (
-        !own(event.target) &&
-        (event.key === "Enter" || event.key === " ")
-      )
+      if (!own(event.target) && (event.key === "Enter" || event.key === " "))
         suppress(event);
     };
     document.addEventListener("pointermove", move, true);
@@ -100,14 +118,15 @@ export function UiInspector({
       document.removeEventListener("dblclick", suppress, true);
       document.removeEventListener("keydown", key, true);
     };
-  }, [onClose, selected]);
+  }, [selected]);
   return (
     <>
       {!selected && (
         <div className="ui-inspector-banner" data-ui-inspector role="status">
           수정할 화면 요소를 선택하세요.{" "}
-          <button ref={exitButton} onClick={onClose}>
-            검사 끝내기 · Esc
+          <button ref={exitButton} onClick={close}>
+            검사 끝내기 · {exitKey}
+            <ShortcutHint action="exitInspect" className="end" />
           </button>
         </div>
       )}
@@ -130,19 +149,21 @@ export function UiInspector({
         aria-labelledby="ui-inspector-title"
         onCancel={(event) => {
           event.preventDefault();
-          onClose();
+          close();
         }}
       >
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (selected && comment.trim())
-              onFeedback(feedbackPrompt(selected, comment));
+            if (submitting.current || !selected || !comment.trim()) return;
+            submitting.current = true;
+            onFeedback(feedbackPrompt(selected, comment));
+            setComment("");
           }}
         >
           <header>
             <h2 id="ui-inspector-title">화면 수정 요청</h2>
-            <button type="button" aria-label="화면 검사 닫기" onClick={onClose}>
+            <button type="button" aria-label="화면 검사 닫기" onClick={close}>
               닫기
             </button>
           </header>
@@ -165,9 +186,20 @@ export function UiInspector({
               autoFocus
               value={comment}
               onChange={(event) => setComment(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Enter" ||
+                  event.shiftKey ||
+                  event.nativeEvent.isComposing ||
+                  event.keyCode === 229
+                )
+                  return;
+                event.preventDefault();
+                if (!submitting.current) event.currentTarget.form?.requestSubmit();
+              }}
               maxLength={6000}
               rows={5}
-              placeholder="어떻게 바꾸고 싶은지 적어주세요."
+              placeholder="어떻게 바꾸고 싶은지 적어주세요. Enter 보내기 · Shift+Enter 줄바꿈"
             />
           </label>
           <p className="ui-inspector-help">
@@ -175,7 +207,7 @@ export function UiInspector({
             입력값과 본문은 자동으로 포함하지 않아요.
           </p>
           <footer>
-            <button type="button" onClick={onClose}>
+            <button type="button" onClick={close}>
               취소
             </button>
             <button

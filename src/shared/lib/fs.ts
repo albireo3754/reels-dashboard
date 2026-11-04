@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { rename, unlink, writeFile } from "node:fs/promises";
+import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 
 /**
  * Replace `file` without readers ever seeing a partial write: write a unique sibling
@@ -26,3 +26,29 @@ export const writeJsonAtomic = (
   value: unknown,
   options?: { mode?: number },
 ) => writeFileAtomic(file, JSON.stringify(value, null, 2) + "\n", options);
+
+/** True when a filesystem error means the path does not exist. */
+export function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+/**
+ * Read `file` as UTF-8 JSON and pass the parsed value to `parse`.
+ * A missing file returns `fallback()`. Every other read error, the bare
+ * `SyntaxError` from `JSON.parse` and any error thrown by `parse` propagate
+ * unchanged.
+ */
+export async function readJsonFile<T>(
+  file: string,
+  parse: (value: unknown) => T,
+  fallback: () => T,
+): Promise<T> {
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch (error) {
+    if (isMissing(error)) return fallback();
+    throw error;
+  }
+  return parse(JSON.parse(raw));
+}

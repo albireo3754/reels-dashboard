@@ -29,6 +29,13 @@ Codex가 기본 도구이며 **세션 시작**을 눌렀을 때 선택한 소스
 | `⌘T` | 연결한 소스 폴더에 새 일반 터미널 탭을 열고 선택 |
 | `⌘W` | 패널이 펼쳐져 있으면 현재 세션 종료 후 탭 제거. 빈 패널은 닫기. 패널이 접혀 있거나 닫혀 있으면 앱 창 숨기기 |
 | `⌘1–9` | 패널이 펼쳐져 있으면 해당 순서의 세션 탭, 아니면 사이드바의 해당 메뉴 선택 |
+| `⇧⌘C` | 화면 검사 시작 |
+| `Esc` | 화면 검사 끝내기. 수정키 없이 누를 때만 동작하고, 댓글 창이 열려 있으면 창과 검사를 함께 닫는다 |
+
+2026-11-04부터 위 키는 `src/shared/keymap.ts`의 중앙 keymap에서 정의한다. `⌘N/T/W/1–9`와 `⇧⌘C`는 개발모드 main의 `before-input-event`가 물리 키(`e.code`)로 판정하고 액션 이름만 renderer에 전달하므로, 미리보기 iframe이나 xterm에 포커스가 있어도 동작한다. 수정키는 정확히 일치해야 한다. 공통 규칙은 [구조 문서의 Shortcuts](architecture.md#shortcuts), 상단 도구의 `⌘K`·`⌘[`/`⌘]`·마우스 뒤로/앞으로 버튼은 [창 구성 문서](workspace-shell.md#단축키--2026-11-04)를 따른다.
+
+- **⌘ 누르고 있기:** 지금 키가 실제로 작용할 위치에 힌트를 표시한다. 패널이 펼쳐져 있으면 세션 탭에 `⌘1–9`, 선택한 탭의 닫기에 `⌘W`(선택한 탭이 없으면 패널 **닫기**)가 붙고, 패널이 닫히거나 접혀 있으면 사이드바 메뉴에 `⌘1–9`가 붙는다. 힌트와 단축키 실행은 같은 `workbenchShortcutTarget` 규칙을 쓴다. 미리보기 iframe에 포커스가 있으면 ⌘ 입력이 상위 화면에 오지 않아 힌트가 표시되지 않는다.
+- **화면 검사:** 검사 중 `Esc`는 입력란에 포커스가 있어도 검사를 끝내고, 편집기·콘텐츠 창의 Escape 처리로 전달되지 않는다. 키를 누르고 있어 반복 입력되는 `Esc`와 `⇧Esc`·`⌘Esc`는 처리하지 않는다. 댓글 창에서는 `Enter`로 보내고 `Shift+Enter`로 줄을 바꾼다. 한글 조합 중 `Enter`는 보내지 않으며, 빈 댓글은 보내지 않고, 연속 입력해도 한 번만 보낸다. 댓글 창을 열어도 입력란에 자동으로 포커스가 가지 않는 기존 동작은 유지한다.
 
 탭 전환·패널 접기는 터미널과 프로세스를 유지한다. 패널의 **닫기**도 패널만 숨기며, 탭의 **세션 닫기**는 실행 중인 Codex·셸·미리보기·검증 프로세스를 종료한다. Workdesk의 tmux 세션과 달리 Codex 탭 닫기가 단순 detach는 아니다. 종료에 실패하면 오류를 표시하고 탭을 유지한다. 앱 종료 시 모든 세션을 종료하는 기존 동작은 유지한다.
 
@@ -41,13 +48,14 @@ Codex가 기본 도구이며 **세션 시작**을 눌렀을 때 선택한 소스
 | 위치 | 책임 |
 | --- | --- |
 | `src/shared/workbench.ts` | 도구·단계·세션·이벤트 계약, 단계별 요청문 |
-| `src/shared/workbench-shortcuts.ts` | 단축키 물리 코드·액션·힌트의 공통 정의 |
+| `src/shared/keymap.ts` | 앱 전체 단축키의 유일한 정의: 물리 코드·액션·호스트 범위·힌트 문자열 |
+| `src/shared/ui/shortcuts` | renderer 단축키 dispatcher(`ShortcutsProvider`·`useShortcut`)와 ⌘ 힌트(`ShortcutHint`) |
 | `src/desktop/development-mode.ts` | 정확한 환경변수 opt-in 판정과 preload capability 이름 |
 | `src/desktop/workbench-providers.ts` | Codex 기본값, 활성 도구 목록과 코딩 도구별 실행 인자 |
 | `src/desktop/workbench.ts` | Electron에 의존하지 않는 PTY 관리자, 소스 검증·설정 저장·프로세스 생명주기 |
 | `src/desktop/main.ts` | 개발모드에서만 관리자·IPC·키 입력 활성화, 상위 renderer로 단축키 전달, 신뢰한 main frame 검사 |
 | `src/desktop/preload.ts` | main이 전달한 capability에 따라 typed WorkbenchBridge 노출 |
-| `src/features/dev-workspace` | 패널·탭 상태, 호스트 단축키 구독, 단계·도구 선택, xterm 입출력, 격리된 웹 미리보기 |
+| `src/features/dev-workspace` | 패널·탭 상태, 호스트 단축키 처리와 `model/shortcut-target.ts` 대상 규칙, 단계·도구 선택, xterm 입출력, 격리된 웹 미리보기 |
 | `src/renderer/App.tsx` | desktop bridge가 있을 때만 개발 메뉴 조합; 별도 chunk 로딩 |
 
 터미널은 main 프로세스가 소유한다. 화면을 바꾸거나 세션을 전환해도 프로세스는 유지된다. 재연결 시 구독을 먼저 시작하고 출력 sequence 이후의 이벤트만 적용해 backlog 중복·누락을 막는다. 세션당 최근 256 KiB의 출력을 메모리에 보관하며, 종료 세션을 포함해 최대 12개까지 유지한다. 앱을 종료하면 프로세스도 종료한다. Workdesk의 tmux 영속 세션이나 앱 밖의 기존 대화 연결은 이번 구현에 포함하지 않는다.

@@ -1,4 +1,4 @@
-import type { WorkbenchAction } from "./workbench-shortcuts";
+import type { KeyAction } from "./keymap";
 
 export type AgentProvider = "codex" | "claude";
 export interface AgentProviderOption {
@@ -49,7 +49,8 @@ export interface WorkbenchBridge {
   hideWindow(): Promise<void>;
   openPreview(): Promise<void>;
   onEvent(callback: (event: WorkbenchEvent) => void): () => void;
-  onShortcut(callback: (action: WorkbenchAction) => void): () => void;
+  /** Host-scope shortcut action names from the dev desktop `before-input-event`. */
+  onShortcut(callback: (action: KeyAction) => void): () => void;
 }
 
 export const phaseLabels: Record<WorkPhase, string> = {

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardBridge } from "../shared/contracts";
+import type { KeyAction } from "../shared/keymap";
 import type { WorkbenchBridge } from "../shared/workbench";
 import { DEVELOPMENT_MODE_ARGUMENT } from "./development-mode";
 import { DEV_BUILD_ARGUMENT } from "./build-identity";
@@ -26,7 +27,11 @@ const workbench: WorkbenchBridge = {
   hideWindow: () => invoke("workbench:hideWindow"),
   openPreview: () => invoke("workbench:openPreview"),
   onEvent: (callback) => subscribe("workbench:event", callback),
-  onShortcut: (callback) => subscribe("workbench:shortcut", callback),
+  // The payload is a KeyAction name (src/shared/keymap.ts HOST_ACTIONS).
+  onShortcut: (callback) =>
+    subscribe("workbench:shortcut", (action) => {
+      if (typeof action === "string") callback(action as KeyAction);
+    }),
 };
 const bridge: DashboardBridge = {
   executionLogs: { list: () => invoke("executionLogs:list") },

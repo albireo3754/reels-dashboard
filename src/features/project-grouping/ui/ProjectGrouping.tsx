@@ -1,11 +1,11 @@
 import { koreanDateTime } from "../../../shared/lib/format";
-import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useState } from "react";
 import type {
   Dashboard,
   DashboardBridge,
   Project,
 } from "../../../shared/contracts";
+import { useBusy } from "../../../shared/ui/useBusy";
 
 export function ProjectGrouping({
   api,
@@ -25,8 +25,9 @@ export function ProjectGrouping({
   const [edits, setEdits] = useState<Awaited<ReturnType<typeof api.listEdits>>>(
     [],
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  // Every run() caller sits inside <fieldset disabled={disabled || busy}>, so the
+  // shared lock and the (unused) notice clear change nothing observable here.
+  const { busy, error, setError, run } = useBusy();
   useEffect(() => {
     let active = true;
     api
@@ -41,17 +42,6 @@ export function ProjectGrouping({
       active = false;
     };
   }, [api]);
-  const run = async (action: () => Promise<void>) => {
-    setBusy(true);
-    setError("");
-    try {
-      await action();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <fieldset disabled={disabled || busy}>
       <legend>프로젝트로 묶기</legend>

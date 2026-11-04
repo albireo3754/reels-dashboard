@@ -173,3 +173,133 @@ test("inspection moves keyboard focus out of a preview and restores it on Escape
     "IFRAME",
   );
 });
+
+type InspectorCounts = {
+  close: number;
+  feedback: string[];
+  documentEscape: number;
+  cancel: number;
+};
+const counts = (page: import("@playwright/test").Page) =>
+  page.evaluate(
+    () => (window as unknown as { inspectorCounts: InspectorCounts }).inspectorCounts,
+  );
+
+const openStandaloneDialog = async (page: import("@playwright/test").Page) => {
+  await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1&standalone=1");
+  await expect(page.locator(".ui-inspector-banner")).toBeVisible();
+  await page.getByRole("button", { name: "합성 대상", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "화면 수정 요청" });
+  await expect(dialog).toBeVisible();
+  const textbox = dialog.getByRole("textbox", { name: "수정할 내용" });
+  await textbox.click();
+  await expect(textbox).toBeFocused();
+  await expect(textbox).toHaveAttribute(
+    "placeholder",
+    "어떻게 바꾸고 싶은지 적어주세요. Enter 보내기 · Shift+Enter 줄바꿈",
+  );
+  return { dialog, textbox };
+};
+
+test("Escape ends inspection once and never reaches document Escape handlers", async ({
+  page,
+}) => {
+  await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1&standalone=1");
+  await expect(page.locator(".ui-inspector-banner")).toBeVisible();
+  await page.keyboard.down("Meta");
+  await expect(
+    page.locator('.ui-inspector-banner [data-shortcut-hint="exitInspect"]'),
+  ).toHaveText("Esc");
+  await page.keyboard.up("Meta");
+  await page.keyboard.press("Escape");
+  expect(await counts(page)).toMatchObject({ close: 1, documentEscape: 0 });
+  // The same session stays mounted here; a second Escape is not a second close.
+  await page.keyboard.press("Escape");
+  expect((await counts(page)).close).toBe(1);
+});
+
+test("Escape from the comment box closes once even with the modal dialog open", async ({
+  page,
+}) => {
+  await openStandaloneDialog(page);
+  await page.keyboard.type("메모");
+  await page.keyboard.press("Escape");
+  const result = await counts(page);
+  expect(result).toMatchObject({ close: 1, documentEscape: 0, feedback: [] });
+  // preventDefault on the Escape keydown suppresses the dialog cancel request.
+  expect(result.cancel).toBe(0);
+  await page.keyboard.press("Escape");
+  expect((await counts(page)).close).toBe(1);
+});
+
+test("Enter sends the comment once and Shift+Enter inserts a newline", async ({
+  page,
+}) => {
+  const { textbox } = await openStandaloneDialog(page);
+  await page.keyboard.press("Enter");
+  expect((await counts(page)).feedback).toHaveLength(0);
+  await page.keyboard.type("첫 줄");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("둘째 줄");
+  await expect(textbox).toHaveValue("첫 줄\n둘째 줄");
+  expect((await counts(page)).feedback).toHaveLength(0);
+  // Two Enters in one task: the in-flight ref drops the second before React
+  // re-renders with the cleared comment.
+  await textbox.evaluate((element) => {
+    for (let i = 0; i < 2; i++)
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+  });
+  await expect(textbox).toHaveValue("");
+  const { feedback, close } = await counts(page);
+  expect(feedback).toHaveLength(1);
+  expect(feedback[0]).toContain("첫 줄\n둘째 줄");
+  expect(close).toBe(0);
+  await page.keyboard.press("Enter");
+  expect((await counts(page)).feedback).toHaveLength(1);
+});
+
+test("Enter while an IME is composing does not send", async ({ page }) => {
+  const { textbox } = await openStandaloneDialog(page);
+  await textbox.fill("한글");
+  const prevented = await textbox.evaluate((element) => {
+    const composing = new KeyboardEvent("keydown", {
+      key: "Enter",
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const legacy = new KeyboardEvent("keydown", {
+      key: "Enter",
+      keyCode: 229,
+      bubbles: true,
+      cancelable: true,
+    } as KeyboardEventInit);
+    element.dispatchEvent(composing);
+    element.dispatchEvent(legacy);
+    return [composing.defaultPrevented, legacy.defaultPrevented];
+  });
+  expect(prevented).toEqual([false, false]);
+  await expect(textbox).toHaveValue("한글");
+  expect((await counts(page)).feedback).toHaveLength(0);
+});
+
+test("Escape from the comment box ends inspection in the app", async ({ page }) => {
+  await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1");
+  await page.getByRole("button", { name: "화면 검사", exact: true }).click();
+  await expect(page.locator(".ui-inspector-banner")).toBeVisible();
+  await page.getByRole("button", { name: "영상 편집", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "화면 수정 요청" });
+  await expect(dialog).toBeVisible();
+  const textbox = dialog.getByRole("textbox", { name: "수정할 내용" });
+  await textbox.click();
+  await expect(textbox).toBeFocused();
+  await page.keyboard.type("요청");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".ui-inspector-banner")).toHaveCount(0);
+  await expect(
+    page.locator(".sidebar button[aria-current=page]"),
+  ).toHaveAttribute("aria-label", "대시보드");
+});

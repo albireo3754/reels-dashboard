@@ -437,3 +437,30 @@ label + label {
   color: var(--color-text);
   box-shadow: var(--shadow-sm);
 }
+
+/* ---------- Shortcut hint (⌘ 누르는 동안만) ---------- */
+/* 힌트가 붙은 동안 부모를 기준 위치로 삼아 왼쪽 위 모서리에 겹친다. */
+:has(> .shortcut-hint) {
+  position: relative;
+}
+.shortcut-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--color-primary);
+  color: var(--color-text-on-accent);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.shortcut-hint.end {
+  right: 0;
+  left: auto;
+}

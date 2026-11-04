@@ -5,6 +5,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { LocalStore } from "../shared/lib/storage";
+import { isMissing, readJsonFile } from "../shared/lib/fs";
 import { parseReferences } from "../shared/blog-references";
 import type { BlogResult } from "../shared/blog";
 const registry = z
@@ -36,12 +37,7 @@ export class BlogResults {
     return path.join(this.store.root, "blog-results.json");
   }
   private async entries() {
-    try {
-      return registry.parse(JSON.parse(await readFile(this.file, "utf8")));
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw e;
-    }
+    return readJsonFile(this.file, (v) => registry.parse(v), () => []);
   }
   private async describe(entry: {
     id: string;
@@ -85,7 +81,7 @@ export class BlogResults {
           throw new Error("10MB 이하의 구조 파일을 선택해주세요.");
         return await readFile(file, "utf8");
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        if (!isMissing(e)) throw e;
       }
     }
     throw new Error("reference-structures.json 또는 .md 파일이 없는 폴더예요.");

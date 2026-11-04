@@ -1,9 +1,4 @@
 export type DrawerMode = "closed" | "open" | "folded";
-export {
-  matchWorkbenchShortcut,
-  shortcutHint,
-  type WorkbenchAction,
-} from "../../../shared/workbench-shortcuts";
 
 export function toggleDrawer(mode: DrawerMode): DrawerMode {
   return mode === "open" ? "folded" : "open";

@@ -23,6 +23,7 @@ import {
 } from "../../../shared/card-news-model";
 import { drawCard } from "./frame";
 import { Notice } from "../../../shared/ui/primitives";
+import { useBusy } from "../../../shared/ui/useBusy";
 import "./card-news.css";
 
 function VideoBackground({
@@ -77,16 +78,13 @@ export function CardNews({
   );
   const [selected, setSelected] = useState(0);
   const [frames, setFrames] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const { busy, error, setError, notice, setNotice, run } = useBusy();
   const [dirty, setDirty] = useState(false);
   const [job, setJob] = useState<CardJob | null>(null);
   const [playing, setPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [align, setAlign] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
-  const lock = useRef(false);
   const segments = timeline(plan.cards);
   const total = segments.at(-1)!.end;
   const music = plan.music.assetId ? assets[plan.music.assetId] : undefined;
@@ -117,21 +115,6 @@ export function CardNews({
       ...plan,
       cards: plan.cards.map((c, i) => (i === index ? { ...c, ...patch } : c)),
     });
-  }
-  async function run(fn: () => Promise<void>) {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await fn();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
   }
   async function save() {
     cardPlanSchema.parse(plan);

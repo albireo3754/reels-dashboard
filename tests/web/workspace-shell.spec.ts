@@ -190,3 +190,188 @@ test("a queued native close event cannot dismiss a reopened search", async ({
   await input.press("Enter");
   await expect(page.locator(".editor-workspace")).toBeVisible();
 });
+
+test("holding Cmd reveals shortcut hints only while held and only for live shortcuts", async ({
+  page,
+}) => {
+  const hints = page.locator("[data-shortcut-hint]");
+  await page.goto("/?demo=1");
+  await expect(
+    page.getByRole("button", { name: "대시보드", exact: true }),
+  ).toBeVisible();
+  await expect(hints).toHaveCount(0);
+  await page.keyboard.down("Meta");
+  // Without the dev workbench bridge only the renderer search shortcut is live.
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveText("⌘K");
+  await expect(hints).toHaveCount(1);
+  await page.keyboard.up("Meta");
+  await expect(hints).toHaveCount(0);
+
+  await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1");
+  const nav = page.getByRole("navigation", { name: "주요 메뉴" });
+  await expect(nav.getByRole("button", { name: "대시보드", exact: true })).toBeVisible();
+  await page.keyboard.down("Meta");
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
+  await expect(page.locator('[data-shortcut-hint="inspectUi"]')).toHaveText("⇧⌘C");
+  await expect(page.locator('[data-shortcut-hint="toggleDrawer"]')).toHaveText("⌘N");
+  // The drawer is closed, so ⌘1-9 targets the sidebar screens.
+  const screens = await nav.getByRole("button").count();
+  await expect(nav.locator("[data-shortcut-hint]")).toHaveCount(Math.min(screens, 9));
+  await expect(
+    nav.getByRole("button", { name: "대시보드", exact: true }).locator("[data-shortcut-hint]"),
+  ).toHaveText("⌘1");
+  await page.keyboard.up("Meta");
+  await expect(hints).toHaveCount(0);
+
+  await page.keyboard.down("Meta");
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect(hints).toHaveCount(0);
+  await page.keyboard.up("Meta");
+  await expect(hints).toHaveCount(0);
+});
+
+test("Cmd+[ / Cmd+] and mouse side buttons step the same history as the toolbar buttons", async ({
+  page,
+}) => {
+  await page.goto("/?demo=1");
+  const toolbar = page.getByRole("banner", { name: "작업공간 도구" });
+  const backButton = toolbar.getByRole("button", { name: "뒤로", exact: true });
+  const forwardButton = toolbar.getByRole("button", {
+    name: "앞으로",
+    exact: true,
+  });
+  const settings = page.getByRole("heading", {
+    name: "Photos 연결",
+    exact: true,
+  });
+  const editor = page.locator(".editor-workspace");
+  await expect(
+    page.getByRole("button", { name: "대시보드", exact: true }),
+  ).toBeVisible();
+  await expect(backButton).toBeDisabled();
+
+  // At the start of history ⌘[ is a no-op and no goBack hint is revealed.
+  await page.keyboard.press("Meta+BracketLeft");
+  await expect(backButton).toBeDisabled();
+  await page.keyboard.down("Meta");
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
+  await expect(page.locator('[data-shortcut-hint="goBack"]')).toHaveCount(0);
+  await expect(page.locator('[data-shortcut-hint="goForward"]')).toHaveCount(0);
+  await page.keyboard.up("Meta");
+
+  await page.getByRole("button", { name: "영상 편집", exact: true }).click();
+  await expect(editor).toBeVisible();
+  await toolbar.getByRole("button", { name: "설정", exact: true }).click();
+  await expect(settings).toBeVisible();
+
+  await page.keyboard.down("Meta");
+  await expect(backButton.locator('[data-shortcut-hint="goBack"]')).toHaveText("⌘[");
+  await expect(page.locator('[data-shortcut-hint="goForward"]')).toHaveCount(0);
+  await page.keyboard.up("Meta");
+
+  await page.keyboard.press("Meta+BracketLeft");
+  await expect(editor).toBeVisible();
+  await expect(forwardButton).toBeEnabled();
+  await page.keyboard.down("Meta");
+  await expect(
+    forwardButton.locator('[data-shortcut-hint="goForward"]'),
+  ).toHaveText("⌘]");
+  await page.keyboard.up("Meta");
+  await page.keyboard.press("Meta+BracketRight");
+  await expect(settings).toBeVisible();
+  await expect(forwardButton).toBeDisabled();
+
+  const mouseUp = (button: number) =>
+    page.evaluate((button) => {
+      const event = new MouseEvent("mouseup", {
+        button,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.body.dispatchEvent(event);
+      return event.defaultPrevented;
+    }, button);
+  expect(await mouseUp(3)).toBe(true);
+  await expect(editor).toBeVisible();
+  expect(await mouseUp(4)).toBe(true);
+  await expect(settings).toBeVisible();
+  // At the end of history the forward button is not live, so it falls through.
+  expect(await mouseUp(4)).toBe(false);
+  await expect(settings).toBeVisible();
+  expect(await mouseUp(3)).toBe(true);
+  expect(await mouseUp(3)).toBe(true);
+  await expect(backButton).toBeDisabled();
+  expect(await mouseUp(3)).toBe(false);
+  await expect(forwardButton).toBeEnabled();
+});
+
+test("history keys stay out of the open content form, and a held history key steps once", async ({
+  page,
+}) => {
+  await page.goto("/?demo=1");
+  const toolbar = page.getByRole("banner", { name: "작업공간 도구" });
+  const backButton = toolbar.getByRole("button", { name: "뒤로", exact: true });
+  const dashboard = page.getByRole("heading", { name: "작업의 흐름을 한눈에", exact: true });
+  const editor = page.locator(".editor-workspace");
+  const settings = page.getByRole("heading", { name: "Photos 연결", exact: true });
+  await page.getByRole("button", { name: "영상 편집", exact: true }).click();
+  await expect(editor).toBeVisible();
+  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+  await expect(dashboard).toBeVisible();
+  await expect(backButton).toBeEnabled();
+
+  type Synthetic = { mouse?: number; repeat?: boolean };
+  const synthetic = (init: Synthetic): Promise<boolean> =>
+    page.evaluate(({ mouse, repeat }: Synthetic) => {
+      const event =
+        mouse !== undefined
+          ? new MouseEvent("mouseup", { button: mouse, bubbles: true, cancelable: true })
+          : new KeyboardEvent("keydown", {
+              code: "BracketLeft",
+              key: "[",
+              metaKey: true,
+              repeat,
+              bubbles: true,
+              cancelable: true,
+            });
+      (document.activeElement ?? document.body).dispatchEvent(event);
+      return event.defaultPrevented;
+    }, init);
+  const back: Synthetic = {};
+
+  await page.getByRole("button", { name: "새 콘텐츠", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "콘텐츠 기록" });
+  await expect(form).toBeVisible();
+  // Not live while the form is open: the keys fall through and the screen stays.
+  expect(await synthetic(back)).toBe(false);
+  expect(await synthetic({ mouse: 3 })).toBe(false);
+  await expect(form).toBeVisible();
+  await expect(dashboard).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+
+  // A live key's auto-repeat is consumed (no browser fallback) but does not step again.
+  await toolbar.getByRole("button", { name: "설정", exact: true }).click();
+  await expect(settings).toBeVisible();
+  expect(await synthetic(back)).toBe(true);
+  await expect(dashboard).toBeVisible();
+  expect(await synthetic({ ...back, repeat: true })).toBe(true);
+  await expect(dashboard).toBeVisible();
+  await expect(editor).not.toBeVisible();
+});
+
+test("the compact toolbar hides static key labels but keeps Cmd-hold hints visible", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 800 });
+  await page.goto("/?demo=1");
+  const search = page
+    .getByRole("banner", { name: "작업공간 도구" })
+    .getByRole("button", { name: "검색", exact: true });
+  await expect(search).toBeVisible();
+  await expect(search.locator("kbd:not(.shortcut-hint)")).toBeHidden();
+  await page.keyboard.down("Meta");
+  await expect(search.locator('[data-shortcut-hint="quickOpen"]')).toBeVisible();
+  await page.keyboard.up("Meta");
+});

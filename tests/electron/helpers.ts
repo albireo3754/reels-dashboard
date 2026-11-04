@@ -59,8 +59,12 @@ export async function closeApp(
 
 // Playwright's CDP keyboard events skip Electron's before-input-event hook.
 // Send native Electron input while keeping the QA window hidden/unfocusable.
-export async function pressWorkbenchKey(app: ElectronApplication, key: string) {
-  await app.evaluate(({ BrowserWindow }, keyCode) => {
+export async function pressWorkbenchKey(
+  app: ElectronApplication,
+  key: string,
+  modifiers: readonly ("meta" | "shift" | "control" | "alt")[] = ["meta"],
+) {
+  await app.evaluate(({ BrowserWindow }, { keyCode, modifiers }) => {
     const window = BrowserWindow.getAllWindows().find((candidate) => {
       const url = candidate.webContents.getURL();
       return (
@@ -73,14 +77,14 @@ export async function pressWorkbenchKey(app: ElectronApplication, key: string) {
     window.webContents.sendInputEvent({
       type: "keyDown",
       keyCode,
-      modifiers: ["meta"],
+      modifiers,
     });
     window.webContents.sendInputEvent({
       type: "keyUp",
       keyCode,
-      modifiers: ["meta"],
+      modifiers,
     });
-  }, key.toUpperCase());
+  }, { keyCode: key.toUpperCase(), modifiers: [...modifiers] });
 }
 
 export async function cleanProfile(profile: string): Promise<void> {

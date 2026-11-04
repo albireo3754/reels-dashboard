@@ -405,3 +405,85 @@ test("normal mode does not install workbench keyboard shortcuts", async () => {
     await cleanProfile(profile);
   }
 });
+
+// Each ⌘-hold hint names the control it sits on; pressing the key must act on it.
+const hintTargets = async (page: Page) => {
+  await page.keyboard.down("Meta");
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
+  const targets = await page.evaluate(() =>
+    Object.fromEntries(
+      [...document.querySelectorAll<HTMLElement>("[data-shortcut-hint]")].map(
+        (hint) => {
+          const owner = hint.closest("button")!;
+          return [
+            hint.dataset.shortcutHint!,
+            owner.id || owner.getAttribute("aria-label") || "",
+          ];
+        },
+      ),
+    ),
+  );
+  await page.keyboard.up("Meta");
+  await expect(page.locator("[data-shortcut-hint]")).toHaveCount(0);
+  return targets as Record<string, string>;
+};
+
+test("Cmd-hold hints mark exactly what Cmd 1-9 and Cmd W act on", async () => {
+  const profile = await makeProfile();
+  let app;
+  try {
+    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
+    const page = await app.firstWindow();
+    await expect(page.locator(".dev-connect code")).toContainText(
+      "reels-dashboard",
+    );
+    // Drawer closed: ⌘1-9 hints sit on the sidebar screens; ⌘W hides the window.
+    let hints = await hintTargets(page);
+    expect(hints.goToTab1).toBe("대시보드");
+    expect(hints.goToTab3).toBe("영상 편집");
+    expect(hints.closeTab).toBeUndefined();
+    expect(hints.inspectUi).toBe("화면 검사");
+    expect(hints.toggleDrawer).toBe("터미널");
+
+    await pressWorkbenchKey(app, "t");
+    await expect.poll(async () => (await state(page)).sessions.length).toBe(1);
+    await pressWorkbenchKey(app, "t");
+    await expect.poll(async () => (await state(page)).sessions.length).toBe(2);
+    const [first, second] = (await state(page)).sessions;
+    // Drawer open: ⌘1-9 hints move to the session tabs, ⌘W to the selected tab's ×.
+    hints = await hintTargets(page);
+    expect(hints.goToTab1).toBe(`dev-tab-${first.id}`);
+    expect(hints.goToTab2).toBe(`dev-tab-${second.id}`);
+    expect(hints.goToTab3).toBeUndefined();
+    expect(hints.closeTab).toBe(`${second.title} 세션 닫기`);
+    expect(hints.newTerminal).toBe("새 터미널");
+
+    await pressWorkbenchKey(app, "1");
+    await expect(page.locator(`[id="${hints.goToTab1}"]`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    hints = await hintTargets(page);
+    expect(hints.closeTab).toBe(`${first.title} 세션 닫기`);
+    await pressWorkbenchKey(app, "w");
+    await expect
+      .poll(async () => (await state(page)).sessions.map((s) => s.id))
+      .toEqual([second.id]);
+
+    // Fold: ⌘3 hint is back on the third screen, and ⌘3 opens it.
+    await pressWorkbenchKey(app, "n");
+    await expect(
+      page.locator('[aria-label="터미널"][data-drawer-state]'),
+    ).toHaveAttribute("data-drawer-state", "folded");
+    hints = await hintTargets(page);
+    expect(hints.goToTab3).toBe("영상 편집");
+    expect(hints.closeTab).toBeUndefined();
+    await pressWorkbenchKey(app, "3");
+    await expect(
+      page.getByRole("button", { name: "영상 편집", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+  } finally {
+    await closeApp(app);
+    await cleanProfile(profile);
+  }
+});

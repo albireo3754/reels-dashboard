@@ -9,20 +9,34 @@ import {
   type TerminalKind,
 } from "../../../shared/workbench";
 import { TerminalPane } from "./TerminalPane";
+import { reconcileSelection, toggleDrawer, type DrawerMode } from "../model/drawer";
+import { workbenchShortcutTarget } from "../model/shortcut-target";
 import {
-  reconcileSelection,
-  shortcutHint,
-  toggleDrawer,
-  type DrawerMode,
-} from "../model/shortcuts";
-import { useWorkbenchShortcuts } from "../model/useWorkbenchShortcuts";
+  formatKey,
+  goToTab,
+  tabIndex,
+  type KeyAction,
+} from "../../../shared/keymap";
+import {
+  ShortcutHint,
+  useKeymap,
+  useShortcut,
+} from "../../../shared/ui/shortcuts";
 import "./workbench.css";
+
+const DRAWER_ACTIONS = [
+  "toggleDrawer",
+  "newTerminal",
+  "closeTab",
+  ...Array.from({ length: 9 }, (_, index) => goToTab(index + 1)!),
+] as const satisfies readonly KeyAction[];
 
 export function DevWorkspace({
   api,
   mode,
   onModeChange,
   onNavigate,
+  screens,
   openSite,
   feedbackDraft,
   onFeedbackApplied,
@@ -31,6 +45,8 @@ export function DevWorkspace({
   mode: DrawerMode;
   onModeChange: (mode: DrawerMode) => void;
   onNavigate: (index: number) => void;
+  /** How many screens ⌘1-9 can navigate while the drawer is not open. */
+  screens: number;
   openSite?: () => Promise<void>;
   feedbackDraft?: { id: number; text: string; phase: "fix" };
   onFeedbackApplied?: (id: number) => void;
@@ -128,9 +144,25 @@ export function DevWorkspace({
       await api.close(id);
       acceptState(await api.state());
     });
-  useWorkbenchShortcuts(api, (action) => {
-    switch (action.type) {
-      case "toggle":
+  const keymap = useKeymap();
+  const hint = (action: KeyAction | undefined) =>
+    action ? formatKey(keymap[action][0]) : "";
+  const sessionIds = state?.sessions.map((s) => s.id) ?? [];
+  // The one rule for ⌘1-9 and ⌘W; the handler below and every hint read it.
+  const target = (action: KeyAction | undefined) =>
+    workbenchShortcutTarget(
+      { mode, sessions: sessionIds, selected, screens },
+      action,
+    );
+  useShortcut(DRAWER_ACTIONS, (action) => {
+    const to = target(action);
+    if (tabIndex(action) !== undefined) {
+      if (to?.kind === "screen") onNavigate(to.index);
+      else if (to?.kind === "session") setSelected(to.id);
+      return;
+    }
+    switch (action) {
+      case "toggleDrawer":
         onModeChange(toggleDrawer(mode));
         break;
       case "newTerminal":
@@ -138,19 +170,15 @@ export function DevWorkspace({
         if (state?.workspace) void start("shell");
         else setError("먼저 앱 소스 폴더를 연결해주세요.");
         break;
-      case "close":
-        if (mode !== "open") void run(() => api.hideWindow());
-        else if (selected) void closeSession(selected);
-        else onModeChange("closed");
-        break;
-      case "selectIndex":
-        if (mode !== "open") onNavigate(action.index);
-        else if (state?.sessions[action.index])
-          setSelected(state.sessions[action.index].id);
+      case "closeTab":
+        if (to?.kind === "hideWindow") void run(() => api.hideWindow());
+        else if (to?.kind === "session") void closeSession(to.id);
+        else if (to?.kind === "closeDrawer") onModeChange("closed");
         break;
     }
   });
   const session = state?.sessions.find((s) => s.id === selected);
+  const closing = target("closeTab");
   const runningPreview = state?.sessions.some(
     (s) => s.kind === "preview" && s.state === "running",
   );
@@ -164,7 +192,7 @@ export function DevWorkspace({
       <header className="dev-drawer-header">
         <strong>터미널</strong>
         <span className="dev-drawer-hint">
-          {shortcutHint("toggle")} 열기·접기 · {shortcutHint("close")}{" "}
+          {hint("toggleDrawer")} 열기·접기 · {hint("closeTab")}{" "}
           {mode === "open" ? "세션 닫기" : "창 숨기기"}
         </span>
         <button
@@ -180,10 +208,14 @@ export function DevWorkspace({
         <button
           disabled={busy || !state?.workspace}
           onClick={() => start("shell")}
-          title={shortcutHint("newTerminal")}
+          title={hint("newTerminal")}
           aria-label="새 터미널"
         >
-          새 터미널 <kbd>{shortcutHint("newTerminal")}</kbd>
+          새 터미널 <kbd>{hint("newTerminal")}</kbd>
+          {/* run() drops ⌘T while another operation is pending, so hide its hint too. */}
+          <ShortcutHint
+            action={mode !== "closed" && !busy ? "newTerminal" : undefined}
+          />
         </button>
         <button
           aria-label={
@@ -192,6 +224,7 @@ export function DevWorkspace({
           onClick={() => onModeChange(toggleDrawer(mode))}
         >
           {mode === "open" ? "접기" : "펼치기"}
+          <ShortcutHint action={mode !== "closed" ? "toggleDrawer" : undefined} />
         </button>
         <button
           aria-label="터미널 닫기"
@@ -199,6 +232,9 @@ export function DevWorkspace({
           onClick={() => onModeChange("closed")}
         >
           닫기
+          <ShortcutHint
+            action={closing?.kind === "closeDrawer" ? "closeTab" : undefined}
+          />
         </button>
       </header>
       <div
@@ -215,11 +251,18 @@ export function DevWorkspace({
               aria-controls={`dev-panel-${s.id}`}
               aria-selected={s.id === selected}
               onClick={() => setSelected(s.id)}
-              title={shortcutHint("selectIndex", index)}
+              title={hint(goToTab(index + 1))}
             >
               {s.title} ·{" "}
               {s.state === "running" ? "실행 중" : `종료 ${s.exitCode ?? ""}`}
-              {index < 9 && <kbd>{shortcutHint("selectIndex", index)}</kbd>}
+              {index < 9 && <kbd>{hint(goToTab(index + 1))}</kbd>}
+              <ShortcutHint
+                action={
+                  target(goToTab(index + 1))?.kind === "session"
+                    ? goToTab(index + 1)
+                    : undefined
+                }
+              />
             </button>
             <button
               disabled={busy}
@@ -228,6 +271,14 @@ export function DevWorkspace({
               onClick={() => closeSession(s.id)}
             >
               ×
+              <ShortcutHint
+                className="end"
+                action={
+                  !busy && closing?.kind === "session" && closing.id === s.id
+                    ? "closeTab"
+                    : undefined
+                }
+              />
             </button>
           </div>
         ))}
@@ -451,7 +502,7 @@ export function DevWorkspace({
           터미널에서 처리해요.
         </p>
         <p className="dev-hint">
-          탭의 ×와 {shortcutHint("close")}는 선택한 프로세스를 종료해요.
+          탭의 ×와 {hint("closeTab")}는 선택한 프로세스를 종료해요.
           접기·패널 닫기는 세션을 유지하며, 앱 종료 시 모든 세션을 종료해요.
         </p>
       </div>

@@ -4,6 +4,11 @@ export interface Navigation<T extends string> {
   entries: T[];
   index: number;
 }
+/** Whether a step back exists. Shared by the ‹ button and the goBack shortcut. */
+export const canBack = (state: Navigation<string>): boolean => state.index > 0;
+/** Whether a step forward exists. Shared by the › button and the goForward shortcut. */
+export const canForward = (state: Navigation<string>): boolean =>
+  state.index < state.entries.length - 1;
 export function visit<T extends string>(
   state: Navigation<T>,
   target: T,

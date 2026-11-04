@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { cleanProfile, closeApp, launchApp, makeProfile } from "./helpers";
+import {
+  cleanProfile,
+  closeApp,
+  launchApp,
+  makeProfile,
+  pressWorkbenchKey,
+} from "./helpers";
 
 test("native inspection shortcut opens a draft without starting a terminal", async () => {
   const profile = await makeProfile();
@@ -23,21 +29,7 @@ test("native inspection shortcut opens a draft without starting a terminal", asy
     expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
       "IFRAME",
     );
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows().find((candidate) =>
-        candidate.webContents.getURL().startsWith("file:"),
-      )!;
-      window.webContents.sendInputEvent({
-        type: "keyDown",
-        keyCode: "C",
-        modifiers: ["meta", "shift"],
-      });
-      window.webContents.sendInputEvent({
-        type: "keyUp",
-        keyCode: "C",
-        modifiers: ["meta", "shift"],
-      });
-    });
+    await pressWorkbenchKey(app, "C", ["meta", "shift"]);
     await expect(page.locator(".ui-inspector-banner")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "검사 끝내기 · Esc" }),

@@ -127,7 +127,7 @@
     padding: 0 8px;
   }
   .workspace-toolbar button > span,
-  .workspace-toolbar kbd {
+  .workspace-toolbar kbd:not(.shortcut-hint) {
     display: none;
   }
 }

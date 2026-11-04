@@ -6,7 +6,6 @@ import {
   compactSources,
   feedbackPrompt,
 } from "../../src/features/ui-inspector/model/inspect";
-import { matchWorkbenchShortcut } from "../../src/shared/workbench-shortcuts";
 
 test("JSX provenance preserves expressions and only annotates intrinsic repository elements", () => {
   const source =
@@ -51,22 +50,4 @@ test("source ancestry keeps innermost contiguous file and meaningful component b
   );
   assert.match(prompt, /크기를 줄여주세요\./);
   assert.match(prompt, /src\/renderer\/App.tsx:15:2/);
-});
-
-test("inspection shortcut is distinct and preserves IME and modifier guards", () => {
-  const key = {
-    code: "KeyC",
-    metaKey: true,
-    ctrlKey: false,
-    altKey: false,
-    shiftKey: true,
-    isComposing: false,
-  };
-  assert.deepEqual(matchWorkbenchShortcut(key), { type: "inspect" });
-  assert.equal(
-    matchWorkbenchShortcut({ ...key, isComposing: true }),
-    undefined,
-  );
-  assert.equal(matchWorkbenchShortcut({ ...key, metaKey: false }), undefined);
-  assert.equal(matchWorkbenchShortcut({ ...key, code: "KeyN" }), undefined);
 });

@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../shared/contracts";
-import type { Navigation } from "./navigation";
+import { canBack, canForward, type Navigation } from "./model/navigation";
+import { formatKey } from "../../shared/keymap";
+import { ShortcutHint, useKeymap, useShortcut } from "../../shared/ui/shortcuts";
 import "./shell.css";
 
 type Item = [string, string];
+/** An in-progress content form or a UI inspect session owns the keyboard. */
+const modalOpen = () =>
+  Boolean(document.querySelector("dialog[open][data-modal-form]")) ||
+  document.documentElement.classList.contains("reels-inspecting");
 export function WorkspaceToolbar({
   navigation,
   items,
@@ -33,6 +39,9 @@ export function WorkspaceToolbar({
   inspecting?: boolean;
   onInspect?: () => void;
 }) {
+  const keymap = useKeymap();
+  const key = (action: "quickOpen" | "inspectUi" | "toggleDrawer") =>
+    formatKey(keymap[action][0]);
   const [panel, setPanel] = useState<"history" | "search" | null>(null);
   const [query, setQuery] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -46,26 +55,29 @@ export function WorkspaceToolbar({
     if (devBuild && !document.title.endsWith(" Dev"))
       document.title = `${document.title} Dev`;
   }, [devBuild]);
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => {
-      if (event.isComposing || event.repeat || event.altKey) return;
+  useShortcut(
+    "quickOpen",
+    () => {
+      setQuery("");
+      setPanel((p) => (p === "search" ? null : "search"));
+    },
+    (_action, event) =>
       // Keep an in-progress content form and terminal editing shortcuts intact.
-      if (document.querySelector("dialog[open][data-modal-form]")) return;
-      if (
-        event.ctrlKey &&
-        event.target instanceof Element &&
-        event.target.closest(".dev-terminal")
-      )
-        return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setQuery("");
-        setPanel((p) => (p === "search" ? null : "search"));
-      }
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, []);
+      !modalOpen() &&
+      !(
+        event instanceof KeyboardEvent &&
+        (event.altKey ||
+          (event.ctrlKey &&
+            event.target instanceof Element &&
+            event.target.closest(".dev-terminal")))
+      ),
+  );
+  const back = () => onJump(navigation.index - 1);
+  const forward = () => onJump(navigation.index + 1);
+  // History keys and mouse side buttons must not swap the screen behind an open
+  // content form or an inspect session (the inspector does not suppress mouseup).
+  useShortcut("goBack", back, () => !modalOpen() && canBack(navigation));
+  useShortcut("goForward", forward, () => !modalOpen() && canForward(navigation));
   const normalized = query.trim().toLocaleLowerCase();
   const matches = (text: string) =>
     text.toLocaleLowerCase().includes(normalized);
@@ -98,19 +110,23 @@ export function WorkspaceToolbar({
             className="shell-icon"
             aria-label="뒤로"
             title="뒤로"
-            disabled={navigation.index === 0}
-            onClick={() => onJump(navigation.index - 1)}
+            disabled={!canBack(navigation)}
+            onClick={back}
           >
             ‹
+            <ShortcutHint action={canBack(navigation) ? "goBack" : undefined} />
           </button>
           <button
             className="shell-icon"
             aria-label="앞으로"
             title="앞으로"
-            disabled={navigation.index === navigation.entries.length - 1}
-            onClick={() => onJump(navigation.index + 1)}
+            disabled={!canForward(navigation)}
+            onClick={forward}
           >
             ›
+            <ShortcutHint
+              action={canForward(navigation) ? "goForward" : undefined}
+            />
           </button>
           <button
             aria-label="히스토리"
@@ -122,7 +138,7 @@ export function WorkspaceToolbar({
           </button>
           <button
             aria-label="검색"
-            title="검색 (⌘K / Ctrl+K)"
+            title={`검색 (${keymap.quickOpen.map(formatKey).join(" / ")})`}
             onClick={() => {
               setQuery("");
               setPanel("search");
@@ -130,7 +146,8 @@ export function WorkspaceToolbar({
           >
             <Glyph name="search" />
             <span>검색</span>
-            <kbd>⌘K</kbd>
+            <kbd>{key("quickOpen")}</kbd>
+            <ShortcutHint action="quickOpen" />
           </button>
         </div>
         <div className="shell-tools-right">
@@ -138,22 +155,24 @@ export function WorkspaceToolbar({
             <button
               aria-label="화면 검사"
               aria-pressed={Boolean(inspecting)}
-              title="화면 검사 (⌘⇧C)"
+              title={`화면 검사 (${key("inspectUi")})`}
               onClick={onInspect}
             >
               <Glyph name="inspect" />
               <span>화면 검사</span>
+              <ShortcutHint action="inspectUi" />
             </button>
           )}
           {onTerminal && (
             <button
               aria-label="터미널"
               aria-expanded={terminal === "open"}
-              title="터미널 (⌘N)"
+              title={`터미널 (${key("toggleDrawer")})`}
               onClick={onTerminal}
             >
               <Glyph name="terminal" />
               <span>터미널</span>
+              <ShortcutHint action="toggleDrawer" />
             </button>
           )}
           <button

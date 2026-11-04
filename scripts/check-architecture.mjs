@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve("src");
+const testsRoot = path.resolve("tests");
 const rank = {
   app: 3,
   desktop: 3,
@@ -14,13 +15,15 @@ const rank = {
 const files = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory()
-      ? files(path.join(dir, e.name))
+      ? e.name === "node_modules"
+        ? []
+        : files(path.join(dir, e.name))
       : /\.(ts|tsx)$/.test(e.name)
         ? [path.join(dir, e.name)]
         : [],
   );
 const failures = [];
-for (const file of files(root)) {
+const scan = (file, isTest) => {
   const from = path.relative(root, file).split(path.sep);
   const source = ts.createSourceFile(
     file,
@@ -33,6 +36,20 @@ for (const file of files(root)) {
     const target = path.resolve(path.dirname(file), specifier);
     const to = path.relative(root, target).split(path.sep);
     if (!(to[0] in rank)) return;
+    if (isTest) {
+      // Tests sit outside src, so the layer rank does not apply. They may use
+      // a feature/entity slice only through its index or a model/** module.
+      if (
+        ["features", "entities"].includes(to[0]) &&
+        to.length > 2 &&
+        !(to.length === 3 && /^index(\.tsx?)?$/.test(to[2])) &&
+        to[2] !== "model"
+      )
+        failures.push(
+          `${path.relative(process.cwd(), file)}: test bypasses public API ${specifier}`,
+        );
+      return;
+    }
     const sameSlice = from[0] === to[0] && from[1] === to[1];
     if (
       rank[from[0]] < rank[to[0]] ||
@@ -71,9 +88,15 @@ for (const file of files(root)) {
     ts.forEachChild(node, visit);
   };
   visit(source);
-}
+};
+for (const file of files(root)) scan(file, false);
+const testFiles = files(testsRoot);
+for (const file of testFiles) scan(file, true);
 if (failures.length) {
   console.error(failures.join("\n"));
   process.exit(1);
 }
 console.log("FSD layer direction and feature/entity public APIs passed.");
+console.log(
+  `Tests use feature/entity slices only through index or model/** (${testFiles.length} test files scanned).`,
+);

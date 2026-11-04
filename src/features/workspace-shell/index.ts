@@ -1,2 +1,3 @@
 export { WorkspaceToolbar } from "./WorkspaceToolbar";
-export { useWorkspaceNavigation, visit } from "./navigation";
+export { canBack, canForward, useWorkspaceNavigation, visit } from "./model/navigation";
+export type { Navigation } from "./model/navigation";

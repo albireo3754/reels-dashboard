@@ -1,4 +1,4 @@
-import {readFile} from "node:fs/promises";
+import {readJsonFile} from "../shared/lib/fs";
 import path from "node:path";
 import {z} from "zod";
 
@@ -20,8 +20,5 @@ const registry=z.object({version:z.literal(1),projects:z.array(z.object({
 
 /** Explicit local project connections; no implicit default manuscript. */
 export async function readBlogProjects(root:string){
-  let raw:string;
-  try{raw=await readFile(path.join(root,"blog-projects.json"),"utf8");}
-  catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return [];throw error;}
-  return registry.parse(JSON.parse(raw)).projects;
+  return readJsonFile(path.join(root,"blog-projects.json"),(value)=>registry.parse(value).projects,()=>[]);
 }
