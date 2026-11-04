@@ -1,5 +1,6 @@
+import { sha256Hex } from "../shared/lib/hash";
 import { createServer, type Server } from "node:http";
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -101,7 +102,7 @@ export class BlogResults {
     parseReferences(await this.readStructures(resolved));
     const entries = await this.entries();
     const entry = {
-      id: createHash("sha256").update(resolved).digest("hex"),
+      id: sha256Hex(resolved),
       directory: resolved,
     };
     if (!entries.some((e) => e.id === entry.id)) {

@@ -72,32 +72,27 @@ export interface CanonicalDocument {
   frameVersion: string;
   fontCss?: string;
 }
-const decode = (s: string) =>
-  s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
 export const escapeHtml = (s: string) =>
   s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 export function cssColor(value: string): string | undefined {
   if (/^#[\da-f]{6}$/i.test(value)) return value.toLowerCase();
   const m = value.match(/^rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)$/);
   if (!m || m.slice(1).some((v) => Number(v) > 255)) return undefined;
   return `rgb(${m.slice(1).map(Number).join(",")})`;
 }
-/** `cssColor` as lowercase `#rrggbb`, so equal colours compare equal. */
-export const cssHex = (value: string) =>
-  cssColor(value)?.replace(
-    /rgb\((\d+),(\d+),(\d+)\)/,
-    (_, r, g, b) =>
-      "#" +
-      [r, g, b].map((n) => Number(n).toString(16).padStart(2, "0")).join(""),
-  );
+/** {@link cssColor} normalized to lowercase #rrggbb, so equal colours compare equal. */
+export function cssHex(value: string): string | undefined {
+  const color = cssColor(value);
+  const rgb = color?.match(/^rgb\((\d+),(\d+),(\d+)\)$/);
+  return rgb
+    ? "#" + rgb.slice(1).map((n) => Number(n).toString(16).padStart(2, "0")).join("")
+    : color;
+}
 export const plainText = (source: string) =>
   readInline(source)
     .map((r) => r.text)

@@ -1,3 +1,4 @@
+import { errorMessage } from "./lib/errors";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 /** Keep text and structured responses identical for all JSON-based MCP tools. */
@@ -18,7 +19,7 @@ export function mcpError(error: unknown): CallToolResult {
     content: [
       {
         type: "text",
-        text: error instanceof Error ? error.message : String(error),
+        text: errorMessage(error),
       },
     ],
   };

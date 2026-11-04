@@ -19,7 +19,7 @@ import {
 import { OtelObservationSink } from "../../src/app/observability/otel-sink";
 import { configureObservation } from "../../src/app/observability/configure";
 import { langfuseAttributes } from "../../src/app/observability/langfuse-projection";
-import type { AiObservation, AiAttempt } from "../../src/shared/ai-observation";
+import type { AiObservation } from "../../src/shared/ai-observation";
 
 const rate: ModelRate = {
   id: "synthetic-rate-v1",

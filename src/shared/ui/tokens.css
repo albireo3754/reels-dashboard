@@ -37,7 +37,8 @@
   --color-border-strong: #c9d3c6;
   --color-text: #22332c;
   --color-text-muted: #5e6d64;
-  --color-text-subtle: #8a968c;
+  /* AA (≥4.5:1) on --color-bg and --color-surface for small secondary text. */
+  --color-text-subtle: #66736a;
   --color-text-on-accent: #ffffff;
 
   /* Color — accent & status */

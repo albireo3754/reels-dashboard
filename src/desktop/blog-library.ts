@@ -1,11 +1,11 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/lib/hash';
 import { lstat, mkdir, open, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { blogDraft, type BlogDraft } from '../shared/blog';
 import { ContentLibrary } from '../features/content-library';
 import { LocalStore } from '../shared/lib/storage';
-const hash = (v:string) => createHash('sha256').update(v).digest('hex');
+const hash = sha256Hex;
 export class BlogLibrary {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private store:LocalStore, private library:ContentLibrary) {}

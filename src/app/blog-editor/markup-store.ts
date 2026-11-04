@@ -1,9 +1,10 @@
 import { stickerPlan, stickerAnchors, replaceStickers, STICKER_PRESETS, STICKER_CSS, type StickerPlacement } from "../../shared/blog-stickers";
+import { writeFileAtomic } from "../../shared/lib/fs";
 import type {VisualEvidence} from "../../shared/markup-review";
-import {paragraphSource,findingApplicability,findingTarget} from "../../shared/review-applicability";
+import {paragraphSource,findingTarget} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
 import {AnnotationStore} from "./annotations";
-import {readFile,writeFile,realpath,mkdir,rename,readdir,stat} from "node:fs/promises";
+import {readFile,writeFile,realpath,mkdir,readdir,stat} from "node:fs/promises";
 import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -13,7 +14,7 @@ import {paragraphNodes,bundleHashes,reviewFresh,fingerprint} from "../../shared/
 import {load,save} from "../../shared/blog-markup-store";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
 import {layoutStyles} from "./layout-styles";
-import {readInline,inlineSource,escapeHtml,cssHex as colorHex,type InlineRun,type CanonicalDocument} from "../../shared/canonical-blog";
+import {readInline,escapeHtml,cssHex,type CanonicalDocument} from "../../shared/canonical-blog";
 import {blogSuggestRequest,fitSuggestInput,inlineSuggestInput,SUGGEST_LIMITS,type InlineSuggestInput} from "../../shared/inline-suggest";
 import {blogChatInput,blogChatRequest,fitChatInput,CHAT_LIMITS,type BlogChatInput} from "../../shared/blog-chat";
 function edited(original:ParagraphNode,source:string):ParagraphNode{
@@ -27,8 +28,8 @@ function edited(original:ParagraphNode,source:string):ParagraphNode{
       if(i){line++;column=0;}
       if(part&&Object.keys(run.style).length){
         const style:MarkStyle={};
-        if(run.style.color)style.color=colorHex(run.style.color);
-        if(run.style.background)style.background=colorHex(run.style.background);
+        if(run.style.color)style.color=cssHex(run.style.color);
+        if(run.style.background)style.background=cssHex(run.style.background);
         if(run.style.weight===700)style.weight=700;
         if(run.style.size)style.size=run.style.size;
         const old=original.marks.find(m=>original.lines[m.line].slice(m.start,m.end)===part);
@@ -165,7 +166,7 @@ body{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20p
       html=/<style id="blog-sticker-theme">[\s\S]*?<\/style>/.test(html)
         ? html.replace(/<style id="blog-sticker-theme">[\s\S]*?<\/style>/,()=>stickerStyle)
         : /<\/head>/i.test(html)?html.replace(/<\/head>/i,()=>stickerStyle+"</head>"):stickerStyle+html;
-      const temp=this.config.layout+"."+randomUUID()+".tmp";await writeFile(temp,html);await rename(temp,this.config.layout);
+      await writeFileAtomic(this.config.layout,html);
     }catch(e){warning="정본은 저장됐지만 미리보기 갱신 실패: "+String(e);}
     const document=await this.load();document.warnings!.push(...result.warnings,...(warning?[warning]:[]));
     return {document};

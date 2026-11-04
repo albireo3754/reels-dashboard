@@ -1,3 +1,5 @@
+import { readJsonBody } from "../lib/http";
+import { errorMessage } from "../../shared/lib/errors";
 import type {VisualEvidence} from "../../shared/markup-review";
 import {MarkupReviewWorker} from "./review-worker";
 import { AnnotationStore } from "./annotations";
@@ -10,7 +12,6 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { CanonicalStore, type EditorConfig } from "./store";
 import { frameScript } from "./frame-script";
-import { errorMessage } from "../../shared/errors";
 export async function startCanonicalEditor(
   config: EditorConfig,
   webRoot = path.resolve("dist"),
@@ -52,13 +53,7 @@ export async function startCanonicalEditor(
           !req.headers["content-type"]?.startsWith("application/json")
         )
           return json(403, { error: "Same-origin JSON required" });
-        let body = "";
-        for await (const c of req) {
-          body += c;
-          if (Buffer.byteLength(body) > 512000)
-            throw new Error("본문이 너무 커요.");
-        }
-        const v = JSON.parse(body);
+        const v: any = await readJsonBody(req, 512000, "본문이 너무 커요.");
         if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.update(v));
         if (u.pathname === "/api/blog/copy-sticker-plan" && nativeClipboard) {
           if (typeof v.text !== "string" || !v.text.trim() || v.text.length > 20000) throw new Error("잘못된 배치 메모");

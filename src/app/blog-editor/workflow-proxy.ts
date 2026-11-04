@@ -1,3 +1,4 @@
+import { readJsonBody } from "../lib/http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { workflowRequest } from "../workflow/client";
 import {
@@ -35,13 +36,7 @@ export async function proxyWorkflow(
     action = workflowAction.parse(url.pathname.slice("/api/workflows/".length));
     if (isReadOnlyWorkflowAction(action))
       throw new Error("Invalid workflow action");
-    let body = "";
-    for await (const chunk of req) {
-      body += chunk;
-      if (Buffer.byteLength(body) > 256000)
-        throw new Error("Request too large");
-    }
-    input = JSON.parse(body);
+    input = await readJsonBody(req, 256000);
   } else throw new Error("Method not allowed");
   const result = await workflowRequest(action, input);
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });

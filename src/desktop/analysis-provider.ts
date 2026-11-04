@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../shared/lib/hash";
 import {
   analysisCodexSettings,
   analysisCodexEnvironment,
@@ -162,7 +162,7 @@ The MCP response contains context, request, and image IDs/filenames in attachmen
       const readReceipt = JSON.parse(await readFile(receipt, "utf8"));
       if (
         readReceipt.tool !== "get_analysis_context" ||
-        readReceipt.digest !== createHash("sha256").update(batch).digest("hex")
+        readReceipt.digest !== sha256Hex(batch)
       )
         throw new Error("Context receipt mismatch");
       const parsed = output.parse(JSON.parse(await readFile(result, "utf8")));

@@ -1,3 +1,4 @@
+import { errorMessage } from "./errors";
 import { createConnection, createServer, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
 import {
@@ -11,7 +12,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { errorMessage } from "../errors";
 
 const requestLimit = 2 * 1024 * 1024;
 const responseLimit = 64 * 1024 * 1024;

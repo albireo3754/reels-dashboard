@@ -1,6 +1,8 @@
 import { openFormInput } from "../../shared/input-forms";
 import { callAgent } from "../../shared/lib/agent-socket";
 import os from "node:os";
+import { readJsonBody } from "../lib/http";
+import { errorMessage } from "../../shared/lib/errors";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +14,6 @@ import {
   WORKFLOW_PROTOCOL_VERSION,
 } from "../../shared/workflow";
 import { configureObservation } from "../observability/configure";
-import { errorMessage } from "../../shared/errors";
 
 export async function startWorkflowServer(options: {
   root: string;
@@ -100,13 +101,7 @@ export async function startWorkflowServer(options: {
       if (url.pathname.startsWith("/api/workflows/") && req.method === "POST") {
         if (!req.headers["content-type"]?.startsWith("application/json"))
           return json(415, { error: "JSON required" });
-        let body = "";
-        for await (const chunk of req) {
-          body += chunk;
-          if (Buffer.byteLength(body) > 256000)
-            throw new Error("Request too large");
-        }
-        const input = JSON.parse(body);
+        const input = await readJsonBody(req, 256000);
         switch (url.pathname) {
           case "/api/workflows/forms-list":
             return json(200, runtime.listForms(input));

@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import {
   templateContent,
@@ -23,7 +24,6 @@ import {
 import { drawCard } from "./frame";
 import { Notice } from "../../../shared/ui/primitives";
 import "./card-news.css";
-import { errorMessage } from "../../../shared/errors";
 
 function VideoBackground({
   url,
@@ -217,9 +217,7 @@ export function CardNews({
           ),
         );
       } catch (e) {
-        throw new Error(
-          `${i + 1}번 카드: ${e instanceof Error ? e.message : e}`,
-        );
+        throw new Error(`${i + 1}번 카드: ${errorMessage(e)}`);
       }
     }
     setFrames(next);

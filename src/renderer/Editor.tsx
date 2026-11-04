@@ -1,3 +1,4 @@
+import { errorMessage } from "../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import type { DashboardBridge } from "../shared/contracts";
 import type {
@@ -17,7 +18,6 @@ import {
   selectCoverTemplate,
   validateEditSettings,
 } from "../shared/editor-model";
-import { errorMessage } from "../shared/errors";
 
 type EditorProps = {
   bridge: EditorBridge;

@@ -1,3 +1,5 @@
+import { writeFileAtomic } from "../../../shared/lib/fs";
+import { errorMessage } from "../../../shared/lib/errors";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
 import { upsertExportedProject } from "../../../shared/production-project";
@@ -9,10 +11,9 @@ import {
   writeFile,
   realpath,
   stat,
-  rename,
+  
   rm,
-  readdir,
-} from "node:fs/promises";
+  readdir } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import path from "node:path";
@@ -27,7 +28,6 @@ import { defaultEditSettings } from "../../../shared/editor";
 import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
-import { errorMessage } from "../../../shared/errors";
 import { parseRange } from "../../../shared/lib/http-range";
 interface RecordData {
   project: EditorProject;
@@ -183,13 +183,11 @@ export class EditorService implements EditorBridge {
   private async saveRecord(record: RecordData) {
     const dir = this.dir(record.project.id);
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    const file = path.join(dir, "project.json"),
-      temp = file + "." + randomUUID() + ".tmp";
-    await writeFile(temp, JSON.stringify(record, null, 2), {
-      mode: 0o600,
-      flag: "wx",
-    });
-    await rename(temp, file);
+    await writeFileAtomic(
+      path.join(dir, "project.json"),
+      JSON.stringify(record, null, 2),
+      { mode: 0o600 },
+    );
     this.records.set(record.project.id, record);
   }
   private async record(id: string) {

@@ -1,3 +1,4 @@
+import { localDate } from "../../src/shared/lib/format";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -87,13 +88,14 @@ test("merge rejects self, missing sources, publication conflicts without changin
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("export upsert dates new projects in UTC, keeps published state and replaces same path+role resources", () => {
+test("export upsert dates new projects in local time, keeps published state and replaces same path+role resources", () => {
   const edit = { kind: "video" as const, id: "edit-1" };
   const late = new Date("2026-11-01T16:30:00.000Z"); // 2026-11-02 01:30 KST
   const out = { role: "final" as const, path: "/tmp/out.mp4", label: "v1" };
   const update = { title: "clip", stage: "review" as const, nextAction: "check", resources: [out], exported: [out] };
   const created = upsertExportedProject(board([]), edit, update, late, randomUUID).projects[0];
-  assert.equal(created.date, "2026-11-01");
+  // Local calendar date, not UTC: 01:30 KST must not be recorded as the previous day.
+  assert.equal(created.date, localDate(late));
   assert.equal(created.dateBasis, undefined);
   assert.equal(editOwner(board([created]), edit)?.id, "edit-1");
   const published = { ...created, stage: "published" as const, nextAction: "done", resources: [{ ...out, label: "old" }, { role: "cover" as const, path: "/tmp/c.png", label: "c" }] };

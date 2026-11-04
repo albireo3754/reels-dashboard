@@ -1,4 +1,5 @@
 import { FormInbox } from "./FormInbox";
+import { errorMessage } from "../../../shared/lib/errors";
 import { ExperienceForm } from "./ExperienceForm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,7 +19,6 @@ import { workflowCall } from "../../../shared/workflow-client";
 import { SdkProgress } from "../../../shared/ui/SdkProgress";
 import { ConversationFeed } from "../../../shared/ui/ConversationFeed";
 import { MarkdownView } from "../../../shared/ui/MarkdownView";
-import { errorMessage } from "../../../shared/errors";
 const request = (action = "", input?: unknown) =>
   workflowCall((action.replace(/^\//, "") || "list") as WorkflowAction, input);
 export function WorkflowPanel({

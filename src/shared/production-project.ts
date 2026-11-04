@@ -1,3 +1,4 @@
+import { localDate } from "./lib/format";
 import { z } from "zod";
 import type { Dashboard, LocalResource, Project } from "./contracts";
 
@@ -94,8 +95,6 @@ export function recordExports(
     ],
   };
 }
-/** Dashboard calendar date (YYYY-MM-DD) in UTC. */
-export const utcDate = (now = new Date()) => now.toISOString().slice(0, 10);
 export interface ExportUpdate {
   /** Title for a project created by this export. */
   title: string;
@@ -123,7 +122,7 @@ export function upsertExportedProject(
     ...old,
     id: old?.id ?? edit.id,
     title: old?.title ?? update.title,
-    date: old?.date ?? utcDate(now),
+    date: old?.date ?? localDate(now),
     ...(update.dateBasis
       ? { dateBasis: old?.dateBasis ?? update.dateBasis }
       : {}),

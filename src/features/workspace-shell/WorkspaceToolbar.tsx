@@ -50,7 +50,7 @@ export function WorkspaceToolbar({
     const key = (event: KeyboardEvent) => {
       if (event.isComposing || event.repeat || event.altKey) return;
       // Keep an in-progress content form and terminal editing shortcuts intact.
-      if (document.querySelector(".modal-backdrop")) return;
+      if (document.querySelector("dialog[open][data-modal-form]")) return;
       if (
         event.ctrlKey &&
         event.target instanceof Element &&

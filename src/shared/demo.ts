@@ -1,3 +1,4 @@
+import { localDate } from "./lib/format";
 import { demoRouteMap } from "./route-map-demo";
 import { createDemoEditor, demoVideo } from "./editor-demo";
 import type {
@@ -8,13 +9,11 @@ import type {
   DashboardBridge,
   Decision,
   Group,
-  Inspection,
   PlanEnvelope,
   Snapshot,
 } from "./contracts";
 import { emptyDashboard } from "./contracts";
 import { validateDashboard, toSnapshot } from "./data";
-import { utcDate } from "./production-project";
 
 export function createDemoBridge(
   search = typeof window === "undefined" ? "" : window.location.search,
@@ -364,7 +363,7 @@ export function createDemoBridge(
       const item = {
         id: project.id,
         title: previous?.title ?? project.source.name,
-        date: previous?.date ?? utcDate(),
+        date: previous?.date ?? localDate(),
         stage,
         nextAction:
           stage === "review"

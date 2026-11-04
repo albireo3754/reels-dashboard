@@ -143,7 +143,7 @@
   color: var(--color-text-muted);
 }
 .stat-2 > strong {
-  color: #b89558;
+  color: #876b3a;
 }
 .stat-3 > strong {
   color: var(--color-text-subtle);
@@ -252,7 +252,7 @@
   background: #edf2e7;
 }
 .stage-review {
-  color: #a58242;
+  color: #846835;
   background: #faf2de;
 }
 .stage-published {
@@ -561,7 +561,7 @@
   border-radius: var(--radius-xs);
   padding: 2px 4px;
   background: #f4ecd8;
-  color: #ab8b50;
+  color: #7e663b;
   margin: 3px 3px 0 0;
 }
 .pagination {
@@ -723,7 +723,7 @@
 }
 .type-icon.amber {
   background: #eee3ca;
-  color: #b5944a;
+  color: #987c3e;
 }
 .transfer-types h3 {
   font-size: var(--text-md);
@@ -784,7 +784,7 @@
   margin-top: 2px;
 }
 .destructive-check {
-  color: #a76c43;
+  color: #97613c;
   background: #faf2e8;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -864,19 +864,20 @@
 .panel label + button {
   margin-top: 20px;
 }
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
+.project-dialog {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  overflow: visible;
+}
+.project-dialog::backdrop {
   background: #24352a69;
   backdrop-filter: blur(4px);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
 }
 .modal {
-  width: 530px;
+  width: min(530px, 100%);
   max-height: calc(100vh - 48px);
   overflow: auto;
   border: 1px solid var(--color-border);
@@ -898,7 +899,7 @@
   margin-bottom: 5px;
 }
 .warning-text {
-  color: #b39258 !important;
+  color: #866c3d !important;
 }
 @media (min-width: 1500px) {
   .main {
@@ -1288,8 +1289,9 @@
   .desktop-notice p {
     font-size: var(--text-sm);
   }
-  .modal-backdrop {
-    padding: 15px;
+  .project-dialog {
+    max-width: calc(100vw - 30px);
+    max-height: calc(100vh - 30px);
   }
   .modal {
     padding: 23px;
@@ -1389,4 +1391,7 @@
   .compact-shell .main { padding-left: 17px; padding-right: 17px; }
 }
 
-.compact-shell .modal-backdrop { z-index: 200; }
+.local-resources .resource-path {
+  display: block;
+  overflow-wrap: anywhere;
+}

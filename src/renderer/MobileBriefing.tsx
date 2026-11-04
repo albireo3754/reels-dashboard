@@ -1,9 +1,10 @@
+import { koreanDateTime } from "../shared/lib/format";
 import { useEffect, useState } from "react";
 import type { DashboardBridge } from "../shared/contracts";
 import type { MobileBriefingStatus } from "../shared/mobile-briefing";
 
 const time = (value: string | null) =>
-  value ? new Date(value).toLocaleString("ko-KR") : "아직 확인되지 않았어요";
+  koreanDateTime(value, "아직 확인되지 않았어요");
 
 export function MobileBriefing({ bridge }: { bridge: DashboardBridge }) {
   const [status, setStatus] = useState<MobileBriefingStatus | null>(null);

@@ -1,14 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  rm,
-  realpath,
-} from "node:fs/promises";
-import os from "node:os";
+import { writeFile, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { CanonicalStore } from "../../src/app/blog-editor/store";
 import {

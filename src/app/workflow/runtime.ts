@@ -1,13 +1,11 @@
 import {
   followupManifestSchema,
   openFollowupsInput,
-  type Followups,
 } from "../../shared/followups";
 import {
   experienceFormSchema,
   saveExperienceInput,
   experienceMediaInput,
-  type ExperienceRecord,
 } from "../../shared/experience";
 import {
   Annotation,
@@ -20,17 +18,16 @@ import {
 import type { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import { openNodeSqliteSaver } from "./sqlite-checkpointer";
 import { DatabaseSync } from "node:sqlite";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { resolveFile, hashes } from "./files";
 import { InputFormService } from "./input-form-service";
 import { mediaSceneInputs, validateStoryMediaSubmission } from "./story-media";
 import {
   formIdInput,
-  createFormInput,
   saveFormInput,
   type InputFormRecord,
 } from "../../shared/input-forms";
-import { mkdir, realpath, stat, readFile, writeFile } from "node:fs/promises";
+import { mkdir, realpath, stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   createWorkflowInput,

@@ -1,7 +1,6 @@
 import { mcpResult, mcpError } from "../../shared/mcp-result";
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { toolDefinitions } from "../../features/agent-tools";
-import { errorMessage } from "../../shared/errors";
 
 export function createMcpServer(
   call: (name: string, args: unknown) => Promise<any>,

@@ -1,7 +1,9 @@
+import { sha256Hex } from "../shared/lib/hash";
+import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedExecFile } from "../shared/lib/logged-process";
 import { randomUUID } from "node:crypto";
-import { sha256Hex, sourceVersion as versionOf } from "../shared/lib/hash";
+import { sourceVersion as versionOf } from "../shared/lib/hash";
 import {
   mkdir,
   readFile,
@@ -423,7 +425,7 @@ export class MediaAnalysis {
               ...[...new Set(samples.map((s) => s.sourcePath))].map(
                 (sourcePath) => ({
                   sourcePath,
-                  message: e instanceof Error ? e.message : "분석 실패",
+                  message: errorMessage(e, "분석 실패"),
                 }),
               ),
             );

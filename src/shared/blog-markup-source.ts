@@ -1,5 +1,5 @@
 import { sha256Hex } from "./lib/hash";
-import { bundleParagraphs, parse, serialize, type MarkupDoc, type MarkupBundle, type ParagraphNode } from "./blog-markup";
+import { bundleParagraphs, parse, serialize, type MarkupDoc, type MarkupBundle } from "./blog-markup";
 
 export const fingerprint = (text: string) => sha256Hex(text);
 export const paragraphNodes = (doc: MarkupDoc) => doc.bundles.flatMap(bundleParagraphs);

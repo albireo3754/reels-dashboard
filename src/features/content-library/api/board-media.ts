@@ -1,6 +1,7 @@
+import { sha256Hex } from "../../../shared/lib/hash";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, stat, rename, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -60,9 +61,7 @@ export class BoardMedia {
     let file = source;
     if (kind === "video") {
       // Only the selected video gets a playback proxy; originals and project state remain untouched.
-      const hash = createHash("sha256")
-        .update(`${source}:${checked.info.size}:${checked.info.mtimeMs}`)
-        .digest("hex");
+      const hash = sha256Hex(`${source}:${checked.info.size}:${checked.info.mtimeMs}`);
       await mkdir(this.cache, { recursive: true, mode: 0o700 });
       file = path.join(this.cache, `${hash}.mp4`);
       if (!(await stat(file).catch(() => null))?.size) {

@@ -1,5 +1,5 @@
+import { sha256Hex } from "../shared/lib/hash";
 import { readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
   createAnalysisContextServer,
@@ -12,7 +12,7 @@ async function main() {
   const bytes = await readFile(manifestPath);
   if (bytes.length > 512 * 1024) throw new Error("Oversized batch context");
   const snapshot = batchContextSchema.parse(JSON.parse(bytes.toString("utf8")));
-  const digest = createHash("sha256").update(bytes).digest("hex");
+  const digest = sha256Hex(bytes);
   const handle = serveStdio(() =>
     createAnalysisContextServer(snapshot, async () => {
       await writeFile(

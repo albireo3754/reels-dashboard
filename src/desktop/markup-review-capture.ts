@@ -1,7 +1,8 @@
+import { sha256Hex } from "../shared/lib/hash";
 import {BrowserWindow} from "electron";
 import {mkdir,writeFile} from "node:fs/promises";
 import path from "node:path";
-import {createHash,randomUUID} from "node:crypto";
+import {randomUUID} from "node:crypto";
 import type {VisualEvidence} from "../shared/markup-review";
 export async function captureMarkupReview(frameUrl:string,bundleIds:string[],directory:string,sourceFingerprint:string):Promise<VisualEvidence[]>{
  if(bundleIds.length>20)throw new Error("화면 검토는 한 번에 20개 묶음까지 선택해주세요.");
@@ -25,7 +26,7 @@ export async function captureMarkupReview(frameUrl:string,bundleIds:string[],dir
     if(img.isEmpty())throw new Error("빈 화면 캡처");
     const png=img.toPNG(),file=path.join(directory,width+"-"+index+".png");
     await writeFile(file,png,{flag:"wx"});
-    evidence.push({path:file,bundleId:id,width,sourceFingerprint,sha256:createHash("sha256").update(png).digest("hex")});
+    evidence.push({path:file,bundleId:id,width,sourceFingerprint,sha256:sha256Hex(png)});
    }
   }
   return evidence;

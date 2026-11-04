@@ -15,7 +15,7 @@ import type {CanonicalFinding} from "../../src/shared/canonical-blog";
 // come from CSS generated content, small markers for non-text kinds, and one popover
 // for the active proposal. None of it may reach the manuscript.
 const SOURCE='---\ntitle: "Example article"\nmarkup: 1\nmedia: ./media/\nnotes: article.notes.md\nstyle: {bodyPx: 16, mobileBodyPx: 17}\n---\n\n<Bundle id="B1" name="First" question="why">\n<Photo file="photo.png" alt="Example photo"/>\n\n¶ P1\n⟦First⟧¹ line\n  ¹ 적갈 up19 · main\n\n¶ P2\nSecond line\n\n¶ P3\n벤치에서 잠시 쉬었어요. 바람이 좋았어요.\n\n¶ P4\n아메리카노는 맛있었어요. 케이크도 맛있었어요.\n\n¶ P5\n오늘은 정말 좋았어요.\n\n¶ P6\n커피를 마셨어요.\n</Bundle>\n';
-const P3="벤치에서 잠시 쉬었어요. 바람이 좋았어요.",P4="아메리카노는 맛있었어요. 케이크도 맛있었어요.",P5="오늘은 정말 좋았어요.";
+const P3="벤치에서 잠시 쉬었어요. 바람이 좋았어요.",P5="오늘은 정말 좋았어요.";
 const text=(id:string,tid:string,before:string,after:string,severity="권장")=>({id,axis:"문장",severity,observation:`${id}: 문장을 다듬어요.`,proposal:{layer:"text",tid,before,after}});
 const FINDINGS=[
   text("ending","P3","쉬었어요","쉬었다"),

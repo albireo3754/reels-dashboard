@@ -1,8 +1,8 @@
 // In-app Naver reference extraction: URL → isolated hidden window → structure/template/report files
 // → registered blog result → restore-viewer render check. Shared by the Blog tab and the MCP tool.
+import { writeFileAtomic } from "../shared/lib/fs";
 import { BrowserWindow, session as electronSession, type Session } from "electron";
-import { copyFile, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { copyFile, mkdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { LocalStore } from "../shared/lib/storage";
@@ -284,10 +284,8 @@ export class BlogExtractor {
       return null;
     }
   }
-  private async write(file: string, data: string | Buffer) {
-    const temp = `${file}.${randomUUID()}.tmp`;
-    await writeFile(temp, data, { flag: "wx" });
-    await rename(temp, file);
+  private write(file: string, data: string | Buffer) {
+    return writeFileAtomic(file, data);
   }
 }
 

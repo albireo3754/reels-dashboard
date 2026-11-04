@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import {
   readInline,
@@ -13,7 +14,6 @@ import {
 import { workflowCall } from "../../../shared/workflow-client";
 import { SdkProgress } from "../../../shared/ui/SdkProgress";
 import type { SdkJob } from "../../../shared/workflow";
-import { errorMessage } from "../../../shared/errors";
 
 export function CanonicalSdkReview({
   document,

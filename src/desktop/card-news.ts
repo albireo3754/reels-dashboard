@@ -1,3 +1,4 @@
+import { errorMessage } from "../shared/lib/errors";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
 import { upsertExportedProject } from "../shared/production-project";
@@ -26,7 +27,6 @@ import {
 import { timeline, musicError, videoError } from "../shared/card-news-model";
 import type { LocalStore } from "../shared/lib/storage";
 import type { Dashboard } from "../shared/contracts";
-import { errorMessage } from "../shared/errors";
 
 type AssetRecord = {
   id: string;

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../../shared/lib/hash";
 import type { ThreadEvent } from "@openai/codex-sdk";
 import type { AiObservation } from "../../shared/ai-observation";
 import { ObservationRecorder, type AttemptMetadata } from "./observation";
@@ -46,9 +46,7 @@ export class CodexObserver implements CodexObservationPort {
         role: input.role,
         requestedModel: input.requestedModel,
         requestedReasoning: input.requestedReasoning,
-        instructionHash: createHash("sha256")
-          .update(input.prompt)
-          .digest("hex"),
+        instructionHash: sha256Hex(input.prompt),
       },
       { jobId: input.jobId, runId: input.runId, taskId: input.taskId },
       input.changed,

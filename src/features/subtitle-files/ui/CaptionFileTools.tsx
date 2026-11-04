@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../shared/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import type { CaptionCue } from "../../../shared/editor";
 import {
@@ -7,7 +8,6 @@ import {
   type SubtitleImport,
 } from "../model/subtitles";
 import "./subtitle-files.css";
-import { errorMessage } from "../../../shared/errors";
 interface Props {
   cues: CaptionCue[];
   duration: number;

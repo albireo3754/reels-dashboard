@@ -6,7 +6,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { realpath, stat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  experienceFormSchema,
   type ExperienceRecord,
   type ExperienceForm,
 } from "../../shared/experience";
