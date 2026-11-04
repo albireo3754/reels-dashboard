@@ -3,15 +3,13 @@ import {
   validateProductionLinks,
 } from "./production-project";
 import { localResourcesSchema } from "./local-resources";
-import type { Dashboard, Project, Snapshot } from "./contracts";
-const stages = new Set([
-  "idea",
-  "captured",
-  "selected",
-  "editing",
-  "review",
-  "published",
-]);
+import {
+  projectStages,
+  type Dashboard,
+  type Project,
+  type Snapshot,
+} from "./contracts";
+const stages = new Set<string>(projectStages);
 const record = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 function text(value: unknown, max: number): string {

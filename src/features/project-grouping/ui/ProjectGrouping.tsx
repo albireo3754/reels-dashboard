@@ -4,6 +4,7 @@ import type {
   DashboardBridge,
   Project,
 } from "../../../shared/contracts";
+import { errorMessage } from "../../../shared/errors";
 
 export function ProjectGrouping({
   api,
@@ -45,7 +46,7 @@ export function ProjectGrouping({
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

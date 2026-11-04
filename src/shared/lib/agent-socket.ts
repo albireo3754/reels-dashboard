@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { errorMessage } from "../errors";
 
 const requestLimit = 2 * 1024 * 1024;
 const responseLimit = 64 * 1024 * 1024;
@@ -66,7 +67,7 @@ export async function startAgentSocket(
         } catch (error) {
           socket.end(
             JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             }) + "\n",
           );
         }

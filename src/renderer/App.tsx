@@ -26,7 +26,7 @@ import type {
   Stage,
   Status,
 } from "../shared/contracts";
-import { emptyDashboard } from "../shared/contracts";
+import { emptyDashboard, projectStageLabels } from "../shared/contracts";
 import type { EditorProject } from "../shared/editor";
 import {
   BoardToolbar,
@@ -43,6 +43,7 @@ import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
 import { CardNews } from "../features/card-news";
 import type { DrawerMode } from "../features/dev-workspace";
+import { errorMessage } from "../shared/errors";
 const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
 const DevWorkspace = lazy(() =>
   import("../features/dev-workspace").then((m) => ({
@@ -65,14 +66,6 @@ type ActivePlan = {
   kind: "export" | "move";
   path: string;
   envelope: PlanEnvelope;
-};
-const stages: Record<Stage, string> = {
-  idea: "아이디어",
-  captured: "촬영 완료",
-  selected: "촬영본 선택",
-  editing: "편집 중",
-  review: "검토 대기",
-  published: "게시 완료",
 };
 const permissions: Record<string, string> = {
   "not-determined": "아직 요청하지 않음",
@@ -271,7 +264,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       try {
         await fn();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
       } finally {
         setBusy("");
       }
@@ -286,7 +279,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         if (active) setDashboard(d);
       })
       .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : String(e));
+        if (active) setError(errorMessage(e));
       });
     if (!readOnly)
       void bridge
@@ -295,7 +288,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           if (active) setStatus(s);
         })
         .catch((e) => {
-          if (active) setError(e instanceof Error ? e.message : String(e));
+          if (active) setError(errorMessage(e));
         });
     return () => {
       active = false;
@@ -306,7 +299,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     void bridge
       .loadDashboard()
       .then(setDashboard)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [bridge]);
   const editPhotosVideo = (assetID: string) =>
     run("Photos 원본과 재생 영상 준비", async () => {
@@ -1922,7 +1915,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   }
                   disabled={!!busy}
                 >
-                  {Object.entries(stages).map(([key, name]) => (
+                  {Object.entries(projectStageLabels).map(([key, name]) => (
                     <option value={key} key={key}>
                       {name}
                     </option>

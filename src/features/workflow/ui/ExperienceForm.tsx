@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { InputFormRecord } from "../../../shared/input-forms";
 import type { ExperienceAnswer } from "../../../shared/experience";
 import { workflowCall } from "../../../shared/workflow-client";
+import { errorMessage } from "../../../shared/errors";
 
 function QuestionImage({
   formId,
@@ -132,7 +133,7 @@ export function ExperienceForm({
       );
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

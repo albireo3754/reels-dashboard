@@ -1,5 +1,7 @@
 import {
   STALE_WORKFLOW_SERVER_MESSAGE,
+  workflowEndpoint,
+  workflowFetchInit,
   type WorkflowAction,
 } from "../../shared/workflow";
 export async function workflowRequest(
@@ -16,22 +18,9 @@ export async function workflowRequest(
     url.password
   )
     throw new Error("Workflow server must use loopback HTTP");
-  let endpoint = "/api/workflows";
-  if (action === "get")
-    endpoint += `/run?id=${encodeURIComponent((input as { runId: string }).runId)}`;
-  else if (action === "job")
-    endpoint += `/job?id=${encodeURIComponent((input as { jobId: string }).jobId)}`;
-  else if (action !== "list") endpoint += "/" + action;
   const result = await fetch(
-    new URL(endpoint, url),
-    ["list", "get", "job", "capabilities"].includes(action)
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-          signal,
-        },
+    new URL(workflowEndpoint(action, input), url),
+    { ...workflowFetchInit(action, input), signal },
   );
   const data = await result.json();
   // An older server rejects actions added since it started; say so instead of the raw route error.

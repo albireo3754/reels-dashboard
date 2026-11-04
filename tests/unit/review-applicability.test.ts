@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {findingApplicability,replaceInlineText} from "../../src/shared/review-applicability";
-import {readInline,type CanonicalFinding} from "../../src/shared/canonical-blog";
+import {applyFinding,findingApplicability,findingTarget,replaceInlineText} from "../../src/shared/review-applicability";
+import {plainText,readInline,type CanonicalFinding} from "../../src/shared/canonical-blog";
 const baseline='**Disclosure**\nMenu 10\n<span style="color:#85613f">Beer</span> 5';
 const color:CanonicalFinding={id:"c",observation:"color",sourceAtReview:baseline,proposal:{layer:"emphasis",op:"add",entry:{id:"P",phrase:"Menu",style:{color:"#85613f"}}}};
 test("unrelated styles and prefix insertions do not lock other proposals; edited target style does",()=>{
@@ -26,4 +26,16 @@ test("adding checks preserves existing color runs and leaves another color propo
  assert.equal(readInline(after).map(r=>r.text).join(""),"Disclosure\n✅ Menu 10\n✅ Beer 5");
  assert.equal(readInline(after).find(r=>r.text==="Beer")?.style.color,"#85613f");
  assert.equal(findingApplicability(color,after).canApply,true);
+});
+
+test("applyFinding restyles or replaces only the exact target and rejects stale or ambiguous ones",()=>{
+ assert.equal(findingTarget(color),"P");
+ const styled=applyFinding(color,baseline);
+ assert.equal(plainText(styled),plainText(baseline));
+ assert.equal(readInline(styled).find(r=>r.text==="Menu")?.style.color,"#85613f");
+ const text:CanonicalFinding={id:"t2",observation:"t",proposal:{layer:"text",tid:"P",before:"Menu 10",after:"Menu 12"}};
+ assert.equal(plainText(applyFinding(text,baseline)),"Disclosure\nMenu 12\nBeer 5");
+ assert.throws(()=>applyFinding(text,baseline+"\nMenu 10"),/여러 곳/);
+ assert.throws(()=>applyFinding(color,baseline.replace("Menu","Other")),/바뀌었어요/);
+ assert.throws(()=>applyFinding({id:"x",observation:"x",proposal:{layer:"layout"}},baseline),/직접 수정/);
 });

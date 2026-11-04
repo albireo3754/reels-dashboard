@@ -1,6 +1,6 @@
 import { StickerPlanner } from "./StickerPlanner";
 import { stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
-import {findingApplicability,replaceInlineText} from "../../../shared/review-applicability";
+import {applyFinding,findingApplicability,findingTarget,replaceInlineText} from "../../../shared/review-applicability";
 import {UserAnnotations,type AnnotationTarget} from "./UserAnnotations";
 import {BlogChat,type ChatAttachment} from "./BlogChat";
 import {CHAT_LIMITS,type BlogChatRewrite} from "../../../shared/blog-chat";
@@ -12,7 +12,6 @@ import {
   inlineHtml,
   inlineSource,
   readInline,
-  restyle,
   type CanonicalDocument,
   type CanonicalFinding,
   type InlineRun,
@@ -646,7 +645,7 @@ export function CanonicalBlogEditor() {
   function apply(f: CanonicalFinding, key = f.id): boolean {
     if (!doc || busy) return false;
     const p = f.proposal;
-    const id = p?.tid ?? p?.entry?.id;
+    const id = findingTarget(f);
     const original = doc.paragraphs.find((t) => t.id === id);
     if (!p || !original) return false;
     // editsRef is updated synchronously below so back-to-back applies in one
@@ -654,27 +653,7 @@ export function CanonicalBlogEditor() {
     let source = editsRef.current[original.id] ?? original.source;
     try {
       if(doc.format==="markup"){const state=findingApplicability(f,source);if(!state.canApply)throw new Error(state.reason);}
-      const runs = readInline(source),
-        plain = runs.map((r) => r.text).join("");
-      if (p.layer === "emphasis" && p.entry) {
-        const start = plain.indexOf(p.entry.phrase);
-        if (start < 0) throw new Error("강조할 구절이 바뀌었어요.");
-        const { bg, ...s } = p.entry.style;
-        source = restyle(
-          source,
-          start,
-          start + p.entry.phrase.length,
-          { ...s, ...(bg ? { background: bg } : {}) },
-          p.op === "remove",
-        );
-      } else if (p.layer === "text" && p.before && p.after !== undefined) {
-        const start = plain.indexOf(p.before);
-        if (start < 0 || plain.indexOf(p.before, start + 1) >= 0)
-          throw new Error(
-            "제안 대상이 바뀌었거나 여러 곳에 있어요. 본문에서 직접 수정해주세요.",
-          );
-        source = replaceInlineText(source,start,start+p.before.length,p.after);
-      } else throw new Error("이 제안은 본문에서 직접 수정해주세요.");
+      source = applyFinding(f, source);
       editsRef.current={...editsRef.current,[original.id]:source};
       setEdits(old=>({...old,[original.id]:source}));
       send({ type: "replace", id: original.id, html: inlineHtml(source) });

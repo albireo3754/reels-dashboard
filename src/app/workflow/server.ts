@@ -12,6 +12,7 @@ import {
   WORKFLOW_PROTOCOL_VERSION,
 } from "../../shared/workflow";
 import { configureObservation } from "../observability/configure";
+import { errorMessage } from "../../shared/errors";
 
 export async function startWorkflowServer(options: {
   root: string;
@@ -235,7 +236,7 @@ export async function startWorkflowServer(options: {
       });
       res.end(await readFile(file));
     } catch (e) {
-      json(400, { error: e instanceof Error ? e.message : String(e) });
+      json(400, { error: errorMessage(e) });
     }
   });
   try {

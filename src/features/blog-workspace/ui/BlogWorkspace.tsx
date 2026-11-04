@@ -5,7 +5,7 @@ import type {ContentMediaBridge,ContentMediaItem} from '../../../shared/content-
 import './blog.css';
 import {BlogReferences} from './BlogReferences';
 import {BlogProjects} from './BlogProjects';
-import {importSpec} from './import-spec';
+import {importSpec} from '../model/import-spec';
 
 function Rich({text,spans=[]}:{text:string;spans?:BlogSpan[]}) {
   const matches: Array<{start:number;end:number;span?:BlogSpan;bold?:boolean;href?:string;label?:string}>=[];

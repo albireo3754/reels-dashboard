@@ -90,6 +90,69 @@ export interface WorkflowHostStatus {
   url: string;
   message?: string;
 }
+/** GET actions on the workflow server; every other action is a JSON POST. */
+export const readOnlyWorkflowActions: readonly WorkflowAction[] = [
+  "list",
+  "get",
+  "job",
+  "capabilities",
+];
+export const isReadOnlyWorkflowAction = (action: WorkflowAction) =>
+  readOnlyWorkflowActions.includes(action);
+/** Server path for an action, shared by the browser and Node clients. */
+export function workflowEndpoint(action: WorkflowAction, input: any = {}) {
+  const base = "/api/workflows";
+  if (action === "get")
+    return `${base}/run?id=${encodeURIComponent(input.runId)}`;
+  if (action === "job")
+    return `${base}/job?id=${encodeURIComponent(input.jobId)}`;
+  return action === "list" ? base : `${base}/${action}`;
+}
+export function workflowFetchInit(
+  action: WorkflowAction,
+  input: unknown = {},
+): RequestInit {
+  return isReadOnlyWorkflowAction(action)
+    ? {}
+    : {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      };
+}
+export const runStatusLabels: Record<WorkflowRun["status"], string> = {
+  waiting: "작업 대기",
+  ready: "검토 완료",
+  blocked: "보류",
+  cancelled: "취소",
+};
+export const isReviewStage = (stage: WorkflowStage) =>
+  stage === "review" || stage === "visual_review";
+/** Stages where submitted answers can be re-checked for follow-up requests. */
+export const followupReopenStages: readonly WorkflowStage[] = [
+  "draft",
+  "review",
+  "revise",
+  "layout",
+  "visual_review",
+];
+export const canReopenFollowups = (run: WorkflowRun) =>
+  run.status === "waiting" &&
+  followupReopenStages.includes(run.stage) &&
+  run.experience?.status === "submitted";
+export const currentFollowup = (run: WorkflowRun) =>
+  run.followups?.tasks.find((t) => t.id === run.task?.followupId);
+/** A follow-up assigned to the production session; the SDK must not run it. */
+export const requiresSessionWork = (run: WorkflowRun) =>
+  run.stage === "followup" && currentFollowup(run)?.executor === "session";
+/** Stages shown as progress; revise folds into draft, intake stages only when collecting experience. */
+export const visibleStages = (run: Pick<WorkflowRun, "collectExperience">) =>
+  workflowStages.filter(
+    (s) =>
+      s !== "revise" &&
+      (!["experience", "requests", "followup"].includes(s) ||
+        run.collectExperience),
+  );
 export interface WorkflowBridge {
   request(action: WorkflowAction, input?: unknown): Promise<any>;
   onOpen?(callback: (runId: string) => void): () => void;

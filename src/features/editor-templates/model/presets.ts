@@ -1,4 +1,5 @@
-import { followCoverDefaults, type EditSettings } from "../../../shared/editor";
+import type { EditSettings } from "../../../shared/editor";
+import { selectCoverTemplate } from "../../../shared/editor-model";
 
 // Stable numbers match the bundled reels_editor/app/presets.py catalogue.
 export const editorPresets = [
@@ -55,17 +56,7 @@ export function applyEditorPreset(
       ...settings,
       place: { ...settings.place, material: preset.material },
     };
-  const { hookSize: _override, ...cover } = settings.cover;
-  return {
-    ...settings,
-    cover: {
-      ...cover,
-      template: preset.template,
-      ...(preset.template === "rosy-follow" && !cover.hook.trim()
-        ? { hook: followCoverDefaults.hook }
-        : {}),
-    },
-  };
+  return selectCoverTemplate(settings, preset.template);
 }
 export function isPresetSelected(
   settings: EditSettings,

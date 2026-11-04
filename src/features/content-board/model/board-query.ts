@@ -1,13 +1,9 @@
-import type { Project, Stage } from "../../../shared/contracts";
+import {
+  projectStages,
+  type Project,
+  type Stage,
+} from "../../../shared/contracts";
 
-export const stageLabels: Record<Stage, string> = {
-  idea: "아이디어",
-  captured: "촬영 완료",
-  selected: "촬영본 선택",
-  editing: "편집 중",
-  review: "검토 대기",
-  published: "게시 완료",
-};
 export const sortLabels = {
   newest: "날짜 최신순",
   oldest: "날짜 오래된순",
@@ -40,7 +36,7 @@ export function parseBoardQuery(value: unknown): BoardQuery {
   if (!value || typeof value !== "object") return result;
   const v = value as Record<string, unknown>;
   if (typeof v.search === "string") result.search = v.search.slice(0, 300);
-  if (["all", "active", ...Object.keys(stageLabels)].includes(String(v.stage)))
+  if (["all", "active", ...projectStages].includes(String(v.stage)))
     result.stage = v.stage as BoardQuery["stage"];
   if (Object.hasOwn(basisLabels, String(v.basis)))
     result.basis = v.basis as BoardQuery["basis"];

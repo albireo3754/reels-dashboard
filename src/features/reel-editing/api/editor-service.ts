@@ -1,6 +1,6 @@
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
-import { editOwner, recordExports } from "../../../shared/production-project";
+import { upsertExportedProject } from "../../../shared/production-project";
 import { type ChildProcess } from "node:child_process";
 import {
   access,
@@ -27,6 +27,8 @@ import { defaultEditSettings } from "../../../shared/editor";
 import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
+import { errorMessage } from "../../../shared/errors";
+import { parseRange } from "../../../shared/lib/http-range";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -64,31 +66,6 @@ const exists = async (file: string) => {
     return false;
   }
 };
-export function parseRange(
-  value: string | null,
-  size: number,
-): { start: number; end: number; partial: boolean } {
-  if (!value) return { start: 0, end: size - 1, partial: false };
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
-  if (!match || (!match[1] && !match[2])) throw new Error("Invalid range");
-  const start = match[1]
-    ? Number(match[1])
-    : Math.max(0, size - Number(match[2]));
-  const end = match[1]
-    ? match[2]
-      ? Math.min(size - 1, Number(match[2]))
-      : size - 1
-    : size - 1;
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    start < 0 ||
-    start >= size ||
-    end < start
-  )
-    throw new Error("Invalid range");
-  return { start, end, partial: true };
-}
 export class EditorService implements EditorBridge {
   private records = new Map<string, RecordData>();
   private jobs = new Map<string, RenderJob>();
@@ -288,52 +265,31 @@ export class EditorService implements EditorBridge {
         path: await realpath(resource.path),
       })),
     );
-    const dashboard = await this.options.store.update((dashboard) => {
-      const edit = { kind: "video" as const, id: project.id };
-      const old = editOwner(dashboard, edit);
-      const item = {
-        ...old,
-        id: old?.id ?? project.id,
-        title: old?.title ?? project.source.name,
-        date: old?.date ?? new Date().toLocaleDateString("en-CA"),
-        stage: old?.stage === "published" ? ("published" as const) : stage,
-        resources: [
-          ...(old?.resources ?? []).filter(
-            (r) =>
-              !outputs.some((o) => o.path === r.path && o.role === r.role) &&
-              !(r.path === record.sourcePath && r.role === "footage"),
-          ),
-          {
-            role: "footage" as const,
-            path: record.sourcePath,
-            label: project.source.name,
-          },
-          ...outputs,
-        ],
-        nextAction:
-          old?.stage === "published"
-            ? old.nextAction
-            : stage === "review"
+    const dashboard = await this.options.store.update((dashboard) =>
+      upsertExportedProject(
+        dashboard,
+        { kind: "video", id: project.id },
+        {
+          title: project.source.name,
+          stage,
+          nextAction:
+            stage === "review"
               ? "내보낸 영상과 표지를 확인해요."
               : "자막과 장소 안내를 편집해요.",
-        publicURL: old?.publicURL ?? "",
-        shared: old?.shared ?? false,
-      };
-      const linked = {
-        ...item,
-        production: recordExports(
-          item,
-          edit,
-          outputs,
-          new Date().toISOString(),
-          randomUUID,
-        ),
-      };
-      dashboard.projects = old
-        ? dashboard.projects.map((p) => (p.id === item.id ? linked : p))
-        : [...dashboard.projects, linked];
-      return dashboard;
-    });
+          resources: [
+            {
+              role: "footage",
+              path: record.sourcePath,
+              label: project.source.name,
+            },
+            ...outputs,
+          ],
+          exported: outputs,
+        },
+        new Date(),
+        randomUUID,
+      ),
+    );
     this.options.dashboardChanged?.(dashboard);
   }
   private async importFile(input: string): Promise<EditorProject> {
@@ -643,7 +599,7 @@ export class EditorService implements EditorBridge {
             if (job.state !== "cancelled") {
               job.state = "failed";
               job.phase = "내보내기 실패";
-              job.error = e instanceof Error ? e.message : String(e);
+              job.error = errorMessage(e);
             }
             for (const file of published) await rm(file, { force: true });
           } finally {

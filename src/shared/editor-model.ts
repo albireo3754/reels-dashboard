@@ -143,3 +143,20 @@ function hookSize(value: unknown) {
     throw new Error("표지 글자 크기는 1~185 사이 정수로 입력해주세요.");
   return size;
 }
+/** Switching cover template drops a manual hook size and seeds the follow hook when empty. */
+export function selectCoverTemplate(
+  settings: EditSettings,
+  template: EditSettings["cover"]["template"],
+): EditSettings {
+  const { hookSize: _override, ...cover } = settings.cover;
+  return {
+    ...settings,
+    cover: {
+      ...cover,
+      template,
+      ...(template === "rosy-follow" && !cover.hook.trim()
+        ? { hook: followCoverDefaults.hook }
+        : {}),
+    },
+  };
+}

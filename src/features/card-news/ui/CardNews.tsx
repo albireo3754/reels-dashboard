@@ -20,9 +20,10 @@ import {
   musicError,
   videoError,
 } from "../../../shared/card-news-model";
-import { drawCard } from "../model/frame";
+import { drawCard } from "./frame";
 import { Notice } from "../../../shared/ui/primitives";
 import "./card-news.css";
+import { errorMessage } from "../../../shared/errors";
 
 function VideoBackground({
   url,
@@ -126,7 +127,7 @@ export function CardNews({
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       lock.current = false;
       setBusy(false);

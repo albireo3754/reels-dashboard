@@ -1,5 +1,5 @@
 import {z} from "zod";
-import {parse,SE_FONT_STEPS} from "./blog-markup";
+import {bundleParagraphs,parse,SE_FONT_STEPS} from "./blog-markup";
 export const visualEvidenceSchema=z.strictObject({path:z.string().min(1),sha256:z.string().regex(/^[0-9a-f]{64}$/),bundleId:z.string(),width:z.number().int(),sourceFingerprint:z.string().regex(/^[0-9a-f]{64}$/)});
 export type VisualEvidence=z.infer<typeof visualEvidenceSchema>;
 export const emphasisDecision=z.strictObject({
@@ -41,7 +41,7 @@ export function validateMarkupReview(value:unknown,input:z.infer<typeof markupRe
   const findings=new Set<string>();
   for(const r of result.reviews){
     const b=doc.bundles.find(b=>b.id===r.bundleId);if(!b)throw new Error("Unknown bundle");
-    const ps=b.nodes.flatMap(n=>n.kind==="paragraph"?[n]:n.children??[]);
+    const ps=bundleParagraphs(b);
     if(r.verdict==="passed"&&r.findings.length)throw new Error("Passed review contains findings");
     const byFinding=new Map(r.findings.map(f=>[f.id,f]));
     for(const decision of r.emphasisDecisions){

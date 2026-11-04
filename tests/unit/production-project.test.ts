@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Dashboard, Project } from "../../src/shared/contracts";
 import { validateDashboard, toSnapshot } from "../../src/shared/data";
-import { emptyProduction, editOwner, recordExports } from "../../src/shared/production-project";
+import { emptyProduction, editOwner, recordExports, upsertExportedProject } from "../../src/shared/production-project";
 import { LocalStore } from "../../src/shared/lib/storage";
 import { ContentLibrary } from "../../src/features/content-library";
 const project = (id: string, extra: Partial<Project> = {}): Project => ({
@@ -85,4 +85,22 @@ test("merge rejects self, missing sources, publication conflicts without changin
       await assert.rejects(lib.merge({ targetId: "a", sourceIds: ids, expectedUpdatedAt: before.updatedAt }));
     assert.deepEqual(await store.load(), before);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("export upsert dates new projects in UTC, keeps published state and replaces same path+role resources", () => {
+  const edit = { kind: "video" as const, id: "edit-1" };
+  const late = new Date("2026-11-01T16:30:00.000Z"); // 2026-11-02 01:30 KST
+  const out = { role: "final" as const, path: "/tmp/out.mp4", label: "v1" };
+  const update = { title: "clip", stage: "review" as const, nextAction: "check", resources: [out], exported: [out] };
+  const created = upsertExportedProject(board([]), edit, update, late, randomUUID).projects[0];
+  assert.equal(created.date, "2026-11-01");
+  assert.equal(created.dateBasis, undefined);
+  assert.equal(editOwner(board([created]), edit)?.id, "edit-1");
+  const published = { ...created, stage: "published" as const, nextAction: "done", resources: [{ ...out, label: "old" }, { role: "cover" as const, path: "/tmp/c.png", label: "c" }] };
+  const again = upsertExportedProject(board([published]), edit, { ...update, dateBasis: "record" }, late, randomUUID).projects[0];
+  assert.equal(again.stage, "published");
+  assert.equal(again.nextAction, "done");
+  assert.equal(again.dateBasis, "record");
+  assert.deepEqual(again.resources?.map((r) => r.label), ["c", "v1"]);
+  assert.equal(again.production!.exports.length, 1); // same output path is recorded once
 });

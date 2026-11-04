@@ -2,9 +2,9 @@ import {
   basisLabels,
   defaultBoardQuery,
   sortLabels,
-  stageLabels,
   type BoardQuery,
 } from "../model/board-query";
+import { projectStageLabels as stageLabels } from "../../../shared/contracts";
 import "./board-controls.css";
 
 export function BoardToolbar({

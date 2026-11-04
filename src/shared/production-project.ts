@@ -94,6 +94,68 @@ export function recordExports(
     ],
   };
 }
+/** Dashboard calendar date (YYYY-MM-DD) in UTC. */
+export const utcDate = (now = new Date()) => now.toISOString().slice(0, 10);
+export interface ExportUpdate {
+  /** Title for a project created by this export. */
+  title: string;
+  /** Kept as published (with its next action) once the project is published. */
+  stage: "editing" | "review";
+  nextAction: string;
+  /** Default basis for a project without one; omitted keeps the field unset. */
+  dateBasis?: Project["dateBasis"];
+  /** Replace existing resources with the same path and role. */
+  resources: LocalResource[];
+  /** Outputs recorded in the production export history. */
+  exported: LocalResource[];
+}
+/** Create or update the project that owns an edit after it is rendered or exported. */
+export function upsertExportedProject(
+  dashboard: Dashboard,
+  edit: EditRef,
+  update: ExportUpdate,
+  now: Date,
+  newID: () => string,
+): Dashboard {
+  const old = editOwner(dashboard, edit);
+  const published = old?.stage === "published";
+  const project: Project = {
+    ...old,
+    id: old?.id ?? edit.id,
+    title: old?.title ?? update.title,
+    date: old?.date ?? utcDate(now),
+    ...(update.dateBasis
+      ? { dateBasis: old?.dateBasis ?? update.dateBasis }
+      : {}),
+    stage: published ? "published" : update.stage,
+    nextAction: published ? old.nextAction : update.nextAction,
+    publicURL: old?.publicURL ?? "",
+    shared: old?.shared ?? false,
+    resources: [
+      ...(old?.resources ?? []).filter(
+        (r) =>
+          !update.resources.some((o) => o.path === r.path && o.role === r.role),
+      ),
+      ...update.resources,
+    ],
+  };
+  const linked = {
+    ...project,
+    production: recordExports(
+      project,
+      edit,
+      update.exported,
+      now.toISOString(),
+      newID,
+    ),
+  };
+  return {
+    ...dashboard,
+    projects: old
+      ? dashboard.projects.map((p) => (p.id === linked.id ? linked : p))
+      : [...dashboard.projects, linked],
+  };
+}
 export function validateProductionLinks(projects: Project[]) {
   const owners = new Set<string>();
   const aliases = new Map(projects.map((p) => [p.id, p.id]));

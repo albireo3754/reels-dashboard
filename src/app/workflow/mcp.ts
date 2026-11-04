@@ -14,8 +14,10 @@ import {
   workflowIdInput,
   executeWorkflowInput,
   sdkJobIdInput,
+  isReadOnlyWorkflowAction,
 } from "../../shared/workflow";
 import { workflowRequest } from "./client";
+import { errorMessage } from "../../shared/errors";
 
 const handle = serveStdio(() => {
   const server = new McpServer(
@@ -118,7 +120,7 @@ const handle = serveStdio(() => {
         description,
         inputSchema,
         annotations: {
-          readOnlyHint: ["get", "list", "job", "capabilities"].includes(action),
+          readOnlyHint: isReadOnlyWorkflowAction(action),
           destructiveHint: false,
           openWorldHint: false,
         },
