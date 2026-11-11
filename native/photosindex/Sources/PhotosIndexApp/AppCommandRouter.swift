@@ -57,6 +57,14 @@ final class AppCommandRouter: @unchecked Sendable {
     func handle(_ request: CommandRequest) -> CommandResponse {
         do {
             switch request.method {
+            case "icloud.status":
+                guard Set(request.arguments.keys) == Set(["paths"]),
+                      let value = request.arguments["paths"],
+                      let data = value.data(using: .utf8),
+                      let paths = try? JSONDecoder().decode([String].self, from: data) else {
+                    return invalidArguments(request.id, "icloud.status requires a JSON array of paths")
+                }
+                return try .success(id: request.id, payload: exportService.icloudStatus(paths: paths))
             case "status":
                 return try .success(
                     id: request.id,

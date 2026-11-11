@@ -3,6 +3,7 @@ import {
   validateProductionLinks,
 } from "./production-project";
 import { localResourcesSchema } from "./local-resources";
+import { outboundSchema } from "./icloud-delivery";
 import {
   projectStages,
   type Dashboard,
@@ -47,6 +48,7 @@ export function validateDashboard(value: unknown): Dashboard {
       throw new Error("Invalid project date");
     return {
       id,
+      ...(p.outbound !== undefined ? { outbound: outboundSchema.parse(p.outbound) } : {}),
       ...(p.production !== undefined
         ? { production: productionSchema.parse(p.production) }
         : {}),
@@ -78,6 +80,10 @@ export function validateDashboard(value: unknown): Dashboard {
     };
   });
   validateProductionLinks(projects);
+  const outbound = projects.flatMap(p => p.outbound ? [p.outbound.directory.normalize("NFC").toLowerCase().replace(/\/+$/, "")] : []);
+  for (let i=0; i<outbound.length; i++) for (let j=i+1; j<outbound.length; j++)
+    if (outbound[i] === outbound[j] || outbound[i].startsWith(outbound[j]+"/") || outbound[j].startsWith(outbound[i]+"/"))
+      throw new Error("OUTBOUND_CONFLICT: 프로젝트 outbound 폴더가 겹쳐요.");
   const updatedAt = text(value.updatedAt, 40);
   if (!Number.isFinite(Date.parse(updatedAt)))
     throw new Error("Invalid update time");

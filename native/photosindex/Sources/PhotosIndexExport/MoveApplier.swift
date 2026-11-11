@@ -319,13 +319,19 @@ public enum ICloudUploadVerificationError: Error, Equatable, Sendable {
     case timedOut
 }
 
-struct ICloudItemUploadState: Equatable, Sendable {
-    let path: String
-    let isUbiquitous: Bool
-    let isUploaded: Bool
-    let isUploading: Bool
-    let isCurrent: Bool
-    let uploadErrorDescription: String?
+public struct ICloudItemUploadState: Codable, Equatable, Sendable {
+    public let path: String
+    public let isUbiquitous: Bool
+    public let isUploaded: Bool
+    public let isUploading: Bool
+    public let isCurrent: Bool
+    public let uploadErrorDescription: String?
+}
+
+public struct ICloudUploadStatus: Codable, Sendable {
+    public let checkedAt: String
+    public let state: String
+    public let files: [ICloudItemUploadState]
 }
 
 enum ICloudUploadPollDecision: Equatable, Sendable {
@@ -346,25 +352,7 @@ public struct ICloudDestinationUploadVerifier: DestinationUploadVerifying, Senda
     public func verifyUploaded(urls: [URL]) throws {
         let deadline = Date().addingTimeInterval(timeout)
         while true {
-            let states = try urls.map { url in
-                var refreshedURL = URL(fileURLWithPath: url.path)
-                refreshedURL.removeAllCachedResourceValues()
-                let values = try refreshedURL.resourceValues(forKeys: [
-                    .isUbiquitousItemKey,
-                    .ubiquitousItemIsUploadedKey,
-                    .ubiquitousItemIsUploadingKey,
-                    .ubiquitousItemUploadingErrorKey,
-                    .ubiquitousItemDownloadingStatusKey,
-                ])
-                return ICloudItemUploadState(
-                    path: url.path,
-                    isUbiquitous: values.isUbiquitousItem == true,
-                    isUploaded: values.ubiquitousItemIsUploaded == true,
-                    isUploading: values.ubiquitousItemIsUploading == true,
-                    isCurrent: values.ubiquitousItemDownloadingStatus == .current,
-                    uploadErrorDescription: values.ubiquitousItemUploadingError?.localizedDescription
-                )
-            }
+            let states = try Self.readStates(urls: urls)
             switch Self.evaluate(states: states, deadlineReached: Date() >= deadline) {
             case .complete:
                 return
@@ -376,16 +364,53 @@ public struct ICloudDestinationUploadVerifier: DestinationUploadVerifying, Senda
         }
     }
 
+    /// The same native checks used before a Photos move, without waiting or deleting.
+    public static func status(urls: [URL]) throws -> ICloudUploadStatus {
+        let files = try readStates(urls: urls)
+        let state: String
+        switch evaluate(states: files, deadlineReached: false, requireCurrent: false) {
+        case .complete: state = "completed"
+        case .pending: state = "pending"
+        case .failed: state = "failed"
+        }
+        return ICloudUploadStatus(
+            checkedAt: ISO8601DateFormatter().string(from: Date()), state: state, files: files
+        )
+    }
+
+    private static func readStates(urls: [URL]) throws -> [ICloudItemUploadState] {
+        try urls.map { url in
+            var refreshedURL = URL(fileURLWithPath: url.path)
+            refreshedURL.removeAllCachedResourceValues()
+            let values = try refreshedURL.resourceValues(forKeys: [
+                .isUbiquitousItemKey,
+                .ubiquitousItemIsUploadedKey,
+                .ubiquitousItemIsUploadingKey,
+                .ubiquitousItemUploadingErrorKey,
+                .ubiquitousItemDownloadingStatusKey,
+            ])
+            return ICloudItemUploadState(
+                path: url.path,
+                isUbiquitous: values.isUbiquitousItem == true,
+                isUploaded: values.ubiquitousItemIsUploaded == true,
+                isUploading: values.ubiquitousItemIsUploading == true,
+                isCurrent: values.ubiquitousItemDownloadingStatus == .current,
+                uploadErrorDescription: values.ubiquitousItemUploadingError?.localizedDescription
+            )
+        }
+    }
+
     static func evaluate(
         states: [ICloudItemUploadState],
-        deadlineReached: Bool
+        deadlineReached: Bool,
+        requireCurrent: Bool = true
     ) -> ICloudUploadPollDecision {
         if let nonUbiquitous = states.first(where: { !$0.isUbiquitous }) {
             return .failed(.notUbiquitous(nonUbiquitous.path))
         }
         let uploadError = states.compactMap(\.uploadErrorDescription).first
         let allUploaded = states.allSatisfy {
-            $0.isUploaded && !$0.isUploading && $0.isCurrent
+            $0.isUploaded && !$0.isUploading && (!requireCurrent || $0.isCurrent)
                 && $0.uploadErrorDescription == nil
         }
         if allUploaded {

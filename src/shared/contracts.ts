@@ -1,6 +1,7 @@
 import type { EditorBridge, AgentUiBridge } from "./editor";
 export const commandMethods = [
   "status",
+  "icloud.status",
   "authorize",
   "sync",
   "photos.search",
@@ -39,6 +40,7 @@ export interface LocalResource {
   label: string;
 }
 export interface Project {
+  outbound?: import("./icloud-delivery").ProjectOutbound;
   production?: import("./production-project").Production;
   id: string;
   title: string;
@@ -69,6 +71,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly icloud?: import("./icloud-delivery").ICloudBridge;
   readonly executionLogs?: import("./execution-log").ExecutionLogBridge;
   readonly workflow?: import("./workflow").WorkflowBridge;
   readonly blog?: import("./blog").BlogBridge;

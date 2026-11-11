@@ -317,6 +317,22 @@ final class MoveApplierTests: XCTestCase {
         XCTAssertNil(try store.load(digest: digest))
     }
 
+    func testUploadStatusDoesNotRequireLocalDownloadButPhotosMoveStillDoes() {
+        let remote = ICloudItemUploadState(
+            path: "/iCloud/file.mov", isUbiquitous: true,
+            isUploaded: true, isUploading: false, isCurrent: false,
+            uploadErrorDescription: nil
+        )
+        XCTAssertEqual(
+            ICloudDestinationUploadVerifier.evaluate(states: [remote], deadlineReached: false, requireCurrent: false),
+            .complete
+        )
+        XCTAssertEqual(
+            ICloudDestinationUploadVerifier.evaluate(states: [remote], deadlineReached: false),
+            .pending(lastUploadError: nil)
+        )
+    }
+
     func testUploadStateTreatsTransientErrorAsPendingThenAllowsSuccess() {
         let transient = ICloudItemUploadState(
             path: "/iCloud/file.mov",

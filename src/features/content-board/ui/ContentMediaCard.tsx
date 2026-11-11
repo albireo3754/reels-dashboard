@@ -107,11 +107,15 @@ export function ContentMediaCard({
     return () => {
       live = false;
     };
-  }, [visible, enabled, bridge, project.id]);
-  const visual =
+  }, [visible, enabled, bridge, project.id, project.resources, project.outbound?.generation]);
+  const allVisual =
     [...(page?.items ?? []), ...folderItems].filter(
       (i) => i.available && ["video", "image"].includes(i.kind),
     ) ?? [];
+  const outboundPaths = new Set(project.outbound?.files.map(f => `${project.outbound!.directory}/${f.name}`.normalize("NFC")) ?? []);
+  const visual = project.outbound?.generation
+    ? allVisual.filter(item => outboundPaths.has(item.path.normalize("NFC")))
+    : allVisual;
   const representative =
     visual.find((i) => i.role === "cover") ??
     visual.find((i) => i.role === "final") ??
@@ -131,6 +135,7 @@ export function ContentMediaCard({
       >
         {representative ? (
           <Thumbnail
+            key={project.outbound?.generation}
             item={representative}
             projectId={project.id}
             bridge={bridge}
@@ -153,7 +158,7 @@ export function ContentMediaCard({
         <div className="board-media-strip">
           {visual.slice(0, 3).map((item) => (
             <button
-              key={item.path + item.role}
+              key={item.path + item.role + (project.outbound?.generation ?? 0)}
               aria-label={`${item.label} 미리보기`}
               onClick={(e) => {
                 opener.current = e.currentTarget;
@@ -184,6 +189,7 @@ export function ContentMediaCard({
       )}
       {opened && (
         <MediaExplorer
+          key={project.outbound?.generation}
           project={project}
           bridge={bridge}
           initial={initial}

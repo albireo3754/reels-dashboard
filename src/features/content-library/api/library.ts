@@ -25,6 +25,7 @@ import {
   type ContentInput,
 } from "../../../shared/local-resources";
 import { LocalStore } from "../../../shared/lib/storage";
+import type { OutboundFile } from "../../../shared/icloud-delivery";
 
 const media = new Set([
   ".mov",
@@ -222,8 +223,41 @@ export class ContentLibrary {
     };
   }
 
+  async configureOutbound(projectId: string, directory: string, files: OutboundFile[], expectedUpdatedAt: string) {
+    const dashboard = await this.store.update(current => {
+      const project = current.projects.find(p => p.id === projectId);
+      if (!project) throw new Error("CONTENT_NOT_FOUND");
+      if (project.outbound && project.outbound.directory !== directory)
+        throw new Error("OUTBOUND_ALREADY_SET: 이 프로젝트는 기존 outbound 폴더를 사용해요.");
+      project.outbound ??= { directory, generation: 0, files, updatedAt: new Date().toISOString() };
+      return current;
+    }, expectedUpdatedAt);
+    this.changed(dashboard);
+    return this.get(projectId);
+  }
+
+  async completeOutbound(projectId: string, directory: string, generation: number, files: OutboundFile[], receiptPath: string, archives: Array<{path:string; backup:string}>) {
+    const dashboard = await this.store.update(current => {
+      const p = current.projects.find(p => p.id === projectId);
+      if (!p?.outbound || p.outbound.directory !== directory || p.outbound.generation !== generation)
+        throw new Error("STALE_OUTBOUND: outbound가 변경됐어요.");
+      const archived = new Map(archives.map(a => [a.path, a.backup]));
+      const old = (p.resources ?? []).map(r => archived.has(r.path)
+        ? {...r, path: archived.get(r.path)!, label: `이전 전달본 · ${path.basename(r.path)}`} : r);
+      if (p.production) p.production.exports = p.production.exports.map(e => archived.has(e.path) ? {...e,path:archived.get(e.path)!} : e);
+      const latest: LocalResource[] = files.map(f => ({role:f.role,path:path.join(directory,f.name),label:`outbound · ${f.name}`}));
+      latest.push({role:"folder",path:directory,label:"프로젝트 outbound"});
+      const seen = new Set<string>();
+      p.resources = [...latest,...old].filter(r => { const key=r.path+"|"+r.role; if(seen.has(key))return false;seen.add(key);return true; });
+      p.outbound = {directory,generation:generation+1,files,receiptPath,updatedAt:new Date().toISOString()};
+      return current;
+    });
+    this.changed(dashboard);
+    return this.get(projectId);
+  }
+
   // Authorize every read against the current record, including folder descendants.
-  async resolveMedia(projectId: string, candidate: string) {
+  private async resolveLinkedFile(projectId: string, candidate: string) {
     localPathSchema.parse(candidate);
     const dashboard = await this.store.load();
     const project = dashboard.projects.find((p) => p.id === projectId);
@@ -249,10 +283,23 @@ export class ContentLibrary {
     const info = await stat(normalized);
     if (
       !info.isDirectory() &&
-      (!info.isFile() || !media.has(path.extname(normalized).toLowerCase()))
+      (!info.isFile() || !new Set([...media, ...documents]).has(path.extname(normalized).toLowerCase()))
     )
       throw new Error("미리보기를 지원하지 않는 자료예요.");
     return { path: normalized, info, role: link.role };
+  }
+
+  async resolveMedia(projectId: string, candidate: string) {
+    const result = await this.resolveLinkedFile(projectId, candidate);
+    if (!result.info.isDirectory() && !media.has(path.extname(result.path).toLowerCase()))
+      throw new Error("미리보기를 지원하지 않는 자료예요.");
+    return result;
+  }
+
+  async resolveDeliverySource(projectId: string, candidate: string) {
+    const result = await this.resolveLinkedFile(projectId, candidate);
+    if (!result.info.isFile()) throw new Error("전달할 파일을 선택해주세요.");
+    return result;
   }
 
   async mediaPage(

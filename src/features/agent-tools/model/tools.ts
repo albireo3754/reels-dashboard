@@ -3,6 +3,7 @@ import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
 import { mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
+import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
 import { blogExtractInput } from "../../../shared/blog-restore";
 import {
   contentInputSchema,
@@ -28,6 +29,22 @@ const nativeID = z
   .refine((v) => !v.includes("\0"));
 const formDefinitions = Object.fromEntries(inputFormTools.map(([_action,name,input,description,readOnly])=>[name,{input,description,readOnly}])) as Record<typeof inputFormTools[number][1], {input:typeof inputFormTools[number][2];description:string;readOnly:boolean}>;
 export const toolDefinitions = {
+  reels_set_project_outbound: {
+    description: "Bind one persistent iCloud outbound directory to a project using get_content's revision. Repeated deliveries reuse this directory. Existing linked files can be adopted; unrelated files are not managed. A different directory is rejected once bound.",
+    input: configureOutboundInput, readOnly: false,
+  },
+  reels_icloud_status: {
+    description: "Read native iCloud upload states for explicit files inside the configured delivery root. Reuses PhotosIndex verification; no copies, Photos permission request, deletion, or waiting. completed means every file is uploaded, not uploading and error-free. Local download currency is reported separately.",
+    input: icloudStatusInput, readOnly: true,
+  },
+  reels_start_icloud_delivery: {
+    description: "Publish registered files into the project's saved outbound folder; never choose a version-specific folder. files is the complete current output set with stable names. Replaces managed files and archives prior versions locally; unrelated collisions are rejected. Read get_content for revision, then poll get_icloud_delivery. No Photos deletion or social publishing.",
+    input: icloudDeliveryInput, readOnly: false,
+  },
+  reels_get_icloud_delivery: {
+    description: "Read a delivery job; after copying, refresh its native iCloud upload state once. Jobs last for this app instance; receipt and output files persist. After reconnect use the same job ID, never blindly repeat start. No blocking upload wait.",
+    input: z.strictObject({ jobId: z.string().uuid() }), readOnly: true,
+  },
   ...formDefinitions,
   reels_open_input_form: {description:"Open or focus the shared input form/result window in the Dashboard. Requires a form created by the common forms service; does not start a workflow or edit answers.",input:formIdInput,readOnly:false},
   reels_start_analysis: {

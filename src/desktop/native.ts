@@ -12,6 +12,7 @@ import {
 } from "../shared/contracts";
 const allowed: Record<CommandMethod, readonly string[]> = {
   status: [],
+  "icloud.status": ["paths"],
   authorize: [],
   sync: ["date"],
   "photos.search": ["text", "latitude", "longitude", "radius-meters", "start-date", "end-date", "page-size"],

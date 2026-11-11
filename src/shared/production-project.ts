@@ -222,8 +222,12 @@ export function mergeProjects(
       "PROJECT_PUBLICATION_CONFLICT: 게시 링크가 달라요. 게시 정보를 먼저 정리해주세요.",
     );
   const model = target.production ?? emptyProduction();
+  const outbounds = [target,...sources].flatMap(p => p.outbound ? [p.outbound] : []);
+  if (new Set(outbounds.map(o=>o.directory)).size > 1)
+    throw new Error("OUTBOUND_MERGE_CONFLICT: 서로 다른 outbound를 가진 프로젝트는 먼저 정리해주세요.");
   const merged: Project = {
     ...target,
+    ...(outbounds[0] ? {outbound:outbounds[0]} : {}),
     resources: [...(target.resources ?? [])],
     production: {
       ...model,

@@ -8,6 +8,10 @@ enum ExportCommandServiceError: Error, Equatable {
     case unsafeLabel
     case planDoesNotMatchCurrentIndex
     case unissuedPlanDigest
+    case invalidICloudPaths
+    case nonCanonicalICloudPath
+    case iCloudPathOutsideRoot
+    case iCloudFileRequired
 }
 
 final class ExportCommandService: @unchecked Sendable {
@@ -45,6 +49,32 @@ final class ExportCommandService: @unchecked Sendable {
             root: temporaryRoot.appendingPathComponent("pending-moves", isDirectory: true)
         )
         moveApplier = MoveApplier(pendingMoveStore: store)
+    }
+
+    func icloudStatus(paths: [String]) throws -> ICloudUploadStatus {
+        guard !paths.isEmpty, paths.count <= 100, Set(paths).count == paths.count else {
+            throw ExportCommandServiceError.invalidICloudPaths
+        }
+        let root = allowedRoot.resolvingSymlinksInPath().path
+        let urls = try paths.map { path in
+            let url = URL(fileURLWithPath: path)
+            let canonical = url.resolvingSymlinksInPath().path
+            // Foundation normalizes macOS /private/var aliases differently from Node realpath.
+            // Compare normalized URLs, while still rejecting traversal and actual symlinks.
+            guard path.hasPrefix("/"), !path.contains("\0"),
+                  !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }),
+                  url.standardizedFileURL.path == canonical else {
+                throw ExportCommandServiceError.nonCanonicalICloudPath
+            }
+            guard canonical.hasPrefix(root + "/") else {
+                throw ExportCommandServiceError.iCloudPathOutsideRoot
+            }
+            guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+                throw ExportCommandServiceError.iCloudFileRequired
+            }
+            return url
+        }
+        return try ICloudDestinationUploadVerifier.status(urls: urls)
     }
 
     func validate(

@@ -31,6 +31,7 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  icloud?: import("../../../shared/icloud-delivery").ICloudBridge;
   forms?: import("../../../shared/workflow").WorkflowBridge;
   inputForms?: {open(input:unknown):Promise<unknown>};
   blog?: {
@@ -83,6 +84,20 @@ export function createAgentDispatch(ports: AgentPorts) {
     const formTool = inputFormTools.find(tool=>tool[1]===name);
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
+      case "reels_set_project_outbound":
+        session.assertWritable();
+        if (!ports.icloud) throw new Error("UNSUPPORTED");
+        return ports.icloud.configure(input);
+      case "reels_icloud_status":
+        if (!ports.icloud) throw new Error("UNSUPPORTED");
+        return ports.icloud.status(input.paths);
+      case "reels_start_icloud_delivery":
+        session.assertWritable();
+        if (!ports.icloud) throw new Error("UNSUPPORTED");
+        return ports.icloud.start(input);
+      case "reels_get_icloud_delivery":
+        if (!ports.icloud) throw new Error("UNSUPPORTED");
+        return ports.icloud.get(input.jobId);
       case "reels_open_input_form":
         if(!ports.inputForms)throw new Error("UNSUPPORTED");
         return ports.inputForms.open(input);
@@ -138,6 +153,7 @@ export function createAgentDispatch(ports: AgentPorts) {
           busy: editor.busy,
           runtime: await editor.runtime(),
           jobs: editor.activeJobs(),
+          deliveries: await ports.icloud?.list() ?? [],
         };
       case "reels_list_projects":
         return {

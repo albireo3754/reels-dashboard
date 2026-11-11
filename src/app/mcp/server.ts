@@ -9,7 +9,7 @@ export function createMcpServer(
     { name: "reels-dashboard", version: "0.1.0" },
     {
       instructions:
-        "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. No upload, publishing, Photos deletion or arbitrary shell execution is provided. Content prose stays in the content workspace.",
+        "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. No social publishing, Photos deletion or arbitrary shell execution is provided. Content prose stays in the content workspace.",
     },
   );
   for (const [name, definition] of Object.entries(toolDefinitions)) {
@@ -20,8 +20,8 @@ export function createMcpServer(
         inputSchema: definition.input,
         annotations: {
           readOnlyHint: definition.readOnly,
-          destructiveHint: false,
-          openWorldHint: false,
+          destructiveHint: name === "reels_start_icloud_delivery",
+          openWorldHint: name === "reels_start_icloud_delivery",
         },
       },
       async (args: unknown): Promise<CallToolResult> => {

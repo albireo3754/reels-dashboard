@@ -2,6 +2,7 @@ import { z } from "zod";
 import { writeFile } from "node:fs/promises";
 import { productionSchema } from "../src/shared/production-project";
 import { localResourcesSchema } from "../src/shared/local-resources";
+import { outboundSchema } from "../src/shared/icloud-delivery";
 const project = z.strictObject({
   id: z.string().min(1).max(160),
   title: z.string().max(500),
@@ -14,6 +15,7 @@ const project = z.strictObject({
   localNotes: z.string().max(4000).optional(),
   resources: localResourcesSchema.optional(),
   production: productionSchema.optional(),
+  outbound: outboundSchema.optional(),
 });
 const schema = z.toJSONSchema(z.strictObject({
   schemaVersion: z.literal(1),

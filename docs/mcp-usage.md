@@ -58,13 +58,96 @@ This moves the place-guide group and selects a cover frame, preserving caption t
 
 `reels_photos_status`, `reels_photos_index`, `reels_photos_groups`, `reels_photos_group` and `reels_photos_inspect` use the app's validated native boundary. Inspection creates a bounded evidence page. `reels_import_photos_video` takes a group/index-run/asset selection and uses the same checked materialization as the UI. Existing macOS Photos permission is required; grant it through the app. Re-index after a native-helper restart rather than treating old index-run IDs as persistent project IDs.
 
-The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, uploads, or publication. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
+The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, or social publication. Explicit iCloud copy/status operations are described below. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
 
 Project edits persist across restart. Render job records are in-memory for the current app instance; normal app quit is blocked during active work. Do not claim crash recovery of jobs. Separately, the shared media services persist bounded process execution logs, visible in the desktop **실행 로그** screen; unfinished observations become interrupted on restart, without claiming the OS process has exited. See [execution logs](execution-logs.md). `STALE_PROJECT` means re-read and compare; `EDITOR_BUSY` means preserve unsaved UI work. After a timeout or lost connection, inspect state before retrying a mutation.
 
 The socket directory is private, connection metadata is mode 0600, and requests require the current random token. Both MCP and app boundaries validate input. No credentials or socket tokens are stored in the repository.
 
-## Validation
+## iCloud delivery API — 2026-11-11
+
+Use the existing local backend for delivery instead of generating ad-hoc Swift
+commands or treating a local file copy as an uploaded file. The native
+`icloud.status` command reuses `ICloudDestinationUploadVerifier` and its native
+resource-state reader. Upload completion requires uploaded/not-uploading/no-error;
+local download currency is a separate field. Photos move retains its stricter
+current-download requirement. Status never invokes move/delete or asks for Photos access.
+
+- `reels_icloud_status {paths}`: one native status snapshot for explicit files
+  below `PHOTOSINDEX_EXPORT_ROOT` (default: iCloud Drive `Naver Clip`). Returns
+  `checkedAt`, `state` (`completed`, `pending`, `failed`) and per-file flags.
+- `reels_set_project_outbound {projectId, expectedUpdatedAt, directory}`:
+  bind **one persistent outbound directory per project** under the iCloud root.
+  Read `reels_get_content` first. The binding survives restart and subsequent
+  content edits. Repeating the same binding is harmless; choosing another
+  directory or overlapping another project's outbound is rejected. An existing
+  folder can be adopted; only its files already linked to this project become
+  managed outputs. Other contents remain untouched.
+- `reels_start_icloud_delivery {projectId, expectedUpdatedAt, files}`:
+  each file is `{sourcePath, name, role}` (`final`, `cover`, `document`). `files`
+  is the complete current output set and `name` is a stable filename with the
+  same extension as its registered source. There is **no per-delivery destination**.
+  The saved project outbound is reused. The shared verified-copy primitive
+  stages all inputs before replacing managed filenames. Prior managed versions
+  and receipts stay under app-local `outbound-history`, never version folders
+  in iCloud. Managed files omitted from the new set move to local history.
+  Unmanaged filename collisions, symlinks, external edits and overlapping jobs
+  are rejected. Sources remain unchanged. Returns a job immediately.
+- `reels_get_icloud_delivery {jobId}`: `copying` → `uploading` → `completed` or
+  `failed`. Once copying finishes, each call reads native status for the current
+  outbound files, and verifies their identity before reporting completion.
+  A transient native/read error fails the call, not the job: query
+  again with the same ID. An upload error remains visible as pending under the
+  existing verifier policy; callers choose when to stop waiting.
+
+`reels_get_app_state.deliveries` lists jobs after a lost response or MCP reconnect;
+do not blindly repeat a start. Jobs belong to the current desktop app instance.
+The project binding, current filenames, generation and local receipt path
+persist across restarts. Read `get_content.project.outbound` and use
+`reels_icloud_status` on those current files after restart. Caught publication
+errors restore replaced files; local backups preserve prior data. This does not
+claim transaction recovery after a process crash. A failed operation never
+justifies creating a different outbound folder.
+
+The desktop preload exposes the same service as `window.reels.icloud` with
+`configure`, `start`, `get`, `list` and `status`. Dashboard cards prefer current
+outbound visuals and refresh their previews when its generation changes. Older
+outputs remain in the media/history listing. A new delivery-panel UI is outside
+this change.
+
+Build the desktop/MCP and signed native helper, then restart the desktop app and
+reconnect MCP clients to discover the new tools. Existing app processes do not
+hot-load rebuilt host code.
+
+### Verification commands
+
+```sh
+node --import tsx --test tests/unit/icloud-delivery.test.ts tests/unit/content-library.test.ts tests/unit/agent.test.ts
+swift test --package-path native/photosindex --filter AppCommandRouterTests
+npm run test:electron -- tests/electron/icloud-delivery.spec.ts
+REELS_ICLOUD_LIVE=1 npm run test:electron -- tests/electron/icloud-delivery.spec.ts
+```
+
+The last command writes only a newly created synthetic QA directory under the
+iCloud root, checks actual upload via MCP and the desktop bridge, then removes
+that QA directory. It never reads or changes Photos assets or existing content.
+
+Verified on 2026-11-11: 383 Node unit tests with a supported macOS locale,
+29 focused Swift tests, type/architecture/public-source checks and all required
+builds passed. Existing editor MCP integration (2 tests), the new non-iCloud
+failure case, and real iCloud copy/upload completion in development and packaged
+apps passed. The installed app was updated and restarted with its previous
+development mode; a fresh MCP client confirmed three existing delivery files
+uploaded. One file was remotely uploaded but not locally current, confirming why
+upload status must not require local download currency. No full web suite was run.
+
+The subsequent single-outbound revision passed 389 Node unit tests, type/FSD and
+public-source checks, both content-board web tests, and real desktop/MCP tests
+that delivered twice into the same iCloud directory, replaced a stable filename,
+and read the earlier bytes from local history. The installed-app replacement and
+existing content consolidation are tracked separately in TASKS.md.
+
+## General validation
 
 ```sh
 npm run check:architecture
