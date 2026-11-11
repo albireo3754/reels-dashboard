@@ -1,265 +1,172 @@
+/*
+ * 콘텐츠 보드 도구 한 줄(검색 · 필터 select · 결과 요약 · 보기 전환)과 목록 보기.
+ * 박스 없이 본문 위에 놓인다. select는 테두리 없는 인라인 컨트롤.
+ */
 .board-controls {
-  margin: 0 0 22px;
-  padding: 20px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-muted);
-}
-.dashboard-home .page-heading {
-  margin-bottom: 24px;
-}
-.dashboard-home .stats-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 24px;
-}
-.dashboard-home .briefing-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 18px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-.dashboard-home .briefing-panel .section-heading {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 0;
-}
-.dashboard-home .briefing-panel h2 {
-  font-size: var(--text-md);
-}
-.dashboard-home .briefing-panel [role="status"] {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-.dashboard-home .briefing-panel .eyebrow,
-.dashboard-home .briefing-description {
-  display: none;
-}
-.dashboard-home .briefing-panel > .compact {
-  grid-column: 1;
-  margin: 0;
-  font-size: var(--text-xs);
-}
-.dashboard-home .briefing-panel > .button-row {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
-  margin: 0;
-}
-.dashboard-home .briefing-panel button {
-  font-size: var(--text-sm);
-  padding: 10px 12px;
-}
-.board-control-fields {
-  display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr));
-  gap: 14px;
-}
-.board-control-fields label {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
-  min-width: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  margin: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
 }
-.board-control-fields input,
-.board-control-fields select {
-  width: 100%;
-  min-width: 0;
-  height: var(--control-md);
-  background: var(--color-surface);
-  margin: 0;
-}
-.board-search > div {
+.board-search {
   position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-width: 0;
+}
+.board-search > svg {
+  position: absolute;
+  left: var(--space-2);
+  color: var(--color-text-subtle);
+  pointer-events: none;
 }
 .board-search input {
-  padding-right: 36px;
+  padding-left: 30px;
+  padding-right: 30px;
+  border-color: transparent;
+  background: transparent;
+}
+.board-search input:hover {
+  border-color: transparent;
+  background: var(--color-hover);
+}
+.board-search input:focus {
+  background: var(--color-surface);
 }
 .board-search button {
   position: absolute;
-  right: 4px;
-  top: 4px;
-  width: 32px;
-  height: 34px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: var(--text-2xl);
+  right: var(--space-1);
+}
+.board-control-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.board-control-fields select {
+  display: inline-block;
+  width: auto;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.board-control-fields select:hover {
+  border-color: transparent;
+  background-color: var(--color-hover);
+  color: var(--color-text);
 }
 .board-control-summary {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 16px;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  min-width: 0;
+}
+.board-control-summary > .ui-meta {
+  margin-right: var(--space-1);
+  white-space: nowrap;
 }
 .board-control-summary strong {
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+}
+.board-control-summary > button {
+  color: var(--color-text-muted);
+}
+.board-control-summary > button[aria-pressed="true"] {
+  background: var(--color-selected);
   color: var(--color-text);
-}
-.board-view-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-.board-view-actions button {
-  font-size: var(--text-sm);
 }
 .board-view-switch {
-  display: flex;
-  gap: 3px;
-  border-radius: var(--radius-md);
-  padding: 3px;
-  background: #e8eddf;
+  margin-left: var(--space-1);
 }
-.board-view-switch button {
-  background: transparent;
-  border-color: transparent;
-  padding: 7px 11px;
-}
-.board-view-switch button[aria-pressed="true"] {
-  background: white;
-  color: var(--color-text);
-  box-shadow: 0 1px 4px #24392118;
-}
-.board-sort-hint {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin: 12px 0 0;
-  line-height: 1.7;
-}
-button.stat-card {
-  display: block;
-  text-align: left;
-  color: inherit;
-  width: 100%;
-  cursor: pointer;
-}
-button.stat-card[aria-pressed="true"] {
-  border-color: #6e8e57;
-  box-shadow: inset 0 0 0 1px #6e8e57;
-}
-button.stat-card:hover {
-  border-color: #8ea579;
-}
+
+/* ---------- 빈 결과·더 보기 ---------- */
 .board-no-results {
+  padding: var(--space-8) var(--space-4);
   text-align: center;
-  padding: 38px 20px;
-  border: 1px dashed #cbd6bf;
-  border-radius: var(--radius-lg);
 }
 .board-no-results h3 {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-1);
 }
 .board-no-results p {
-  color: var(--color-text-muted);
-  font-size: var(--text-md);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+}
+.board-no-results button {
+  margin-top: var(--space-3);
 }
 .board-load-more {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin: 24px 0;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
 }
 .board-load-more small {
-  color: var(--color-text-muted);
+  color: var(--color-text-subtle);
 }
+
+/* ---------- 목록 보기: Notion 데이터베이스 행 ---------- */
 .project-grid.board-list {
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 0;
 }
 .board-list .project-card {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+}
+.board-list .board-media-card {
+  min-width: 0;
 }
 .board-list .board-poster {
-  height: 100%;
-  min-height: 145px;
+  height: 72px;
+  border-radius: var(--radius-sm);
 }
-.board-list .board-media-strip {
+.board-list .board-media-strip,
+.board-list .board-view-label {
   display: none;
 }
 .board-list .project-body {
-  padding: 14px 20px;
+  padding: 0;
   min-width: 0;
 }
-.board-list .project-body h3 {
-  margin: 8px 0;
-}
 .board-list .board-stage-progress {
-  max-width: 360px;
-  margin: 8px 0;
+  max-width: 320px;
+  margin: var(--space-1) 0;
 }
-.board-list .project-footer {
-  margin-top: 6px;
-  padding-top: 0;
-  border: 0;
-}
-.board-list .project-body > p {
-  margin: 4px 0;
+.board-list .project-next {
   min-height: 0;
-}
-.board-list .project-body h3,
-.project-body > p {
-  overflow-wrap: anywhere;
-}
-@media (max-width: 1050px) {
-  .board-control-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .board-search {
-    grid-column: 1 / -1;
-  }
+  margin: 0;
 }
 @media (max-width: 600px) {
-  .dashboard-home .briefing-panel {
-    grid-template-columns: 1fr;
-    padding: 14px;
-  }
-  .dashboard-home .briefing-panel > .button-row {
-    grid-column: 1;
-    grid-row: auto;
-  }
-  .board-controls {
-    padding: 14px;
-  }
-  .board-control-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .board-control-fields label:last-child {
-    grid-column: 1 / -1;
+  .board-search {
+    flex-basis: 100%;
+    max-width: none;
   }
   .board-control-summary {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .board-view-actions {
-    width: 100%;
-    justify-content: space-between;
+    margin-left: 0;
   }
   .board-list .project-card {
-    grid-template-columns: 92px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: var(--space-3);
   }
   .board-list .board-poster {
-    height: 100%;
-  }
-  .board-list .board-poster .stage-tag,
-  .board-list .board-view-label {
-    display: none;
-  }
-  .board-list .project-body {
-    padding: 12px;
-  }
-  .board-list .project-body h3 {
-    font-size: var(--text-md);
+    height: 56px;
   }
 }

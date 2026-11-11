@@ -6,6 +6,7 @@ import type {
   Project,
 } from "../../../shared/contracts";
 import { useBusy } from "../../../shared/ui/useBusy";
+import "./project-grouping.css";
 
 export function ProjectGrouping({
   api,
@@ -43,18 +44,16 @@ export function ProjectGrouping({
     };
   }, [api]);
   return (
-    <fieldset disabled={disabled || busy}>
-      <legend>프로젝트로 묶기</legend>
-      <p className="muted compact">
-        한 프로젝트에 자료·편집 구성·출력 버전을 모아요. 연결된 편집 구성은 다시
-        내보내도 이 프로젝트에 쌓여요.
-      </p>
-      <p>
+    <fieldset className="project-grouping" disabled={disabled || busy}>
+      <legend title="한 프로젝트에 자료·편집 구성·출력 버전을 모아요. 연결된 편집 구성은 다시 내보내도 이 프로젝트에 쌓여요.">
+        프로젝트로 묶기
+      </legend>
+      <p className="ui-meta">
         편집 구성 {project.production?.edits.length ?? 0}개 · 출력 이력{" "}
         {project.production?.exports.length ?? 0}개
       </p>
       {(project.production?.edits ?? []).map((edit) => (
-        <p className="compact" key={edit.kind + edit.id}>
+        <p className="project-grouping-edit" key={edit.kind + edit.id}>
           {edit.kind === "video" ? "영상" : "카드뉴스"} ·{" "}
           {edits.find((e) => e.kind === edit.kind && e.id === edit.id)?.title ??
             edit.id}
@@ -90,6 +89,7 @@ export function ProjectGrouping({
       </label>
       <button
         type="button"
+        className="secondary"
         disabled={!editKey || disabled || busy}
         onClick={() =>
           run(async () => {
@@ -119,7 +119,7 @@ export function ProjectGrouping({
         </select>
       </label>
       {target && (
-        <p className="compact">
+        <p className="ui-meta">
           ‘{project.title}’의 자료와 편집 연결을 ‘
           {dashboard.projects.find((p) => p.id === target)?.title}’에 합쳐요.
           대표 프로젝트의 제목·진행 상태를 유지하고, 이 카드는 목록에서
@@ -127,13 +127,18 @@ export function ProjectGrouping({
         </p>
       )}
       {disabled && (
-        <p className="muted compact">
+        <p className="ui-meta">
           수정한 내용을 먼저 저장한 뒤 프로젝트를 묶어주세요.
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className="ui-notice" data-tone="danger" role="alert">
+          {error}
+        </p>
+      )}
       <button
         type="button"
+        className="secondary"
         disabled={!target || disabled || busy}
         onClick={() =>
           run(async () => {

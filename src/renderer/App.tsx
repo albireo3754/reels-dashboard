@@ -27,6 +27,7 @@ import type { EditorProject } from "../shared/editor";
 import { errorMessage } from "../shared/lib/errors";
 import { koreanDateTime, localDate } from "../shared/lib/format";
 import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
+import { Badge, Dot, Section, SectionHeader } from "../shared/ui/primitives";
 import { BlogWorkspace } from "../features/blog-workspace";
 import { CardNews } from "../features/card-news";
 import {
@@ -554,35 +555,35 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       <Icon name="library" />
       <div>
         <strong>촬영본 작업은 데스크톱에서 이어가요.</strong>
-        <p>
-          여기서는 공유된 제작 현황만 확인할 수 있어요. Photos 접근과 원본
-          복사·이동은 데스크톱 앱에서 실행해주세요.
-        </p>
+        <p>Photos 접근과 원본 복사·이동은 데스크톱 앱에서 실행해주세요.</p>
       </div>
     </div>
   );
+  const photosAllowed =
+    !!status && ["authorized", "limited"].includes(status.permission);
   const connection = (
     <div className="connection-strip">
-      <span
-        className={`status-dot ${status && ["authorized", "limited"].includes(status.permission) ? "good" : ""}`}
-      />
-      <div>
-        <strong>
-          {status
-            ? `Photos ${permissionLabels[status.permission] || status.permission}`
-            : "네이티브 연결 확인 필요"}
-        </strong>
-        <span>
-          {status
-            ? `도우미 ${status.appVersion} · 프로토콜 ${status.protocolVersion}`
-            : "앱과 함께 포함된 Photos 도우미에 연결해요."}
-        </span>
-      </div>
-      <button className="quiet" onClick={refreshStatus} disabled={!!busy}>
+      <Dot tone={photosAllowed ? "primary" : "warning"} />
+      <strong>
+        {status
+          ? `Photos ${permissionLabels[status.permission] || status.permission}`
+          : "네이티브 연결 확인 필요"}
+      </strong>
+      <span className="ui-meta ui-truncate">
+        {status
+          ? `도우미 ${status.appVersion} · 프로토콜 ${status.protocolVersion}`
+          : "앱과 함께 포함된 Photos 도우미에 연결해요."}
+      </span>
+      <span className="ui-spacer" aria-hidden="true" />
+      <button className="small" onClick={refreshStatus} disabled={!!busy}>
         상태 새로고침
       </button>
-      {status && !["authorized", "limited"].includes(status.permission) && (
-        <button onClick={authorize} disabled={!!busy || !protocolOK}>
+      {status && !photosAllowed && (
+        <button
+          className="small secondary"
+          onClick={authorize}
+          disabled={!!busy || !protocolOK}
+        >
           Photos 접근 요청
         </button>
       )}
@@ -643,7 +644,6 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         setDrawerMode("open");
       }} /></Suspense>}
       <aside className="sidebar">
-        <div className="workspace-label">나의 작업공간</div>
         <nav aria-label="주요 메뉴">
           {navigationItems.map(([key, text], index) => (
             <button
@@ -656,60 +656,98 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             >
               <Icon name={key} />
               <span>{text}</span>
-              {key === "dashboard" && (
+              {key === "dashboard" && totals.all > 0 && (
                 <small aria-hidden="true">{totals.all}</small>
               )}
               <ShortcutHint action={screenHint(index)} />
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="local-badge">
-            <span className="status-dot good" />
-            {workflowHost ? "로컬 워크플로" : readOnly
-              ? "공유된 현황"
-              : bridge.mode === "demo"
-                ? "예시 작업공간"
-                : "로컬 작업공간"}
-          </div>
-          <p>
-            {workflowHost ? "작업 상태는 이 컴퓨터에 저장해요." : readOnly
-              ? "마지막 동기화된 내용을 보여드려요."
-              : "촬영 원본은 내 Mac에 그대로 있어요."}
+        {readOnly && (
+          <p
+            className="sidebar-mode"
+            title={
+              workflowHost
+                ? "작업 상태는 이 컴퓨터에 저장해요."
+                : "마지막 동기화된 내용을 보여드려요."
+            }
+          >
+            {workflowHost ? "로컬 워크플로" : "공유된 현황 · 읽기 전용"}
           </p>
-          <span className="version">REELS WORKSPACE · 0.1</span>
-        </div>
+        )}
       </aside>
       <main className={`main ${tab === "dashboard" ? "dashboard-home" : ""}`}>
         {bridge.mode === "demo" && (
-          <div className="demo-banner" role="note">
-            예시 데이터로 둘러보는 화면이에요. 실제 Photos와 서버 데이터는
-            변경하지 않아요.
-          </div>
+          <p className="demo-banner" role="note">
+            예시 데이터로 둘러보는 화면이에요 · 실제 Photos와 서버 데이터는
+            바꾸지 않아요.
+          </p>
         )}
         <div className="page-heading">
           <div className="shell-page-description">
-            <span className="eyebrow">{pages[tab].eyebrow}</span>
             <h1>{pages[tab].title}</h1>
             <p>{pages[tab].description}</p>
           </div>
-          {tab === "dashboard" && !readOnly && (
-            <button className="primary" onClick={newProject} disabled={!!busy}>
-              <Icon name="plus" />새 콘텐츠
-            </button>
-          )}
-          {tab === "dashboard" && readOnly && (
-            <button
-              onClick={() =>
-                run("공유 현황 확인", async () => {
-                  setDashboard(await bridge.loadDashboard());
-                  setNotice("최신 공유 현황을 확인했어요.");
-                })
-              }
-              disabled={!!busy}
-            >
-              현황 새로고침
-            </button>
+          {tab === "dashboard" && (
+            <>
+              <div
+                className="stats-grid ui-segmented"
+                role="group"
+                aria-label="진행 단계 요약"
+              >
+                {(
+                  [
+                    ["진행 중", totals.active, "active"],
+                    ["검토 대기", totals.review, "review"],
+                    ["게시 완료", totals.published, "published"],
+                  ] as const
+                ).map(([name, value, stage]) => (
+                  <button
+                    key={stage}
+                    aria-label={`${name} 보기`}
+                    aria-pressed={boardQuery.stage === stage}
+                    onClick={() =>
+                      changeBoardQuery({
+                        ...boardQuery,
+                        search: "",
+                        basis: "all",
+                        stage,
+                      })
+                    }
+                  >
+                    {name}
+                    <span className="stat-count">{value}</span>
+                  </button>
+                ))}
+              </div>
+              <span className="ui-spacer" aria-hidden="true" />
+              <span className="ui-meta page-heading-meta">
+                {readOnly ? "마지막 동기화" : "마지막 저장"} ·{" "}
+                {readableTime(dashboard.updatedAt)}
+              </span>
+              {!readOnly ? (
+                <button
+                  className="primary"
+                  onClick={newProject}
+                  disabled={!!busy}
+                >
+                  <Icon name="plus" />새 콘텐츠
+                </button>
+              ) : (
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    run("공유 현황 확인", async () => {
+                      setDashboard(await bridge.loadDashboard());
+                      setNotice("최신 공유 현황을 확인했어요.");
+                    })
+                  }
+                  disabled={!!busy}
+                >
+                  현황 새로고침
+                </button>
+              )}
+            </>
           )}
         </div>
         {!protocolOK && (
@@ -720,178 +758,137 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         )}
         {error && !editingProject && (
           <div className="alert error" role="alert">
-            <strong>작업을 완료하지 못했어요.</strong>
-            <span>{error}</span>
+            <span>
+              <strong>작업을 완료하지 못했어요.</strong> {error}
+            </span>
             <button
-              className="quiet"
+              className="icon-button small"
               aria-label="오류 닫기"
+              title="닫기"
               onClick={() => setError("")}
             >
-              ×
+              <Icon name="close" />
             </button>
           </div>
         )}
         {notice && (
           <div className="alert success" role="status">
+            <Icon name="check" />
             <span>{notice}</span>
             <button
-              className="quiet"
+              className="icon-button small"
               aria-label="알림 닫기"
+              title="닫기"
               onClick={() => setNotice("")}
             >
-              ×
+              <Icon name="close" />
             </button>
           </div>
         )}
         {busy && (
           <div className="working" role="status">
-            <span className="spinner" />
-            {busy} 중이에요. 완료 결과를 기다려주세요.
+            <span className="spinner" aria-hidden="true" />
+            {busy} 중…
           </div>
         )}
         {!readOnly &&
           bridge.mobileBriefing &&
           (tab === "dashboard" || tab === "settings") && (
-            <MobileBriefing bridge={bridge} />
+            <MobileBriefing bridge={bridge} compact={tab === "dashboard"} />
           )}
         {tab === "dashboard" && (
-          <>
-            <div className="stats-grid">
-              {[
-                ["진행 중", totals.active, "다음 장면을 준비해요"],
-                ["검토 대기", totals.review, "한 번 더 확인해요"],
-                ["게시 완료", totals.published, "세상에 나간 이야기"],
-              ].map(([name, value, desc], i) => (
+          <section className="content-section" aria-labelledby="board-heading">
+            <h2 id="board-heading" className="ui-sr-only">
+              {boardQuery.stage === "active" ? "진행 중인 작업" : "콘텐츠 보드"}
+            </h2>
+            {dashboard.projects.length > 0 && (
+              <BoardToolbar
+                query={boardQuery}
+                onChange={changeBoardQuery}
+                count={boardProjects.length}
+                total={totals.all}
+              />
+            )}
+            {!dashboard.projects.length ? (
+              <Empty
+                title="첫 번째 이야기를 준비해볼까요?"
+                actions={
+                  !readOnly && (
+                    <button
+                      className="library-callout"
+                      onClick={() => setTab("library")}
+                    >
+                      <Icon name="library" />
+                      촬영 보관함에서 장면 고르기
+                    </button>
+                  )
+                }
+              >
+                {readOnly
+                  ? "아직 공유된 콘텐츠가 없어요. 데스크톱에서 공유할 항목을 선택하고 현황을 동기화해주세요."
+                  : "촬영본을 고르거나 새 콘텐츠를 추가해서 시작해보세요."}
+              </Empty>
+            ) : !boardProjects.length ? (
+              <div className="board-no-results">
+                <h3>조건에 맞는 콘텐츠가 없어요.</h3>
+                <p>검색어를 줄이거나 진행 단계와 날짜 종류를 바꿔보세요.</p>
                 <button
-                  className={`stat-card stat-${i}`}
-                  key={name}
-                  aria-label={`${name} 보기`}
-                  aria-pressed={
-                    boardQuery.stage === ["active", "review", "published"][i]
-                  }
+                  className="secondary"
                   onClick={() =>
                     changeBoardQuery({
-                      ...boardQuery,
-                      search: "",
-                      basis: "all",
-                      stage: (["active", "review", "published"] as const)[i],
+                      ...defaultBoardQuery,
+                      stage: "all",
+                      sort: boardQuery.sort,
+                      view: boardQuery.view,
                     })
                   }
                 >
-                  <span>{name}</span>
-                  <strong>
-                    {value}
-                    <small>개</small>
-                  </strong>
-                  <p>{desc}</p>
+                  전체 콘텐츠 다시 보기
                 </button>
-              ))}
-            </div>
-            <section className="content-section">
-              <div className="section-heading">
-                <h2>
-                  {boardQuery.stage === "active"
-                    ? "진행 중인 작업"
-                    : "콘텐츠 보드"}{" "}
-                  <span>{boardProjects.length}</span>
-                </h2>
-                <p>
-                  {readOnly ? "마지막 동기화" : "마지막 저장"} ·{" "}
-                  {readableTime(dashboard.updatedAt)}
-                </p>
               </div>
-              {dashboard.projects.length > 0 && (
-                <BoardToolbar
-                  query={boardQuery}
-                  onChange={changeBoardQuery}
-                  count={boardProjects.length}
-                  total={totals.all}
-                />
-              )}
-              {!dashboard.projects.length ? (
-                <Empty title="첫 번째 이야기를 준비해볼까요?">
-                  {readOnly
-                    ? "아직 공유된 콘텐츠가 없어요. 데스크톱에서 공유할 항목을 선택하고 현황을 동기화해주세요."
-                    : "촬영본을 고르거나 새 콘텐츠를 추가해서 제작 흐름을 시작해보세요."}
-                </Empty>
-              ) : !boardProjects.length ? (
-                <div className="board-no-results">
-                  <h3>조건에 맞는 콘텐츠가 없어요.</h3>
-                  <p>검색어를 줄이거나 진행 단계와 날짜 종류를 바꿔보세요.</p>
-                  <button
-                    onClick={() =>
-                      changeBoardQuery({
-                        ...defaultBoardQuery,
-                        stage: "all",
-                        sort: boardQuery.sort,
-                        view: boardQuery.view,
-                      })
-                    }
-                  >
-                    전체 콘텐츠 다시 보기
-                  </button>
-                </div>
-              ) : (
-                <div
-                  className={`project-grid ${boardQuery.view === "list" ? "board-list" : ""}`}
-                >
-                  {boardProjects.slice(0, boardLimit).map((project, i) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      bridge={bridge}
-                      index={i}
-                      readOnly={readOnly}
-                      busy={!!busy}
-                      onEdit={() => {
-                        setEditingRevision(dashboard.updatedAt);
-                        setEditingProject({ ...project });
-                      }}
-                      onReveal={
-                        bridge.revealResource
-                          ? (path) =>
-                              run("자료 위치 열기", () =>
-                                bridge.revealResource!(project.id, path),
-                              )
-                          : undefined
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-              {boardProjects.length > 0 && (
-                <div className="board-load-more">
-                  <small>
-                    {boardProjects.length}개 중{" "}
-                    {Math.min(boardLimit, boardProjects.length)}개 표시
-                  </small>
-                  {boardLimit < boardProjects.length && (
-                    <button
-                      onClick={() => setBoardLimit((limit) => limit + 12)}
-                    >
-                      콘텐츠 더 보기 (
-                      {Math.min(12, boardProjects.length - boardLimit)}개)
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-            {!readOnly && (
-              <button
-                className="library-callout"
-                onClick={() => setTab("library")}
+            ) : (
+              <div
+                className={`project-grid ${boardQuery.view === "list" ? "board-list" : ""}`}
               >
-                <div className="callout-icon">
-                  <Icon name="library" />
-                </div>
-                <div>
-                  <strong>아직 고르지 않은 장면이 있나요?</strong>
-                  <span>촬영 보관함에서 날짜별로 찾아보세요.</span>
-                </div>
-                <Icon name="arrow" />
-              </button>
+                {boardProjects.slice(0, boardLimit).map((project) => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    bridge={bridge}
+                    readOnly={readOnly}
+                    busy={!!busy}
+                    onEdit={() => {
+                      setEditingRevision(dashboard.updatedAt);
+                      setEditingProject({ ...project });
+                    }}
+                    onReveal={
+                      bridge.revealResource
+                        ? (path) =>
+                            run("자료 위치 열기", () =>
+                              bridge.revealResource!(project.id, path),
+                            )
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
             )}
-          </>
+            {boardProjects.length > boardLimit && (
+              <div className="board-load-more">
+                <small>
+                  {boardProjects.length}개 중{" "}
+                  {Math.min(boardLimit, boardProjects.length)}개 표시
+                </small>
+                <button
+                  className="secondary"
+                  onClick={() => setBoardLimit((limit) => limit + 12)}
+                >
+                  콘텐츠 더 보기 (
+                  {Math.min(12, boardProjects.length - boardLimit)}개)
+                </button>
+              </div>
+            )}
+          </section>
         )}
         {tab === "library" &&
           (readOnly ? (
@@ -912,47 +909,44 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     확인해주세요.
                   </p>
                 )}
-              <section className="panel library-controls">
-                <label>
-                  촬영 날짜
-                  <input
-                    aria-label="촬영 날짜"
-                    type="date"
-                    value={date}
-                    onChange={(e) => {
-                      setDate(e.target.value);
-                      setGroups(null);
-                      clearSelection();
-                    }}
-                    disabled={!!busy}
-                  />
-                </label>
-                <label>
-                  그룹 크기
-                  <select
-                    aria-label="그룹 크기"
-                    value={level}
-                    onChange={(e) =>
-                      changeLevel(e.target.value as "fine" | "coarse")
-                    }
-                    disabled={!!busy}
-                  >
-                    <option value="fine">장면별로 자세히</option>
-                    <option value="coarse">방문 단위로 넓게</option>
-                  </select>
-                </label>
+              <div className="library-controls">
+                <input
+                  aria-label="촬영 날짜"
+                  title="촬영 날짜"
+                  className="ui-inline"
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    setGroups(null);
+                    clearSelection();
+                  }}
+                  disabled={!!busy}
+                />
+                <select
+                  aria-label="그룹 크기"
+                  title="그룹 크기"
+                  className="ui-inline"
+                  value={level}
+                  onChange={(e) =>
+                    changeLevel(e.target.value as "fine" | "coarse")
+                  }
+                  disabled={!!busy}
+                >
+                  <option value="fine">장면별로 자세히</option>
+                  <option value="coarse">방문 단위로 넓게</option>
+                </select>
                 <button
-                  className="primary"
+                  className={`${groups ? "secondary" : "primary"} large`}
                   onClick={sync}
                   disabled={!!busy || !canIndex || !date}
                 >
                   날짜 색인
                 </button>
-              </section>
+              </div>
               {!groups ? (
                 <Empty title="촬영한 날짜부터 골라주세요.">
-                  날짜를 색인하면 시간과 위치 정보를 바탕으로 모인 촬영 그룹을
-                  볼 수 있어요.
+                  날짜를 색인하면 시간과 위치로 묶인 촬영 그룹이 보여요.
                 </Empty>
               ) : !groups.groups.length ? (
                 <Empty title="이 날짜에는 촬영본이 없어요.">
@@ -961,15 +955,15 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               ) : (
                 <div className="library-layout">
                   <section className="group-list" aria-label="촬영 그룹">
-                    <div className="section-heading">
-                      <h2>촬영 그룹</h2>
-                      <span>{groups.groups.length}개</span>
-                    </div>
+                    <h2 className="group-list-heading">
+                      촬영 그룹 <span>{groups.groups.length}개</span>
+                    </h2>
                     {groups.groups.map((g) => (
                       <button
                         key={g.id}
-                        className={`group-item ${detail?.group.id === g.id ? "selected" : ""}`}
+                        className={`ui-row group-item ${detail?.group.id === g.id ? "selected" : ""}`}
                         aria-label={`그룹 ${g.localDate} · ${g.assetIDs.length}개`}
+                        aria-current={detail?.group.id === g.id ? "true" : undefined}
                         onClick={() => selectGroup(g.id)}
                         disabled={!!busy}
                       >
@@ -980,48 +974,40 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                           <strong>{g.localDate}</strong>
                           <small>
                             {g.assetIDs.length}개 장면 ·{" "}
-                            {g.level === "fine" ? "장면별" : "방문별"}
+                            {g.level === "fine" ? "장면별" : "방문별"} ·{" "}
+                            {readableTime(g.start)}
                           </small>
-                          <small>{readableTime(g.start)}</small>
                           {g.warnings.length > 0 && (
                             <small className="warning-text">
                               {g.warnings.join(" · ")}
                             </small>
                           )}
                         </span>
-                        <Icon name="arrow" />
                       </button>
                     ))}
                   </section>
                   <div className="group-content">
                     {!detail ? (
                       <Empty title="어떤 그룹을 살펴볼까요?">
-                        왼쪽 그룹을 선택하면 자산 정보와 분류 작업을 이어갈 수
-                        있어요.
+                        왼쪽에서 그룹을 고르면 장면과 분류 작업이 열려요.
                       </Empty>
                     ) : (
                       <>
-                        <section className="panel">
-                          <div className="section-heading">
-                            <div>
-                              <span className="eyebrow">CAPTURE GROUP</span>
-                              <h2>{detail.group.localDate}의 장면들</h2>
-                              <p>
-                                {detail.assets.length}개 ·{" "}
-                                {readableTime(detail.group.start)}부터
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => inspect(1)}
-                              disabled={!!busy}
-                            >
-                              미리보기 만들기
-                            </button>
-                          </div>
-                          <p className="muted compact">
-                            미리보기는 페이지당 최대 12개예요. 동영상은 포스터
-                            이미지를 보여줘요.
-                          </p>
+                        <Section>
+                          <SectionHeader
+                            title={`${detail.group.localDate}의 장면들`}
+                            description={`${detail.assets.length}개 · ${readableTime(detail.group.start)}부터`}
+                            actions={
+                              <button
+                                className="secondary"
+                                title="페이지당 최대 12개, 동영상은 포스터 이미지로 보여줘요."
+                                onClick={() => inspect(1)}
+                                disabled={!!busy}
+                              >
+                                미리보기 만들기
+                              </button>
+                            }
+                          />
                           {detail.group.warnings.map((w) => (
                             <p className="inline-warning" key={w}>
                               {w}
@@ -1104,12 +1090,11 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                               </div>
                             </>
                           )}
-                        </section>
-                        <section className="panel">
+                        </Section>
+                        <Section divided>
                           <div className="section-heading">
                             <h2>사용할 촬영본 고르기</h2>
                             <button
-                              className="quiet"
                               onClick={() => {
                                 setChoices(
                                   Object.fromEntries(
@@ -1156,12 +1141,11 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                               />
                             ))}
                           </div>
-                        </section>
-                        <section className="panel">
+                        </Section>
+                        <Section divided>
                           <div className="section-heading">
                             <h2>콘텐츠 분류</h2>
                             <button
-                              className="quiet"
                               onClick={importDecision}
                               disabled={!!busy}
                             >
@@ -1210,12 +1194,16 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                               />
                             </label>
                           </div>
-                          <p className="muted compact">
-                            모든 촬영본을 포함·제외로 나누고, 신뢰도 0.8
-                            이상·미해결 사항 없음일 때 내보낼 수 있어요.
+                          <p className="ui-meta form-note">
+                            모든 촬영본을 포함·제외로 나누고 신뢰도 0.8 이상, 미해결
+                            사항이 없을 때 내보낼 수 있어요.
                           </p>
                           <div className="button-row">
-                            <button onClick={saveDecision} disabled={!!busy}>
+                            <button
+                              className="secondary"
+                              onClick={saveDecision}
+                              disabled={!!busy}
+                            >
                               분류 파일 저장
                             </button>
                             <button
@@ -1232,9 +1220,9 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                               </span>
                             )}
                           </div>
-                        </section>
-                        <section className="panel">
-                          <h2>내보내기 준비</h2>
+                        </Section>
+                        <Section divided>
+                          <SectionHeader title="내보내기 준비" />
                           <label>
                             목적지 폴더
                             <div className="input-action">
@@ -1245,6 +1233,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                                 placeholder="iCloud Drive의 허용된 내보내기 폴더"
                               />
                               <button
+                                className="secondary large"
                                 onClick={() =>
                                   run("목적지 선택", async () => {
                                     const path =
@@ -1263,27 +1252,27 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                               </button>
                             </div>
                           </label>
-                          <p className="muted compact">
-                            네이티브 도우미가 허용한 폴더만 사용할 수 있어요.
-                            계획을 만드는 단계에서는 원본을 복사하거나 삭제하지
-                            않아요.
+                          <p className="ui-meta form-note">
+                            도우미가 허용한 폴더만 쓸 수 있고, 계획 단계에서는
+                            원본을 복사하거나 지우지 않아요.
                           </p>
                           <div className="button-row">
                             <button
-                              className="primary"
+                              className="secondary"
                               onClick={() => createPlan("export")}
                               disabled={!!busy || !validated || !destination}
                             >
                               복사 계획 만들기
                             </button>
                             <button
+                              className="secondary"
                               onClick={() => createPlan("move")}
                               disabled={!!busy || !validated || !destination}
                             >
                               이동 계획 만들기
                             </button>
                           </div>
-                        </section>
+                        </Section>
                       </>
                     )}
                   </div>
@@ -1338,35 +1327,29 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             nativeNotice
           ) : (
             <>
-              <div className="transfer-types">
+              <dl className="transfer-types">
                 <div>
-                  <span className="type-icon">↗</span>
-                  <h3>복사 내보내기</h3>
-                  <p>
-                    선택한 원본을 목적지에 복사해요.
-                    <br />
-                    Photos 원본은 그대로 유지돼요.
-                  </p>
+                  <dt>복사 내보내기</dt>
+                  <dd>선택한 원본을 목적지에 복사해요. Photos 원본은 그대로예요.</dd>
                 </div>
                 <div>
-                  <span className="type-icon amber">⇢</span>
-                  <h3>검증 후 이동</h3>
-                  <p>
-                    업로드와 파일 검증을 마친 뒤<br />
-                    Photos 원본을 최근 삭제 항목으로 옮겨요.
-                  </p>
+                  <dt>검증 후 이동</dt>
+                  <dd>
+                    업로드와 파일 검증을 마친 뒤 Photos 원본을 최근 삭제 항목으로
+                    옮겨요.
+                  </dd>
                 </div>
-              </div>
+              </dl>
               {plan ? (
-                <section className="panel plan-panel">
-                  <div className="section-heading">
-                    <h2>{plan.kind === "move" ? "이동" : "복사"} 계획 검토</h2>
-                    <span
-                      className={`stage-tag ${plan.kind === "move" ? "stage-review" : "stage-selected"}`}
-                    >
-                      {plan.kind === "move" ? "원본 삭제 포함" : "원본 유지"}
-                    </span>
-                  </div>
+                <Section className="plan-panel">
+                  <SectionHeader
+                    title={`${plan.kind === "move" ? "이동" : "복사"} 계획 검토`}
+                    actions={
+                      <Badge tone={plan.kind === "move" ? "warning" : "neutral"}>
+                        {plan.kind === "move" ? "원본 삭제 포함" : "원본 유지"}
+                      </Badge>
+                    }
+                  />
                   <PlanSummary data={planData} />
                   <label>
                     계획 digest
@@ -1377,7 +1360,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     data={plan.envelope.plan}
                     label="계획 상세 보기"
                   />
-                  <label className="checkbox-row">
+                  <label className="checkbox-row ui-check">
                     <input
                       type="checkbox"
                       checked={reviewed}
@@ -1387,7 +1370,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     계획을 검토했어요
                   </label>
                   {plan.kind === "move" && (
-                    <label className="checkbox-row destructive-check">
+                    <label className="checkbox-row ui-check destructive-check">
                       <input
                         type="checkbox"
                         checked={moveConfirmed}
@@ -1408,30 +1391,38 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   >
                     {plan.kind === "move" ? "원본 이동 실행" : "복사 실행"}
                   </button>
-                </section>
+                </Section>
               ) : (
-                <section className="panel">
-                  <Empty title="검토할 내보내기 계획이 없어요.">
-                    촬영 보관함에서 자산을 분류하고 선택을 검증한 뒤 계획을
-                    만들어주세요.
+                <Section>
+                  <Empty
+                    title="검토할 내보내기 계획이 없어요."
+                    actions={
+                      <button
+                        className="secondary"
+                        onClick={() => setTab("library")}
+                      >
+                        촬영 보관함 열기
+                      </button>
+                    }
+                  >
+                    촬영 보관함에서 선택을 검증한 뒤 계획을 만들어주세요.
                   </Empty>
-                  <button className="primary" onClick={() => setTab("library")}>
-                    촬영 보관함 열기
-                  </button>
-                </section>
+                </Section>
               )}
-              <section className="panel">
-                <div className="section-heading">
-                  <div>
-                    <h2>기존 이동 복구</h2>
-                    <p>
-                      중단된 작업은 같은 이동 계획과 digest로 다시 시도해요.
-                    </p>
-                  </div>
-                  <button onClick={importRecovery} disabled={!!busy}>
-                    기존 계획 불러오기
-                  </button>
-                </div>
+              <Section divided>
+                <SectionHeader
+                  title="기존 이동 복구"
+                  description="중단된 작업은 같은 이동 계획과 digest로 다시 시도해요."
+                  actions={
+                    <button
+                      className="secondary"
+                      onClick={importRecovery}
+                      disabled={!!busy}
+                    >
+                      기존 계획 불러오기
+                    </button>
+                  }
+                />
                 {recovery && (
                   <>
                     <PlanSummary data={asRecord(recovery.data.exportPlan)} />
@@ -1449,7 +1440,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                         disabled={!!busy}
                       />
                     </label>
-                    <label className="checkbox-row destructive-check">
+                    <label className="checkbox-row ui-check destructive-check">
                       <input
                         type="checkbox"
                         checked={recoveryConfirmed}
@@ -1471,24 +1462,22 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     </button>
                   </>
                 )}
-                <p className="muted compact">
-                  업로드 대기나 삭제 후 결과 기록 실패가 있었다면 새 계획으로
-                  바꾸지 마세요. 원본 이동 여부와 복구 가능 여부는 네이티브
-                  도우미가 확인해요.
+                <p className="ui-meta form-note">
+                  업로드 대기나 삭제 후 기록 실패가 있었다면 새 계획으로 바꾸지
+                  마세요. 원본 이동·복구 가능 여부는 도우미가 확인해요.
                 </p>
-              </section>
+              </Section>
               {receipt !== null && (
-                <section className="panel receipt-panel">
-                  <div className="section-heading">
-                    <div>
-                      <span className="eyebrow">COMPLETED</span>
-                      <h2>작업 결과</h2>
-                    </div>
-                    <span className="verified">
-                      <Icon name="check" />
-                      결과 기록 확인
-                    </span>
-                  </div>
+                <Section divided className="receipt-panel">
+                  <SectionHeader
+                    title="작업 결과"
+                    actions={
+                      <span className="verified">
+                        <Icon name="check" />
+                        결과 기록 확인
+                      </span>
+                    }
+                  />
                   <div className="receipt-stats">
                     <span>
                       <strong>{receiptEntries.length}</strong>파일
@@ -1523,47 +1512,42 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     </p>
                   ))}
                   <JSONDetails data={receipt} label="파일별 검증 결과 보기" />
-                </section>
+                </Section>
               )}
             </>
           ))}
         {tab === "settings" && (
           <>
             {!readOnly ? (
-              <section className="panel">
-                <h2>Photos 연결</h2>
+              <Section className="settings-section">
+                <SectionHeader
+                  title="Photos 연결"
+                  description="사진 접근 권한은 앱에 포함된 도우미가 관리해요. 막혀 있으면 macOS 사진 접근 설정을 확인해주세요."
+                />
                 {connection}
-                <p className="muted">
-                  사진 접근 권한은 앱에 포함된 네이티브 도우미가 관리해요.
-                  제한되거나 거부된 경우 macOS의 사진 접근 설정을 확인해주세요.
-                </p>
-              </section>
+              </Section>
             ) : (
               nativeNotice
             )}
-            <section className="panel">
-              <div className="section-heading">
-                <div>
-                  <span className="eyebrow">DESKTOP TO MOBILE</span>
-                  <h2>모바일에서 진행 현황 보기</h2>
-                </div>
-                <span className="share-count">
-                  공유 항목 {dashboard.projects.filter((p) => p.shared).length}
-                  개
-                </span>
-              </div>
-              <p>
-                콘텐츠에서 ‘모바일에 공유’를 켠 항목만 전달해요. 제목·진행
-                단계·다음 할 일·날짜·게시 링크를 공유하고, 촬영 원본과 로컬
-                경로는 보내지 않아요.
-              </p>
-              <p className="muted">
+            <Section divided className="settings-section">
+              <SectionHeader
+                title="모바일에서 진행 현황 보기"
+                description="‘모바일에 공유’를 켠 콘텐츠의 제목·단계·다음 할 일·날짜·게시 링크만 보내요. 촬영 원본과 로컬 경로는 보내지 않아요."
+                actions={
+                  <span className="share-count">
+                    공유 항목 {dashboard.projects.filter((p) => p.shared).length}
+                    개
+                  </span>
+                }
+              />
+              <p className="ui-meta">
                 마지막 현황 시각 · {readableTime(dashboard.updatedAt)}
               </p>
               {!readOnly && (
                 <>
                   <div className="button-row">
                     <button
+                      className="secondary"
                       onClick={() =>
                         run("현황 내보내기", async () => {
                           const path = await bridge.exportSnapshot();
@@ -1576,54 +1560,56 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                       공유 현황 내보내기
                     </button>
                   </div>
-                  <div className="settings-divider" />
-                  <h3>Sites 동기화 연결</h3>
-                  <p className="muted compact">
-                    내 Sites의 현황 수신 API를 연결해요. 인증 토큰은 이
-                    화면에서만 사용하고 저장하지 않아요.
-                  </p>
-                  <label>
-                    동기화 주소
-                    <input
-                      type="url"
-                      value={endpoint}
-                      onChange={(e) => setEndpoint(e.target.value)}
-                      placeholder="https://your-site.example/api/snapshot"
-                      disabled={!!busy}
-                    />
-                  </label>
-                  <label>
-                    인증 토큰
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      placeholder="필요한 경우 입력"
-                      disabled={!!busy}
-                    />
-                  </label>
-                  <button
-                    className="primary"
-                    onClick={() =>
-                      run("현황 동기화", async () => {
-                        const result = await bridge.syncSnapshot(
-                          endpoint,
-                          token,
-                        );
-                        setToken("");
-                        setNotice(
-                          `${result.count}개 콘텐츠를 ${readableTime(result.generatedAt)} 기준으로 동기화했어요.`,
-                        );
-                      })
-                    }
-                    disabled={!!busy || !endpoint}
-                  >
-                    선택한 현황 동기화
-                  </button>
+                  <div className="settings-subsection">
+                    <h3>Sites 동기화 연결</h3>
+                    <p className="ui-meta">
+                      인증 토큰은 이 화면에서만 쓰고 저장하지 않아요.
+                    </p>
+                    <div className="settings-form">
+                      <label>
+                        동기화 주소
+                        <input
+                          type="url"
+                          value={endpoint}
+                          onChange={(e) => setEndpoint(e.target.value)}
+                          placeholder="https://your-site.example/api/snapshot"
+                          disabled={!!busy}
+                        />
+                      </label>
+                      <label>
+                        인증 토큰
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                          placeholder="필요한 경우 입력"
+                          disabled={!!busy}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      className="primary"
+                      onClick={() =>
+                        run("현황 동기화", async () => {
+                          const result = await bridge.syncSnapshot(
+                            endpoint,
+                            token,
+                          );
+                          setToken("");
+                          setNotice(
+                            `${result.count}개 콘텐츠를 ${readableTime(result.generatedAt)} 기준으로 동기화했어요.`,
+                          );
+                        })
+                      }
+                      disabled={!!busy || !endpoint}
+                    >
+                      선택한 현황 동기화
+                    </button>
+                  </div>
                 </>
               )}
-            </section>
+            </Section>
           </>
         )}
       </main>

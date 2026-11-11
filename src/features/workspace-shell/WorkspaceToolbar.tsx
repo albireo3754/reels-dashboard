@@ -91,6 +91,7 @@ export function WorkspaceToolbar({
     dialog.current?.close();
     setPanel(null);
   };
+  const iconButton = "icon-button shell-icon";
   return (
     <>
       <header
@@ -107,36 +108,38 @@ export function WorkspaceToolbar({
             </span>
           )}
           <button
-            className="shell-icon"
+            className={iconButton}
             aria-label="뒤로"
             title="뒤로"
             disabled={!canBack(navigation)}
             onClick={back}
           >
-            ‹
+            <Glyph name="back" />
             <ShortcutHint action={canBack(navigation) ? "goBack" : undefined} />
           </button>
           <button
-            className="shell-icon"
+            className={iconButton}
             aria-label="앞으로"
             title="앞으로"
             disabled={!canForward(navigation)}
             onClick={forward}
           >
-            ›
+            <Glyph name="forward" />
             <ShortcutHint
               action={canForward(navigation) ? "goForward" : undefined}
             />
           </button>
           <button
+            className={iconButton}
             aria-label="히스토리"
+            aria-expanded={panel === "history"}
             title="최근 화면 히스토리"
             onClick={() => setPanel("history")}
           >
             <Glyph name="history" />
-            <span>히스토리</span>
           </button>
           <button
+            className="shell-search-button"
             aria-label="검색"
             title={`검색 (${keymap.quickOpen.map(formatKey).join(" / ")})`}
             onClick={() => {
@@ -146,48 +149,50 @@ export function WorkspaceToolbar({
           >
             <Glyph name="search" />
             <span>검색</span>
-            <kbd>{key("quickOpen")}</kbd>
+            <kbd className="ui-kbd">{key("quickOpen")}</kbd>
             <ShortcutHint action="quickOpen" />
           </button>
         </div>
         <div className="shell-tools-right">
           {onInspect && (
             <button
+              className={iconButton}
               aria-label="화면 검사"
               aria-pressed={Boolean(inspecting)}
               title={`화면 검사 (${key("inspectUi")})`}
               onClick={onInspect}
             >
               <Glyph name="inspect" />
-              <span>화면 검사</span>
-              <ShortcutHint action="inspectUi" />
+              <ShortcutHint action="inspectUi" className="end" />
             </button>
           )}
           {onTerminal && (
             <button
+              className={iconButton}
               aria-label="터미널"
               aria-expanded={terminal === "open"}
               title={`터미널 (${key("toggleDrawer")})`}
               onClick={onTerminal}
             >
               <Glyph name="terminal" />
-              <span>터미널</span>
-              <ShortcutHint action="toggleDrawer" />
+              <ShortcutHint action="toggleDrawer" className="end" />
             </button>
           )}
           <button
+            className={iconButton}
             aria-label="설정"
             aria-current={settingsActive ? "page" : undefined}
+            title="설정"
             onClick={() => onNavigate("settings")}
           >
             <Glyph name="settings" />
-            <span>설정</span>
           </button>
         </div>
       </header>
       <dialog
         ref={dialog}
         className="shell-dialog"
+        data-panel={panel ?? undefined}
         aria-labelledby="shell-dialog-title"
         onCancel={(event) => {
           event.preventDefault();
@@ -252,11 +257,32 @@ export function WorkspaceToolbar({
         {panel && (
           <>
             <div className="shell-dialog-heading">
-              <h2 id="shell-dialog-title">
+              {panel === "search" && <Glyph name="search" />}
+              <h2
+                id="shell-dialog-title"
+                className={panel === "search" ? "ui-sr-only" : undefined}
+              >
                 {panel === "history" ? "최근 화면 히스토리" : "작업공간 검색"}
               </h2>
-              <button onClick={close} aria-label="검색·히스토리 닫기">
-                닫기
+              {panel === "search" && (
+                <input
+                  autoFocus
+                  className="shell-search-input"
+                  aria-label="메뉴·콘텐츠 검색"
+                  aria-describedby="shell-search-help"
+                  aria-controls="shell-search-results"
+                  placeholder="메뉴, 콘텐츠 제목, 다음 할 일 검색"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              )}
+              <button
+                className="icon-button"
+                onClick={close}
+                aria-label="검색·히스토리 닫기"
+                title="닫기 (Esc)"
+              >
+                <Glyph name="close" />
               </button>
             </div>
             {panel === "history" ? (
@@ -287,16 +313,7 @@ export function WorkspaceToolbar({
               </div>
             ) : (
               <>
-                <input
-                  autoFocus
-                  aria-label="메뉴·콘텐츠 검색"
-                  aria-describedby="shell-search-help"
-                  aria-controls="shell-search-results"
-                  placeholder="메뉴, 콘텐츠 제목, 다음 할 일 검색"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                <p id="shell-search-help" className="shell-search-help">
+                <p id="shell-search-help" className="ui-sr-only">
                   ↑↓ 이동 · Enter 열기 · Esc 닫기
                 </p>
                 <div className="shell-results" id="shell-search-results">
@@ -344,7 +361,9 @@ export function WorkspaceToolbar({
                     ),
                   )}
                   {!foundItems.length && !foundProjects.length && (
-                    <p role="status">검색 결과가 없어요.</p>
+                    <p role="status" className="shell-search-empty">
+                      검색 결과가 없어요.
+                    </p>
                   )}
                   {foundProjects.length > 8 && (
                     <p className="shell-search-help">
@@ -363,6 +382,9 @@ export function WorkspaceToolbar({
 }
 function Glyph({ name }: { name: string }) {
   const paths: Record<string, string> = {
+    back: "M15 5l-7 7 7 7",
+    forward: "M9 5l7 7-7 7",
+    close: "M6 6l12 12 M18 6L6 18",
     history: "M3 10a9 9 0 1 1 1 7 M3 4v6h6 M12 7v5l3 2",
     search: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     terminal: "M4 6l6 6-6 6 M12 18h8",
@@ -371,12 +393,12 @@ function Glyph({ name }: { name: string }) {
   };
   return (
     <svg
-      width="18"
-      height="18"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.7"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

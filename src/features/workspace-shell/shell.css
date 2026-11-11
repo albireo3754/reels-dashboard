@@ -1,3 +1,8 @@
+/*
+ * 상단 툴바와 검색·히스토리 팔레트.
+ * 툴바: 본문과 같은 배경 + 아래 hairline, 52px, macOS 신호등 자리(88px)와 drag 영역.
+ * 팔레트: 무테 행 + hover/선택 배경(⌘K 커맨드 팔레트).
+ */
 .workspace-toolbar {
   position: fixed;
   inset: 0 0 auto;
@@ -6,127 +11,161 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-  background: #eef1e9;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
   -webkit-app-region: drag;
 }
 .workspace-toolbar.native-toolbar {
   padding-left: 88px;
 }
-.dev-build-badge {
-  margin-right: 6px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: #c2410c;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.5;
-  user-select: none;
-}
 .shell-tools-left,
 .shell-tools-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
 .workspace-toolbar button {
   -webkit-app-region: no-drag;
-  padding: 7px 9px;
-  background: transparent;
-  border-color: transparent;
-  font-size: var(--text-sm);
 }
-.workspace-toolbar button:hover,
-.workspace-toolbar button[aria-current],
-.workspace-toolbar button[aria-pressed="true"],
-.workspace-toolbar button[aria-expanded="true"] {
-  background: #dfe6d8;
-}
-.workspace-toolbar .shell-icon {
-  font-size: var(--text-2xl);
-  line-height: 20px;
-  width: 30px;
-  padding: 6px;
-}
-.workspace-toolbar kbd {
+/* 개발 빌드 표시: 작은 회색 글자. */
+.dev-build-badge {
+  margin-right: var(--space-2);
+  color: var(--color-text-subtle);
   font-size: var(--text-xs);
-  color: var(--muted);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  user-select: none;
 }
+.workspace-toolbar .shell-icon[aria-current="page"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.shell-search-button {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-regular);
+}
+.shell-search-button:hover {
+  color: var(--color-text);
+}
+.shell-search-button > svg {
+  width: 16px;
+  height: 16px;
+}
+.shell-search-button > .ui-kbd {
+  margin-left: var(--space-1);
+}
+
+/* ---------- 검색·히스토리 팔레트 ---------- */
 .shell-dialog {
-  color: inherit;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  padding: 20px;
   width: min(600px, calc(100vw - 32px));
-  max-height: min(700px, 80vh);
+  max-height: min(560px, 76vh);
   margin: 12vh auto auto;
-  box-shadow: 0 20px 80px #13251e30;
+  padding: 0;
+  overflow: hidden;
 }
-.shell-dialog::backdrop {
-  background: #13251e66;
+.shell-dialog[open] {
+  display: flex;
+  flex-direction: column;
 }
 .shell-dialog-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.shell-dialog-heading > svg {
+  flex: 0 0 auto;
+  color: var(--color-text-subtle);
 }
 .shell-dialog-heading h2 {
-  font-size: var(--text-lg);
+  flex: 1 1 auto;
+  font-size: var(--text-md);
+}
+.shell-dialog .shell-search-input {
+  flex: 1 1 auto;
+  min-height: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-md);
+  box-shadow: none;
+}
+.shell-dialog .shell-search-input:focus {
+  box-shadow: none;
 }
 .shell-results {
-  display: grid;
-  gap: 6px;
-  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-1) var(--space-2) var(--space-2);
 }
 .shell-results h3 {
+  margin: var(--space-2) var(--space-2) 2px;
+  color: var(--color-text-subtle);
   font-size: var(--text-sm);
-  color: var(--muted);
-  margin: 12px 0 4px;
+  font-weight: var(--weight-medium);
 }
 .shell-results button {
   justify-content: space-between;
-  text-align: left;
+  gap: var(--space-3);
   width: 100%;
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  text-align: left;
 }
 .shell-results button[aria-current] {
-  border-color: var(--green);
+  background: var(--color-selected);
 }
+/* 키보드 이동은 배경으로 보인다(팔레트 행). */
 .shell-results button:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-  background: #e6ede0;
-}
-.shell-search-help {
-  color: var(--muted);
-  font-size: var(--text-xs);
-  margin: 8px 0 0;
-}
-.shell-results small {
-  display: block;
-  font-weight: var(--weight-regular);
-  color: var(--muted);
-  font-size: var(--text-xs);
+  outline: none;
+  background: var(--color-selected);
 }
 .shell-results button > span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.shell-results small {
+  display: block;
+  flex: 0 0 auto;
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+.shell-results button > span > small {
+  margin-top: 1px;
+}
 .shell-results article {
-  padding: 10px;
-  background: white;
-  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+}
+.shell-results article p {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.shell-search-help,
+.shell-search-empty {
+  margin: var(--space-1) var(--space-2);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
 }
 @media (max-width: 560px) {
   .workspace-toolbar {
-    padding: 0 8px;
+    padding: 0 var(--space-2);
   }
-  .workspace-toolbar button > span,
+  .shell-search-button > span,
   .workspace-toolbar kbd:not(.shortcut-hint) {
     display: none;
   }
