@@ -167,12 +167,14 @@ select.card-news-saved {
   align-self: center;
   min-width: 0;
 }
-.card-news-fixed {
-  margin: var(--space-6) 0 var(--space-2);
+/* 종류 select도 노출 시간 입력처럼 라벨 아래에 둔다(한 줄에서 라벨 높이가 어긋나지 않게). */
+.card-news-line > label > select.ui-inline {
+  display: block;
 }
 
 /* 카드 행: 번호 · 첫 줄 · 구간. 선택한 카드만 아래에 편집기가 펼쳐진다. */
 .card-news-cards {
+  margin-top: var(--space-6);
   border-top: 1px solid var(--color-border);
 }
 .card-news-card {

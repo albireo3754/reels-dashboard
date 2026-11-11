@@ -578,10 +578,6 @@ export function CardNews({
               읽는 시간을 지키며 박자에 맞추기
             </label>
           </fieldset>
-          <p className="ui-meta card-news-fixed">
-            글자 크기·굵기·행간·자간·위치는 템플릿으로 고정돼요. 문구와 줄바꿈만
-            바꿔주세요.
-          </p>
           <ol className="ui-list card-news-cards" aria-label="카드 목록">
             {plan.cards.map((c, i) => {
               const open = selected === i;
@@ -930,6 +926,7 @@ function CardEditor({
         {i + 1}번 문구{card.imageOnly ? " (기록용)" : ""}
         <textarea
           aria-label={`${i + 1}번 문구`}
+          title="글자 크기·굵기·행간·자간·위치는 템플릿으로 고정돼요. 문구와 줄바꿈만 바꿔주세요."
           rows={3}
           maxLength={600}
           value={card.text}
