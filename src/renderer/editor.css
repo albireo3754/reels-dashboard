@@ -1,376 +1,338 @@
+/*
+ * 영상 편집 화면. 무테 문서형 흐름:
+ *   한 줄 상단 바(파일명 · 메타 · 저장 상태 · 열기 · 저장 · 내보내기 메뉴)
+ *   → 알림 한 줄 → 내보내기 작업 → 왼쪽 sticky 미리보기(원본 | 합성) + 오른쪽 설정 섹션.
+ * 색·글자·간격은 tokens.css 토큰만 쓴다. 버튼·입력·알림 모양은 components.css가 정한다.
+ */
 .editor-workspace {
+  /* 셸 상단 툴바(.workspace-toolbar) 높이. sticky 기준점. */
+  --editor-shell-top: 52px;
   min-width: 0;
 }
-.editor-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  padding: 20px 24px;
-}
-.editor-toolbar > div {
-  min-width: 0;
-}
-.editor-toolbar strong {
-  font-size: var(--text-md);
-  overflow-wrap: anywhere;
-}
-.editor-toolbar .eyebrow {
-  margin-bottom: 7px;
-}
-.editor-runtime {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  margin-top: 6px;
-}
-.editor-toolbar button {
-  white-space: nowrap;
-}
-.editor-recents {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+
+/* ---------- 상단 바 ---------- */
+.editor-header {
+  position: sticky;
+  top: var(--editor-shell-top);
+  z-index: var(--z-sticky);
   flex-wrap: wrap;
-  margin: 0 0 22px;
+  gap: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) 0;
+  background: var(--color-bg);
 }
-.editor-recents > span {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  margin-right: 5px;
+.editor-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  flex: 1 1 280px;
+  min-width: 0;
 }
-.editor-recents button {
-  font-size: var(--text-xs);
-  max-width: 205px;
+.editor-title > h2 {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: block;
-  padding: 7px 10px;
-}
-.editor-recents button.current {
-  background: #e5eddc;
-  border-color: #cbd9b9;
-  color: var(--color-text-muted);
-}
-.editor-start {
-  text-align: center;
-  padding: 58px 30px;
-}
-.editor-start-icon {
-  font-size: 45px;
-  line-height: 1;
-  width: 78px;
-  height: 78px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-subtle);
-  border-radius: 23px;
-  background: #f0f5e9;
-  margin: 0 auto 25px;
-}
-.editor-start h2 {
-  font-size: var(--text-2xl);
-  margin-bottom: 15px;
-}
-.editor-start p {
-  font-size: var(--text-sm);
-  line-height: 1.9;
-}
-.editor-start-steps {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  margin-top: 28px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
 }
 .editor-meta {
   display: flex;
-  align-items: center;
-  gap: 13px;
   flex-wrap: wrap;
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  margin: 20px 0;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  margin: 0;
 }
-.editor-meta > span:not(:last-child):after {
+.editor-meta > span:not(:last-child)::after {
   content: "·";
-  padding-left: 13px;
-  color: var(--color-text-subtle);
+  padding-left: var(--space-2);
 }
-.editor-meta .hdr-label {
-  color: #aa8b4f;
+.editor-save-state {
+  margin-right: var(--space-1);
 }
-.editor-meta .unsaved-label {
-  color: #b28b4a;
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
 }
-.editor-meta .saved-label {
-  color: var(--color-text-subtle);
+.editor-export-trigger {
+  gap: var(--space-1);
 }
+
+/* ---------- 알림 한 줄 ---------- */
+.editor-alert {
+  align-items: center;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.editor-alert > button:last-child {
+  margin-left: auto;
+}
+.editor-alert[data-tone="danger"] {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.editor-alert[data-tone="danger"] > .icon-button {
+  color: inherit;
+}
+
+/* ---------- 내보내기 작업 ---------- */
+.editor-job {
+  margin: 0 0 var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.editor-job-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  min-height: var(--control-sm);
+}
+.editor-job-line > h2 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+.editor-job-phase {
+  flex: 0 1 auto;
+}
+.editor-job progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: var(--space-2) 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  accent-color: var(--color-primary);
+}
+.editor-job[data-state="failed"] progress {
+  accent-color: var(--color-danger);
+}
+.editor-job .file-path {
+  margin: var(--space-1) 0 0;
+}
+
+/* ---------- 빈 상태 ---------- */
+.editor-empty {
+  padding-top: var(--space-10);
+}
+.editor-recents {
+  max-width: 560px;
+  margin: 0 auto var(--space-8);
+}
+.editor-recents > h3 {
+  margin: 0 0 var(--space-1) var(--space-2);
+}
+
+/* ---------- 본문 배치: 왼쪽 미리보기 + 오른쪽 설정 ---------- */
 .editor-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(340px, 1.1fr);
-  gap: 21px;
+  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+  gap: var(--space-10);
   align-items: start;
 }
 .editor-preview-column {
   position: sticky;
-  top: 20px;
+  top: calc(
+    var(--editor-shell-top) + var(--editor-header-height, 48px) +
+      var(--space-4)
+  );
   min-width: 0;
 }
 .editor-controls-column {
   min-width: 0;
 }
-.editor-layout .panel {
-  padding: 21px;
+
+/* 원본 | 합성 미리보기: 원본 비율 그대로 나란히 둔다(세로 영상은 세로 프레임). */
+.editor-frames {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
 }
-.editor-layout h2 {
-  font-size: var(--text-lg);
+.editor-frames[data-orientation="landscape"] {
+  grid-template-columns: minmax(0, 1fr);
 }
-.editor-badge {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 3px 6px;
-  white-space: nowrap;
+.editor-frame {
+  margin: 0;
+  min-width: 0;
 }
-.editor-video-stage,
-.editor-image-stage {
-  background: #202b25;
-  border-radius: var(--radius-md);
-  overflow: hidden;
+.editor-frame-media {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 160px;
+  aspect-ratio: var(--editor-aspect, 9 / 16);
+  max-height: calc(100vh - 260px);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
 }
-.editor-video-stage video {
+.editor-frame-media > video,
+.editor-frame-media > img {
   display: block;
   width: 100%;
-  max-height: 420px;
-  min-height: 180px;
-  background: #202b25;
-  aspect-ratio: 9/16;
+  height: 100%;
   object-fit: contain;
 }
-.editor-image-stage img {
-  display: block;
-  width: 100%;
-  max-height: 420px;
-  object-fit: contain;
-}
-.editor-seek {
-  margin-top: 15px;
-  display: grid;
-  grid-template-columns: 1fr 105px;
-  gap: 10px;
-  align-items: center;
-}
-.editor-seek > input[type="range"] {
-  padding: 0;
-  height: 20px;
-  accent-color: #6e8d53;
-}
-.editor-seek > label {
-  font-size: var(--text-xs);
-}
-.editor-seek > label > input {
-  font-size: var(--text-xs);
-  padding: 7px 8px;
-  margin-top: 4px;
-}
-.editor-seek > span {
-  grid-column: 1/-1;
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-}
-.editor-player-panel > .muted {
-  font-size: var(--text-xs) !important;
+.editor-frame > figcaption {
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
 }
 .editor-preview-empty {
-  min-height: 210px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  margin: 0;
+  padding: var(--space-3);
   text-align: center;
-  background: var(--color-surface-muted);
-  border: 1px dashed #dde6d1;
-  border-radius: var(--radius-md);
-  padding: 22px;
   color: var(--color-text-subtle);
-}
-.editor-preview-empty > span {
-  font-size: 32px;
-  line-height: 1;
-  margin-bottom: 18px;
-}
-.editor-preview-empty > p {
   font-size: var(--text-sm);
-  color: var(--color-text-subtle);
+  line-height: var(--leading-normal);
 }
-.editor-preview-empty > small {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  margin-top: 8px;
+.editor-preview-column > .ui-notice {
+  margin: var(--space-2) 0 0;
 }
-.editor-controls-column label {
-  font-size: var(--text-xs);
+.editor-seek-range {
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin-top: var(--space-3);
 }
-.editor-controls-column .form-grid {
-  gap: 13px;
-}
-.editor-controls-column .checkbox-row {
-  font-size: var(--text-xs);
-  margin: 17px 0 11px;
-}
-.editor-controls-column .form-grid + label {
-  margin-top: 17px;
-}
-.editor-controls-column label + .form-grid {
-  margin-top: 17px;
-}
-.editor-controls-column .section-heading {
+.editor-seek {
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
-.editor-controls-column .section-heading button {
-  font-size: var(--text-xs);
+
+/* ---------- 설정 섹션 ---------- */
+.editor-section {
+  margin-bottom: var(--space-6);
+}
+.editor-section[data-divided] {
+  padding-top: var(--space-5);
+}
+.editor-section .ui-section-header {
+  flex-wrap: wrap;
+}
+.editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.editor-fields > label + label {
+  margin-top: 0;
+}
+.editor-field-wide {
+  grid-column: 1 / -1;
+}
+.editor-field-wide > textarea {
+  min-height: 0;
+}
+.editor-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin-top: var(--space-4);
+}
+.editor-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3);
+}
+.editor-number {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+label.editor-number + label.editor-number {
+  margin-top: 0;
+}
+.editor-number > span {
   white-space: nowrap;
-  padding: 8px 10px;
 }
+.editor-number > input {
+  margin-top: 0;
+}
+.editor-fields > .editor-number {
+  align-self: end;
+}
+.editor-section-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+.follow-cover-fields {
+  min-width: 0;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border: 0;
+}
+.follow-cover-fields > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+/* 본문 자막 행: 번호 · 시작–끝 · 문구 · (hover) 삭제 */
 .editor-no-captions {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  border: 1px dashed #e1e8d6;
-  border-radius: var(--radius-md);
-  padding: 22px;
-  margin-top: 19px !important;
-  background: var(--color-surface-muted);
+  margin: var(--space-4) 0 0;
 }
 .caption-cues {
-  display: grid;
-  gap: 15px;
-  margin-top: 20px;
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
 }
 .caption-cue {
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 15px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
 }
-.caption-cue-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+.caption-cue + .caption-cue {
+  border-top: 1px solid var(--color-border);
 }
-.caption-cue-heading strong {
-  font-size: var(--text-xs);
+.caption-cue-index {
+  min-width: var(--space-4);
+  padding-top: var(--space-2);
   color: var(--color-text-subtle);
-}
-.caption-cue-heading .quiet {
-  font-size: var(--text-xs);
-  padding: 4px 7px;
-  color: var(--color-text-subtle);
-}
-.caption-cue .form-grid {
-  margin-bottom: 13px;
-}
-.caption-cue input,
-.caption-cue textarea {
-  background: var(--color-surface);
-}
-.caption-cue textarea {
-  min-height: 70px;
-}
-.editor-export {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  position: relative;
-}
-.editor-export h2 {
-  font-size: var(--text-lg);
-}
-.editor-export p {
   font-size: var(--text-sm);
-  color: var(--color-text-subtle);
-  margin-top: 7px;
+  text-align: right;
 }
-.editor-export .button-row {
-  margin: 0;
-  flex-wrap: nowrap;
-}
-.editor-export button {
-  white-space: nowrap;
-  font-size: var(--text-xs);
-}
-.editor-render-job {
-  border-color: #cadbb8;
-}
-.editor-render-job h2 {
-  font-size: var(--text-lg);
-}
-.editor-render-job .section-heading > span {
-  font-size: var(--text-base);
+.caption-cue-times {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-text-subtle);
 }
-.editor-render-job progress {
-  width: 100%;
-  height: 10px;
-  accent-color: #7c9c5f;
-  border: 0;
-  border-radius: var(--radius-md);
-  overflow: hidden;
+.caption-cue-times > input {
+  width: 72px;
 }
-.editor-render-job p {
-  font-size: var(--text-sm);
-  margin: 10px 0;
-  color: var(--color-text-subtle);
+.caption-cue > textarea {
+  min-height: var(--control-md);
 }
-.editor-render-job button {
-  font-size: var(--text-xs);
-  margin-top: 5px;
+.caption-cue > .icon-button {
+  margin-top: var(--space-1);
 }
-.job-failed {
-  border-color: #e6cfb6;
-}
-.job-cancelled {
-  border-color: var(--color-border);
-}
+
+/* 촬영 보관함 행의 '이 영상 편집' 버튼(App.tsx) */
 .asset-edit-button {
   font-size: var(--text-xs);
   padding: 6px 8px;
   white-space: nowrap;
   flex-shrink: 0;
 }
+
 @media (max-width: 1150px) {
   .editor-layout {
-    grid-template-columns: minmax(230px, 0.8fr) minmax(285px, 1.2fr);
-    gap: 15px;
-  }
-  .editor-layout .panel {
-    padding: 16px;
-  }
-  .editor-layout .section-heading {
-    flex-wrap: wrap;
-  }
-  .editor-video-stage video,
-  .editor-image-stage img {
-    max-height: 360px;
-  }
-  .editor-export {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .editor-export .button-row {
-    width: 100%;
-    justify-content: flex-end;
+    grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+    gap: var(--space-6);
   }
   .asset-row {
     flex-wrap: wrap;
@@ -384,113 +346,36 @@
 }
 @media (max-width: 850px) {
   .editor-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .editor-preview-column {
     position: static;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
+    max-width: 440px;
   }
-  .editor-video-stage video,
-  .editor-image-stage img {
-    height: 300px;
-    max-height: 300px;
-  }
-  .editor-preview-empty {
-    min-height: 300px;
-  }
-  .editor-player-panel > button {
-    font-size: var(--text-xs);
-  }
-  .editor-layout .section-heading h2 {
-    font-size: var(--text-md);
+  .editor-frame-media {
+    max-height: none;
   }
 }
 @media (max-width: 560px) {
-  .editor-toolbar {
-    padding: 17px;
-    gap: 15px;
-    align-items: flex-start;
-    flex-direction: column;
+  .editor-header {
+    position: static;
   }
-  .editor-toolbar button {
-    width: 100%;
-    font-size: var(--text-xs);
+  .editor-title {
+    flex-basis: 100%;
   }
-  .editor-toolbar strong {
-    font-size: var(--text-base);
+  .editor-header-actions {
+    margin-left: auto;
   }
-  .editor-runtime {
-    font-size: var(--text-xs);
+  .editor-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .editor-recents {
-    gap: 6px;
+  .caption-cue {
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
-  .editor-recents > span {
-    width: 100%;
-  }
-  .editor-recents button {
-    font-size: var(--text-xs);
-    max-width: 160px;
-  }
-  .editor-start {
-    padding: 35px 20px;
-  }
-  .editor-start h2 {
-    font-size: var(--text-xl);
-  }
-  .editor-start p {
-    font-size: var(--text-sm);
-  }
-  .editor-start p br {
-    display: none;
-  }
-  .editor-start-steps {
-    font-size: var(--text-xs);
-    gap: 12px;
-  }
-  .editor-meta {
-    gap: 8px;
-    font-size: var(--text-xs);
-  }
-  .editor-meta > span:not(:last-child):after {
-    padding-left: 8px;
-  }
-  .editor-preview-column {
-    display: block;
-  }
-  .editor-video-stage video,
-  .editor-image-stage img {
-    height: auto;
-    max-height: 400px;
-  }
-  .editor-preview-empty {
-    min-height: 210px;
-  }
-  .editor-export .button-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .editor-controls-column .form-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .editor-controls-column .section-heading {
-    flex-wrap: wrap;
-  }
-  .editor-controls-column .section-heading h2 {
-    font-size: var(--text-md);
-  }
-  .editor-seek {
-    grid-template-columns: 1fr 96px;
-  }
-  .editor-start-steps {
-    flex-wrap: wrap;
+  .caption-cue > textarea {
+    grid-column: 2 / 3;
   }
   .asset-edit-button {
     margin-left: 36px;
-  }
-  .editor-authoritative-preview .section-heading {
-    align-items: center;
   }
 }

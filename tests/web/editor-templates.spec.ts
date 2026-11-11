@@ -1,4 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+async function exportBoth(page: Page) {
+  await page.getByRole("button", { name: "결과 내보내기", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "영상과 표지 내보내기", exact: true })
+    .click();
+}
 async function open(page: Page) {
   await page.goto("/?demo=1");
   await page.getByRole("button", { name: "영상 편집", exact: true }).click();
@@ -50,6 +56,7 @@ test("templates, independent adjustments and fixed size persist without replacin
     .fill("1");
   await page.getByLabel("표지 글자 크기 직접 지정", { exact: true }).check();
   await page.getByLabel("표지 글자 크기 (px)", { exact: true }).fill("145");
+  await page.getByRole("tab", { name: "표지·마지막 장", exact: true }).click();
   await page
     .getByRole("button", { name: "5번 표지 185px 고정", exact: true })
     .click();
@@ -107,9 +114,7 @@ test("template controls lock during rendering and fit narrow screens", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(600);
-  await page
-    .getByRole("button", { name: "영상과 표지 내보내기", exact: true })
-    .click();
+  await exportBoth(page);
   await expect(
     page.getByRole("button", { name: "1번 장소 핀만", exact: true }),
   ).toBeDisabled();

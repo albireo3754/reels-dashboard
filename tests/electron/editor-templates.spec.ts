@@ -69,6 +69,9 @@ test("desktop template UI saves adjustments and renders matching video and cover
       .getByRole("button", { name: "3번 핀 + 설명 사각 바", exact: true })
       .click();
     await page
+      .getByRole("tab", { name: "표지·마지막 장", exact: true })
+      .click();
+    await page
       .getByRole("button", { name: "5번 표지 185px 고정", exact: true })
       .click();
     await page.getByText("템플릿 세부 조정", { exact: true }).click();
@@ -89,8 +92,9 @@ test("desktop template UI saves adjustments and renders matching video and cover
     await expect(
       page.getByRole("img", { name: /영상 .* 합성 미리보기/ }),
     ).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "결과 내보내기", exact: true }).click();
     await page
-      .getByRole("button", { name: "영상과 표지 내보내기", exact: true })
+      .getByRole("menuitem", { name: "영상과 표지 내보내기", exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: "내보내기 완료", exact: true }),
