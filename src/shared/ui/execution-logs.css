@@ -1,8 +1,8 @@
 /* 실행 로그: 무테 목록. 행 사이 hairline, 상태는 글자색으로만(실패만 danger). */
 .execution-logs {
+  /* 다른 화면처럼 본문 왼쪽 여백에 맞춘다(가운데 정렬하면 제목이 다른 화면보다 안쪽에서 시작한다). */
   max-width: 1000px;
-  margin: 0 auto;
-  padding: var(--space-5);
+  padding: var(--space-5) 0;
 }
 .execution-logs > p {
   color: var(--color-text-muted);
