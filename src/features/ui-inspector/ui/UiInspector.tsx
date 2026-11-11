@@ -10,6 +10,7 @@ import {
   inspectTarget,
   type InspectionTarget,
 } from "../model/inspect";
+import { CloseIcon } from "../../../shared/ui/primitives";
 import "./inspector.css";
 
 export function UiInspector({
@@ -123,8 +124,8 @@ export function UiInspector({
     <>
       {!selected && (
         <div className="ui-inspector-banner" data-ui-inspector role="status">
-          수정할 화면 요소를 선택하세요.{" "}
-          <button ref={exitButton} onClick={close}>
+          <span>수정할 화면 요소를 선택하세요.</span>
+          <button ref={exitButton} className="small" onClick={close}>
             검사 끝내기 · {exitKey}
             <ShortcutHint action="exitInspect" className="end" />
           </button>
@@ -144,7 +145,7 @@ export function UiInspector({
       )}
       <dialog
         ref={dialog}
-        className="ui-inspector-dialog"
+        className="ui-dialog ui-inspector-dialog"
         data-ui-inspector
         aria-labelledby="ui-inspector-title"
         onCancel={(event) => {
@@ -153,6 +154,7 @@ export function UiInspector({
         }}
       >
         <form
+          className="ui-inspector-form"
           onSubmit={(event) => {
             event.preventDefault();
             if (submitting.current || !selected || !comment.trim()) return;
@@ -161,52 +163,65 @@ export function UiInspector({
             setComment("");
           }}
         >
-          <header>
+          <header className="ui-dialog-header">
             <h2 id="ui-inspector-title">화면 수정 요청</h2>
-            <button type="button" aria-label="화면 검사 닫기" onClick={close}>
-              닫기
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="화면 검사 닫기"
+              title="닫기"
+              onClick={close}
+            >
+              <CloseIcon />
             </button>
           </header>
-          <p>
-            선택한 요소: <code>&lt;{selected?.tag}&gt;</code>
-          </p>
-          <ul aria-label="선택 요소 코드 위치">
-            {selected?.sources.map((source) => (
-              <li key={source}>
-                <code>{source}</code>
-              </li>
-            ))}
-          </ul>
-          {!selected?.sources.length && (
-            <p>이 요소의 코드 위치를 확인하지 못했어요.</p>
-          )}
-          <label>
-            수정할 내용
-            <textarea
-              autoFocus
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "Enter" ||
-                  event.shiftKey ||
-                  event.nativeEvent.isComposing ||
-                  event.keyCode === 229
-                )
-                  return;
-                event.preventDefault();
-                if (!submitting.current) event.currentTarget.form?.requestSubmit();
-              }}
-              maxLength={6000}
-              rows={5}
-              placeholder="어떻게 바꾸고 싶은지 적어주세요. Enter 보내기 · Shift+Enter 줄바꿈"
-            />
-          </label>
-          <p className="ui-inspector-help">
-            개선 요청에 추가한 뒤 Codex 시작 버튼으로 실행할 수 있어요. 화면의
-            입력값과 본문은 자동으로 포함하지 않아요.
-          </p>
-          <footer>
+          <div className="ui-dialog-body">
+            <p className="ui-meta">
+              선택한 요소 <code>&lt;{selected?.tag}&gt;</code>
+            </p>
+            <ul
+              className="ui-inspector-sources"
+              aria-label="선택 요소 코드 위치"
+            >
+              {selected?.sources.map((source) => (
+                <li key={source}>
+                  <code>{source}</code>
+                </li>
+              ))}
+            </ul>
+            {!selected?.sources.length && (
+              <p className="ui-meta">이 요소의 코드 위치를 확인하지 못했어요.</p>
+            )}
+            <label className="ui-inspector-comment">
+              수정할 내용
+              <textarea
+                autoFocus
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== "Enter" ||
+                    event.shiftKey ||
+                    event.nativeEvent.isComposing ||
+                    event.keyCode === 229
+                  )
+                    return;
+                  event.preventDefault();
+                  if (!submitting.current) event.currentTarget.form?.requestSubmit();
+                }}
+                maxLength={6000}
+                rows={5}
+                placeholder="어떻게 바꾸고 싶은지 적어주세요. Enter 보내기 · Shift+Enter 줄바꿈"
+              />
+            </label>
+          </div>
+          <footer className="ui-dialog-footer">
+            <span
+              className="ui-meta"
+              title="개선 요청에 추가한 뒤 Codex 시작 버튼으로 실행할 수 있어요. 화면의 입력값과 본문은 자동으로 포함하지 않아요."
+            >
+              화면 입력값과 본문은 포함하지 않아요.
+            </span>
             <button type="button" onClick={close}>
               취소
             </button>
