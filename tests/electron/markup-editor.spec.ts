@@ -70,6 +70,8 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
     await setEditorViewport(main,"example",960,720);
     await expect(again.getByText("✓ 저장 완료",{exact:true})).toBeVisible();
     await openReview(again);
+    // My notes live in the 메모 tab of the right panel (one tab at a time).
+    await again.getByRole("group",{name:"오른쪽 패널"}).getByRole("button",{name:/^메모/}).click();
     await expect(again.getByText("Disclosure should stand out",{exact:true})).toBeVisible();
     await expect(again.getByRole("checkbox",{name:"First 확인 완료",exact:true})).toBeChecked();
     await expect(again.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toContainText("Edited in app");

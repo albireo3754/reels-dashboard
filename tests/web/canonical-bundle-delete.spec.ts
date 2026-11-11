@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {markupFixture} from "../fixtures/markup-editor";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
+import {closeEditorMenu,openEditorMenu} from "./canonical-editor-helpers";
 
 async function threeBundles(root:string){
  const config=await markupFixture(root);
@@ -25,7 +26,8 @@ test("Cmd/Ctrl+S saves edits from inside the frame and from the host page",async
   await expect(status).toContainText("✓ 저장 완료");
   expect(await readFile(config.canon,"utf8")).toContain("Saved with shortcut");
   await frame.locator('[data-tid="P3"]').fill("Host shortcut");
-  await page.getByRole("heading",{name:"릴스 스마트 에디터"}).click();
+  // Focus leaves the frame for the host page (the quiet status line is plain host text).
+  await page.locator("#ce-save-status").click();
   await page.keyboard.press("ControlOrMeta+s");
   await expect(status).toContainText("✓ 저장 완료");
   expect(await readFile(config.canon,"utf8")).toContain("Host shortcut");
@@ -72,7 +74,9 @@ test("a picked bundle is deleted with Delete, can be undone, and is removed from
   await expect(outline.getByRole("button")).toHaveCount(1);
   await page.getByRole("button",{name:"정본 저장",exact:true}).click();
   await expect(status).toContainText("✓ 저장 완료");
-  await expect(page.getByRole("button",{name:"묶음 삭제",exact:true})).toBeDisabled();
+  const menu=await openEditorMenu(page);
+  await expect(menu.getByRole("menuitem",{name:"묶음 삭제",exact:true})).toBeDisabled();
+  await closeEditorMenu(page);
   await frame.locator('.editor-bundle[data-bundle="B1"] .editor-bundle-label').click();
   await page.keyboard.press("Delete");
   await expect(page.getByRole("alert")).toContainText("마지막 묶음은 지울 수 없어요.");

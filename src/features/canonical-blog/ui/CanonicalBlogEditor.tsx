@@ -21,6 +21,8 @@ import {
   type CanonicalFinding,
   type InlineRun,
 } from "../../../shared/canonical-blog";
+import { Menu, Popover, type MenuEntry } from "../../../shared/ui/Popover";
+import { CloseIcon, Dot, Segmented } from "../../../shared/ui/primitives";
 import "./canonical-editor.css";
 async function api(action: string, input?: unknown, signal?: AbortSignal) {
   const r = await fetch(
@@ -83,7 +85,11 @@ function proposalSummary(item:InlineProposal){
   if(item.kind==="format")return `“${clip(item.phrase??"",40)}” 서식`;
   return clip(item.observation.split("\n")[0]??"",80);
 }
+/** Right panel: one of review, selection chat or my notes at a time. */
+type SidePanel = "review" | "chat" | "memo";
 export function CanonicalBlogEditor() {
+  const [panel, setPanel] = useState<SidePanel>("review");
+  const [annotationCount, setAnnotationCount] = useState(0);
   const [annotationTarget,setAnnotationTarget]=useState<AnnotationTarget>();
   // Phrases attached to the selection chat with `채팅에 추가` (screen only).
   const [chatAttachments,setChatAttachments]=useState<ChatAttachment[]>([]);
@@ -140,20 +146,17 @@ export function CanonicalBlogEditor() {
   }, []);
   useEffect(() => {
     if (!doc || !root.current) return;
+    // One sticky top bar holds the formatting slot (.ce-toolbar) too, so the chrome
+    // above the body is the bar itself. Sticky panels, sheets and the sync note use it.
     const el = root.current,
-      header = el.querySelector(".ce-header")!,
-      toolbar = el.querySelector(".ce-toolbar")!;
+      header = el.querySelector(".ce-header")!;
     const measure = () => {
       const h = header.getBoundingClientRect().height;
       el.style.setProperty("--ce-header-height", h + "px");
-      el.style.setProperty(
-        "--ce-chrome-height",
-        h + toolbar.getBoundingClientRect().height + "px",
-      );
+      el.style.setProperty("--ce-chrome-height", h + "px");
     };
     const observer = new ResizeObserver(measure);
     observer.observe(header);
-    observer.observe(toolbar);
     measure();
     return () => observer.disconnect();
   }, [!!doc]);
@@ -668,6 +671,13 @@ export function CanonicalBlogEditor() {
     return () => window.removeEventListener("keydown", key);
   }, [suggesting]);
   useEffect(() => () => suggestRef.current?.controller.abort(), []);
+  /** Brings a right-panel tab forward; a photo or sticker sheet covering it steps aside. */
+  function showPanel(next: SidePanel) {
+    setPanel(next);
+    setReviewOpen(true);
+    setPhotoOpen(false);
+    setStickerOpen(false);
+  }
   async function request(scope: "selected" | "changed", only?: string[]) {
     if (!doc || busy) return;
     const ids = (only ?? (scope === "selected" ? [selected] : changed)).filter((id) => !deleted.includes(id));
@@ -679,7 +689,7 @@ export function CanonicalBlogEditor() {
     setError("");
     try {
       await api("review", { revision: current.revision, bundleIds: ids });
-      setReviewOpen(true);
+      showPanel("review");
       setQueued((old) => [...new Set([...old, ...ids])]);
       setNotice(
         savedBeforeReview ? "변경 내용을 먼저 저장하고 검토를 요청했어요. 따로 저장하지 않아도 됩니다." : doc.format==="markup" ? "저장된 내용으로 검토를 요청했어요. 실행 상태와 결과가 자동으로 갱신됩니다." : "저장된 내용으로 검토를 요청했어요.",
@@ -831,10 +841,10 @@ export function CanonicalBlogEditor() {
         resendDrafts();
         return;
       }
-      if(m.type==="annotation-open")setReviewOpen(true);
+      if(m.type==="annotation-open")showPanel("memo");
       if(m.type==="annotate"&&doc.format==="markup"&&typeof m.text==="string"&&typeof m.context==="string"&&doc.paragraphs.some(p=>p.id===m.id)){
         setAnnotationTarget({id:m.id,text:m.text,context:m.context,checked:!!m.checked,requestId:crypto.randomUUID()});
-        setReviewOpen(true);
+        showPanel("memo");
       }
       if(m.type==="chat-attach"&&doc.format==="markup"&&typeof m.id==="string"&&typeof m.text==="string"&&m.text.trim()&&m.text.length<=CHAT_LIMITS.quote&&doc.paragraphs.some(p=>p.id===m.id)&&!removedParasRef.current.includes(m.id)){
         const quote=m.text as string,paragraphId=m.id as string;
@@ -844,7 +854,7 @@ export function CanonicalBlogEditor() {
           return [...old,{key:crypto.randomUUID(),paragraphId,quote}].slice(-CHAT_LIMITS.attachments);
         });
         setChatFocus(crypto.randomUUID());
-        setReviewOpen(true);
+        showPanel("chat");
       }
       if(m.type==="sticker-anchor" && doc.stickerAnchors?.some(a=>a.bundleId===m.bundleId && a.before===m.before))setStickerTarget(stickerKey(m));
       if (m.type === "typography") setTypography(m.styles);
@@ -1072,11 +1082,48 @@ export function CanonicalBlogEditor() {
   if (!doc)
     return (
       <main className="canonical-loading">
-        <h1>릴스 스마트 에디터</h1>
-        <p>{error || "정본과 사진을 불러오는 중…"}</p>
-        <button onClick={() => void load()}>다시 불러오기</button>
+        <h1 className="ui-sr-only">블로그 정본 편집</h1>
+        <p className="ui-meta">{error || "정본과 사진을 불러오는 중…"}</p>
+        <button className="secondary" onClick={() => void load()}>다시 불러오기</button>
       </main>
     );
+  const markup = doc.format === "markup";
+  const saveLabel = saveState==="saving"?"저장 중…":saveState==="failed"?(live?"저장 실패 · 자동으로 다시 시도":"저장 실패 · 편집 내용 유지"):heldLabel?"● 일부 저장 안 됨":dirty?"● 저장 전 변경":titleBlank?"● 제목 비어 있음":"✓ 저장 완료";
+  // Color only when something is wrong or waiting; ordinary saving stays gray.
+  const saveTone = saveState==="failed" ? "danger" : heldLabel||titleBlank ? "warning" : undefined;
+  const saveDetail = saveState==="saving" ? null
+    : saveState==="failed"&&saveRetry ? `편집 내용은 그대로예요. ${Math.ceil(saveRetry.retryInMs/1000)}초 뒤 다시 저장해요.`
+    : heldLabel ? `${heldLabel}은 아직 파일에 없어요. 자동으로 다시 시도해요.`
+    : titleBlank&&!dirty ? "제목을 입력하면 저장돼요. 본문은 계속 저장돼요."
+    : dirty ? (live ? (deleted.length||removedParas.length||photos.length ? "삭제·사진은 몇 초 뒤 저장돼요." : null) : "아직 파일에 저장되지 않았어요.")
+    : doc.savedAt ? <><time dateTime={doc.savedAt} title={new Date(doc.savedAt).toLocaleString()}>{new Date(doc.savedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</time>{savedForReview?" · 검토 전에 자동 저장했어요.":live?"":" · 저장할 변경이 없어요."}</>
+    : "저장할 변경이 없어요.";
+  // The save button only shows while there is something to save; otherwise the status line says it all.
+  const saveIdle = !dirty || saveState === "saving" || busy;
+  const feedbackError = saveState==="failed"&&saveRetry ? `저장하지 못했어요. 편집 내용은 화면에 남아 있고 자동으로 다시 시도해요. ${saveRetry.error==="BUSY"?"다른 도구가 저장하는 중이에요.":saveRetry.error}` : error;
+  const remainingBundles = doc.bundles.length - deleted.length;
+  const menuItems: MenuEntry[] = [
+    ...(markup ? [
+      { label: `사진 넣기 (${photos.length})`, title: "분석된 사진을 골라 본문에 넣어요", onSelect: () => { setStickerOpen(false); setPhotoOpen(!photoOpen); } },
+      { label: `스티커 (${stickers.length})`, title: "네이버 기본 스티커 자리를 잡아요", onSelect: () => { setPhotoOpen(false); setStickerOpen(!stickerOpen); } },
+      { separator: true as const },
+    ] : []),
+    { heading: "본문 폭" },
+    { label: "모바일 폭", checked: width === 430, onSelect: () => setWidth(430) },
+    { label: "PC 폭", checked: width === 900, onSelect: () => setWidth(900) },
+    { separator: true },
+    { label: `${dirty ? "저장 후 변경분 검토" : "변경분 검토"} (${changed.length})`, hint: "⌘⇧↵", disabled: busy || !changed.length, onSelect: () => void request("changed") },
+    ...(markup ? [{
+      label: "묶음 삭제", tone: "danger" as const, hint: "Delete",
+      title: "선택한 묶음을 지웁니다. 본문에서 묶음의 글 밖(사진·이름표)을 클릭한 뒤 Delete/Backspace로도 지울 수 있어요. 몇 초 안에 삭제 취소로 되돌릴 수 있어요.",
+      disabled: busy || !bundle || remainingBundles <= 1, onSelect: () => deleteBundle(selected),
+    }] : []),
+    ...(!live ? [
+      { separator: true as const },
+      { label: "다시 불러오기", disabled: busy, onSelect: () => { if (!dirty || confirm("저장 전 편집을 버리고 최신 정본을 불러올까요?")) void load(); } },
+    ] : []),
+  ];
+  const k = (key: string) => <kbd className="ui-kbd">{key}</kbd>;
   return (
     <main
       ref={root}
@@ -1093,124 +1140,100 @@ export function CanonicalBlogEditor() {
       }}
     >
       {doc.fontCss && <style>{doc.fontCss}</style>}
-      {doc.warnings?.map((warning,i)=><p key={i} className="ce-warning" role="status">{warning}</p>)}
-      <header className="ce-header">
-        <div>
-          <small>REELS DASHBOARD / BLOG</small>
-          <h1>릴스 스마트 에디터</h1>
-        </div>
-        <span id="ce-save-status" className={"ce-status ce-save-status "+(saveState==="failed"||heldLabel?"is-error":dirty||titleBlank?"is-dirty":"is-saved")} role="status" aria-live="polite">
-          <strong>{saveState==="saving"?"저장 중…":saveState==="failed"?(live?"저장 실패 · 자동으로 다시 시도":"저장 실패 · 편집 내용 유지"):heldLabel?"● 일부 저장 안 됨":dirty?"● 저장 전 변경":titleBlank?"● 제목 비어 있음":"✓ 저장 완료"}</strong>
-          <small>{saveState==="saving"?"원고와 미리보기를 저장하고 있어요.":saveState==="failed"&&saveRetry?`편집 내용은 그대로예요. ${Math.ceil(saveRetry.retryInMs/1000)}초 뒤 다시 저장해요.`:heldLabel?`${heldLabel}은 아직 파일에 없어요. 자동으로 다시 시도해요.`:titleBlank&&!dirty?"제목을 입력하면 저장돼요. 본문은 계속 저장돼요.":dirty?(live?(deleted.length||removedParas.length||photos.length?"삭제·사진은 몇 초 뒤 저장돼요.":"곧 자동으로 저장돼요."):"아직 파일에 저장되지 않았어요."):doc.savedAt?<><time dateTime={doc.savedAt} title={new Date(doc.savedAt).toLocaleString()}>{new Date(doc.savedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</time>{savedForReview?" · 검토 전에 자동 저장했어요.":live?" · 변경은 자동으로 저장돼요.":" · 저장할 변경이 없어요."}</>:"저장할 변경이 없어요."}</small>
-        </span>
-        {!live && <button
-          disabled={busy}
-          onClick={() => {
-            if (
-              !dirty ||
-              confirm("저장 전 편집을 버리고 최신 정본을 불러올까요?")
-            )
-              void load();
-          }}
-        >
-          다시 불러오기
-        </button>}
+      {doc.warnings?.map((warning,i)=><p key={i} className="ce-warning ce-doc-warning" role="status">{warning}</p>)}
+      <header className="ce-header ui-toolbar" data-divided="">
+        <h1 className="ui-sr-only">블로그 정본 편집</h1>
         <button
-          className={"ce-primary"+(!dirty&&saveState==="idle"?" ce-save-done":"")}
+          className="ce-outline-toggle"
+          aria-expanded={outlineOpen}
+          onClick={() => setOutlineOpen(!outlineOpen)}
+        >
+          글의 흐름 · <span className="ui-truncate">{bundle?.name}</span>
+        </button>
+        <span
+          id="ce-save-status"
+          className={"ui-status ce-save-status "+(saveState==="failed"||heldLabel?"is-error":dirty||titleBlank?"is-dirty":"is-saved")}
+          data-tone={saveTone}
+          role="status"
+          aria-live="polite"
+          title={live ? "변경은 자동으로 저장돼요 · ⌘/Ctrl+S 바로 저장" : "⌘/Ctrl+S 저장"}
+        >
+          {saveState==="saving" && <span className="ui-spinner" aria-hidden="true" />}
+          <strong>{saveLabel}</strong>
+          {saveDetail && <small>{saveDetail}</small>}
+        </span>
+        <div className="ce-toolbar">
+          <FormattingToolbar
+            selection={selectionFormat}
+            disabled={busy}
+            onFormat={format}
+          />
+        </div>
+        <p className="ce-feedback" aria-live="polite" data-tone={feedbackError ? "danger" : undefined} title={feedbackError || notice || undefined}>
+          {feedbackError ? <span role="alert">{feedbackError}</span> : notice}
+        </p>
+        {removals.length > 0 && <button disabled={busy || (!!lastRemoval && deleteInFlight(lastRemoval))} title={lastRemoval && deleteInFlight(lastRemoval) ? "삭제를 저장하는 중이에요" : "마지막 삭제부터 되돌려요"} onClick={undoDelete}>삭제 취소 ({removals.length})</button>}
+        <button
+          className={"small ce-save"+(saveIdle?" ce-save-done":"")}
           aria-label="정본 저장"
           aria-describedby="ce-save-status"
-          title={saveState==="saving"?"저장 중입니다":dirty?"현재 편집 내용을 파일에 저장합니다":"모든 변경이 저장돼 있어요"}
+          aria-keyshortcuts="Meta+S Control+S"
+          title={saveState==="saving"?"저장 중입니다":dirty?"현재 편집 내용을 파일에 저장합니다 (⌘/Ctrl+S)":"모든 변경이 저장돼 있어요"}
           disabled={busy || !dirty || saveState==="saving" || (!live && Object.keys(invalid).length > 0)}
           onClick={() => void save()}
         >
           {saveState==="saving"?"저장 중…":!dirty?"✓ 저장됨":"정본 저장"}
         </button>
+        <button
+          className="ce-suggest"
+          aria-keyshortcuts="Alt+Backslash"
+          aria-busy={suggesting || undefined}
+          title={markup ? "커서 위치에 이어 쓸 문장을 추천받아요 (⌥\\)" : "이 형식에서는 추천을 지원하지 않아요. 마크업 원고에서 사용할 수 있어요."}
+          disabled={!markup || busy || suggesting}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => send({ type: "suggest-start" })}
+        >
+          {suggesting ? (
+            <>
+              <span className="ui-spinner" aria-hidden="true" />
+              추천 중… (Esc 취소)
+            </>
+          ) : (
+            "✦ 추천 받기"
+          )}
+        </button>
+        <button
+          className="ce-review-toggle"
+          aria-expanded={reviewOpen}
+          onClick={() => setReviewOpen(true)}
+        >
+          검토 보기
+        </button>
+        <button className="primary" aria-label="이 묶음 검토" aria-keyshortcuts="Meta+Enter Control+Enter" title={(dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다")+" (⌘/Ctrl+Enter)"} disabled={busy} onClick={() => void request("selected")}>
+          {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
+        </button>
+        <Menu label="더 보기" menuLabel="편집 메뉴" items={menuItems} />
+        <Popover label="단축키 도움말" className="ce-help">
+          <dl>
+            <dt>저장</dt>
+            <dd>{live ? <>변경은 자동으로 저장돼요 · {k("⌘/Ctrl+S")} 바로 저장</> : <>{k("⌘/Ctrl+S")} 저장</>}</dd>
+            <dt>검토</dt>
+            <dd>{k("⌘/Ctrl+Enter")} 이 묶음 · {k("⌘/Ctrl+Shift+Enter")} 변경분</dd>
+            <dt>추천</dt>
+            <dd>{k("⌥\\")} 추천 받기 · {k("Tab")} 수락 · {k("⌘/Ctrl+→")} 한 어절 · {k("⌥]")} 다른 추천 · {k("Esc")} 닫기</dd>
+            <dt>제안</dt>
+            <dd>{k("Tab")} 적용·다음 · {k("Shift+Tab")} 이전 · {k("Esc")} 유지 · {k("⌥/Alt+↓")} 제안 버튼</dd>
+            <dt>삭제</dt>
+            <dd>이름표·사진 클릭 후 {k("Delete")} 묶음 삭제 · 빈 문단에서 {k("Backspace")} 문단 삭제</dd>
+            <dt>표시</dt>
+            <dd>빨간 취소선은 삭제, 초록 밑줄은 추가예요. ✦ 서식·✦ 메모·⚠ 표시는 누르면 열려요. 본문이 바뀐 제안은 본문에 표시하지 않아요.</dd>
+          </dl>
+          <p className="ui-meta ce-help-path" title={doc.path}>연결된 정본 · {doc.path}</p>
+        </Popover>
       </header>
-      <div className="ce-toolbar">
-        <FormattingToolbar
-          selection={selectionFormat}
-          disabled={busy}
-          onFormat={format}
-        />
-        <div className="ce-review-actions">
-          <button
-            className="ce-suggest"
-            aria-keyshortcuts="Alt+Backslash"
-            aria-busy={suggesting || undefined}
-            title={doc.format === "markup" ? "커서 위치에 이어 쓸 문장을 추천받아요 (⌥\\)" : "이 형식에서는 추천을 지원하지 않아요. 마크업 원고에서 사용할 수 있어요."}
-            disabled={doc.format !== "markup" || busy || suggesting}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => send({ type: "suggest-start" })}
-          >
-            {suggesting ? (
-              <>
-                <span className="ce-spin" aria-hidden="true" />
-                추천 중… (Esc 취소)
-              </>
-            ) : (
-              "✦ 추천 받기"
-            )}
-          </button>
-          {doc.format==="markup" && <button aria-expanded={photoOpen} aria-controls="ce-photo-picker" onClick={()=>setPhotoOpen(!photoOpen)}>사진 넣기 ({photos.length})</button>}
-          {doc.format==="markup" && <button aria-expanded={stickerOpen} aria-controls="ce-sticker-planner" onClick={()=>setStickerOpen(!stickerOpen)}>스티커 ({stickers.length})</button>}
-          <label>
-            본문 폭{" "}
-            <select
-              aria-label="본문 보기 폭"
-              value={width}
-              onChange={(e) => setWidth(Number(e.target.value))}
-            >
-              <option value={430}>모바일</option>
-              <option value={900}>PC</option>
-            </select>
-          </label>
-          {doc.format==="markup" && <button
-            aria-keyshortcuts="Delete"
-            title="선택한 묶음을 지웁니다. 본문에서 묶음의 글 밖(사진·이름표)을 클릭한 뒤 Delete/Backspace로도 지울 수 있어요. 몇 초 안에 삭제 취소로 되돌릴 수 있어요."
-            disabled={busy || !bundle || doc.bundles.length - deleted.length <= 1}
-            onClick={() => deleteBundle(selected)}
-          >
-            묶음 삭제
-          </button>}
-          {removals.length > 0 && <button disabled={busy || (!!lastRemoval && deleteInFlight(lastRemoval))} title={lastRemoval && deleteInFlight(lastRemoval) ? "삭제를 저장하는 중이에요" : undefined} onClick={undoDelete}>삭제 취소 ({removals.length})</button>}
-          <button aria-label="이 묶음 검토" title={dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다"} disabled={busy} onClick={() => void request("selected")}>
-            {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
-          </button>
-          <button
-            disabled={busy || !changed.length}
-            onClick={() => void request("changed")}
-          >
-            {dirty?"저장 후 변경분 검토":"변경분 검토"} ({changed.length})
-          </button>
-          <button
-            className="ce-review-toggle"
-            aria-expanded={reviewOpen}
-            onClick={() => setReviewOpen(true)}
-          >
-            검토 보기
-          </button>
-        </div>
-      </div>
-      {syncNote && <p className="ce-sync-note" role="status">{syncNote} <button aria-label="알림 닫기" onClick={()=>setSyncNote("")}>닫기</button></p>}
-      <div className="ce-feedback" aria-live="polite">
-        {saveState==="failed"&&saveRetry ? (
-          <span role="alert">저장하지 못했어요. 편집 내용은 화면에 남아 있고 자동으로 다시 시도해요. {saveRetry.error==="BUSY"?"다른 도구가 저장하는 중이에요.":saveRetry.error}</span>
-        ) : error ? (
-          <span role="alert">{error}</span>
-        ) : (
-          notice ||
-          "본문을 클릭해 바로 수정하세요. 변경은 자동으로 저장돼요(⌘/Ctrl+S는 바로 저장) · 묶음 바깥 클릭 후 Delete 묶음 삭제 · 빈 문단에서 Backspace 문단 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
-        )}
-      </div>
-      {doc.format==="markup" && photoOpen && <PhotoPicker revision={doc.revision} placements={photos} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changePhotos} onReveal={id=>send({type:"reveal-photo",id})} onClose={()=>setPhotoOpen(false)}/>}
-      {doc.format==="markup" && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})}/></div>}
-      <button
-        className="ce-outline-toggle"
-        aria-expanded={outlineOpen}
-        onClick={() => setOutlineOpen(!outlineOpen)}
-      >
-        글의 흐름 · {bundle?.name} {outlineOpen ? "접기" : "펼치기"}
-      </button>
+      {syncNote && <p className="ce-sync-note" role="status"><span>{syncNote}</span> <button className="small" aria-label="알림 닫기" onClick={()=>setSyncNote("")}>닫기</button></p>}
+      {markup && photoOpen && <PhotoPicker revision={doc.revision} placements={photos} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changePhotos} onReveal={id=>send({type:"reveal-photo",id})} onClose={()=>setPhotoOpen(false)}/>}
+      {markup && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})} onClose={()=>setStickerOpen(false)}/></div>}
       {narrow && reviewOpen && (
         <button
           className="ce-drawer-backdrop"
@@ -1225,37 +1248,30 @@ export function CanonicalBlogEditor() {
           aria-label="정본 묶음"
         >
           <h2>글의 흐름</h2>
-          {doc.bundles.filter((b) => !deleted.includes(b.id)).map((b, i) => (
-            <button
-              aria-pressed={b.id === selected}
-              key={b.id}
-              onKeyDown={(e) => {
-                if ((e.key === "Delete" || e.key === "Backspace") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                  e.preventDefault();
-                  deleteBundle(b.id);
-                }
-              }}
-              onClick={() => {
-                setSelected(b.id);
-                setOutlineOpen(false);
-                send({ type: "jump", id: b.id });
-              }}
-            >
-              <small>
-                {String(i + 1).padStart(2, "0")} ·{" "}
-                {queued.includes(b.id)
-                  ? "검토 요청됨"
-                  : changed.includes(b.id)
-                    ? "변경 영향 있음"
-                    : "기존 원고"}
-              </small>
-              <strong>{b.name}</strong>
-            </button>
-          ))}
-          <details>
-            <summary>연결된 정본</summary>
-            <p>{doc.path}</p>
-          </details>
+          {doc.bundles.filter((b) => !deleted.includes(b.id)).map((b) => {
+            const state = queued.includes(b.id) ? "검토 요청됨" : changed.includes(b.id) ? "변경 영향 있음" : undefined;
+            return (
+              <button
+                aria-pressed={b.id === selected}
+                key={b.id}
+                title={state ? `${b.name} · ${state}` : b.name}
+                onKeyDown={(e) => {
+                  if ((e.key === "Delete" || e.key === "Backspace") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                    e.preventDefault();
+                    deleteBundle(b.id);
+                  }
+                }}
+                onClick={() => {
+                  setSelected(b.id);
+                  setOutlineOpen(false);
+                  send({ type: "jump", id: b.id });
+                }}
+              >
+                <span className="ce-outline-name">{b.name}</span>
+                {state && <Dot tone={queued.includes(b.id) ? "primary" : "neutral"} label={state} />}
+              </button>
+            );
+          })}
         </nav>
         <div className="ce-paper-area">
           <iframe
@@ -1274,127 +1290,145 @@ export function CanonicalBlogEditor() {
           aria-hidden={narrow && !reviewOpen ? true : undefined}
           aria-label="묶음 검토"
         >
-          <button
-            className="ce-review-close"
-            aria-label="검토 닫기"
-            onClick={() => setReviewOpen(false)}
-          >
-            닫기 ×
-          </button>
-          {doc.format==="markup"&&<BlogChat attachments={chatAttachments} revision={doc.revision} bundleId={selected||undefined} disabled={busy} focusToken={chatFocus}
-            sourceOf={chatSource} plainOf={chatPlain}
-            onRemove={key=>setChatAttachments(old=>old.filter(a=>a.key!==key))}
-            onSent={keys=>setChatAttachments(old=>old.filter(a=>!keys.includes(a.key)))}
-            onApply={applyChatRewrite} onMemo={saveChatMemo} onJump={id=>send({type:"focus",id})}/>}
-          {doc.format==="markup"&&<UserAnnotations target={annotationTarget} revision={doc.revision} onChanged={()=>send({type:"annotations-changed"})} onClose={()=>setAnnotationTarget(undefined)} onJump={id=>send({type:"focus",id})}/>}
-          <small>선택한 묶음</small>
-          <h2>{bundle?.name}</h2>
-          <p>{bundle?.question}</p>
-          <hr />
-          <h3>AI 검토 결과</h3>
-          {doc.format==="markup"&&<>
-            {reviewPreparing&&<p role="status">검토할 화면을 준비하고 있어요…</p>}
-            {reviewStatusError&&<p role="alert">{reviewStatusError}</p>}
-            {reviewJobs.filter(j=>!j.bundleIds.length||j.bundleIds.includes(selected)).slice(0,1).map(j=><div key={j.id} role="status">
-              <p>{({pending:"검토 시작 대기",running:"AI 검토 실행 중",completed:"검토 응답 도착",failed:"검토 실패",cancelled:"검토 중지",interrupted:"실행 중단",stale:"본문 변경 · 다시 검토 필요"} as Record<string,string>)[j.status]??j.status}</p>
-              {j.error&&<p>{j.error}</p>}
-              {["failed","cancelled","interrupted","stale"].includes(j.status)&&<button disabled={busy} onClick={()=>void request("selected")}>검토 다시 실행</button>}
-            </div>)}
-            {review?.generatedAt&&<p>{review.provider??"AI"} · {new Date(review.generatedAt).toLocaleString()}</p>}
-          </>}
-          <p className="ce-review-note">
-            문장 제안은 본문의 해당 구절에 바로 표시돼요(빨간 취소선은 삭제, 초록 밑줄은 추가). 구절을 누르거나 Tab으로 이동해 적용·유지를 고르세요. 서식(✦ 서식)은 구절 뒤, 겹친 제안(✦ 겹친 제안)은 먼저 표시된 제안 뒤, 메모(✦ 메모)와 확인 필요(⚠)는 문단 끝이나 사진 옆에 작은 표시로 나오고, 누르면 열려요. 본문이 바뀐 제안은 본문에 표시하지 않아요.
-          </p>
-          {doc.format!=="markup" && queued.includes(selected) && (
-            <p role="status">검토 요청됨 · 엔진 처리 대기</p>
-          )}
-          {review ? (
-            <>
-              {doc.format==="markup"&&<section className="ce-visual-review" aria-label="강조·화면 검수">
-                <strong>{!review.visual||review.visual.status==="unverified"?"화면 미검증":dirty||!review.visualFresh?"화면 재확인 필요":review.visual.status==="pass"?"화면 확인 통과":"강조·화면 수정 필요"}</strong>
-                <p>{!review.visual?"이전 결과에는 실제 화면 검증 근거가 없습니다.":review.visual.status==="unverified"?"실제 화면을 확인하지 않은 서식 제안입니다. 화면 검수를 완료해야 합니다.":dirty||!review.visualFresh?"검토 이후 원고가 바뀌었습니다. 아래 화면은 검토 당시 기록입니다.":review.visual.observation}</p>
-                {!!review.screenshots?.length&&<details><summary>검토한 화면 보기</summary>{review.screenshots.map(e=><figure key={e.index}><figcaption>{e.width}px</figcaption><img alt={e.width+"px 검토 당시 묶음 화면"} src={"/api/blog/review-image?request="+encodeURIComponent(review.requestId??"")+"&index="+e.index}/></figure>)}</details>}
-                {review.emphasisDecisions?.map((d,i)=><details key={i}>
-                  <summary>{d.phrase} · {d.role}</summary>
-                  <p>선택: {d.methods.map(m=>({weight:"굵기",color:"색",background:"배경",size:"크기",marker:"표식",none:"강조 없음"})[m]).join(" · ")} · {({keep:"유지",change:"변경 제안",remove:"제거 제안",unconfirmed:"미확인"})[d.action]}</p>
-                  <p>{d.reason}</p><p>다른 방식과 비교: {d.alternatives}</p>
-                </details>)}
-              </section>}
-              <details className="ce-review-summary">
-                <summary>묶음 평가 요약</summary>
-                <p>{review.summary}</p>
-              </details>
-              {!review.freshText && (
-                <p className="ce-warning">
-                  {doc.format==="markup"?"검토 뒤 내용이 달라졌어요. 각 제안의 대상 구절을 따로 확인합니다.":"검토 당시와 문장이 달라요. 이전 제안의 적용은 잠겨 있어요."}
-                </p>
-              )}
-              {reviewItems.length > 0 && (
-                <p className="ce-proposal-counts" role="status">
-                  본문 제안 {reviewCounts.body} · 적용 가능 {reviewCounts.available} · 확인 필요 {reviewCounts.check}
-                </p>
-              )}
-              <ul className="ce-proposal-list" aria-label="AI 제안 목록">
-                {reviewItems.map((item) => {
-                  const chip = proposalChip(item);
-                  const body = hasBodyMark(item, doc);
-                  const settled = item.state === "decided" || item.state === "applied";
-                  return (
-                    <li key={item.id} className="ce-proposal" data-state={item.state} data-proposal={item.id}>
-                      <div className="ce-proposal-head">
-                        <span className={`ce-chip is-${chip.tone}`}>{chip.label}</span>
-                        <small>{[item.severity, item.axis].filter(Boolean).join(" · ")}</small>
-                      </div>
-                      <p className="ce-proposal-line">{proposalSummary(item)}</p>
-                      {item.state !== "decided" && item.kind !== "note" && !item.canApply && (
-                        <p className="ce-warning ce-proposal-reason">{item.reason}</p>
-                      )}
-                      {(body || !settled) && (
-                        <div className="ce-proposal-actions">
-                          {body ? (
-                            <button onClick={() => revealProposal(item)}>본문에서 보기</button>
-                          ) : (
-                            <button
-                              disabled={busy}
-                              onClick={() => {
-                                handledRef.current.add(item.id);
-                                setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
-                              }}
-                            >
-                              현재 유지
-                            </button>
-                          )}
+          <div className="ce-panel-head">
+            {markup ? (
+              <Segmented<SidePanel>
+                label="오른쪽 패널"
+                items={[
+                  { value: "review", label: "검토" },
+                  { value: "chat", label: "채팅" },
+                  { value: "memo", label: annotationCount ? `메모 ${annotationCount}` : "메모" },
+                ]}
+                value={panel}
+                onChange={setPanel}
+              />
+            ) : (
+              <h2 className="ce-panel-title">검토</h2>
+            )}
+            <button
+              className="icon-button ce-review-close"
+              aria-label="검토 닫기"
+              title="검토 닫기"
+              onClick={() => setReviewOpen(false)}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+          <section className="ce-review-pane" aria-label="AI 검토" hidden={markup && panel !== "review"}>
+            <header className="ce-review-head">
+              <h2>{bundle?.name}</h2>
+              {bundle?.question && <p className="ui-meta">{bundle.question}</p>}
+            </header>
+            {markup&&<>
+              {reviewPreparing&&<p className="ce-review-line" role="status">검토할 화면을 준비하고 있어요…</p>}
+              {reviewStatusError&&<p className="ce-review-line ce-warning" role="alert">{reviewStatusError}</p>}
+              {reviewJobs.filter(j=>!j.bundleIds.length||j.bundleIds.includes(selected)).slice(0,1).map(j=><div key={j.id} className="ce-review-job" role="status">
+                <p>{({pending:"검토 시작 대기",running:"AI 검토 실행 중",completed:"검토 응답 도착",failed:"검토 실패",cancelled:"검토 중지",interrupted:"실행 중단",stale:"본문 변경 · 다시 검토 필요"} as Record<string,string>)[j.status]??j.status}</p>
+                {j.error&&<p className="ui-meta">{j.error}</p>}
+                {["failed","cancelled","interrupted","stale"].includes(j.status)&&<button className="secondary small" disabled={busy} onClick={()=>void request("selected")}>검토 다시 실행</button>}
+              </div>)}
+              {review?.generatedAt&&<p className="ui-meta">{review.provider??"AI"} · {new Date(review.generatedAt).toLocaleString()}</p>}
+            </>}
+            {!markup && queued.includes(selected) && (
+              <p className="ce-review-line" role="status">검토 요청됨 · 엔진 처리 대기</p>
+            )}
+            {review ? (
+              <>
+                {markup&&<section className="ce-visual-review" aria-label="강조·화면 검수">
+                  <strong>{!review.visual||review.visual.status==="unverified"?"화면 미검증":dirty||!review.visualFresh?"화면 재확인 필요":review.visual.status==="pass"?"화면 확인 통과":"강조·화면 수정 필요"}</strong>
+                  <p>{!review.visual?"이전 결과에는 실제 화면 검증 근거가 없습니다.":review.visual.status==="unverified"?"실제 화면을 확인하지 않은 서식 제안입니다. 화면 검수를 완료해야 합니다.":dirty||!review.visualFresh?"검토 이후 원고가 바뀌었습니다. 아래 화면은 검토 당시 기록입니다.":review.visual.observation}</p>
+                  {!!review.screenshots?.length&&<details><summary>검토한 화면 보기</summary>{review.screenshots.map(e=><figure key={e.index}><figcaption>{e.width}px</figcaption><img alt={e.width+"px 검토 당시 묶음 화면"} src={"/api/blog/review-image?request="+encodeURIComponent(review.requestId??"")+"&index="+e.index}/></figure>)}</details>}
+                  {review.emphasisDecisions?.map((d,i)=><details key={i}>
+                    <summary>{d.phrase} · {d.role}</summary>
+                    <p>선택: {d.methods.map(m=>({weight:"굵기",color:"색",background:"배경",size:"크기",marker:"표식",none:"강조 없음"})[m]).join(" · ")} · {({keep:"유지",change:"변경 제안",remove:"제거 제안",unconfirmed:"미확인"})[d.action]}</p>
+                    <p>{d.reason}</p><p>다른 방식과 비교: {d.alternatives}</p>
+                  </details>)}
+                </section>}
+                <details className="ce-review-summary">
+                  <summary>묶음 평가 요약</summary>
+                  <p>{review.summary}</p>
+                </details>
+                {!review.freshText && (
+                  <p className="ce-warning ce-review-line">
+                    {markup?"검토 뒤 내용이 달라졌어요. 각 제안의 대상 구절을 따로 확인합니다.":"검토 당시와 문장이 달라요. 이전 제안의 적용은 잠겨 있어요."}
+                  </p>
+                )}
+                {reviewItems.length > 0 && (
+                  <p className="ce-proposal-counts" role="status">
+                    본문 제안 {reviewCounts.body} · 적용 가능 {reviewCounts.available} · 확인 필요 {reviewCounts.check}
+                  </p>
+                )}
+                <ul className="ce-proposal-list" aria-label="AI 제안 목록">
+                  {reviewItems.map((item) => {
+                    const chip = proposalChip(item);
+                    const body = hasBodyMark(item, doc);
+                    const settled = item.state === "decided" || item.state === "applied";
+                    return (
+                      <li key={item.id} className="ce-proposal" data-state={item.state} data-proposal={item.id}>
+                        <div className="ce-proposal-head">
+                          <span className={`ce-chip is-${chip.tone}`}>{chip.label}</span>
+                          <small>{[item.severity, item.axis].filter(Boolean).join(" · ")}</small>
                         </div>
-                      )}
-                      <details className="ce-proposal-evidence">
-                        <summary>제안 이유</summary>
-                        <p>{item.observation}</p>
-                        {item.kind !== "note" && <p>{item.reason}</p>}
-                        {item.kind === "text" && (
-                          <dl className="ce-proposal-full">
-                            <dt>원문</dt><dd>{item.before}</dd>
-                            <dt>제안</dt><dd>{item.after || "(삭제)"}</dd>
-                          </dl>
+                        <p className="ce-proposal-line">{proposalSummary(item)}</p>
+                        {item.state !== "decided" && item.kind !== "note" && !item.canApply && (
+                          <p className="ce-warning ce-proposal-reason">{item.reason}</p>
                         )}
-                      </details>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          ) : (
-            <p>저장된 검토가 없어요. 준비되면 이 묶음 검토를 눌러주세요.</p>
-          )}
-          {doc.format !== "markup" && <CanonicalSdkReview
-            document={doc}
-            selected={selected}
-            dirty={dirty}
-            busy={busy}
-            onApply={apply}
-          />}
-          <p className="ce-review-note">
-            제안 선택은 이 화면에 유지됩니다. {live?"적용한 본문은 자동으로 저장돼요.":"적용한 본문은 정본 저장을 눌러 보관하세요."}
-          </p>
+                        {(body || !settled) && (
+                          <div className="ce-proposal-actions">
+                            {body ? (
+                              <button className="small" onClick={() => revealProposal(item)}>본문에서 보기</button>
+                            ) : (
+                              <button
+                                className="small"
+                                disabled={busy}
+                                onClick={() => {
+                                  handledRef.current.add(item.id);
+                                  setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
+                                }}
+                              >
+                                현재 유지
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <details className="ce-proposal-evidence">
+                          <summary>제안 이유</summary>
+                          <p>{item.observation}</p>
+                          {item.kind !== "note" && <p>{item.reason}</p>}
+                          {item.kind === "text" && (
+                            <dl className="ce-proposal-full">
+                              <dt>원문</dt><dd>{item.before}</dd>
+                              <dt>제안</dt><dd>{item.after || "(삭제)"}</dd>
+                            </dl>
+                          )}
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : (
+              <p className="ui-meta ce-review-line">저장된 검토가 없어요. 이 묶음 검토로 시작해요.</p>
+            )}
+            {!markup && <CanonicalSdkReview
+              document={doc}
+              selected={selected}
+              dirty={dirty}
+              busy={busy}
+              onApply={apply}
+            />}
+            {!markup && <p className="ui-meta ce-review-line">적용한 본문은 정본 저장을 눌러 보관하세요.</p>}
+          </section>
+          {markup&&<div className="ce-side-pane" hidden={panel !== "chat"}>
+            <BlogChat attachments={chatAttachments} revision={doc.revision} bundleId={selected||undefined} disabled={busy} focusToken={chatFocus}
+              sourceOf={chatSource} plainOf={chatPlain}
+              onRemove={key=>setChatAttachments(old=>old.filter(a=>a.key!==key))}
+              onSent={keys=>setChatAttachments(old=>old.filter(a=>!keys.includes(a.key)))}
+              onApply={applyChatRewrite} onMemo={saveChatMemo} onJump={id=>send({type:"focus",id})}/>
+          </div>}
+          {markup&&<div className="ce-side-pane" hidden={panel !== "memo"}>
+            <UserAnnotations target={annotationTarget} revision={doc.revision} onCount={setAnnotationCount} onChanged={()=>send({type:"annotations-changed"})} onClose={()=>setAnnotationTarget(undefined)} onJump={id=>send({type:"focus",id})}/>
+          </div>}
         </aside>
       </div>
     </main>

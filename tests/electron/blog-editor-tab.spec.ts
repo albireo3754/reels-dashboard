@@ -4,6 +4,7 @@ import path from "node:path";
 import { markupFixture } from "../fixtures/markup-editor";
 import { cleanProfile, closeApp, launchApp, makeProfile, pressWorkbenchKey } from "./helpers";
 import { closeEditorTab, editorIframe, openBlogEditor, windowCount } from "./blog-editor-helpers";
+import { chooseEditorMenu } from "../web/canonical-editor-helpers";
 
 const HELP_URL = "https://help.naver.com/service/5593/contents/15529?lang=ko";
 
@@ -135,7 +136,7 @@ test("embedded editor keeps its navigation, popup and permission limits", async 
     await editor.locator("#ce-save-status").click();
     expect(await editor.evaluate(() => window.open("https://example.com/focused", "_blank", "noreferrer"))).toBeNull();
     // The help link is the one page that goes to the external browser.
-    await editor.getByRole("button", { name: "스티커 (0)", exact: true }).click();
+    await chooseEditorMenu(editor, "스티커 (0)");
     await editor.getByText("네이버에서 기본 스티커 넣는 방법", { exact: true }).click();
     await editor.getByRole("link", { name: "네이버 공식 스티커 첨부 안내 ↗" }).click();
     await expect.poll(opened).toEqual([HELP_URL]);

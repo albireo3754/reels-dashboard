@@ -45,7 +45,8 @@ test("selection formatting survives palette focus, saves exact sizes and clears 
     const frame = page.frameLocator('iframe[title="정본 본문 편집"]');
     const paragraph = frame.locator('[data-tid="T1"]');
     await expect(paragraph).toContainText("잠시");
-    await expect(page.getByLabel("글자 크기", { exact: true })).toBeDisabled();
+    // Formatting controls appear only while a phrase is selected.
+    await expect(page.getByLabel("글자 크기", { exact: true })).toHaveCount(0);
     const selectWord = async () =>
       paragraph.evaluate((el) => {
         el.focus();
