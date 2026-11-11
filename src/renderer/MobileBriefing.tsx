@@ -96,7 +96,8 @@ export function MobileBriefing({
       </section>
     );
   return (
-    <Section className="briefing-panel" aria-label="모바일 브리핑">
+    // 설정 화면의 다른 섹션과 같은 열(settings-section 최대 폭)에 맞춘다.
+    <Section className="briefing-panel settings-section" aria-label="모바일 브리핑">
       <SectionHeader
         title="모바일 브리핑"
         description="본인 전용 사이트에서 진행 현황과 캡션·댓글을 확인해요."
