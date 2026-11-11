@@ -2268,6 +2268,8 @@ const jsonValues: Record<string, unknown> = {
   evidence: ["result.md"],
   fields: {},
   sourceIds: ["source"],
+  paths: ["/absolute/path/final.mp4"],
+  files: [{ sourcePath: "/absolute/path/final.mp4", name: "final.mp4", role: "final" }],
   edit: { kind: "video", id: projectId },
   content: {
     id: "sample",

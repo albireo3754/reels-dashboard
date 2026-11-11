@@ -295,7 +295,7 @@ export class ContentLibrary {
   async resolveMedia(projectId: string, candidate: string) {
     const result = await this.resolveLinkedFile(projectId, candidate);
     if (!result.info.isDirectory() && !media.has(path.extname(result.path).toLowerCase()))
-      throw new Error("미리보기를 지원하지 않는 자료예요.");
+      throw new UnsupportedMedia("미리보기를 지원하지 않는 자료예요.");
     return result;
   }
 
