@@ -106,7 +106,8 @@ export class BlogExtractor {
   async extract(rawInput: unknown): Promise<BlogExtractResult> {
     const input = blogExtractInput.parse(rawInput);
     const post = parsePostUrl(input.url);
-    if (this.busy) throw new Error("다른 블로그 추출이 진행 중이에요. 끝난 뒤 다시 시도해주세요.");
+    if (this.busy)
+      throw Object.assign(new Error("다른 블로그 추출이 진행 중이에요. 끝난 뒤 다시 시도해주세요."), { code: "BLOG_EXTRACT_BUSY" });
     const parent = input.outputDirectory ?? (await this.defaultParent());
     if (!parent) throw new Error("저장 위치가 없어요. outputDirectory를 지정하거나 앱 블로그 탭에서 저장 위치를 한 번 선택해주세요.");
     const resolvedParent = await realpath(parent);

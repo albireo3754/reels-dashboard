@@ -1,12 +1,8 @@
-import os from "node:os";
-import path from "node:path";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { callAgent } from "../../shared/lib/agent-socket";
+import { agentRoot, callAgent } from "../../shared/lib/agent-socket";
 import { createMcpServer } from "./server";
 
-const root =
-  process.env.REELS_USER_DATA ??
-  path.join(os.homedir(), "Library", "Application Support", "Reels Dashboard");
+const root = agentRoot();
 const handle = serveStdio(() =>
   createMcpServer((name, args) => callAgent(root, name, args)),
 );

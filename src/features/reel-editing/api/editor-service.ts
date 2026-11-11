@@ -172,7 +172,10 @@ export class EditorService implements EditorBridge {
   }
   private async exclusive<T>(fn: () => Promise<T>): Promise<T> {
     if (this.busy || this.closing)
-      throw new Error("진행 중인 편집 작업이 끝난 뒤 다시 시도해주세요.");
+      throw Object.assign(
+        new Error("진행 중인 편집 작업이 끝난 뒤 다시 시도해주세요."),
+        { code: "EDITOR_BUSY" },
+      );
     this.pending++;
     try {
       return await fn();
@@ -513,8 +516,11 @@ export class EditorService implements EditorBridge {
             : [output, manifest];
         for (const file of outputFiles)
           if (await exists(file))
-            throw new Error(
-              "같은 이름의 결과가 있어요. 새 파일 이름을 선택해주세요.",
+            throw Object.assign(
+              new Error(
+                "같은 이름의 결과가 있어요. 새 파일 이름을 선택해주세요.",
+              ),
+              { code: "OUTPUT_EXISTS" },
             );
         const job: RenderJob = {
           id: randomUUID(),
@@ -617,7 +623,10 @@ export class EditorService implements EditorBridge {
   }
   async job(id: string) {
     const job = this.jobs.get(id);
-    if (!job) throw new Error("내보내기 작업을 찾지 못했어요.");
+    if (!job)
+      throw Object.assign(new Error("내보내기 작업을 찾지 못했어요."), {
+        code: "RENDER_JOB_NOT_FOUND",
+      });
     if (this.activeJob === job && job.state !== "running")
       return { ...job, state: "running" as const, phase: "작업 정리 중" };
     return { ...job };
@@ -626,7 +635,9 @@ export class EditorService implements EditorBridge {
     const job = this.jobs.get(id);
     if (!job || job.state !== "running") return;
     if (job.phase === "결과 저장")
-      throw new Error("결과 파일 저장을 마무리하고 있어요.");
+      throw Object.assign(new Error("결과 파일 저장을 마무리하고 있어요."), {
+        code: "RENDER_SAVE_BUSY",
+      });
     job.state = "cancelled";
     job.phase = "내보내기 취소됨";
     const child = this.activeChild;

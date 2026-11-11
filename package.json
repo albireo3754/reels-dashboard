@@ -6,6 +6,9 @@
   "license": "MIT",
   "type": "module",
   "main": "dist-electron/main.cjs",
+  "bin": {
+    "reels": "dist-cli/reels.mjs"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
@@ -32,6 +35,7 @@
     "check:architecture": "node scripts/check-architecture.mjs",
     "test:editor-engine": "EDITOR_RUNTIME=\"$PWD/native/editor-engine/.build/runtime/reels-editor\" EDITOR_TEST_HDR=1 native/editor-engine/.build/venv/bin/python -m unittest discover -s native/editor-engine -p test_editor.py -v",
     "start:mcp": "node dist-mcp/server.mjs",
+    "test:cli": "REELS_CLI_BUNDLE=dist-cli/reels.mjs node --import tsx --test tests/unit/reels-cli-bundle.test.ts",
     "test:mcp": "REELS_EDITOR_QA=1 playwright test --config playwright.electron.config.ts tests/electron/mcp.spec.ts",
     "workflow": "node --import tsx src/app/workflow/main.ts",
     "start:server": "node --import tsx src/app/workflow/main.ts serve",

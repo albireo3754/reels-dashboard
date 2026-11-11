@@ -23,7 +23,7 @@ test("local media preparation verifies registered copies and rejects missing gra
       assert.equal(await readFile(source, "utf8"), "original source");
       assert.match(result.entries[0].sha256, /^[a-f0-9]{64}$/);
       assert.equal(JSON.parse(await readFile(result.receiptPath, "utf8")).entries.length, 1);
-      await assert.rejects(prepareLocalMedia(library, input), /EEXIST/);
+      await assert.rejects(prepareLocalMedia(library, input), /already exists/);
       const badDestination = path.join(outputParent, "unregistered");
       const other = path.join(root, "other.mov"); await writeFile(other, "not registered");
       await assert.rejects(prepareLocalMedia(library, { ...input, sources: [source, other], destination: badDestination }), /등록한 자료/);

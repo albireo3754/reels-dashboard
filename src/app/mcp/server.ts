@@ -1,16 +1,14 @@
 import { mcpResult, mcpError } from "../../shared/mcp-result";
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
-import { toolDefinitions } from "../../features/agent-tools";
+import { agentGuidance, toolDefinitions } from "../../features/agent-tools";
+import { parseDataUrl } from "../../shared/lib/data-url";
 
 export function createMcpServer(
   call: (name: string, args: unknown) => Promise<any>,
 ) {
   const server = new McpServer(
     { name: "reels-dashboard", version: "0.1.0" },
-    {
-      instructions:
-        "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. No upload, publishing, Photos deletion or arbitrary shell execution is provided. Content prose stays in the content workspace.",
-    },
+    { instructions: agentGuidance },
   );
   for (const [name, definition] of Object.entries(toolDefinitions)) {
     server.registerTool(
@@ -28,13 +26,14 @@ export function createMcpServer(
         try {
           const result = await call(name, args);
           if (name === "reels_preview_frame") {
-            if (!result.image?.startsWith("data:image/png;base64,"))
+            const image = parseDataUrl(result.image);
+            if (image?.mimeType !== "image/png")
               throw new Error("Invalid preview image");
             return {
               content: [
                 {
                   type: "image",
-                  data: result.image.slice("data:image/png;base64,".length),
+                  data: image.data,
                   mimeType: "image/png",
                 },
                 {

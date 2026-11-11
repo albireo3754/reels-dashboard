@@ -60,6 +60,8 @@ Existing footage folders, completed videos/covers and content documents can be l
 
 The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI's editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
 
+Agents working from a shell can use the `reels` CLI instead. It calls every MCP tool over the same socket, prints one JSON document on stdout, documents its exit codes, saves preview images to files and can wait for render jobs. Copying registered media to a local folder works without the app. Build it with `npm run build:desktop` and see [CLI usage](docs/cli-usage.md).
+
 사진과 조사 자료를 먼저 준비한 뒤 직접 경험을 한 폼으로 받아 초안에 연결할 수 있다. [경험 수집 워크플로](docs/experience-intake.md).
 
 ## Shared input forms

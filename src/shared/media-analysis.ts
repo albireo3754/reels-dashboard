@@ -22,6 +22,11 @@ export const analysisFields = z.strictObject({
   uncertainties: z.array(z.string().max(1000)).max(30),
 });
 export type AnalysisFields = z.infer<typeof analysisFields>;
+const analysisRevision = z
+  .number()
+  .int()
+  .min(0)
+  .describe("revision returned by search_analysis; stale revisions are rejected.");
 export const analysisStart = z.strictObject({
   projectId: z.string().min(1).max(160),
   folder: z.string().startsWith("/").max(4096),
@@ -33,7 +38,7 @@ export const analysisStart = z.strictObject({
       "장면 설명, 검색 태그, 화면 글자와 확인이 필요한 사항을 한국어로 분석해주세요.",
     ),
   context: analysisContext.optional(),
-  expectedRevision: z.number().int().min(0).optional(),
+  expectedRevision: analysisRevision.optional(),
   maxFiles: z.number().int().min(1).max(200).default(100),
 });
 export const analysisQuery = z.strictObject({
@@ -43,7 +48,7 @@ export const analysisQuery = z.strictObject({
 export const analysisCorrection = z.strictObject({
   projectId: z.string().min(1).max(160),
   sampleId: z.string().min(1).max(100),
-  expectedRevision: z.number().int().min(0),
+  expectedRevision: analysisRevision,
   fields: analysisFields.partial(),
 });
 export interface AnalysisSample {

@@ -50,3 +50,16 @@ await build({
   packages: "external",
   sourcemap: true,
 });
+
+// Single self-contained file: zod is bundled so the CLI runs from any directory.
+await build({
+  entryPoints: ["src/app/cli/main.ts"],
+  outfile: "dist-cli/reels.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  sourcemap: true,
+  banner: { js: "#!/usr/bin/env node" },
+});
+await chmod("dist-cli/reels.mjs", 0o755);

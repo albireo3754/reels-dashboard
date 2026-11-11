@@ -24,15 +24,20 @@ export const productionSchema = z.strictObject({
     .max(2000),
 });
 export type Production = z.infer<typeof productionSchema>;
+export const dashboardRevision = z.iso
+  .datetime()
+  .describe(
+    "Dashboard revision, not a project's updatedAt: dashboard.updatedAt from list_projects, or updatedAt from get_content. Stale revisions are rejected.",
+  );
 export const mergeProjectsSchema = z.strictObject({
   targetId: z.string().min(1).max(160),
   sourceIds: z.array(z.string().min(1).max(160)).min(1).max(100),
-  expectedUpdatedAt: z.iso.datetime(),
+  expectedUpdatedAt: dashboardRevision,
 });
 export const linkEditSchema = z.strictObject({
   projectId: z.string().min(1).max(160),
   edit: editRefSchema,
-  expectedUpdatedAt: z.iso.datetime(),
+  expectedUpdatedAt: dashboardRevision,
 });
 export type MergeProjectsInput = z.infer<typeof mergeProjectsSchema>;
 export type LinkEditInput = z.infer<typeof linkEditSchema>;

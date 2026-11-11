@@ -15,9 +15,14 @@ export const createFormInput = z.strictObject({
 export const listFormsInput = z.strictObject({
   projectId: z.string().max(160).optional(),
 });
+const formRevision = z
+  .number()
+  .int()
+  .nonnegative()
+  .describe("revision returned by form_get; stale revisions are rejected.");
 export const saveFormInput = z.strictObject({
   formId: z.string().uuid(),
-  expectedRevision: z.number().int().nonnegative(),
+  expectedRevision: formRevision,
   answers: z.array(experienceAnswerSchema).max(30),
   submit: z.boolean().default(false),
 });
@@ -28,7 +33,7 @@ export const formMediaInput = z.strictObject({
 });
 export const applyFormInput = z.strictObject({
   formId: z.string().uuid(),
-  expectedRevision: z.number().int().nonnegative(),
+  expectedRevision: formRevision,
   summary: z.string().trim().min(1).max(10000),
   evidence: z.array(z.string().min(1)).min(1).max(100),
 });
