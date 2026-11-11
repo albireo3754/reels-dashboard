@@ -22,6 +22,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from PIL import Image
+from reels_editor.shared.hardware import videotoolbox_args, dolby_config, render_dolby_hardware
 from reels_editor.entities.overlay import (
     KR_FONT,
     KR_PLACE_INDEX,
@@ -68,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--banner-material", choices=("rectangle", "tape"), default="rectangle",
                         help="pin-banner 배경: 기본 사각형 또는 찢어진 무광 검정 테이프")
     parser.add_argument("--dovi-maxrate", type=int, default=80000,
-                        help="Dolby Vision 재인코딩 최대 비트레이트(kbps), 기본 80000")
+                        help="Dolby Vision 하드웨어 목표 비트레이트 상한(kbps). 원본 비트레이트와 작은 값을 사용, 기본 80000")
     parser.add_argument("--hook-size", type=float,
                         help="훅 글자 크기 = 영상폭 × hook-size")
     parser.add_argument(
@@ -80,7 +81,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="핀은 상시 노출하고 --show-during을 훅·서명 묶음에 적용",
     )
-    parser.add_argument("--crf", type=int, default=18)
     parser.add_argument("--captions", type=Path,
                         help="명시적으로 요청한 본문 자막 JSON (font_size_ratio, y, captions)")
     parser.add_argument("--preview-time", type=float,
@@ -159,20 +159,7 @@ def main(argv: list[str] | None = None, *, preset=None, progress_callback=None) 
     if preserve_hdr:
         if "10" not in video_stream["pix_fmt"]:
             sys.exit("HDR 입력은 10bit 원본이 필요합니다")
-        encoding_args = [
-            "-c:v", "hevc_videotoolbox", "-profile:v", "main10",
-            "-pix_fmt", "p010le", "-b:v", "80M", "-tag:v", "hvc1",
-        ]
-        if any(
-            data.get("side_data_type") == "DOVI configuration record"
-            for data in video_stream.get("side_data_list", [])
-        ):
-            encoding_args = [
-                "-c:v", "libx265", "-preset", "veryfast", "-crf", str(args.crf),
-                "-pix_fmt", "yuv420p10le", "-dolbyvision", "1",
-                "-x265-params", f"vbv-maxrate={args.dovi_maxrate}:vbv-bufsize={args.dovi_maxrate*2}:log-level=error",
-                "-tag:v", "hvc1", "-strict", "unofficial",
-            ]
+        encoding_args = videotoolbox_args(hdr=True)
         for key, option in (
             ("color_primaries", "-color_primaries"),
             ("color_transfer", "-color_trc"),
@@ -184,10 +171,7 @@ def main(argv: list[str] | None = None, *, preset=None, progress_callback=None) 
             encoding_args.extend([option, video_stream[key]])
         print("원본 HDR·10bit 유지: 색보정·톤매핑 없이 핀 합성", file=sys.stderr)
     else:
-        encoding_args = [
-            "-c:v", "libx264", "-crf", str(args.crf), "-preset", "medium",
-            "-pix_fmt", "yuv420p",
-        ]
+        encoding_args = videotoolbox_args()
 
     if args.persistent_pin and (not args.hook or enable_expression is None):
         parser.error('--persistent-pin에는 --hook/--description과 --show-during이 필요합니다')
@@ -217,6 +201,23 @@ def main(argv: list[str] | None = None, *, preset=None, progress_callback=None) 
     if args.dry_run:
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
         return 0
+    # Adjacent overlays with the same timing can be flattened once, not per frame.
+    combined = []
+    for image, enable in overlay_layers:
+        if combined and combined[-1][1] == enable:
+            combined[-1][0].alpha_composite(image)
+        else:
+            combined.append((image.copy(), enable))
+    overlay_layers = combined
+    if dolby_config(video_stream):
+        manifest['encoding'] = render_dolby_hardware(
+            src, out, width, height, args.dovi_maxrate*1000, overlay_layers, duration, progress_callback)
+        manifest['encoding']['overlayPasses'] = len(overlay_layers)
+        out.with_suffix('.style.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+        print(f'완료: {out}')
+        return 0
+    manifest['encoding'] = dict(encoder='hevc_videotoolbox' if preserve_hdr else 'h264_videotoolbox',
+                                hardwareRequired=True, softwareFallback=False, overlayPasses=len(overlay_layers))
     with tempfile.TemporaryDirectory() as tmp_dir:
         overlay_paths: list[str] = []
         for index, (layer, _) in enumerate(overlay_layers, start=1):

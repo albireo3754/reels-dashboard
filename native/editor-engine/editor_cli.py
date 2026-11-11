@@ -18,6 +18,7 @@ if getattr(sys, 'frozen', False):
 from reels_editor.features.video_overlay import run as video_main
 from reels_editor.features.thumbnail import run as thumbnail_main
 from reels_editor.shared.media import probe_video, run_ffmpeg_progress
+from reels_editor.shared.hardware import videotoolbox_args
 from follow_cover import render_follow_cover
 from card_templates import render_batch
 from face_mosaic import render_mosaic
@@ -145,8 +146,8 @@ def proxy(source, output):
                     'zscale=p=bt709:t=bt709:m=bt709:r=tv']
     filters += ['scale=1080:1080:force_original_aspect_ratio=decrease:force_divisible_by=2', 'format=yuv420p']
     command = ['ffmpeg', '-y', '-v', 'error', '-i', str(source), '-map', '0:v:0', '-map', '0:a:0?',
-               '-vf', ','.join(filters), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-               '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
+               '-vf', ','.join(filters), *videotoolbox_args(), '-b:v', '6M',
+               '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
     if info['hdr']:
         command += ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     subprocess.run([*command, str(output)], check=True)

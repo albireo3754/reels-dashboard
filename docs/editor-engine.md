@@ -4,6 +4,65 @@ The Electron host calls `native/editor-engine/.build/runtime/reels-editor`. This
 
 The currently supported packaged target is **Apple Silicon, macOS 15 or later**, matching the deployment target of the media dependencies. The Swift PhotosIndex source has a lower minimum; that does not establish compatibility for the complete editor bundle.
 
+## Hardware encoding policy — 2026-11-11
+
+Production video encoding no longer selects `libx264` or `libx265` automatically.
+SDR reel exports, playback proxies and card-news videos use
+`h264_videotoolbox -allow_sw 0`; non-Dolby HDR uses HEVC Main10 VideoToolbox with
+software encoding disabled. CPU decoding, image preparation and some FFmpeg
+filters can still consume CPU; this is an encoder policy, not a zero-CPU claim.
+
+The old Dolby Vision CPU branch had a concrete reason: a plain FFmpeg
+`hevc_videotoolbox` conversion retained HLG/10-bit but lost Dolby Vision signaling
+in a real-input check. The replacement is the bundled `reels-hardware-render`:
+
+- AVFoundation reads 10-bit buffers and original presentation times. Metal/Core
+  Image composites the existing PNG overlays without SDR tone mapping. Adjacent
+  layers with identical timing are flattened once; template geometry is unchanged.
+- AVAssetWriter requires a hardware HEVC Main10 encoder using
+  `AVVideoEncoderSpecificationKey` / `RequireHardwareAcceleratedVideoEncoder`.
+  Hardware failure is an error, never a silent CPU retry.
+- Dolby Vision Profile 8.4 HLG metadata is regenerated for the composited pixels
+  (`HDRMetadataInsertionMode=Auto`, `PreserveDynamicHDRMetadata=false`). Ambient
+  viewing metadata is propagated. Other Dolby profiles stop with an explicit error.
+- FFmpeg remuxes the encoded video and copies the original audio. Both native and
+  final outputs are checked for Dolby Vision signaling; final HLG/BT.2020/10-bit
+  fields are checked before delivery. No claim of bit-identical video is made.
+- Target bitrate follows the source estimated rate, capped by `--dovi-maxrate`
+  (80,000 kbps default). CPU-only `--crf` is no longer accepted. The style manifest
+  records the actual target, hardware requirement, compositor and frame count.
+
+Implementation follows Apple's [Dolby Vision editing/export guidance](https://developer.apple.com/av-foundation/Incorporating-HDR-video-with-Dolby-Vision-into-your-apps.pdf).
+Changing pixels invalidates the original dynamic metadata, so the exporter creates
+metadata for the edited result rather than blindly injecting the old RPU.
+
+`scripts/build-editor.mjs` builds and signs the native executable and includes it
+in `editor-runtime/bin`; runtime use never compiles ad-hoc Swift. Missing native
+runtime or unsupported hardware/profile fails clearly. The legacy content-vault
+CLI is separate and is not silently synchronized by this change.
+
+```sh
+EDITOR_RUNTIME="$PWD/native/editor-engine/.build/runtime/reels-editor" \
+native/editor-engine/.build/venv/bin/python -m unittest discover -s native/editor-engine -p test_hardware.py -v
+```
+
+Set `EDITOR_TEST_DOVI_SOURCE` to an explicitly authorized local Dolby Vision file
+for the real-input test. It copies a short MP4 sample to a temporary directory,
+verifies timed overlays and Dolby metadata, and preserves the input. MP4 is
+intentional: an FFmpeg MOV copy in an early test stripped the fixture's Dolby
+configuration before the renderer was called.
+
+Verification on 2026-11-11: source/frozen engine tests (13 each), hardware tests
+(5, including an authorized real Dolby Vision input), and development/packaged
+MCP and card-news Electron checks (4 each) passed. The full Node suite passed
+389 tests with concurrency 4; type, architecture and public-source checks passed.
+A 2160×3840, 60 fps, 26.766667-second Profile 8.4 input rendered through the
+packaged runtime in **33.13 seconds**, targeting 55,065,112 bit/s. The 184,616,488-byte
+output retained all 1,606 frames with identical presentation timestamps, copied
+audio bytes, HLG/BT.2020/10-bit and Dolby Vision 8.4 signaling. The real-input test
+also decoded RPU side data and checked a timed caption disappearing. This is one
+machine/input measurement, not a universal performance or quality guarantee.
+
 ## Source preservation
 
 Twenty allowlisted `.py` files were copied from the existing `reels/scripts/reels_editor` FSD package. `native/editor-engine/source-inventory.json` records each original relative path and SHA-256. The original checkout was not edited. The local architecture checker is copied from the original project and validates the same layer/public-API boundaries.
@@ -11,7 +70,7 @@ Twenty allowlisted `.py` files were copied from the existing `reels/scripts/reel
 Two vendored files have narrowly scoped extensions:
 
 - `features/video_overlay/cli.py` accepts `--preview-time` and a progress callback. Legacy preview behavior remains available when no time is supplied. A timed preview reads the selected source frame and composites only active layers.
-- `shared/media.py` adds a subprocess progress reader. Actual render command construction, audio copying, HDR metadata handling, VideoToolbox encoding, and the Dolby Vision branch remain in the original feature implementation.
+- `shared/media.py` adds a subprocess progress reader. Audio copying and HDR handling were retained at migration; the current encoder policy is documented above.
 
 The new `shared/timing.py` recognizes only expressions generated by the engine. It never evaluates arbitrary text. Body captions use the existing rounded microsecond, half-open interval `[start, end)`. Description intervals retain the original inclusive `between(t,start,end)` behavior. A persistent pin is independent of timed descriptions and captions.
 
@@ -71,7 +130,7 @@ native/editor-engine/.build/venv/bin/python -m unittest discover -s native/edito
 
 The focused suite covers source parity, FSD boundaries, cue boundaries, persistent pins, timed descriptions, selected-frame previews, default versus manual positions, actual video/cover output, audio retention, progress events, invalid input, source-overwrite refusal, proxy generation, and synthetic HDR proxy/export separation. Frozen CLI test subprocesses receive only a minimal system PATH.
 
-The final standalone runtime passed all **11 tests** in 11.510s after being copied into a separate Korean/spaced temporary path and executed with a minimal PATH. The source FSD check also passed at the relocated development checkout. The runtime is about 62MB, with 19 relocated media binaries/libraries; all bundled Mach-O dependencies and relative symlinks passed the relocation audit. Synthetic fixtures do not establish all camera-specific Dolby Vision behavior; the inherited Dolby Vision branch is preserved and must be validated on an appropriate real source before making a claim about that source.
+The final standalone runtime passed all **11 tests** in 11.510s after being copied into a separate Korean/spaced temporary path and executed with a minimal PATH. The source FSD check also passed at the relocated development checkout. The runtime is about 62MB, with 19 relocated media binaries/libraries; all bundled Mach-O dependencies and relative symlinks passed the relocation audit. Synthetic fixtures do not establish all camera-specific Dolby Vision behavior; the hardware route additionally requires real-input verification as described above.
 
 
 ## Signed follow cover (2026-10-29)

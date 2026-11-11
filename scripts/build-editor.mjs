@@ -24,6 +24,12 @@ command(python, ['-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--n
 rmSync(runtime, { recursive: true, force: true });
 cpSync(path.join(build, 'dist/reels-editor'), runtime, { recursive: true, verbatimSymlinks: true });
 for (const directory of ['bin', 'lib', 'licenses']) mkdirSync(path.join(runtime, directory), { recursive: true });
+// A bundled native exporter regenerates Dolby Vision metadata using hardware only.
+const hardwareRenderer = path.join(build, 'reels-hardware-render');
+command('/usr/bin/xcrun', ['swiftc', '-O', '-parse-as-library', '-target', 'arm64-apple-macos15.0',
+  path.join(engine, 'hardware_render.swift'), '-o', hardwareRenderer], { stdio: 'inherit' });
+copyFileSync(hardwareRenderer, path.join(runtime, 'bin/reels-hardware-render'));
+command('/usr/bin/codesign', ['--force', '--sign', '-', path.join(runtime, 'bin/reels-hardware-render')], { stdio: 'inherit' });
 
 const installedFFmpeg = realpathSync(process.env.FFMPEG_BIN || text('/usr/bin/which', ['ffmpeg']));
 const installedFFprobe = realpathSync(process.env.FFPROBE_BIN || text('/usr/bin/which', ['ffprobe']));
