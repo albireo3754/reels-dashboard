@@ -891,8 +891,9 @@
 .compact-shell { padding-top: 52px; }
 .compact-shell .sidebar { top: 52px; }
 .compact-shell .main { max-width: none; }
-.compact-shell[data-terminal="open"] .main { padding-bottom: 72vh; }
-.compact-shell[data-terminal="folded"] .main { padding-bottom: 90px; }
+/* The bottom panel is fixed; main reserves its measured height (fallbacks match workbench.css: open 46vh, folded 32px bar). */
+.compact-shell[data-terminal="open"] .main { padding-bottom: calc(var(--terminal-height, 46vh) + var(--space-6)); }
+.compact-shell[data-terminal="folded"] .main { padding-bottom: calc(var(--terminal-height, 32px) + var(--space-4)); }
 /* The blog tab's embedded editor is sized to the window, so it shrinks above the panel instead. */
-.compact-shell[data-terminal="open"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, min(70vh, 760px)) + 12px); --blog-editor-min-height: 0px; }
-.compact-shell[data-terminal="folded"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 78px) + 12px); --blog-editor-min-height: 0px; }
+.compact-shell[data-terminal="open"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 46vh) + 12px); --blog-editor-min-height: 0px; }
+.compact-shell[data-terminal="folded"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 32px) + 12px); --blog-editor-min-height: 0px; }

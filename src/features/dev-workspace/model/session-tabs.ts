@@ -35,7 +35,7 @@ export interface StartChoice {
   label: string;
   /** Shown in the empty screen and as a tooltip. */
   detail: string;
-  /** Also offered as a large button on the empty screen. */
+  /** Also listed on the empty screen. */
   primary: boolean;
 }
 
@@ -45,7 +45,7 @@ const OPEN_LABEL: Record<AgentProvider, string> = {
 };
 
 /**
- * What the ▾ menu and the empty screen offer, in order: terminal, each
+ * What the + menu and the empty screen offer, in order: terminal, each
  * available coding tool, then preview server and checks. A tool the host does
  * not advertise is never offered.
  */
@@ -54,7 +54,7 @@ export function startChoices(
   hasTask: boolean,
 ): StartChoice[] {
   const how = hasTask
-    ? "설정의 요청문과 단계를 전달해 열어요"
+    ? "작성기의 요청문과 단계를 전달해 열어요"
     : "요청문 없이 대화형으로 열어요";
   return [
     {
@@ -105,4 +105,34 @@ export function menuKeyTarget(
     case "End":
       return count - 1;
   }
+}
+
+/** The tab tooltip: title, state, folder, herdr ownership and the ⌘N shortcut (when there is one). */
+export function tabTooltip(
+  session: WorkTerminal,
+  stateLabel: string,
+  shortcut = "",
+): string {
+  const parts = [session.title, stateLabel, session.cwd];
+  if (session.backend === "herdr")
+    parts.push(
+      session.restored
+        ? "이전 실행에서 복원한 herdr 세션(앱을 종료해도 유지)"
+        : "herdr 세션(앱을 종료해도 유지)",
+    );
+  if (shortcut) parts.push(shortcut);
+  return parts.filter(Boolean).join(" · ");
+}
+
+/**
+ * What Codex/Claude from the + menu or the empty screen does. A written request is never
+ * sent from a collapsed composer: the composer opens first so the user sees what goes out.
+ */
+export function agentStartIntent(
+  kind: TerminalKind,
+  hasTask: boolean,
+  composerOpen: boolean,
+): "start" | "reveal" {
+  const agent = kind === "codex" || kind === "claude";
+  return agent && hasTask && !composerOpen ? "reveal" : "start";
 }
