@@ -897,3 +897,9 @@
 /* The blog tab's embedded editor is sized to the window, so it shrinks above the panel instead. */
 .compact-shell[data-terminal="open"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 46vh) + 12px); --blog-editor-min-height: 0px; }
 .compact-shell[data-terminal="folded"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 32px) + 12px); --blog-editor-min-height: 0px; }
+/*
+ * 고정 패널은 문서 스크롤바를 덮지 못해서, 패널을 펼친 채(특히 작성기를 열어 패널이 커질 때) 문서가
+ * 스크롤되면 패널 오른쪽에 스크롤바 폭만큼 띠가 남고 상단 바도 그만큼 밀린다. 패널이 열려 있는 동안만
+ * 문서 스크롤바를 감춘다. 휠·트랙패드·키보드 스크롤은 그대로 동작한다.
+ */
+:root:has(.compact-shell[data-terminal="open"]) { scrollbar-width: none; }
