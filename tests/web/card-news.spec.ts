@@ -117,6 +117,12 @@ test("only three card kinds are exposed and changes retain content and timing", 
   await page
     .getByRole("button", { name: "카드뉴스 릴스", exact: true })
     .click();
+  // 선택한 카드 하나만 편집기가 펼쳐진다. 2번 카드를 먼저 펼친다.
+  await page.getByRole("button", { name: "2번 카드 편집", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "2번 카드 편집", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("1번 문구", { exact: true })).toHaveCount(0);
   const kind = page.getByLabel("2번 카드 종류", { exact: true });
   await expect(kind.locator("option")).toHaveText(["문구", "비교표", "마무리"]);
   await expect(page.getByLabel("2번 역할", { exact: true })).toHaveCount(0);
