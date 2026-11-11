@@ -19,7 +19,7 @@ export async function openBlogEditor(
   card?: Locator,
 ): Promise<Frame> {
   const before = await windowCount(app);
-  await main.getByRole("button", { name: "프로젝트", exact: true }).click();
+  await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
   await (card ?? main).getByRole("button", { name: "프로젝트 열기", exact: true }).click();
   const iframe = editorIframe(main, projectId);
   await expect(iframe).toBeVisible();
@@ -46,8 +46,8 @@ export async function setEditorViewport(main: Page, projectId: string, width: nu
   }
 }
 
-/** Closes an editor tab with its × button. */
+/** Closes an editor tab with its × button; the document tab (role=tab) disappears. */
 export async function closeEditorTab(main: Page, title: string) {
   await main.getByRole("button", { name: `${title} 탭 닫기`, exact: true }).click();
-  await expect(main.getByRole("button", { name: title, exact: true })).toHaveCount(0);
+  await expect(main.getByRole("tab", { name: title, exact: true })).toHaveCount(0);
 }

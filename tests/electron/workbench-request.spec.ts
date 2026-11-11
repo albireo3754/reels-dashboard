@@ -6,10 +6,12 @@ test('request Enter starts the selected tool once, preserves failures and allows
   let app;
   try {
     app = await launchApp(profile, true, { REELS_DEV_MODE: '1' });
+    const page = await app.firstWindow();
     // Keep the real bridge and session lifecycle, but never send a model task.
     await app.evaluate(({ ipcMain }) => {
       const qa = globalThis as any;
       const handler = (ipcMain as any)._invokeHandlers.get('reels:workbench:start');
+      if (!handler) throw new Error('workbench start handler missing');
       qa.requestInputs = [];
       qa.failRequest = true;
       ipcMain.removeHandler('reels:workbench:start');
@@ -20,7 +22,6 @@ test('request Enter starts the selected tool once, preserves failures and allows
         return handler(event, { kind: 'shell' });
       });
     });
-    const page = await app.firstWindow();
     await page.getByRole('button', { name: '터미널', exact: true }).click();
     await page.getByTestId('dev-settings-toggle').click();
     const task = page.locator('#dev-task');

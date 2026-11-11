@@ -1,4 +1,5 @@
 import { sha256Hex } from "../../shared/lib/hash";
+import { EDITOR_FRAME_CSS } from "./frame-theme";
 import {
   readFile,
   stat,
@@ -306,7 +307,7 @@ export class CanonicalStore {
         (_, v) =>
           `url('/api/blog/asset?kind=font&name=${encodeURIComponent(path.basename(v.replace(/["']/g, "")))}')`,
       );
-    return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${styles}\nbody{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20px;box-sizing:border-box}header{margin-bottom:32px}[contenteditable]{outline:none;cursor:text;min-height:1em}[contenteditable]:focus{outline:2px solid #91b8a6;outline-offset:8px;border-radius:2px}.editor-bundle{position:relative;padding-top:12px}.editor-bundle-label{font:11px sans-serif;color:#83988b;text-align:left;margin:10px 0 18px}.editor-bundle.active{box-shadow:inset 3px 0 #5b8875}img{max-width:100%}</style><main><header><small>블로그 정본</small><h1 contenteditable="true" spellcheck="false" data-tid="$title" role="textbox" aria-label="글 제목">${escapeHtml(x.parts.title)}</h1></header><article>${html}</article></main><script type="module" src="/editor-frame.js"></script></html>`;
+    return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${styles}\n${EDITOR_FRAME_CSS}.editor-bundle{position:relative;padding-top:12px}img{max-width:100%}</style><main><header><h1 contenteditable="true" spellcheck="false" data-tid="$title" role="textbox" aria-label="글 제목">${escapeHtml(x.parts.title)}</h1></header><article>${html}</article></main><script type="module" src="/editor-frame.js"></script></html>`;
   }
   async save(value: unknown) {
     const patch = patchSchema.parse(value);

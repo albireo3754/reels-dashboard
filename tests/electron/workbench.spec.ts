@@ -96,7 +96,9 @@ test("real PTY input, tab reattach, resize, source lock and explicit lifecycle",
       path: testInfo.outputPath("workbench.png"),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "목록에서 지우기" }).click();
+    // Session actions live in the tab bar's ⋯ menu instead of an always-visible meta bar.
+    await page.getByTestId("dev-more-menu").click();
+    await page.getByRole("menuitem", { name: "목록에서 지우기" }).click();
     await expect(
       page.getByRole("tablist", { name: "터미널 세션" }).getByRole("tab"),
     ).toHaveCount(1);
@@ -173,7 +175,8 @@ test("preview server shows real dashboard without desktop bridge and stops clean
     await expect(
       page.getByRole("region", { name: "터미널", exact: true }),
     ).toHaveAttribute("data-drawer-state", "open");
-    await page.getByRole("button", { name: "세션 종료", exact: true }).click();
+    await page.getByTestId("dev-more-menu").click();
+    await page.getByRole("menuitem", { name: "세션 종료", exact: true }).click();
     await expect(page.locator(".dev-session-tabs")).toContainText("종료");
     await expect
       .poll(async () => {

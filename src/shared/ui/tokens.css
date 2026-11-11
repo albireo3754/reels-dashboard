@@ -1,6 +1,7 @@
 /*
- * Reels Dashboard design tokens.
- * 화면 CSS는 픽셀 값 대신 이 토큰을 쓴다. 규칙은 docs/design-system.md 참고.
+ * Reels Dashboard design tokens (Notion 방향, 2026-11-11 재정의).
+ * 화면 CSS는 hex·px 리터럴 대신 이 토큰을 쓴다. 규칙은 docs/design-system.md 참고.
+ * 다크 모드는 아직 범위가 아니다. 색은 중립 회색 + 강조색(--color-primary) 하나.
  */
 :root {
   /* Typography */
@@ -9,14 +10,14 @@
     "Noto Sans KR", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  --text-xs: 11px; /* 배지, eyebrow, 카운트 */
-  --text-sm: 12px; /* 메타·도움말·라벨 */
+  --text-xs: 11px; /* 배지, 카운트 */
+  --text-sm: 12px; /* 메타·상태·라벨 */
   --text-base: 13px; /* 본문·버튼·입력 */
-  --text-md: 14px; /* 강조 본문, 카드 제목 */
-  --text-lg: 16px; /* 섹션 제목(h3) */
-  --text-xl: 18px; /* 패널 제목(h2) */
-  --text-2xl: 22px; /* 큰 수치·빈 상태 제목 */
-  --text-3xl: 28px; /* 페이지 제목(h1) */
+  --text-md: 14px; /* 강조 본문, 목록 행 제목, 사이드바 항목 */
+  --text-lg: 16px; /* 섹션 제목(h2) */
+  --text-xl: 18px; /* 다이얼로그 제목 */
+  --text-2xl: 22px; /* 페이지 제목(h1) 상한 */
+  --text-3xl: 28px; /* 큰 수치 전용. 제목에 쓰지 않는다 */
 
   --weight-regular: 400;
   --weight-medium: 500;
@@ -25,37 +26,72 @@
 
   --leading-tight: 1.3;
   --leading-normal: 1.55;
-  --tracking-tight: -0.02em;
-  --tracking-caps: 0.12em;
+  --tracking-tight: -0.01em;
+  --tracking-caps: 0.04em;
 
   /* Color — neutral */
-  --color-bg: #f6f7f3;
+  --color-bg: #ffffff;
+  --color-sidebar: #f7f7f5;
   --color-surface: #ffffff;
-  --color-surface-muted: #f4f6f0;
-  --color-surface-sunken: #eef1e9;
-  --color-border: #e2e7df;
-  --color-border-strong: #c9d3c6;
-  --color-text: #22332c;
-  --color-text-muted: #5e6d64;
-  /* AA (≥4.5:1) on --color-bg and --color-surface for small secondary text. */
-  --color-text-subtle: #66736a;
+  --color-surface-muted: #f7f7f5;
+  --color-surface-sunken: #f1f1ef;
+  --color-border: #e9e9e7; /* hairline: 구분선, 섹션 경계 */
+  --color-border-strong: #d3d2ce; /* 입력·secondary 버튼 테두리 */
+  --color-text: #37352f;
+  --color-text-muted: #6b6a66;
+  /* AA(≥4.5:1) on #ffffff(4.89) and --color-sidebar(4.56) for small text. */
+  --color-text-subtle: #72716c;
   --color-text-on-accent: #ffffff;
+
+  /* Color — interaction (반투명이라 흰 바탕·사이드바 어디서나 같은 단계로 보인다) */
+  --color-hover: rgb(55 53 47 / 6%);
+  --color-selected: rgb(55 53 47 / 9%);
+  --color-pressed: rgb(55 53 47 / 12%);
+  --color-backdrop: rgb(15 15 15 / 24%);
+  --color-scrollbar: rgb(55 53 47 / 22%);
 
   /* Color — accent & status */
   --color-primary: #386354;
   --color-primary-hover: #224d3c;
-  --color-primary-soft: #e6eee4;
+  --color-primary-soft: #eef4f0;
   --color-primary-text: #2f5546;
-  --color-focus: #a8c5a7;
+  --color-focus: rgb(56 99 84 / 55%);
+  --color-focus-soft: rgb(56 99 84 / 18%);
   --color-danger: #a4503f;
   --color-danger-hover: #893c2d;
-  --color-danger-soft: #fbefeb;
+  --color-danger-soft: #fdf5f2;
+  --color-danger-border: #f2dcd5;
   --color-danger-text: #8f3b2b;
   --color-warning: #b67c36;
-  --color-warning-soft: #faf2e3;
+  --color-warning-soft: #fdf8ef;
   --color-warning-text: #85581f;
   --color-success: #5d8a4c;
-  --color-success-soft: #eaf2e3;
+  --color-success-soft: #f2f7ef;
+  --color-success-text: #3f6a31;
+
+  /* Terminal (xterm 테마와 터미널 패널 내부 전용) */
+  --terminal-bg: #191919;
+  --terminal-fg: #e6e6e4;
+  --terminal-muted: #9b9a97;
+  --terminal-selection: #ffffff33;
+  --terminal-cursor: #e6e6e4;
+  --terminal-cursor-accent: #191919;
+  --terminal-ansi-black: #3a3937;
+  --terminal-ansi-red: #e5736a;
+  --terminal-ansi-green: #7fb894;
+  --terminal-ansi-yellow: #d9b462;
+  --terminal-ansi-blue: #6fa6de;
+  --terminal-ansi-magenta: #c592d6;
+  --terminal-ansi-cyan: #62bcc3;
+  --terminal-ansi-white: #d4d4d2;
+  --terminal-ansi-bright-black: #85847f;
+  --terminal-ansi-bright-red: #f19087;
+  --terminal-ansi-bright-green: #9cd0ae;
+  --terminal-ansi-bright-yellow: #ecca80;
+  --terminal-ansi-bright-blue: #8fbcef;
+  --terminal-ansi-bright-magenta: #d8aae6;
+  --terminal-ansi-bright-cyan: #82d3d9;
+  --terminal-ansi-bright-white: #ffffff;
 
   /* Spacing (4px grid) */
   --space-1: 4px;
@@ -67,22 +103,36 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* Shape */
+  /* Shape — 컨트롤 4~6px, 팝오버·다이얼로그 8px. 12px 이상 라운드는 쓰지 않는다. */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-pill: 999px;
+  --radius-lg: 8px; /* legacy: 예전 12px. 새 코드는 --radius-md */
+  --radius-xl: 8px; /* legacy: 예전 16px. 새 코드는 --radius-md */
+  --radius-pill: 999px; /* 배지 전용 */
 
-  --shadow-sm: 0 1px 2px rgb(34 51 44 / 6%);
-  --shadow-md: 0 6px 20px rgb(34 51 44 / 8%);
-  --shadow-lg: 0 18px 50px rgb(16 39 29 / 18%);
+  /* Elevation — 떠 있는 것(팝오버·메뉴·다이얼로그·토스트)에만 쓴다. 섹션·카드에는 없다. */
+  --shadow-popover:
+    0 0 0 1px rgb(15 15 15 / 5%), 0 3px 6px rgb(15 15 15 / 10%),
+    0 9px 24px rgb(15 15 15 / 20%);
+  --shadow-dialog:
+    0 0 0 1px rgb(15 15 15 / 5%), 0 5px 10px rgb(15 15 15 / 10%),
+    0 15px 40px rgb(15 15 15 / 20%);
+  --shadow-sm: none; /* legacy: 카드 그림자 제거 */
+  --shadow-md: var(--shadow-popover); /* legacy */
+  --shadow-lg: var(--shadow-dialog); /* legacy */
+
+  /* Layers */
+  --z-sticky: 20;
+  --z-popover: 1000;
+  --z-toast: 1100;
 
   /* Controls */
-  --control-sm: 28px;
-  --control-md: 34px;
-  --control-lg: 40px;
+  --control-xs: 24px; /* button.small */
+  --control-sm: 28px; /* 기본 버튼·아이콘 버튼·탭 */
+  --control-md: 32px; /* 입력·select, button.large */
+  --control-lg: 36px; /* 드물게: 큰 단독 입력 */
+  --row-height: 30px; /* 목록 행·사이드바 항목 */
 
   /* Legacy aliases — 기존 화면 CSS 호환용. 새 코드는 위 이름을 쓴다. */
   --green: var(--color-primary);

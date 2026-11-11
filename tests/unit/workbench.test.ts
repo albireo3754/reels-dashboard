@@ -8,6 +8,7 @@ import type { IPty, spawn } from "node-pty";
 import {
   terminalCommand,
   terminalEnvironment,
+  terminalTitle,
   validateWorkspace,
   Workbench,
 } from "../../src/desktop/workbench";
@@ -485,6 +486,29 @@ test("Claude Code runs as a herdr workspace with the same label, command and tit
   manager.dispose();
 });
 
+test("tabs of one kind get distinct titles: the base name, then the lowest free number", async (t) => {
+  assert.equal(terminalTitle("shell"), "터미널");
+  assert.equal(terminalTitle("shell", ["터미널"]), "터미널 2");
+  assert.equal(terminalTitle("shell", ["터미널 2"]), "터미널");
+  assert.equal(terminalTitle("shell", ["터미널", "터미널 3"]), "터미널 2");
+  assert.equal(terminalTitle("codex", ["터미널", "터미널 2"]), "Codex");
+  assert.equal(terminalTitle("preview", ["웹 미리보기"]), "웹 미리보기 2");
+  const { repo, state } = await makeRepo(t);
+  const herdr = fakeHerdr();
+  const manager = new Workbench(state, () => {}, fakePtys().spawnPty, { env: {}, herdr: herdr.client });
+  await manager.initialize(repo);
+  await manager.whenReady();
+  const first = await manager.start({ kind: "shell" });
+  const second = await manager.start({ kind: "shell" });
+  const codex = await manager.start({ kind: "codex" });
+  assert.deepEqual([first.title, second.title, codex.title], ["터미널", "터미널 2", "Codex"]);
+  assert.deepEqual(
+    manager.state().sessions.map((s) => s.title),
+    ["터미널", "터미널 2", "Codex"],
+  );
+  manager.dispose();
+});
+
 test("without herdr installed the effective backend falls back to direct", async (t) => {
   const { repo, state } = await makeRepo(t);
   const herdr = fakeHerdr({ installed: false });
@@ -787,6 +811,11 @@ test("startup restores only this source folder's Reels workspaces, only from a r
   assert.ok(sessions.every((s) => s.restored && s.backend === "herdr" && s.state === "running" && s.cwd === repo));
   assert.equal(sessions[1].kind, "codex");
   assert.equal(sessions[1].title, "Codex");
+  // Restored tabs of one kind get distinct titles in tab order.
+  assert.deepEqual(
+    sessions.slice(0, 4).map((s) => s.title),
+    ["터미널", "Codex", "터미널 2", "Codex 2"],
+  );
   assert.equal(ptys.spawned.length, 12);
   assert.equal(ptys.spawned[0].args[4], `term_${UUIDS[0]}`);
   // Restored tabs fill the limit; the remaining workspaces are left untouched.

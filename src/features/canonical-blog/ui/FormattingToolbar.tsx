@@ -42,11 +42,15 @@ export function FormattingToolbar({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [palette]);
-  const active = !!selection?.text && selection.id !== "$title" && !disabled;
+  // Shown only while a phrase (not the title) is selected; the host keeps the frame
+  // selection by preventing mousedown on every control (select excepted: it only reads it).
+  const shown = !!selection?.text && selection.id !== "$title";
+  const active = shown && !disabled;
+  if (!shown) return null;
   return (
-    <div className="ce-format" aria-label="선택 구절 서식">
+    <div className="ce-format" role="group" aria-label="선택 구절 서식">
       <label className="ce-size">
-        글자 크기
+        <span className="ui-sr-only">글자 크기</span>
         <select
           aria-label="글자 크기"
           disabled={!active}
@@ -54,7 +58,7 @@ export function FormattingToolbar({
           title="선택한 구절의 글자 크기"
           onChange={(e) => onFormat("size", e.target.value)}
         >
-          <option value="">{selection?.text ? "혼합" : "선택"}</option>
+          <option value="">혼합</option>
           {SE_FONT_STEPS.map((n) => (
             <option key={n} value={n}>
               {n}px
@@ -67,6 +71,7 @@ export function FormattingToolbar({
         </select>
       </label>
       <button
+        className="icon-button"
         title="굵게 · 선택한 구절에 적용"
         aria-label="굵게"
         aria-pressed={selection?.bold === true}
@@ -88,6 +93,7 @@ export function FormattingToolbar({
         }}
       >
         <button
+          className="ce-color-button"
           title="글자색 선택"
           aria-label="글자색"
           aria-expanded={palette === "color"}
@@ -100,10 +106,11 @@ export function FormattingToolbar({
             style={{ borderBottomColor: selection?.color ?? "#333333" }}
           >
             가
-          </span>{" "}
-          글자색 ▾
+          </span>
+          <span className="ce-caret" aria-hidden="true">▾</span>
         </button>
         <button
+          className="ce-color-button"
           title="배경색 선택"
           aria-label="배경색"
           aria-expanded={palette === "background"}
@@ -114,14 +121,12 @@ export function FormattingToolbar({
           }
         >
           <mark
-            style={{
-              background: selection?.background ?? "transparent",
-              outline: selection?.background ? undefined : "1px dashed #a7b7aa",
-            }}
+            className={selection?.background ? undefined : "is-empty"}
+            style={{ background: selection?.background ?? "transparent" }}
           >
             가
-          </mark>{" "}
-          배경색 ▾
+          </mark>
+          <span className="ce-caret" aria-hidden="true">▾</span>
         </button>
         {palette && (
           <div
@@ -132,6 +137,7 @@ export function FormattingToolbar({
             <div className="ce-palette-heading">
               <strong>{palette === "color" ? "글자색" : "배경색"}</strong>
               <button
+                className="icon-button small"
                 aria-label="색상 팔레트 닫기"
                 onClick={() => setPalette(null)}
               >
@@ -186,6 +192,7 @@ export function FormattingToolbar({
             </label>
             {palette === "background" && (
               <button
+                className="small"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onFormat("clearBackground")}
               >
@@ -197,17 +204,13 @@ export function FormattingToolbar({
       </div>
       <button
         title="선택 구절의 굵기·크기·색·배경을 기본값으로"
+        aria-label="서식 지우기"
         disabled={!active}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => onFormat("removeFormat")}
       >
         서식 지우기
       </button>
-      <span className="ce-selection-hint" title={selection?.text}>
-        {active
-          ? `“${selection!.text.slice(0, 18)}${selection!.text.length > 18 ? "…" : ""}” 선택됨`
-          : "본문에서 구절을 선택하세요"}
-      </span>
     </div>
   );
 }

@@ -1,6 +1,23 @@
+import { FRAME_UI } from "./frame-theme";
+
 /** Runs only inside the same-origin, dedicated editor frame. Never evaluates article HTML. */
 export const frameScript = String.raw`
 const send=(data)=>parent.postMessage({editor:true,...data},location.origin);
+// Editing chrome colors: the frame cannot read tokens.css, so the values come from frame-theme.ts.
+const UI=${JSON.stringify(FRAME_UI)};
+{
+ const style=document.createElement('style');style.dataset.editorUi='chrome';
+ style.textContent=[
+  '.ce-quick{position:absolute;z-index:1000;display:none;gap:2px;padding:4px;border-radius:8px;background:'+UI.surface+';box-shadow:'+UI.shadow+';font:13px/1.3 '+UI.font+';max-width:95%;flex-wrap:wrap}',
+  '.ce-quick button{font:500 13px/1.3 '+UI.font+';min-height:28px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:'+UI.text+';cursor:pointer}',
+  '.ce-quick button:hover{background:'+UI.hover+'}',
+  '.ce-quick button:focus-visible{outline:2px solid '+UI.focus+';outline-offset:1px}',
+  '.ce-annotation-badge{display:inline-flex;align-items:center;font:500 12px/1.4 '+UI.font+';color:'+UI.muted+';background:transparent;border:0;border-radius:4px;padding:2px 6px;margin:-14px 0 18px;cursor:pointer}',
+  '.ce-annotation-badge:hover{background:'+UI.hover+';color:'+UI.text+'}',
+  '.ce-annotation-badge:focus-visible{outline:2px solid '+UI.focus+';outline-offset:1px}',
+ ].join('\n');
+ document.head.append(style);
+}
 // The host page owns scrolling. Also remove the classic macOS scrollbar gutter,
 // even when a manuscript stylesheet reserves one. Standalone previews still scroll.
 if(parent!==window){
@@ -14,9 +31,9 @@ const hex=v=>{const m=v?.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);return m?'#'+
 
 const quick=document.createElement('div');
 quick.setAttribute('role','toolbar');quick.setAttribute('aria-label','구절 바로 편집');
-quick.style.cssText='position:absolute;z-index:1000;display:none;gap:4px;padding:7px;border:1px solid #b5c7bd;border-radius:9px;background:white;box-shadow:0 3px 12px #0002;font:13px sans-serif;max-width:95%;flex-wrap:wrap';
+quick.className='ce-quick';quick.style.display='none';
 document.body.append(quick);
-function quickButton(label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.style.cssText='font:13px sans-serif;padding:6px 8px;border:1px solid #ccd8cf;background:#fff;border-radius:5px;cursor:pointer';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',action);quick.append(b);}
+function quickButton(label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',action);quick.append(b);}
 quickButton('적갈색',()=>formatRange('foreColor','#a64132'));
 quickButton('노랑 형광펜',()=>formatRange('hiliteColor','#fff8b2'));
 if(document.documentElement.dataset.markup==='true')quickButton('메모',()=>annotate(false));
@@ -51,7 +68,7 @@ async function annotationBadges(){
    const notes=items.filter(a=>a.paragraphId===p.dataset.tid);if(!notes.length)continue;
    const b=document.createElement('button');b.type='button';b.dataset.annotationBadge='true';
    b.textContent='메모 '+notes.length+' · ✓ '+notes.filter(n=>n.checked).length;
-   b.style.cssText='font:12px sans-serif;color:#4d6c55;background:#edf4e9;border:1px solid #bfcebb;border-radius:5px;padding:5px 8px;margin:-14px 0 18px';
+   b.className='ce-annotation-badge';
    b.addEventListener('click',()=>send({type:'annotation-open',id:p.dataset.tid}));p.after(b);
   }
  }catch{}
@@ -176,68 +193,68 @@ function formatRange(command,value){removeGhost();if(!selected||!savedRange||sav
 // overlapping) get a small marker span. Every review node carries data-review-ui:
 // serialize()/plainMap() skip them, copy strips them, and a paragraph's review nodes are
 // removed before any edit reaches it and drawn again after the 400ms idle re-check.
-const reviewFont='-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif';
+const reviewFont=UI.font;
 const reviewCss=[
- '::highlight(rv-del){color:#b3261e;background-color:#fde2df;text-decoration:line-through;text-decoration-color:#b3261e}',
- '::highlight(rv-target){background-color:#e9f0fb;text-decoration:underline dotted;text-decoration-color:#6c86b5}',
- '::highlight(rv-focus){background-color:#fff0b3}',
+ '::highlight(rv-del){color:'+UI.del+';background-color:'+UI.delSoft+';text-decoration:line-through;text-decoration-color:'+UI.del+'}',
+ '::highlight(rv-target){background-color:'+UI.target+';text-decoration:underline dotted;text-decoration-color:'+UI.targetLine+'}',
+ '::highlight(rv-focus){background-color:'+UI.mark+'}',
  '[data-review-ui=ins],[data-review-ui=marker]{margin:0;padding:0;border:0;text-indent:0;letter-spacing:normal;font-style:normal;-webkit-user-select:none;user-select:none;cursor:pointer}',
- '[data-review-ui=ins]::after{content:attr(data-text);white-space:pre-wrap;color:#13612e;-webkit-text-fill-color:#13612e;background-color:#d9f3df;text-decoration:underline;text-decoration-color:#4f9a64;text-underline-offset:2px;border-radius:2px}',
- '[data-review-ui=ins].rv-active::after{background-color:#bdebc9;box-shadow:0 0 0 1px #4f9a64}',
- '[data-review-ui=marker]::after{content:attr(data-label);display:inline-block;margin:0 1px 0 4px;padding:0 7px;border:1px solid #c5d6cb;border-radius:999px;background:#f1f7f3;color:#2f5a46;-webkit-text-fill-color:#2f5a46;font:600 11.5px/1.65 '+reviewFont+';text-decoration:none;vertical-align:1px;white-space:nowrap}',
- '[data-review-ui=marker].rv-warn::after{border-color:#e6c88f;background:#fff5e2;color:#8a5a12;-webkit-text-fill-color:#8a5a12}',
- '[data-review-ui=marker].rv-note::after{border-color:#c4cfe3;background:#f2f5fb;color:#3d5482;-webkit-text-fill-color:#3d5482}',
- '[data-review-ui=marker].rv-active::after{box-shadow:0 0 0 2px #f3d27a}',
+ '[data-review-ui=ins]::after{content:attr(data-text);white-space:pre-wrap;color:'+UI.ins+';-webkit-text-fill-color:'+UI.ins+';background-color:'+UI.insSoft+';text-decoration:underline;text-decoration-color:'+UI.insLine+';text-underline-offset:2px;border-radius:2px}',
+ '[data-review-ui=ins].rv-active::after{background-color:'+UI.insActive+';box-shadow:0 0 0 1px '+UI.insLine+'}',
+ '[data-review-ui=marker]::after{content:attr(data-label);display:inline-block;margin:0 1px 0 4px;padding:0 7px;border:1px solid '+UI.border+';border-radius:4px;background:'+UI.surfaceMuted+';color:'+UI.muted+';-webkit-text-fill-color:'+UI.muted+';font:500 11px/1.75 '+reviewFont+';text-decoration:none;vertical-align:1px;white-space:nowrap}',
+ '[data-review-ui=marker].rv-warn::after{border-color:'+UI.warningSoft+';background:'+UI.warningSoft+';color:'+UI.warningText+';-webkit-text-fill-color:'+UI.warningText+'}',
+ '[data-review-ui=marker].rv-note::after{color:'+UI.text+';-webkit-text-fill-color:'+UI.text+'}',
+ '[data-review-ui=marker].rv-active::after{box-shadow:0 0 0 2px '+UI.focus+'}',
  // Taller hit area for taps without changing the line box.
  '[data-review-ui=marker]{display:inline;padding:9px 0;margin:-9px 0}',
  '[data-review-ui=marker]:focus{outline:none}',
- '[data-review-ui=marker]:focus-visible::after{outline:2px solid #2f6f55;outline-offset:1px}',
+ '[data-review-ui=marker]:focus-visible::after{outline:2px solid '+UI.focus+';outline-offset:1px}',
  '[data-review-ui=note-row]{display:block;margin:2px 0 12px;padding:0;text-align:left;text-indent:0;line-height:1.7;-webkit-user-select:none;user-select:none}',
  '[data-review-ui=note-row] [data-review-ui=marker]::after{margin:0 6px 0 0}',
  // Active-proposal popover and the manual ghost-suggestion bar.
- '.rv-hint,.rv-ghostbar{position:absolute;z-index:1001;box-sizing:border-box;width:max-content;margin:0;text-align:left;text-indent:0;letter-spacing:normal;word-break:keep-all;overflow-wrap:anywhere;font:12.5px/1.5 '+reviewFont+';color:#1f2b24;background:#fff;border:1px solid #d6e0d9;border-radius:8px;box-shadow:0 4px 14px #0000001f;-webkit-user-select:none;user-select:none}',
+ '.rv-hint,.rv-ghostbar{position:absolute;z-index:1001;box-sizing:border-box;width:max-content;margin:0;text-align:left;text-indent:0;letter-spacing:normal;word-break:keep-all;overflow-wrap:anywhere;font:12.5px/1.5 '+reviewFont+';color:'+UI.text+';background:'+UI.surface+';border:0;border-radius:8px;box-shadow:'+UI.shadow+';-webkit-user-select:none;user-select:none}',
  // Only the controls and the reason text take the pointer: the rest of the popover lets clicks reach the text under it.
- '.rv-hint{display:block;max-width:400px;padding:8px 10px 9px;border-left:3px solid #5b8875;pointer-events:none}',
- '.rv-hint.rv-hint-blocked{border-left-color:#c58a2b;background:#fffaf0}',
- '.rv-hint.rv-hint-note{border-left-color:#7a8fb3;background:#f8faff}',
+ '.rv-hint{display:block;max-width:400px;padding:8px 10px 9px;border-left:2px solid '+UI.primary+';pointer-events:none}',
+ '.rv-hint.rv-hint-blocked{border-left-color:'+UI.warning+'}',
+ '.rv-hint.rv-hint-note{border-left-color:'+UI.borderStrong+'}',
  '.rv-hint .rv-hint-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;margin:0 0 3px}',
- '.rv-hint .rv-kind{font-size:12px;font-weight:700;color:#2f5a46}',
- '.rv-hint.rv-hint-blocked .rv-kind{color:#8a5a12}',
- '.rv-hint.rv-hint-note .rv-kind{color:#3d5482}',
- '.rv-hint .rv-meta{font-size:11.5px;color:#6b7a70}',
- '.rv-hint .rv-sum{margin:0;color:#3f4a44;white-space:pre-wrap}',
+ '.rv-hint .rv-kind{font-size:12px;font-weight:600;color:'+UI.text+'}',
+ '.rv-hint.rv-hint-blocked .rv-kind{color:'+UI.warningText+'}',
+ '.rv-hint.rv-hint-note .rv-kind{color:'+UI.text+'}',
+ '.rv-hint .rv-meta{font-size:11px;color:'+UI.subtle+'}',
+ '.rv-hint .rv-sum{margin:0;color:'+UI.text+';white-space:pre-wrap}',
  '.rv-hint .rv-diff{margin-top:2px;font-size:14px;line-height:1.55;white-space:pre-wrap}',
- '.rv-hint .rv-eq{color:#5b6660}',
- '.rv-hint .rv-del{background:#fde2df;color:#b3261e;text-decoration:line-through}',
- '.rv-hint .rv-ins{background:#d9f3df;color:#13612e;text-decoration:underline;text-decoration-color:#4f9a64}',
- '.rv-hint .rv-plain{white-space:pre-wrap;color:#4b5650}',
+ '.rv-hint .rv-eq{color:'+UI.muted+'}',
+ '.rv-hint .rv-del{background:'+UI.delSoft+';color:'+UI.del+';text-decoration:line-through}',
+ '.rv-hint .rv-ins{background:'+UI.insSoft+';color:'+UI.ins+';text-decoration:underline;text-decoration-color:'+UI.insLine+'}',
+ '.rv-hint .rv-plain{white-space:pre-wrap;color:'+UI.muted+'}',
  '.rv-hint .rv-note-text{white-space:pre-wrap;font-size:13px;line-height:1.55}',
- '.rv-hint .rv-reason-line{margin:0 0 3px;font-size:12px;color:#8a5a12}',
+ '.rv-hint .rv-reason-line{margin:0 0 3px;font-size:12px;color:'+UI.warningText+'}',
  '.rv-hint .rv-format{display:grid;gap:6px;margin-top:2px}',
  '.rv-hint .rv-format-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px;align-items:baseline}',
- '.rv-hint .rv-format-label{font-size:11px;font-weight:700;color:#6b7a70}',
+ '.rv-hint .rv-format-label{font-size:11px;font-weight:600;color:'+UI.subtle+'}',
  '.rv-hint .rv-sample{min-width:0;white-space:pre-wrap;line-height:1.5}',
- '.rv-hint .rv-format-desc{grid-column:2;font-size:11px;color:#6b7a70}',
- '.rv-hint .rv-keys{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;margin-top:6px;font-size:12px;color:#4b5650}',
- '.rv-hint kbd,.rv-ghostbar kbd{display:inline-block;padding:0 4px;border:1px solid #c5d3c9;border-bottom-width:2px;border-radius:4px;background:#f6f8f6;color:#1f2b24;font:600 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}',
+ '.rv-hint .rv-format-desc{grid-column:2;font-size:11px;color:'+UI.subtle+'}',
+ '.rv-hint .rv-keys{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;margin-top:6px;font-size:12px;color:'+UI.muted+'}',
+ '.rv-hint kbd,.rv-ghostbar kbd{display:inline-block;padding:0 4px;border:1px solid '+UI.border+';border-radius:4px;background:'+UI.surfaceMuted+';color:'+UI.muted+';font:500 11px/1.45 '+UI.font+'}',
  '.rv-hint .rv-hint-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}',
- '.rv-hint button,.rv-ghostbar button{all:unset;display:inline-flex;align-items:center;gap:5px;box-sizing:border-box;min-height:30px;padding:3px 10px;border:1px solid #c5d3c9;border-radius:6px;background:#fff;color:#1f2b24;font:600 12.5px/1.2 '+reviewFont+';cursor:pointer}',
+ '.rv-hint button,.rv-ghostbar button{all:unset;display:inline-flex;align-items:center;gap:5px;box-sizing:border-box;min-height:30px;padding:3px 10px;border:1px solid '+UI.borderStrong+';border-radius:6px;background:'+UI.surface+';color:'+UI.text+';font:500 12px/1.2 '+reviewFont+';cursor:pointer}',
  // After the all:unset reset above, which would otherwise inherit pointer-events:none.
  '.rv-hint button,.rv-hint .rv-why{pointer-events:auto}',
- '.rv-hint button[data-act=apply]{background:#2f6f55;border-color:#2f6f55;color:#fff}',
- '.rv-hint button[data-act=apply] kbd{background:#1f4d3a;border-color:#ffffff73;color:#fff}',
+ '.rv-hint button[data-act=apply]{background:'+UI.primary+';border-color:'+UI.primary+';color:'+UI.surface+'}',
+ '.rv-hint button[data-act=apply] kbd{background:'+UI.primaryHover+';border-color:rgb(255 255 255 / 45%);color:'+UI.surface+'}',
  '.rv-hint button:disabled{opacity:.45;cursor:not-allowed}',
- '.rv-hint button:focus-visible,.rv-ghostbar button:focus-visible{outline:2px solid #2f6f55;outline-offset:2px}',
- '.rv-hint .rv-why{margin-top:7px;padding-top:6px;border-top:1px dashed #d6e0d9;white-space:pre-wrap;color:#3f4a44;-webkit-user-select:text;user-select:text}',
+ '.rv-hint button:focus-visible,.rv-ghostbar button:focus-visible{outline:2px solid '+UI.focus+';outline-offset:2px}',
+ '.rv-hint .rv-why{margin-top:7px;padding-top:6px;border-top:1px solid '+UI.border+';white-space:pre-wrap;color:'+UI.text+';-webkit-user-select:text;user-select:text}',
  '.rv-hint .rv-why[hidden]{display:none}',
  '@media (max-width:520px){.rv-hint{padding:9px 11px 10px}.rv-hint button{min-height:36px;padding:4px 12px}}',
  '.rv-ghostbar{display:none;flex-wrap:wrap;align-items:center;gap:4px 6px;max-width:440px;padding:5px 6px}',
- '.rv-ghostbar .rv-ghost-label{padding:0 4px;font-size:12px;font-weight:700;color:#2f5a46;white-space:nowrap}',
- '.rv-ghostbar button[data-ghost-act=accept]{background:#2f6f55;border-color:#2f6f55;color:#fff}',
- '.rv-ghostbar button[data-ghost-act=accept] kbd{background:#1f4d3a;border-color:#ffffff73;color:#fff}',
- '[data-review-ui=ghost]{color:#9aa29c!important;-webkit-text-fill-color:#9aa29c;font-style:normal;text-decoration:none;pointer-events:none;-webkit-user-select:none;user-select:none}',
+ '.rv-ghostbar .rv-ghost-label{padding:0 4px;font-size:12px;font-weight:600;color:'+UI.muted+';white-space:nowrap}',
+ '.rv-ghostbar button[data-ghost-act=accept]{background:'+UI.primary+';border-color:'+UI.primary+';color:'+UI.surface+'}',
+ '.rv-ghostbar button[data-ghost-act=accept] kbd{background:'+UI.primaryHover+';border-color:rgb(255 255 255 / 45%);color:'+UI.surface+'}',
+ '[data-review-ui=ghost]{color:'+UI.ghost+'!important;-webkit-text-fill-color:'+UI.ghost+';font-style:normal;text-decoration:none;pointer-events:none;-webkit-user-select:none;user-select:none}',
  '.rv-spinner{position:absolute;z-index:1001;width:14px;height:14px;pointer-events:none}',
- '.rv-spinner .rv-ring{display:block;box-sizing:border-box;width:14px;height:14px;border:2px solid #c5d3c9;border-top-color:#2f6f55;border-radius:50%;animation:rv-spin .8s linear infinite}',
+ '.rv-spinner .rv-ring{display:block;box-sizing:border-box;width:14px;height:14px;border:2px solid '+UI.borderStrong+';border-top-color:'+UI.primary+';border-radius:50%;animation:rv-spin .8s linear infinite}',
  '@keyframes rv-spin{to{transform:rotate(360deg)}}',
  '@media (prefers-reduced-motion:reduce){.rv-spinner .rv-ring{animation-duration:2.4s}}',
  '.rv-sr{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',

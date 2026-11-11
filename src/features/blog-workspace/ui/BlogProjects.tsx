@@ -1,7 +1,13 @@
 import {useEffect,useState} from 'react';
 import type {BlogBridge,CanonicalEditorTab} from '../../../shared/blog';
+import {Button,IconButton,Notice,Spacer,StatusText,Toolbar} from '../../../shared/ui/primitives';
+import {DocumentIcon,RefreshIcon} from './icons';
 
-export function BlogProjects({api,onOpen}:{api:BlogBridge;onOpen:(tab:CanonicalEditorTab)=>void}){
+/**
+ * 정본 블로그 프로젝트 목록. Notion 데이터베이스 행처럼 행 전체를 눌러 열고,
+ * 행 끝의 '프로젝트 열기'는 키보드·보조기술용 같은 동작이다(hover·포커스 때 보인다).
+ */
+export function BlogProjects({api,onOpen,openIds=[]}:{api:BlogBridge;onOpen:(tab:CanonicalEditorTab)=>void;openIds?:string[]}){
   const [projects,setProjects]=useState<Array<{id:string;title:string}>>([]);
   const [loading,setLoading]=useState(true);
   const [opening,setOpening]=useState('');
@@ -13,17 +19,35 @@ export function BlogProjects({api,onOpen}:{api:BlogBridge;onOpen:(tab:CanonicalE
     finally{setLoading(false);}
   };
   useEffect(()=>{void refresh();},[api]);
-  return <section aria-label="블로그 프로젝트 목록">
-    <div className="blog-reference-toolbar"><h3>블로그 프로젝트</h3><button disabled={loading||!!opening} onClick={()=>void refresh()}>프로젝트 새로고침</button></div>
-    <p>작업할 프로젝트를 열어 원고·사진·검토 결과를 이어서 편집해요. 연 프로젝트는 위쪽 탭에서 다시 고를 수 있어요.</p>
-    {error&&<p role="alert">{error}</p>}
-    {loading?<p role="status">프로젝트를 불러오는 중…</p>:!error&&!projects.length?<p>아직 연결된 블로그 프로젝트가 없어요.</p>:null}
-    <div className="blog-project-grid">{projects.map(project=><article className="blog-project-card" aria-label={project.title} key={project.id}>
-      <span>블로그</span><h4>{project.title}</h4><p>원고 · 사진 · 검토</p>
-      <button disabled={!!opening||!api.openCanonical} onClick={async()=>{
-        setOpening(project.id);setError('');
-        try{onOpen(await api.openCanonical!(project.id));}catch(e){setError(String(e));}finally{setOpening('');}
-      }}>{opening===project.id?'여는 중…':'프로젝트 열기'}</button>
-    </article>)}</div>
+  const open=async(id:string)=>{
+    if(opening||!api.openCanonical)return;
+    setOpening(id);setError('');
+    try{onOpen(await api.openCanonical(id));}catch(e){setError(String(e));}finally{setOpening('');}
+  };
+  return <section className="blog-projects" aria-label="블로그 프로젝트 목록">
+    <Toolbar className="blog-projects-bar">
+      {loading?<StatusText live busy>프로젝트를 불러오는 중…</StatusText>
+        :projects.length?<span className="ui-meta">프로젝트 {projects.length}개</span>:null}
+      <Spacer/>
+      <IconButton label="프로젝트 새로고침" disabled={loading||!!opening} onClick={()=>void refresh()}><RefreshIcon/></IconButton>
+    </Toolbar>
+    {error&&<Notice tone="danger">{error}</Notice>}
+    {!loading&&!error&&!projects.length&&<p className="ui-meta blog-empty">아직 연결된 블로그 프로젝트가 없어요.</p>}
+    {projects.length>0&&<ul className="ui-list blog-project-list" data-divided="">{projects.map(project=>{
+      const isOpen=openIds.includes(project.id);
+      return <li key={project.id}>
+        <article className="ui-row blog-project-row" data-clickable="" aria-label={project.title} aria-busy={opening===project.id||undefined}
+          onClick={()=>void open(project.id)}>
+          <DocumentIcon className="ui-row-icon"/>
+          <span className="ui-row-title">{project.title}</span>
+          {isOpen&&<span className="ui-row-meta" title="위쪽 탭에 열려 있어요">열림</span>}
+          <span className="ui-row-actions">
+            <Button size="small" disabled={!!opening||!api.openCanonical} onClick={event=>{event.stopPropagation();void open(project.id);}}>
+              {opening===project.id?'여는 중…':'프로젝트 열기'}
+            </Button>
+          </span>
+        </article>
+      </li>;
+    })}</ul>}
   </section>;
 }

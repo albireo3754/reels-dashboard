@@ -7,6 +7,7 @@ import { markupFixture } from "../fixtures/markup-editor";
 import { startCanonicalEditor } from "../../src/app/blog-editor/server";
 import { parse } from "../../src/shared/blog-markup";
 import { stickerKey } from "../../src/shared/blog-stickers";
+import { chooseEditorMenu, closeEditorMenu, openEditorMenu } from "./canonical-editor-helpers";
 
 // Synthetic images only; the 1×1 fixture PNG stands in for analyzed frames.
 const fields = (description: string, ocr: string[], faces = 0) => ({ description, tags: ["synthetic"], ocr, contextNotes: ["Writer's record"], uncertainties: ["Unclear sauce"], faceRegions: Array(faces).fill({ x: 0, y: 0, width: 1, height: 1 }) });
@@ -31,7 +32,7 @@ test("search, inspect, place at a clicked gap, keep through a failed save, save 
     server=await startCanonicalEditor(config);
     await page.goto(server.url+"/?blogEditor=1");
     const frame=page.frameLocator('iframe[title="정본 본문 편집"]');
-    await page.getByRole("button",{name:"사진 넣기 (0)",exact:true}).click();
+    await chooseEditorMenu(page,"사진 넣기 (0)");
     const panel=page.getByRole("region",{name:"사진 고르기"});
     await expect(panel.getByRole("status").first()).toContainText("72장 중 72장");
     await expect(panel.getByLabel("사진 검색")).toBeFocused();
@@ -60,7 +61,8 @@ test("search, inspect, place at a clicked gap, keep through a failed save, save 
     await panel.getByRole("button",{name:"이 위치에 넣기"}).click();
     await expect(frame.locator('[data-tid="P1"] + [data-pending-photo]')).toHaveCount(1);
     await expect(frame.locator("[data-pending-photo] img")).toHaveAttribute("alt",'Bowl "close-up"');
-    await expect(page.getByRole("button",{name:"사진 넣기 (1)",exact:true})).toBeVisible();
+    await expect((await openEditorMenu(page)).getByRole("menuitem",{name:"사진 넣기 (1)",exact:true})).toBeVisible();
+    await closeEditorMenu(page);
     await expect(panel.getByRole("heading",{name:"저장 전 사진 1장"})).toBeVisible();
 
     // Unsaved prose edits and the placement survive a failed save together.
@@ -82,7 +84,8 @@ test("search, inspect, place at a clicked gap, keep through a failed save, save 
     await page.getByRole("button",{name:"정본 저장",exact:true}).click({timeout:3000});
     await page.unroute("**/api/blog/save");
     await page.keyboard.press("ControlOrMeta+s");
-    await expect(page.getByRole("button",{name:"사진 넣기 (0)",exact:true})).toBeVisible();
+    await expect((await openEditorMenu(page)).getByRole("menuitem",{name:"사진 넣기 (0)",exact:true})).toBeVisible();
+    await closeEditorMenu(page);
     await expect(frame.locator('[data-tid="P2"]')).toHaveText("Second line edited");
     await expect(frame.locator("[data-pending-photo]")).toHaveCount(0);
     await expect(frame.locator('[data-tid="P1"] + figure img')).toHaveAttribute("alt",'Bowl "close-up"');
@@ -92,7 +95,7 @@ test("search, inspect, place at a clicked gap, keep through a failed save, save 
 
     await page.reload();
     await expect(frame.locator('[data-tid="P1"] + figure img')).toHaveCount(1);
-    await page.getByRole("button",{name:"사진 넣기 (0)",exact:true}).click();
+    await chooseEditorMenu(page,"사진 넣기 (0)");
     await panel.getByLabel("사진 검색").fill("noodle");
     await expect(panel.getByText("본문 사용")).toBeVisible();
     await page.keyboard.press("Escape");
@@ -107,7 +110,7 @@ test("an unconnected project explains the setup and stays unchanged",async({page
     const config=await markupFixture(root);const before=await readFile(config.canon,"utf8");
     server=await startCanonicalEditor(config);
     await page.goto(server.url+"/?blogEditor=1");
-    await page.getByRole("button",{name:"사진 넣기 (0)",exact:true}).click();
+    await chooseEditorMenu(page,"사진 넣기 (0)");
     await expect(page.getByRole("region",{name:"사진 고르기"})).toContainText("mediaEvidence");
     await expect(page.getByRole("button",{name:"정본 저장",exact:true})).toBeDisabled();
     expect(await readFile(config.canon,"utf8")).toBe(before);
@@ -127,7 +130,7 @@ test("a photo the server refuses is reported, retried on request, and a split be
     await page.goto(server.url+"/?blogEditor=1");
     const frame=page.frameLocator('iframe[title="정본 본문 편집"]'),status=page.locator("#ce-save-status");
     let posts=0;page.on("request",r=>{if(r.url().endsWith("/api/blog/save"))posts++;});
-    await page.getByRole("button",{name:"사진 넣기 (0)",exact:true}).click();
+    await chooseEditorMenu(page,"사진 넣기 (0)");
     const panel=page.getByRole("region",{name:"사진 고르기"});
     await panel.getByRole("button",{name:"B.MOV 2.5초 사진 보기"}).click();
     // The gap after P2, the end of the bundle.

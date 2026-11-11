@@ -1,0 +1,200 @@
+/*
+ * 사진·영상 메타데이터 분석 다이얼로그와 얼굴 모자이크 검토.
+ * 다이얼로그 모양은 공용 .ui-dialog, 버튼·입력·알림은 components.css. 여기서는 배치만 다룬다.
+ */
+dialog.media-analysis-dialog {
+  width: min(960px, calc(100vw - 32px));
+}
+.media-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* 폴더·분석기·시작을 한 줄로 */
+.media-analysis-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-4);
+}
+.media-analysis-toolbar > label {
+  margin-top: 0;
+  min-width: 0;
+}
+.media-analysis-toolbar select {
+  max-width: 280px;
+}
+.media-analysis-toolbar > button {
+  margin-left: auto;
+}
+.media-analysis-note {
+  margin-top: calc(-1 * var(--space-1));
+}
+
+/* 맥락 입력은 접어 두고 펼치면 두 열 */
+.media-analysis-context summary {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.media-analysis-context > .ui-meta {
+  margin: var(--space-2) 0 var(--space-3);
+}
+.media-analysis-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.media-analysis-context-grid > label + label {
+  margin-top: 0;
+}
+.media-analysis-context-grid textarea {
+  min-height: 56px;
+}
+.media-analysis-status {
+  white-space: normal;
+}
+
+/* 검색 + 결과 수 */
+.media-analysis-search {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.media-analysis-search > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.media-analysis-search > .ui-meta {
+  flex: 0 0 auto;
+  line-height: var(--control-md);
+}
+
+/* 결과: 파일명 + 설명 본문 + 회색 메타 한 덩어리, 행 사이 hairline */
+.media-analysis-result {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+.media-analysis-result:first-child {
+  border-top: 0;
+}
+.media-analysis-result > header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-xs);
+}
+.media-analysis-result > header strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+.media-analysis-result-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.media-analysis-description {
+  margin-top: var(--space-1);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+.media-analysis-meta {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-subtle);
+}
+.media-analysis-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.media-analysis-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+/* ---------- 얼굴 모자이크 검토 ---------- */
+.mosaic-review {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+/* 이미지는 원래 크기(최대 500px)로 둔다. 드래그 좌표가 표시 크기에 비례한다. */
+.mosaic-stage {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  touch-action: none;
+  cursor: crosshair;
+}
+.mosaic-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 500px;
+  border-radius: var(--radius-xs);
+}
+button.mosaic-region {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--color-danger);
+  border-radius: 0;
+  background: transparent;
+}
+button.mosaic-region:hover {
+  background: var(--color-hover);
+}
+button.mosaic-region[aria-pressed="true"] {
+  border-width: 4px;
+  border-color: var(--color-warning);
+}
+.mosaic-selection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.mosaic-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.mosaic-strength {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 0;
+  font-variant-numeric: tabular-nums;
+}
+.mosaic-strength input[type="range"] {
+  width: 160px;
+  margin-top: 0;
+}
+.mosaic-output {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .media-analysis-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .media-analysis-toolbar > button {
+    margin-left: 0;
+  }
+}

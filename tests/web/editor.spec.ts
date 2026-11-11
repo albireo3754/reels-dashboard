@@ -20,6 +20,12 @@ async function setValidSettings(page: Page) {
   await page.getByRole('textbox', { name: '표지 훅', exact: true }).fill('천천히 걸으며\n발견한 풍경');
 }
 
+// 내보내기는 상단 바의 '결과 내보내기' 메뉴(영상과 표지 / 표지 PNG)에 있다.
+async function exportFromMenu(page: Page, name = '영상과 표지 내보내기') {
+  await page.getByRole('button', { name: '결과 내보내기', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 async function addCaption(page: Page, index: number, start: string, end: string, text: string) {
   await page.getByRole('button', { name: '자막 추가', exact: true }).click();
   await page.getByLabel(`자막 ${index} 시작`, { exact: true }).fill(start);
@@ -112,7 +118,7 @@ test('overlapping timed captions are rejected before preview and export', async 
   await page.getByRole('button', { name: '영상 미리보기 만들기', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText(/겹|overlap/i);
   await expect(page.getByRole('img', { name: /영상 .* 합성 미리보기/ })).toHaveCount(0);
-  await page.getByRole('button', { name: '영상과 표지 내보내기', exact: true }).click();
+  await exportFromMenu(page);
   await expect(page.getByRole('alert')).toContainText(/겹|overlap/i);
   await expect(page.getByRole('progressbar', { name: '영상 내보내기 진행률' })).toHaveCount(0);
 });
@@ -151,7 +157,7 @@ test('editing settings invalidates an already generated preview', async ({ page 
 test('synthetic export progresses while viewing the dashboard and updates its stage', async ({ page }) => {
   await importVideo(page);
   await setValidSettings(page);
-  await page.getByRole('button', { name: '영상과 표지 내보내기', exact: true }).click();
+  await exportFromMenu(page);
   await expect(page.getByRole('progressbar', { name: '영상 내보내기 진행률' })).toBeVisible();
   await expect(page.getByRole('button', { name: '로컬 영상 열기', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: '대시보드', exact: true }).click();
@@ -167,7 +173,7 @@ test('synthetic export progresses while viewing the dashboard and updates its st
 test('cancelled synthetic export never exposes completed output controls', async ({ page }) => {
   await importVideo(page);
   await setValidSettings(page);
-  await page.getByRole('button', { name: '영상과 표지 내보내기', exact: true }).click();
+  await exportFromMenu(page);
   await page.getByRole('button', { name: '내보내기 취소', exact: true }).click();
   await expect(page.getByRole('heading', { name: '내보내기 취소됨', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '결과 폴더 열기', exact: true })).toHaveCount(0);
@@ -194,7 +200,8 @@ test('shared web mode explains desktop-only editing and provides no import/expor
   await page.getByRole('button', { name: '영상 편집', exact: true }).click();
   await expect(page.getByText('영상 편집은 데스크톱에서 이어가요.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '로컬 영상 열기', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '영상과 표지 내보내기', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '결과 내보내기', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: '영상과 표지 내보내기', exact: true })).toHaveCount(0);
 });
 
 test('unavailable editor runtime disables import and displays the reason', async ({ page }) => {
@@ -214,7 +221,7 @@ test('preview failure remains explicit and does not show a synthetic success ima
 test('failed synthetic render does not claim completion or expose output paths', async ({ page }) => {
   await importVideo(page, 'demoRenderError=1');
   await setValidSettings(page);
-  await page.getByRole('button', { name: '영상과 표지 내보내기', exact: true }).click();
+  await exportFromMenu(page);
   await expect(page.getByRole('heading', { name: '내보내기 실패', exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('렌더 오류');
   await expect(page.getByRole('button', { name: '결과 폴더 열기', exact: true })).toHaveCount(0);

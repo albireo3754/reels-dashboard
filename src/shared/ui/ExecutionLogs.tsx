@@ -125,13 +125,8 @@ export function ExecutionLogsPanel({ bridge }: { bridge: ExecutionLogBridge }) {
   return (
     <section className="execution-logs" aria-label="실행 로그">
       <h2>실행 로그</h2>
-      <p>
-        앱에서 시작한 영상 처리 기록이에요. 실행 중 {running}개 · 종료 기록{" "}
-        {logs.length - running}개
-      </p>
-      <p>
-        프로세스 완료는 해당 처리 단계의 종료를 뜻해요. 최종 파일 저장 결과는
-        편집 화면에서 확인하세요.
+      <p title="앱에서 시작한 영상 처리 기록이에요. 프로세스 완료는 해당 처리 단계의 종료를 뜻하고, 최종 파일 저장 결과는 편집 화면에서 확인해요.">
+        실행 중 {running}개 · 종료 기록 {logs.length - running}개
       </p>
       <label>
         표시{" "}

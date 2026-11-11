@@ -4,6 +4,7 @@ import path from "node:path";
 import { markupFixture } from "../fixtures/markup-editor";
 import { cleanProfile, closeApp, launchApp, makeProfile, pressWorkbenchKey } from "./helpers";
 import { closeEditorTab, editorIframe, openBlogEditor, windowCount } from "./blog-editor-helpers";
+import { chooseEditorMenu } from "../web/canonical-editor-helpers";
 
 const HELP_URL = "https://help.naver.com/service/5593/contents/15529?lang=ko";
 
@@ -55,7 +56,7 @@ test("blog projects open as tabs inside the blog workspace, keep edits across me
     const card = (id: string) => main.getByRole("article", { name: `${id} project`, exact: true });
 
     const first = await openBlogEditor(app, main, "first", card("first"));
-    await expect(main.getByRole("button", { name: "first project", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByRole("tab", { name: "first project", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(editorIframe(main, "first")).toHaveAttribute("title", "first project 스마트에디터");
     await expect(editorIframe(main, "first")).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-modals allow-popups");
     expect(new URL(first.url()).pathname + new URL(first.url()).search).toBe("/?blogEditor=1");
@@ -89,11 +90,11 @@ test("blog projects open as tabs inside the blog workspace, keep edits across me
     expect(new URL(second.url()).origin).not.toBe(new URL(first.url()).origin);
     await expect(editorIframe(main, "first")).toBeHidden();
     await expect(second.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toHaveText("Second line");
-    await main.getByRole("button", { name: "first project", exact: true }).click();
+    await main.getByRole("tab", { name: "first project", exact: true }).click();
     await expect(editorIframe(main, "first")).toBeVisible();
     await expect(editorIframe(main, "second")).toBeHidden();
     // Reopening an open project selects its tab instead of reloading it.
-    await main.getByRole("button", { name: "프로젝트", exact: true }).click();
+    await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
     await card("first").getByRole("button", { name: "프로젝트 열기", exact: true }).click();
     await expect(editorIframe(main, "first")).toBeVisible();
     await expect(main.locator("iframe.blog-editor-frame")).toHaveCount(2);
@@ -135,7 +136,7 @@ test("embedded editor keeps its navigation, popup and permission limits", async 
     await editor.locator("#ce-save-status").click();
     expect(await editor.evaluate(() => window.open("https://example.com/focused", "_blank", "noreferrer"))).toBeNull();
     // The help link is the one page that goes to the external browser.
-    await editor.getByRole("button", { name: "스티커 (0)", exact: true }).click();
+    await chooseEditorMenu(editor, "스티커 (0)");
     await editor.getByText("네이버에서 기본 스티커 넣는 방법", { exact: true }).click();
     await editor.getByRole("link", { name: "네이버 공식 스티커 첨부 안내 ↗" }).click();
     await expect.poll(opened).toEqual([HELP_URL]);
@@ -298,7 +299,7 @@ test("stubbed real dialogs: 계속 편집 keeps the tab and the window, and the 
     // Tab ×, 그래도 닫기: the tab goes.
     await choose(0);
     await main.getByRole("button", { name: "only project 탭 닫기", exact: true }).click();
-    await expect(main.getByRole("button", { name: "only project", exact: true })).toHaveCount(0);
+    await expect(main.getByRole("tab", { name: "only project", exact: true })).toHaveCount(0);
     expect(await dialogs()).toEqual([EDITOR_DIALOG, EDITOR_DIALOG, EDITOR_DIALOG, EDITOR_DIALOG]);
 
     // Another screen's guard (as the 원고·배치 draft or the experience form register) gets the general wording,
@@ -312,7 +313,7 @@ test("stubbed real dialogs: 계속 편집 keeps the tab and the window, and the 
     await expect.poll(async () => (await dialogs()).at(-1)).toBe(GENERAL_DIALOG);
     expect(await dialogs()).toHaveLength(5);
     await closeEditorTab(main, "only project");
-    await main.getByRole("button", { name: "프로젝트", exact: true }).click();
+    await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
     await closeWindow();
     await expect.poll(async () => (await dialogs()).length).toBe(6);
     expect((await dialogs()).at(-1)).toBe(GENERAL_DIALOG);
@@ -343,7 +344,7 @@ test("a changed connection opens with the new config once its tabs are closed (o
     await writeFile(config.canon, (await readFile(config.canon, "utf8")).replace("Second line", "New connection line"));
     await writeFile(path.join(profile, "blog-projects.json"), JSON.stringify({ version: 1, projects: [{ ...project, config }] }));
 
-    await main.getByRole("button", { name: "프로젝트", exact: true }).click();
+    await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
     await main.getByRole("button", { name: "프로젝트 열기", exact: true }).click();
     await expect(main.getByRole("alert")).toContainText("프로젝트 연결이 변경됐어요");
     await expect(main.locator("iframe.blog-editor-frame")).toHaveCount(1);

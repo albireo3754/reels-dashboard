@@ -4,6 +4,7 @@ import path from "node:path";
 import {launchApp,makeProfile,closeApp,cleanProfile} from "./helpers";
 import {closeEditorTab,openBlogEditor} from "./blog-editor-helpers";
 import {markupFixture} from "../fixtures/markup-editor";
+import {chooseEditorMenu} from "../web/canonical-editor-helpers";
 
 test("desktop sticker planning saves and reopens with clipboard handoff",async()=>{
   const profile=await makeProfile();let app;
@@ -16,7 +17,7 @@ test("desktop sticker planning saves and reopens with clipboard handoff",async()
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
     const editor=await openBlogEditor(app,main,"example");
-    await editor.getByRole("button",{name:"스티커 (0)",exact:true}).click();
+    await chooseEditorMenu(editor,"스티커 (0)");
     await editor.getByRole("button",{name:"맛있다 스티커 자리 추가"}).click();
     const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');
     await expect(frame.locator('[data-tid="P1"] + [data-sticker-id]')).toHaveCount(1);

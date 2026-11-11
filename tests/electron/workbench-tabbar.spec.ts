@@ -82,11 +82,16 @@ test("empty panel offers terminal, Codex and Claude, with the settings behind a 
     await expect(gear).toHaveAttribute("aria-expanded", "true");
     const settings = page.getByTestId("dev-settings");
     await expect(settings).toBeVisible();
-    for (const name of [
-      "소스 폴더 연결",
-      "현재 세션용 프롬프트 복사",
-    ])
-      await expect(settings.getByRole("button", { name })).toBeVisible();
+    await expect(
+      settings.getByRole("button", { name: "소스 폴더 연결" }),
+    ).toBeVisible();
+    // Prompt copy moved into the composer's ⋯ menu; it stays reachable there.
+    await settings.getByRole("button", { name: "요청 더 보기" }).click();
+    await expect(
+      settings.getByRole("menuitem", { name: "현재 세션용 프롬프트 복사" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(settings.getByRole("button", { name: /세션 시작$/ })).toBeVisible();
     await expect(settings.getByLabel(/개선 요청/)).toBeVisible();
     await expect(settings.getByTestId("dev-backend-setting")).toBeVisible();
@@ -175,6 +180,11 @@ test("tabs, plus and menu share one row with roles, roving focus and arrow keys"
       "미리보기 서버",
       "검증 실행",
     ]);
+    // The shared menu focuses its first item when opened from the keyboard (a click only opens it).
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem").first()).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem", { name: "Codex 열기" })).toBeFocused();

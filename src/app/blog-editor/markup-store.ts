@@ -17,6 +17,7 @@ import {load,save,recoverBase} from "../../shared/blog-markup-store";
 import {editedParagraphs,editedFlat} from "../../shared/blog-markup-edit";
 import {renderHtml,MARKUP_STYLE_CSS} from "../../shared/blog-markup-render";
 import {layoutStyles} from "./layout-styles";
+import {EDITOR_FRAME_CSS} from "./frame-theme";
 import {readInline,escapeHtml,type CanonicalDocument} from "../../shared/canonical-blog";
 import {blogSuggestRequest,fitSuggestInput,inlineSuggestInput,SUGGEST_LIMITS,type InlineSuggestInput} from "../../shared/inline-suggest";
 import {blogChatInput,blogChatRequest,fitChatInput,CHAT_LIMITS,type BlogChatInput} from "../../shared/blog-chat";
@@ -174,8 +175,8 @@ export class MarkupStore {
     const styles=this.fonts(x.styles);
     const article=this.article(x.doc);
     return `<!doctype html><html lang="ko" data-markup="true"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}img{max-width:100%;height:auto}${styles}
-body{background:white}main,main.mobile{width:100%;margin:0 auto;padding:24px 20px;box-sizing:border-box}header{margin-bottom:32px}[contenteditable]{outline:none;cursor:text;min-height:1em}[contenteditable]:focus{outline:2px solid #91b8a6;outline-offset:8px}.editor-bundle-label{font:11px sans-serif;color:#83988b;text-align:left;margin:10px 0 18px}.editor-bundle.active{box-shadow:inset 3px 0 #5b8875}.editor-bundle.picked{outline:2px solid #5b8875;outline-offset:6px;border-radius:2px}.editor-bundle[hidden]{display:none}[data-pending-photo]{position:relative;outline:2px dashed #5b8875;outline-offset:4px}[data-pending-photo]::after{content:"저장 전 사진";position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:999px;background:#315e4d;color:white;font:11px sans-serif}
-</style>${MARKUP_STYLE_CSS}<main><header><small>블로그 정본</small><h1 contenteditable="true" spellcheck="false" data-tid="$title" role="textbox" aria-label="글 제목">${escapeHtml(String(x.doc.metadata?.title??""))}</h1></header>${article}</main><script type="module" src="/editor-frame.js"></script></html>`;
+${EDITOR_FRAME_CSS}
+</style>${MARKUP_STYLE_CSS}<main><header><h1 contenteditable="true" spellcheck="false" data-tid="$title" role="textbox" aria-label="글 제목">${escapeHtml(String(x.doc.metadata?.title??""))}</h1></header>${article}</main><script type="module" src="/editor-frame.js"></script></html>`;
   }
   /** Saves are queued so a page-hide save cannot race the one in flight. */
   async save(value:unknown){

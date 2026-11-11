@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {markupFixture} from "../fixtures/markup-editor";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
+import {chooseEditorMenu,closeEditorMenu,openEditorMenu} from "./canonical-editor-helpers";
 import {parse} from "../../src/shared/blog-markup";
 import {bundleHashes} from "../../src/shared/blog-markup-source";
 
@@ -145,7 +146,7 @@ test("delete stays undoable for a few seconds, then saves by itself while typing
  try{
   const outline=page.getByRole("navigation",{name:"정본 묶음"});
   await outline.getByRole("button",{name:/Second/}).click();
-  await page.getByRole("button",{name:"묶음 삭제"}).click();
+  await chooseEditorMenu(page,"묶음 삭제");
   await expect(s.frame.locator('.editor-bundle[data-bundle="B2"]')).toBeHidden();
   const p2=s.frame.locator('[data-tid="P2"]');
   await p2.click();await end(p2);await page.keyboard.type(" typed");
@@ -154,7 +155,7 @@ test("delete stays undoable for a few seconds, then saves by itself while typing
   await page.getByRole("button",{name:"삭제 취소 (1)"}).click();
   await expect(s.frame.locator('.editor-bundle[data-bundle="B2"]')).toBeVisible();
   await outline.getByRole("button",{name:/Third/}).click();
-  await page.getByRole("button",{name:"묶음 삭제"}).click();
+  await chooseEditorMenu(page,"묶음 삭제");
   await expect.poll(s.file,{timeout:15000}).not.toContain('id="B3"');
   await expect(s.status).toContainText("✓ 저장 완료",DONE);
   await expect(page.getByRole("button",{name:/삭제 취소/})).toHaveCount(0);
@@ -184,7 +185,7 @@ test("a delete already on its way cannot be cancelled, so nothing claims it was"
  try{
   const release=await hold(page);
   await page.getByRole("navigation",{name:"정본 묶음"}).getByRole("button",{name:/Second/}).click();
-  await page.getByRole("button",{name:"묶음 삭제"}).click();
+  await chooseEditorMenu(page,"묶음 삭제");
   await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByRole("button",{name:/삭제 취소/})).toBeDisabled(DONE);
   release();
@@ -197,7 +198,7 @@ test("a delete the server refuses comes back instead of repeating",async({page})
  try{
   let posts=0;page.on("request",r=>{if(r.url().endsWith("/api/blog/save"))posts++;});
   await page.getByRole("navigation",{name:"정본 묶음"}).getByRole("button",{name:/Second/}).click();
-  await page.getByRole("button",{name:"묶음 삭제"}).click();
+  await chooseEditorMenu(page,"묶음 삭제");
   await writeFile(s.config.canon,(await s.file()).replace(/<Bundle id="B1"[\s\S]*?<\/Bundle>\n/,""));
   await expect(page.locator(".ce-sync-note")).toContainText("모두 지울 수는 없어요",{timeout:15000});
   await expect(s.frame.locator('.editor-bundle[data-bundle="B2"]')).toBeVisible();
@@ -345,7 +346,8 @@ test("a proposal applied from the body counts as a change, and the old text wait
   await s.frame.locator('[data-review-ui="hint"]').getByRole("button",{name:"적용"}).click();
   await expect.poll(s.file,DONE).toContain("Other line.");
   await expect(s.status).toContainText("✓ 저장 완료",DONE);
-  await expect(page.getByRole("button",{name:/변경분 검토 \(1\)/})).toBeVisible();
+  await expect((await openEditorMenu(page)).getByRole("menuitem",{name:/변경분 검토 \(1\)/})).toBeVisible();
+  await closeEditorMenu(page);
   await s.frame.locator('[data-tid="P1"]').click();
   await page.waitForTimeout(300);
   await expect(p2).toContainText("Other line.");
@@ -367,7 +369,7 @@ test("a sync note stays in sight while the body is scrolled",async({page})=>{
   await expect(note).toContainText("P69",DONE);
   await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));
   const box=await note.evaluate(el=>{
-   const r=el.getBoundingClientRect(),toolbar=document.querySelector(".ce-toolbar")!.getBoundingClientRect();
+   const r=el.getBoundingClientRect(),toolbar=document.querySelector(".ce-header")!.getBoundingClientRect();
    return {top:r.top,bottom:r.bottom,chrome:toolbar.bottom,height:innerHeight};
   });
   expect(box.top).toBeGreaterThanOrEqual(box.chrome-1);

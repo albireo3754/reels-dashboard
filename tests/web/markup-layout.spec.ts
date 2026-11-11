@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {markupFixture} from '../fixtures/markup-editor';
 import {startCanonicalEditor} from '../../src/app/blog-editor/server';
+import {chooseEditorMenu} from './canonical-editor-helpers';
 
 test('linked layout CSS fits photos and collages without nested scroll or duplicate title',async({page},info)=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'markup-layout-'));let server;
@@ -22,7 +23,7 @@ test('linked layout CSS fits photos and collages without nested scroll or duplic
     await expect(frame.locator('.photo-grid4')).toHaveCSS('display','grid');
     for(const [width,mode] of [[1440,'430'],[1440,'900'],[720,'430'],[390,'430']] as const){
       await page.setViewportSize({width,height:900});
-      await page.getByLabel('본문 보기 폭',{exact:true}).selectOption(mode);
+      await chooseEditorMenu(page,mode==='430'?'모바일 폭':'PC 폭','menuitemcheckbox');
       await expect.poll(()=>page.locator('iframe').evaluate((el:HTMLIFrameElement)=>{
         const d=el.contentDocument!,html=d.documentElement;
         return [...d.images].every(i=>i.complete&&i.naturalWidth>0)&&html.scrollWidth<=html.clientWidth+1&&html.scrollHeight<=html.clientHeight+1;

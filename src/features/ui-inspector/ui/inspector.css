@@ -1,79 +1,71 @@
+/*
+ * 화면 검사 오버레이. 배너는 떠 있는 조용한 한 줄, 다이얼로그는 공용 .ui-dialog 구조.
+ * 색·그림자는 토큰만 쓴다. z-index는 토스트(--z-toast)보다 위에 둔다.
+ */
 .ui-inspector-banner {
   position: fixed;
-  top: 62px;
+  top: 60px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1500;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: calc(100vw - 24px);
-  padding: 10px 14px;
-  background: #173e33;
-  color: #fff;
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 20px #0003;
-  font-size: var(--text-base);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-sm);
+}
+.ui-inspector-banner > span {
+  min-width: 0;
 }
 .ui-inspector-banner button {
-  color: #173e33;
-  background: var(--color-surface);
   white-space: nowrap;
 }
 .ui-inspector-outline {
   position: fixed;
   z-index: 1499;
   pointer-events: none;
-  border: 2px solid #137c64;
-  background: #137c6414;
-  box-shadow: 0 0 0 1px #fff;
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-xs);
+  background: var(--color-focus-soft);
+  box-shadow: 0 0 0 1px var(--color-surface);
 }
-.ui-inspector-dialog {
+
+dialog.ui-inspector-dialog {
   width: min(620px, calc(100vw - 32px));
-  padding: 22px;
-  border: 1px solid #b5c8bd;
-  border-radius: var(--radius-lg);
-  color: #17342b;
-  background: var(--color-surface-muted);
-  max-height: 85vh;
-  overflow: auto;
 }
-.ui-inspector-dialog::backdrop {
-  background: #12291f66;
-}
-.ui-inspector-dialog header,
-.ui-inspector-dialog footer {
+.ui-inspector-form {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
-.ui-inspector-dialog footer {
-  justify-content: flex-end;
-}
-.ui-inspector-dialog h2 {
-  font-size: var(--text-xl);
-}
-.ui-inspector-dialog label {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
-}
-.ui-inspector-dialog textarea {
-  resize: vertical;
-  min-height: 110px;
-  width: 100%;
-}
-.ui-inspector-dialog ul {
-  padding-left: 20px;
-  overflow-wrap: anywhere;
+.ui-inspector-dialog code {
   font-size: var(--text-sm);
 }
-.ui-inspector-help {
-  margin: 10px 0 16px;
+.ui-inspector-sources {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.ui-inspector-comment {
+  margin-top: var(--space-4);
+}
+.ui-inspector-comment textarea {
+  min-height: 110px;
+}
+.ui-inspector-dialog .ui-dialog-footer > .ui-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Cross-origin preview clicks never reach document capture listeners. */

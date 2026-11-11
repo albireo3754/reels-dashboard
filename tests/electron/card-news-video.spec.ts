@@ -71,8 +71,15 @@ test("video background trims, previews motion, saves, mixes with still and expor
       await page
         .getByRole("button", { name: `${i}번 카드 삭제`, exact: true })
         .click();
+    // 선택한 카드만 편집기가 펼쳐진다(처음에는 1번).
     await page.getByLabel("1번 노출 시간", { exact: true }).fill("1");
+    await page
+      .getByRole("button", { name: "2번 카드 편집", exact: true })
+      .click();
     await page.getByLabel("2번 노출 시간", { exact: true }).fill("0.5");
+    await page
+      .getByRole("button", { name: "1번 카드 편집", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "1번 영상 선택", exact: true })
       .click();
@@ -84,9 +91,16 @@ test("video background trims, previews motion, saves, mixes with still and expor
       .getByLabel("1번 문구", { exact: true })
       .fill("Moving background");
     await page
+      .getByRole("button", { name: "2번 카드 편집", exact: true })
+      .click();
+    await page
       .getByRole("button", { name: "2번 사진 선택", exact: true })
       .click();
     await page.getByLabel("2번 문구", { exact: true }).fill("Still background");
+    // 미리보기는 선택한 카드를 보여 준다. 영상 배경인 1번 카드로 돌아간다.
+    await page
+      .getByRole("button", { name: "1번 카드 보기", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "카드 미리보기 만들기", exact: true })
       .click();

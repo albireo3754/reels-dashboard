@@ -1,37 +1,44 @@
+/* 실행 로그: 무테 목록. 행 사이 hairline, 상태는 글자색으로만(실패만 danger). */
 .execution-logs {
+  /* 다른 화면처럼 본문 왼쪽 여백에 맞춘다(가운데 정렬하면 제목이 다른 화면보다 안쪽에서 시작한다). */
   max-width: 1000px;
-  margin: 0 auto;
-  padding: 20px;
+  padding: var(--space-5) 0;
 }
 .execution-logs > p {
   color: var(--color-text-muted);
 }
 .execution-logs select {
-  margin-left: 8px;
-  padding: 6px;
+  display: inline-block;
+  width: auto;
+  margin-left: var(--space-2);
 }
 .execution-log {
-  border: 1px solid #cbd9d1;
-  border-radius: var(--radius-md);
-  padding: 16px;
-  margin-top: 14px;
-  background: var(--color-surface);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  padding: var(--space-4) 0;
+  margin-top: 0;
+  background: transparent;
   overflow-wrap: anywhere;
+}
+.execution-log:first-of-type {
+  margin-top: var(--space-3);
 }
 .execution-log header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .execution-log header span {
   flex-shrink: 0;
-  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
 }
 .execution-log[data-status="failed"] header span {
-  color: #a73333;
+  color: var(--color-danger-text);
 }
-.execution-log[data-status="running"] {
-  border-left: 4px solid #428259;
+.execution-log[data-status="running"] header span {
+  color: var(--color-text);
 }
 .execution-log p {
   font-size: var(--text-base);
@@ -40,13 +47,17 @@
 .execution-log progress {
   display: block;
   width: 100%;
-  margin: 8px 0;
+  height: 4px;
+  margin: var(--space-2) 0;
+  accent-color: var(--color-primary);
 }
 .execution-log details {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 .execution-log summary {
   cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 .execution-log dl {
   display: grid;
@@ -54,28 +65,32 @@
   gap: 6px;
   font-size: var(--text-base);
 }
+.execution-log dt {
+  color: var(--color-text-subtle);
+}
 .execution-log dd {
   margin: 0;
 }
 .execution-log ol {
-  padding-left: 20px;
+  padding-left: var(--space-5);
   font-size: var(--text-base);
 }
 .execution-log time {
-  color: var(--color-text-muted);
+  color: var(--color-text-subtle);
 }
 .execution-log pre {
   max-height: 260px;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  padding: 12px;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
   background: var(--color-surface-muted);
   font-size: var(--text-sm);
 }
 @media (max-width: 600px) {
   .execution-logs {
-    padding: 8px;
+    padding: var(--space-2);
   }
   .execution-log dl {
     grid-template-columns: 100px minmax(0, 1fr);

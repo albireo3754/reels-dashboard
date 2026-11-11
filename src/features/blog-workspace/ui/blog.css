@@ -1,64 +1,604 @@
-.blog-workspace {padding: 20px;}
-.blog-workspace-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.blog-workspace-heading h2 {margin:0}
-.blog-terminal-dialog {width:min(620px,calc(100vw - 40px));max-height:80vh;overflow:auto;border:1px solid var(--border,#ddd);border-radius:12px;padding:20px}
-.blog-terminal-dialog::backdrop {background:#0006}
-.blog-workspace .blog-terminal-dialog label {display:block;margin:12px 0}
-.blog-workspace .blog-terminal-dialog textarea {height:120px;white-space:pre-wrap}
-.blog-terminal-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
-.blog-project-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;max-width:1100px;}
-.blog-project-card {border:1px solid var(--border,#ddd);border-radius:12px;padding:20px;min-width:0;}
-.blog-project-card h4 {font-size:18px;margin:12px 0;overflow-wrap:anywhere;}
-.blog-project-card>span,.blog-project-card>p {font-size:13px;opacity:.7;}
-.blog-workspace label {display:inline-flex;gap:8px;align-items:center;margin:8px;}
-.blog-workspace button {margin:4px;}
-.blog-columns {display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}
-.blog-columns > div {min-width:0;}
-.blog-workspace textarea {display:block;width:100%;height:240px;white-space:pre;}
-.blog-media {display:flex;flex-wrap:wrap;max-height:180px;overflow:auto;}
-.blog-block {display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #ddd;padding:8px;}
-.blog-block span {overflow-wrap:anywhere;}
-.blog-preview {margin:20px auto;padding:30px;background:white;color:#222;max-width:900px;min-height:100px;}
-.blog-preview-mobile {max-width:390px;}
-.blog-preview p {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:0 0 24px;}
-.blog-preview img {display:block;width:100%;height:auto;margin:24px 0;}
-@media(max-width:800px){.blog-columns{grid-template-columns:1fr;}}
-.blog-import-review {border:1px solid #aaa;padding:12px;margin:12px 0;}
-.blog-import-review ol {max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;}
-.blog-preview .blog-heading {font-size:var(--blog-heading-size,19px);color:var(--blog-heading-color,#85613f);border-left:4px solid #d5d5d5;padding-left:20px;margin:40px 0 24px;text-align:left;}
-.blog-preview .blog-info {font-family:var(--blog-info-font,sans-serif);border:1px solid #d5d5d5;padding:14px;text-align:center;}
-.blog-preview .blog-source,.blog-preview .blog-tags {font-size:.82em;color:#777;}
-.blog-preview .blog-native {border:1px solid #ddd;background:#fafafa;padding:20px;margin:24px 0;}
-.blog-preview .blog-info-card {border:4px solid #d5d5d5;padding:26px;margin:32px 0 40px;}
-.blog-preview .blog-info-card .blog-info {border:0;padding:0;margin:0 0 12px;}
-.blog-preview p {line-height:inherit;}
-.blog-preview .blog-heading {font-weight:var(--blog-heading-weight,700);}
-.blog-preview img {border-radius:var(--blog-image-radius,0);}
-.blog-preview .blog-title {font-size:28px;font-weight:400;line-height:1.5;text-align:left;border-bottom:1px solid #eee;padding-bottom:28px;margin:0 0 48px;}
-.blog-preview-mobile .blog-title {font-size:25px;}
-.blog-reference-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.blog-reference-toolbar [aria-pressed=true],.blog-reference-list [aria-pressed=true]{outline:2px solid var(--accent,#526f69)}.blog-reference-grid{display:grid;grid-template-columns:160px minmax(260px,1fr) 320px;gap:14px;height:65vh}.blog-reference-grid>div,.blog-reference-inspector{overflow:auto;border:1px solid #8885;padding:12px;min-width:0}.blog-reference-list button{display:block;width:100%;margin:0 0 8px;text-align:left}.blog-reference-list small{display:block;opacity:.6}.blog-reference-canvas iframe{width:100%;height:calc(100% - 65px);border:0}.blog-reference-inspector pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}.blog-reference-image{display:flex;align-items:center;justify-content:center;background:#8882;max-height:350px;margin:10px 0}.blog-reference-paragraph{padding:10px;border-bottom:1px solid #8883}.blog-reference-run{display:inline-block;max-width:100%;height:14px;margin:3px 1px;border-bottom:2px solid #888}.blog-references details{margin:12px 0}@media(max-width:1000px){.blog-reference-grid{grid-template-columns:130px minmax(250px,1fr);height:auto}.blog-reference-list{max-height:65vh}.blog-reference-canvas{min-height:500px}.blog-reference-inspector{grid-column:1/-1;max-height:300px}}
+/* 블로그 작업공간(호스트). 색·크기는 tokens.css만 쓴다.
+ * 예외: .blog-preview 계열은 네이버 원고를 흉내 내는 콘텐츠라 아래 --blog-preview-* 값으로 따로 둔다. */
 
-.blog-saved-results {display:grid;gap:12px;margin:16px 0}.blog-saved-results article{padding:14px;border:1px solid #ccc;border-radius:10px;display:flex;gap:8px;align-items:flex-start;flex-direction:column}.blog-saved-results small{overflow-wrap:anywhere;color:#777}.blog-result-preview{width:100%;height:78vh;min-height:600px;border:1px solid #ccc;background:white}
+.blog-workspace {
+  min-width: 0;
+}
+.blog-empty {
+  margin: var(--space-3) 0;
+}
+.blog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+}
 
-.blog-extract{border:1px solid #e3ddd4;border-radius:8px;padding:12px 16px;margin-bottom:16px;background:#fbf9f6}
-.blog-extract-form{display:grid;grid-template-columns:minmax(260px,2fr) minmax(140px,1fr);gap:8px 12px;align-items:end}
-.blog-extract-form label{display:grid;gap:4px;font-size:12px;color:#666}
-.blog-extract-form input{padding:7px 9px;border:1px solid #ccc;border-radius:4px;font:inherit}
-.blog-extract-directory{grid-column:1/-1;display:flex;gap:10px;align-items:center;font-size:12px;color:#555;overflow-wrap:anywhere}
-.blog-extract-form>button{grid-column:1/-1;justify-self:start}
-.blog-extract-result{overflow-wrap:anywhere}
-.blog-reference-run-text{white-space:pre-wrap;line-height:1.7}
+/* ---------- Header: 제목 + 모드 탭 | 열린 문서 탭 + 맥락과 함께 수정 ---------- */
+.blog-workspace-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  min-height: 40px;
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.blog-workspace[data-view="editor"] .blog-workspace-header {
+  margin-bottom: 0;
+}
+/* 상태·오류 한 줄(헤더 바로 아래) */
+.blog-notice,
+.blog-error {
+  margin: 0 0 var(--space-3);
+}
+.blog-workspace[data-view="editor"] .blog-notice,
+.blog-workspace[data-view="editor"] .blog-error {
+  margin: var(--space-2) 0;
+}
+.blog-workspace-header > h2 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.blog-workspace-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.blog-workspace-tabs > [role="tab"] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.blog-tabs-divider {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-2);
+  background: var(--color-border-strong);
+}
+/* 열린 문서 탭: 아이콘 + 제목 + ×. 모드 탭과 같은 선택 배경, ×는 hover·선택·포커스 때만. */
+.blog-doc-tab {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 240px;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+.blog-doc-tab:hover {
+  background: var(--color-hover);
+}
+.blog-doc-tab[data-selected] {
+  background: var(--color-selected);
+}
+.blog-doc-tab > [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: var(--control-sm);
+  padding: 0 2px 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+.blog-doc-tab > [role="tab"]:hover {
+  background: transparent;
+  color: var(--color-text);
+}
+.blog-doc-tab[data-selected] > [role="tab"] {
+  color: var(--color-text);
+}
+.blog-doc-tab > [role="tab"] > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-subtle);
+}
+.blog-doc-tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blog-doc-tab-close {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  color: var(--color-text-subtle);
+}
+@media (hover: hover) {
+  .blog-doc-tab:not(:hover):not(:focus-within):not([data-selected]) .blog-doc-tab-close {
+    opacity: 0;
+  }
+}
 
-.blog-preview-panel{scroll-margin-top:85px;outline:none;margin-top:20px}.blog-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.blog-preview-heading h3{margin:0;font-size:18px}
+/* ---------- 열린 편집기(iframe) ----------
+ * 높이 계약: iframe은 창 바닥에서 --blog-editor-reserve만큼 띄운다. 기본 24px, 터미널이 열리거나 접히면
+ * styles.css가 측정된 --terminal-height + 12px로 덮어 편집기가 패널 위로 줄어든다.
+ * --blog-editor-top·--blog-editor-below는 BlogWorkspace가 잰다(호스트 위 높이, 호스트 아래 페이지 여백).
+ * 아래 여백이 reserve보다 크면(터미널 열림: .main padding = 패널 + 24px) 음수 margin으로 상쇄해
+ * 대시보드 페이지는 스크롤하지 않고 편집기 안에서만 스크롤한다. */
+.blog-editor-host {
+  --blog-editor-reserve: var(--space-6);
+  margin-bottom: calc(var(--blog-editor-reserve) - var(--blog-editor-below, var(--blog-editor-reserve)));
+}
+.blog-editor-frame {
+  display: block;
+  width: 100%;
+  height: max(var(--blog-editor-min-height, 320px), calc(100vh - var(--blog-editor-top, 180px) - var(--blog-editor-reserve)));
+  border: 0;
+  background: var(--color-bg);
+}
+.blog-editor-frame[hidden] {
+  display: none;
+}
 
-/* Opened project editors: tabs next to the workspace modes, each an embedded iframe. */
-.blog-workspace-tabs{align-items:center}
-.blog-editor-tab{display:inline-flex;align-items:center;margin:4px;border:1px solid #c9c2b6;border-radius:8px;background:#fbf9f6}
-.blog-editor-tab[data-active]{border-color:var(--accent,#526f69)}
-.blog-workspace .blog-editor-tab button{margin:0;border:0;background:none;padding:6px 10px}
-.blog-workspace .blog-editor-tab button:first-child{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.blog-workspace .blog-editor-tab button:last-child{padding:6px 10px 6px 4px;opacity:.7}
-.blog-workspace .blog-editor-tab button[aria-pressed=true]{outline:none;font-weight:700}
-.blog-editor-host{--blog-editor-reserve:16px}
-.blog-editor-frame{display:block;width:100%;height:max(var(--blog-editor-min-height,320px),calc(100vh - var(--blog-editor-top,180px) - var(--blog-editor-reserve)));border:1px solid var(--border,#ddd);border-radius:8px;background:#fff}
-.blog-editor-frame[hidden]{display:none}
+/* ---------- 프로젝트 목록: 데이터베이스 행 ---------- */
+.blog-projects {
+  max-width: 880px;
+}
+.blog-projects-bar {
+  min-height: var(--control-md);
+}
+.blog-project-row .ui-row-title {
+  font-weight: var(--weight-medium);
+}
+
+/* ---------- 원고·배치 ---------- */
+.blog-draft-bar {
+  min-height: var(--control-md);
+}
+.blog-source-tools {
+  margin: var(--space-3) 0 var(--space-6);
+}
+.blog-source-tools > summary {
+  padding: var(--space-1) 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+.blog-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+  align-items: start;
+  margin-top: var(--space-3);
+}
+.blog-columns > div {
+  min-width: 0;
+}
+.blog-columns h3 {
+  margin: var(--space-5) 0 var(--space-1);
+}
+.blog-columns h3:first-child {
+  margin-top: 0;
+}
+.blog-columns .ui-meta {
+  margin-bottom: var(--space-2);
+}
+.blog-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.blog-field-row > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.blog-source-text {
+  height: 240px;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.blog-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+}
+.blog-import-review {
+  margin: var(--space-3) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.blog-import-review ol {
+  max-height: 260px;
+  margin: var(--space-2) 0;
+  padding-left: var(--space-5);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+.blog-block-list {
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+.blog-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--row-height);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-base);
+}
+.blog-block span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.blog-block-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.blog-preview-bar {
+  margin-top: var(--space-4);
+}
+.blog-preview-bar > h3 {
+  flex: 0 0 auto;
+  margin-right: var(--space-2);
+}
+@media (max-width: 800px) {
+  .blog-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- 레퍼런스 추출·탐색 ---------- */
+.blog-references > h3,
+.blog-extract > h3 {
+  margin-bottom: var(--space-1);
+}
+.blog-extract {
+  margin-bottom: var(--space-8);
+}
+.blog-extract-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+  margin-top: var(--space-3);
+}
+.blog-extract-form > label + label {
+  margin-top: 0;
+}
+.blog-extract-directory {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+.blog-extract-result {
+  overflow-wrap: anywhere;
+}
+.blog-extract .ui-notice,
+.blog-extract [role="status"] {
+  margin-top: var(--space-2);
+}
+.blog-reference-run-text {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.blog-results-bar > h3 {
+  flex: 0 0 auto;
+}
+.blog-saved-results {
+  margin: var(--space-1) 0 var(--space-4);
+}
+.blog-result-row {
+  gap: var(--space-3);
+}
+.blog-result-open {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: var(--control-xs);
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+.blog-result-open:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+.blog-result-row .ui-row-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.blog-result-error {
+  margin: var(--space-1) 0 var(--space-2);
+}
+.blog-preview-panel {
+  scroll-margin-top: 85px;
+  outline: none;
+  margin-top: var(--space-5);
+}
+.blog-preview-heading > h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blog-result-preview {
+  display: block;
+  width: 100%;
+  height: 78vh;
+  min-height: 600px;
+  margin-top: var(--space-2);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.blog-structure-import {
+  margin: var(--space-5) 0 var(--space-3);
+}
+.blog-structure-import > summary {
+  padding: var(--space-1) 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+.blog-structure-import > .ui-meta {
+  margin: var(--space-1) 0 var(--space-3);
+}
+.blog-structure-import input[type="file"] {
+  max-width: 420px;
+  padding-top: var(--space-1);
+}
+
+.blog-reference-toolbar {
+  margin: var(--space-3) 0 var(--space-2);
+}
+.blog-reference-link {
+  padding: 0 var(--space-2);
+  font-size: var(--text-base);
+}
+.blog-reference-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(260px, 1fr) 320px;
+  height: 65vh;
+  border-top: 1px solid var(--color-border);
+}
+.blog-reference-grid > div,
+.blog-reference-inspector {
+  min-width: 0;
+  padding: var(--space-3);
+  overflow: auto;
+}
+.blog-reference-grid > * + * {
+  border-left: 1px solid var(--color-border);
+}
+.blog-reference-grid > .blog-reference-list {
+  padding: var(--space-2);
+}
+.blog-reference-list button {
+  display: block;
+  width: 100%;
+  min-height: var(--row-height);
+  height: auto;
+  margin: 0 0 2px;
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  color: var(--color-text);
+}
+.blog-reference-list button[aria-pressed="true"] {
+  background: var(--color-selected);
+}
+.blog-reference-list small {
+  display: block;
+  color: var(--color-text-subtle);
+}
+.blog-reference-canvas h4,
+.blog-reference-inspector h4 {
+  margin-bottom: var(--space-2);
+}
+.blog-reference-canvas iframe {
+  width: 100%;
+  height: calc(100% - 65px);
+  border: 0;
+}
+.blog-reference-inspector pre {
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.blog-reference-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 350px;
+  margin: var(--space-2) 0;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+}
+.blog-reference-paragraph {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.blog-reference-paragraph small {
+  color: var(--color-text-subtle);
+}
+.blog-reference-run {
+  display: inline-block;
+  max-width: 100%;
+  height: 14px;
+  margin: 3px 1px;
+  border-bottom: 2px solid var(--color-border-strong);
+}
+@media (max-width: 1000px) {
+  .blog-reference-grid {
+    grid-template-columns: 130px minmax(250px, 1fr);
+    height: auto;
+  }
+  .blog-reference-list {
+    max-height: 65vh;
+  }
+  .blog-reference-canvas {
+    min-height: 500px;
+  }
+  .blog-reference-inspector {
+    grid-column: 1 / -1;
+    max-height: 300px;
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+  }
+}
+@media (max-width: 720px) {
+  .blog-extract-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- BlogTerminal 다이얼로그(공용 .ui-dialog 구조) ---------- */
+.ui-dialog.blog-terminal-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+.blog-terminal-lead {
+  margin-bottom: var(--space-3);
+}
+.blog-terminal-dialog textarea {
+  height: 120px;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  white-space: pre-wrap;
+}
+.blog-terminal-dialog details {
+  margin-top: var(--space-3);
+}
+.blog-terminal-dialog summary {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.blog-terminal-dialog pre {
+  max-height: 220px;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.blog-terminal-dialog .ui-notice {
+  margin-top: var(--space-3);
+}
+
+/* ---------- 원고·배치 미리보기: 네이버 원고 모사(콘텐츠). UI 토큰이 아니라 네이버 기본값이다 ---------- */
+.blog-preview {
+  --blog-preview-paper: #ffffff;
+  --blog-preview-ink: #222222;
+  --blog-preview-heading: #85613f;
+  --blog-preview-rule: #d5d5d5;
+  --blog-preview-soft-rule: #eeeeee;
+  --blog-preview-muted: #777777;
+  --blog-preview-native-rule: #dddddd;
+  --blog-preview-native-bg: #fafafa;
+  margin: 20px auto;
+  padding: 30px;
+  background: var(--blog-preview-paper);
+  color: var(--blog-preview-ink);
+  max-width: 900px;
+  min-height: 100px;
+}
+.blog-preview-mobile {
+  max-width: 390px;
+}
+.blog-preview p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+  margin: 0 0 24px;
+}
+.blog-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 24px 0;
+}
+.blog-preview .blog-heading {
+  font-size: var(--blog-heading-size, 19px);
+  color: var(--blog-heading-color, var(--blog-preview-heading));
+  border-left: 4px solid var(--blog-preview-rule);
+  padding-left: 20px;
+  margin: 40px 0 24px;
+  text-align: left;
+}
+.blog-preview .blog-info {
+  font-family: var(--blog-info-font, sans-serif);
+  border: 1px solid var(--blog-preview-rule);
+  padding: 14px;
+  text-align: center;
+}
+.blog-preview .blog-source,
+.blog-preview .blog-tags {
+  font-size: 0.82em;
+  color: var(--blog-preview-muted);
+}
+.blog-preview .blog-native {
+  border: 1px solid var(--blog-preview-native-rule);
+  background: var(--blog-preview-native-bg);
+  padding: 20px;
+  margin: 24px 0;
+}
+.blog-preview .blog-info-card {
+  border: 4px solid var(--blog-preview-rule);
+  padding: 26px;
+  margin: 32px 0 40px;
+}
+.blog-preview .blog-info-card .blog-info {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+.blog-preview p {
+  line-height: inherit;
+}
+.blog-preview .blog-heading {
+  font-weight: var(--blog-heading-weight, 700);
+}
+.blog-preview img {
+  border-radius: var(--blog-image-radius, 0);
+}
+.blog-preview .blog-title {
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  border-bottom: 1px solid var(--blog-preview-soft-rule);
+  padding-bottom: 28px;
+  margin: 0 0 48px;
+}
+.blog-preview-mobile .blog-title {
+  font-size: 25px;
+}

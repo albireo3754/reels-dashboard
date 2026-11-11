@@ -132,13 +132,9 @@ export function CanonicalSdkReview({
   }, [job?.id, pending?.request.requestId]);
   const review = result?.reviews.find((review) => review.bundleId === selected);
   return (
-    <section aria-label="정본 Codex 문안 검토">
-      <hr />
+    <section className="ce-sdk-review" aria-label="정본 Codex 문안 검토">
       <h3>Codex 문안 검토</h3>
-      <p>
-        저장된 문장으로 검토합니다. 사진·화면 검수는 별도이며, 제안을 자동
-        적용하지 않아요.
-      </p>
+      <p className="ui-meta">저장된 문장으로 검토해요. 제안은 자동으로 적용하지 않아요.</p>
       <details>
         <summary>검토 기준·추가 근거</summary>
         <textarea
@@ -149,12 +145,13 @@ export function CanonicalSdkReview({
         />
       </details>
       <button
+        className="secondary small"
         disabled={busy || dirty || running || !selected}
         onClick={() => void start()}
       >
         Codex로 선택 묶음 검토
       </button>
-      {dirty && <p>현재 편집을 정본에 저장한 뒤 검토할 수 있어요.</p>}
+      {dirty && <p className="ui-meta">현재 편집을 정본에 저장한 뒤 검토할 수 있어요.</p>}
       <SdkProgress
         job={job}
         onStop={(jobId) => {
@@ -176,6 +173,7 @@ export function CanonicalSdkReview({
                   <del>{f.before.text}</del>
                   <ins>{f.after.text}</ins>
                   <button
+                    className="small"
                     disabled={busy || stale}
                     onClick={() =>
                       onApply({

@@ -7,6 +7,7 @@ import {
   serializeSrt,
   type SubtitleImport,
 } from "../model/subtitles";
+import { Button, Notice, StatusText } from "../../../shared/ui/primitives";
 import "./subtitle-files.css";
 interface Props {
   cues: CaptionCue[];
@@ -123,21 +124,29 @@ export function CaptionFileTools({
   }
   return (
     <section className="subtitle-file-tools" aria-label="자막 파일 도구">
-      <div className="button-row">
-        <button
-          type="button"
+      <div className="subtitle-file-line">
+        <Button
+          size="small"
           onClick={() => input.current?.click()}
           disabled={disabled || reading}
+          title="문구와 시간만 가져오며 현재 자막 크기·위치는 유지해요. UTF-8 평문 자막을 지원해요."
         >
           SRT/VTT 가져오기
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          size="small"
           onClick={download}
           disabled={disabled || !cues.length}
+          title="현재 자막의 문구와 시간을 SRT 파일로 저장해요."
         >
           SRT 저장
-        </button>
+        </Button>
+        {reading && (
+          <StatusText live busy>
+            자막 파일 확인 중…
+          </StatusText>
+        )}
+        {!reading && notice && <StatusText live>{notice}</StatusText>}
       </div>
       <input
         ref={input}
@@ -152,43 +161,33 @@ export function CaptionFileTools({
           if (file) void choose(file);
         }}
       />
-      <p className="muted compact">
-        문구와 시간만 가져오며 현재 자막 크기·위치는 유지해요. UTF-8 평문 자막을
-        지원해요.
-      </p>
-      {reading && <p role="status">자막 파일을 확인하고 있어요.</p>}
-      {error && (
-        <p className="subtitle-file-error" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && <p role="status">{notice}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       {pending && (
         <div
           className="subtitle-import-review"
           role="region"
           aria-label="가져올 자막 검토"
         >
-          <strong>
-            {pending.fileName} · {pending.data.cues.length}개 자막
-          </strong>
-          {pending.data.ignoredNotes > 0 && (
-            <p>
-              VTT 주석 {pending.data.ignoredNotes}개는 자막에 포함하지 않아요.
-            </p>
-          )}
+          <p className="subtitle-import-title">
+            <strong>{pending.fileName}</strong>
+            <span className="ui-meta">
+              {pending.data.cues.length}개 자막
+              {pending.data.ignoredNotes > 0 &&
+                ` · VTT 주석 ${pending.data.ignoredNotes}개는 자막에 포함하지 않아요.`}
+            </span>
+          </p>
           <ol>
             {pending.data.cues.map((cue) => (
               <li key={cue.id}>
-                <small>
+                <span className="ui-meta">
                   {cue.start.toFixed(3)}–{cue.end.toFixed(3)}초
-                </small>
+                </span>
                 <p>{cue.text}</p>
               </li>
             ))}
           </ol>
           {cues.length > 0 && (
-            <label className="checkbox-row">
+            <label className="ui-check">
               <input
                 type="checkbox"
                 checked={confirmed}
@@ -198,17 +197,18 @@ export function CaptionFileTools({
               기존 자막 {cues.length}개를 이 파일의 자막으로 바꿔요
             </label>
           )}
-          <div className="button-row">
-            <button
-              type="button"
+          <div className="subtitle-import-actions">
+            <Button size="small" onClick={() => setPending(null)}>
+              가져오기 취소
+            </Button>
+            <Button
+              size="small"
+              variant="secondary"
               onClick={apply}
               disabled={disabled || (cues.length > 0 && !confirmed)}
             >
               검토한 자막 적용
-            </button>
-            <button type="button" onClick={() => setPending(null)}>
-              가져오기 취소
-            </button>
+            </Button>
           </div>
         </div>
       )}

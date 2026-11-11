@@ -45,11 +45,9 @@ export function StageProgress({ project }: { project: Project }) {
 export function ContentMediaCard({
   project,
   bridge,
-  index,
 }: {
   project: Project;
   bridge: DashboardBridge;
-  index: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -124,7 +122,7 @@ export function ContentMediaCard({
     <div ref={ref} className="board-media-card">
       <button
         type="button"
-        className={`board-poster art-${index % 4}`}
+        className="board-poster"
         disabled={!enabled}
         onClick={(e) => {
           opener.current = e.currentTarget;
@@ -143,16 +141,17 @@ export function ContentMediaCard({
         ) : (
           <span className="board-poster-empty">
             {enabled
-              ? "▧ 연결 자료 보기"
+              ? "연결 자료 보기"
               : bridge.mode === "web"
                 ? "미디어는 데스크톱에서 확인"
                 : "미디어 연결 전"}
           </span>
         )}
-        <span className={`stage-tag stage-${project.stage}`}>
-          {stages[project.stage]}
-        </span>
-        {enabled && <span className="board-view-label">미디어 보기 ↗</span>}
+        {enabled && (
+          <span className="board-view-label ui-hover-reveal" aria-hidden="true">
+            미디어 보기
+          </span>
+        )}
       </button>
       {enabled && (
         <div className="board-media-strip">
@@ -170,15 +169,15 @@ export function ContentMediaCard({
             </button>
           ))}
           <button
-            className="board-media-count"
+            className="board-media-count small"
+            title="연결 자료 목록과 재생"
             onClick={(e) => {
               opener.current = e.currentTarget;
               setInitial(undefined);
               setOpened(true);
             }}
           >
-            연결 자료 {page?.total ?? project.resources?.length}개{" "}
-            <span>목록과 재생 →</span>
+            자료 {page?.total ?? project.resources?.length}개
           </button>
         </div>
       )}
@@ -313,12 +312,28 @@ function MediaExplorer({
     >
       <header>
         <div>
-          <span className="eyebrow">CONTENTS · {stages[project.stage]}</span>
           <h2>{project.title}</h2>
           <p>다음 할 일 · {project.nextAction || "아직 정하지 않았어요."}</p>
         </div>
-        <button autoFocus onClick={onClose} aria-label="미디어 닫기">
-          닫기 ×
+        <button
+          autoFocus
+          className="icon-button"
+          onClick={onClose}
+          aria-label="미디어 닫기"
+          title="닫기 (Esc)"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12 M18 6L6 18" />
+          </svg>
         </button>
       </header>
       <StageProgress project={project} />
@@ -333,15 +348,14 @@ function MediaExplorer({
             />
           ) : (
             <div className="board-player-empty">
-              <span>▷</span>
               <p>목록에서 영상이나 사진을 선택해주세요.</p>
-              <small>촬영 폴더를 열어 안의 미디어도 확인할 수 있어요.</small>
             </div>
           )}
         </section>
         <section className="board-file-browser" aria-label="미디어 목록">
           <nav aria-label="자료 폴더 위치">
             <button
+              className="small"
               disabled={!folders.length || loading}
               onClick={() => setFolders([])}
             >
@@ -350,6 +364,7 @@ function MediaExplorer({
             {folders.map((f, i) => (
               <button
                 key={f.path}
+                className="small"
                 disabled={loading}
                 onClick={() => setFolders(folders.slice(0, i + 1))}
               >
@@ -361,7 +376,11 @@ function MediaExplorer({
             <strong>{page ? `${page.total}개 자료` : "자료 확인 중"}</strong>
             <label>
               자료 종류
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
+              <select
+                className="ui-inline"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
                 <option value="all">전체</option>
                 {Object.entries(resourceLabels).map(([v, label]) => (
                   <option value={v} key={v}>

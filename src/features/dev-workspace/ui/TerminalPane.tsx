@@ -5,6 +5,7 @@ import type {
   WorkbenchBridge,
   WorkbenchEvent,
 } from "../../../shared/workbench";
+import { terminalTheme } from "../../../shared/ui/terminal-theme";
 import "@xterm/xterm/css/xterm.css";
 
 export function TerminalPane({
@@ -37,7 +38,8 @@ export function TerminalPane({
       fontSize: 13,
       fontFamily: "Menlo, monospace",
       scrollback: 4000,
-      theme: { background: "#151b27", foreground: "#e3e9f3" },
+      // Colors come from the --terminal-* tokens (tokens.css), never from this file.
+      theme: terminalTheme(),
     });
     const fit = new FitAddon();
     terminalRef.current = term;

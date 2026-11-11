@@ -84,6 +84,10 @@ test("desktop cards persist and export exact timed pictures with selected music,
         .getByRole("button", { name: `${i}번 카드 삭제`, exact: true })
         .click();
     for (let i = 1; i <= 2; i++) {
+      // 선택한 카드만 편집기가 펼쳐지므로 해당 카드를 먼저 펼친다.
+      await page
+        .getByRole("button", { name: `${i}번 카드 편집`, exact: true })
+        .click();
       await page
         .getByLabel(`${i}번 문구`, { exact: true })
         .fill(i === 1 ? "첫 번째 여행 정보" : "두 번째 확인할 정보");
@@ -99,8 +103,12 @@ test("desktop cards persist and export exact timed pictures with selected music,
       .click();
     await page.getByLabel("음악 시작 (초)", { exact: true }).fill("0.25");
     await page.getByLabel("음악 볼륨 (%)", { exact: true }).fill("35");
+    // 저장하지 않은 변경은 버튼 라벨의 " *" 대신 헤더의 상태 한 줄로 보인다.
+    await expect(
+      page.getByRole("status").filter({ hasText: "저장 안 됨" }),
+    ).toBeVisible();
     await page
-      .getByRole("button", { name: "구성 저장 *", exact: true })
+      .getByRole("button", { name: "구성 저장", exact: true })
       .click();
     await expect(
       page.getByText("구성을 저장했어요.", { exact: true }),
@@ -257,7 +265,14 @@ test("desktop cards persist and export exact timed pictures with selected music,
     await app.evaluate(({ dialog }, file) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
     }, cancelled);
+    // 재생이 끝나면 마지막 카드가 선택되므로 고칠 카드를 차례로 펼친다.
+    await page
+      .getByRole("button", { name: "1번 카드 편집", exact: true })
+      .click();
     await page.getByLabel("1번 노출 시간", { exact: true }).fill("30");
+    await page
+      .getByRole("button", { name: "2번 카드 편집", exact: true })
+      .click();
     await page.getByLabel("2번 노출 시간", { exact: true }).fill("30");
     await page.getByLabel("짧은 음악 반복", { exact: true }).check();
     await page

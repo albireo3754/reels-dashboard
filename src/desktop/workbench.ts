@@ -113,7 +113,7 @@ export function terminalBackendOverride(
   return isBackend(value) ? value : undefined;
 }
 
-function terminalTitle(kind: TerminalKind) {
+function baseTitle(kind: TerminalKind) {
   const names = { shell: "터미널", preview: "웹 미리보기", checks: "검증" };
   if (kind === "codex" || kind === "claude") {
     try {
@@ -124,6 +124,18 @@ function terminalTitle(kind: TerminalKind) {
     }
   }
   return names[kind];
+}
+
+/**
+ * The tab title: "터미널", then "터미널 2", "터미널 3", … — the lowest number no listed tab
+ * uses, so tabs of one kind stay distinguishable. Titles are display only; herdr labels
+ * and restore ownership never read them.
+ */
+export function terminalTitle(kind: TerminalKind, taken: Iterable<string> = []) {
+  const base = baseTitle(kind);
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) if (!used.has(`${base} ${n}`)) return `${base} ${n}`;
 }
 
 const message = (error: unknown) =>
@@ -268,7 +280,7 @@ export class Workbench {
           session: {
             id: found.id,
             kind: found.kind,
-            title: terminalTitle(found.kind),
+            title: terminalTitle(found.kind, this.titles()),
             cwd: this.workspace,
             backend: "herdr",
             state: "running",
@@ -292,6 +304,11 @@ export class Workbench {
     } catch {
       // Restoration is best effort; the workspace itself stays usable.
     }
+  }
+
+  /** Titles of the listed tabs, for numbering the next one of the same kind. */
+  private titles() {
+    return [...this.sessions.values()].map((entry) => entry.session.title);
   }
 
   state(): WorkbenchState {
@@ -407,7 +424,7 @@ export class Workbench {
       const session: WorkTerminal = {
         id,
         kind: value.kind,
-        title: terminalTitle(value.kind),
+        title: terminalTitle(value.kind, this.titles()),
         cwd,
         backend,
         state: "running",

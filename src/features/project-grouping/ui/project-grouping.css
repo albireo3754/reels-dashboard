@@ -1,0 +1,44 @@
+/* 콘텐츠 기록 다이얼로그 안의 "프로젝트로 묶기". 박스 없이 위 hairline으로만 나눈다. */
+.project-grouping {
+  min-width: 0;
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.project-grouping legend {
+  float: left;
+  width: 100%;
+  margin-bottom: var(--space-1);
+  padding: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+.project-grouping legend + * {
+  clear: left;
+}
+.project-grouping-edit {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-base);
+}
+.project-grouping label {
+  margin-top: var(--space-3);
+}
+.project-grouping > button {
+  margin-top: var(--space-2);
+}
+.project-grouping details {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.project-grouping details ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+.project-grouping .ui-meta {
+  margin-top: var(--space-1);
+}
+.project-grouping .ui-notice {
+  margin: var(--space-2) 0 0;
+}

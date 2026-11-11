@@ -7,6 +7,8 @@ import {
   type ReferenceDocument,
 } from "../model/references";
 import { BlogExtract } from "./BlogExtract";
+import { Button, IconButton, Notice, Spacer, Toolbar } from "../../../shared/ui/primitives";
+import { RefreshIcon } from "./icons";
 export function BlogReferences({ api }: { api?: BlogBridge }) {
   const [results, setResults] = useState<BlogResult[]>([]),
     [active, setActive] = useState(""),
@@ -90,109 +92,118 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
           }
         }}
       />
-      <h3>저장된 블로그 분석 결과</h3>
-      <p>
-        연결한 결과를 선택하면 구조를 볼 수 있어요. 템플릿 미리보기가 있는
-        결과는 이 화면에서 바로 열 수 있어요.
-      </p>
-      <button
-        disabled={loading}
-        onClick={async () => {
-          try {
-            const result = await api?.addResult();
-            if (result) {
-              setResults(await api!.results());
-              await openResult(result);
+      <Toolbar className="blog-results-bar">
+        <h3>저장된 블로그 분석 결과</h3>
+        <Spacer />
+        <Button
+          disabled={loading}
+          onClick={async () => {
+            try {
+              const result = await api?.addResult();
+              if (result) {
+                setResults(await api!.results());
+                await openResult(result);
+              }
+            } catch (e) {
+              setError(String(e));
             }
-          } catch (e) {
-            setError(String(e));
-          }
-        }}
-      >
-        분석 결과 폴더 연결
-      </button>
-      <button
-        disabled={loading}
-        onClick={async () => {
-          try {
-            setResults(await api!.results());
-          } catch (e) {
-            setError(String(e));
-          }
-        }}
-      >
-        결과 목록 새로고침
-      </button>
-      <div className="blog-saved-results">
-        {results.map((result) => (
-          <article key={result.id}>
-            <button
-              disabled={loading || !!result.error}
-              aria-pressed={active === result.id}
-              onClick={() => void openResult(result)}
-            >
-              {result.names.join(" · ")} · {result.blocks}개 블록
-            </button>
-            <small>{result.directory}</small>
-            {result.error && (
-              <p role="alert">
-                파일을 읽지 못했어요. 폴더를 옮겼다면 연결을 해제하고 새 위치를
-                다시 연결해주세요. {result.error}
-              </p>
-            )}
-            <button
-              disabled={loading}
-              onClick={async () => {
-                try {
-                  await api!.removeResult(result.id);
-                  if (active === result.id) {
-                    setActive("");
-                    setPreview("");
-                  }
-                } catch (e) {
-                  setError(String(e));
-                }
-              }}
-            >
-              연결 해제
-            </button>
-            {result.preview && (
-              <button
-                disabled={loading}
-                aria-expanded={!!preview&&active===result.id}
-                onClick={async (event) => {
-                  previewOpener.current=event.currentTarget;
-                  setLoading(true);
-                  try {
-                    setPreview(await api!.previewResult(result.id));
-                    setPreviewReveal(v=>v+1);
-                    setActive(result.id);
-                    setError("");
-                  } catch (e) {
-                    setError(String(e));
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              >
-                템플릿 미리보기 열기
-              </button>
-            )}
-          </article>
-        ))}
-      </div>
+          }}
+        >
+          분석 결과 폴더 연결
+        </Button>
+        <IconButton
+          label="결과 목록 새로고침"
+          disabled={loading}
+          onClick={async () => {
+            try {
+              setResults(await api!.results());
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        >
+          <RefreshIcon />
+        </IconButton>
+      </Toolbar>
+      {results.length > 0 && (
+        <ul className="ui-list blog-saved-results" data-divided="">
+          {results.map((result) => (
+            <li key={result.id}>
+              <div className={`ui-row blog-result-row${active === result.id ? " selected" : ""}`}>
+                <button
+                  className="blog-result-open"
+                  disabled={loading || !!result.error}
+                  aria-pressed={active === result.id}
+                  onClick={() => void openResult(result)}
+                >
+                  {result.names.join(" · ")} · {result.blocks}개 블록
+                </button>
+                <small className="ui-row-meta ui-truncate" title={result.directory}>{result.directory}</small>
+                <span className="ui-row-actions">
+                  {result.preview && (
+                    <Button
+                      size="small"
+                      disabled={loading}
+                      aria-expanded={!!preview&&active===result.id}
+                      onClick={async (event) => {
+                        previewOpener.current=event.currentTarget;
+                        setLoading(true);
+                        try {
+                          setPreview(await api!.previewResult(result.id));
+                          setPreviewReveal(v=>v+1);
+                          setActive(result.id);
+                          setError("");
+                        } catch (e) {
+                          setError(String(e));
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                    >
+                      템플릿 미리보기 열기
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    disabled={loading}
+                    onClick={async () => {
+                      try {
+                        await api!.removeResult(result.id);
+                        if (active === result.id) {
+                          setActive("");
+                          setPreview("");
+                        }
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
+                  >
+                    연결 해제
+                  </Button>
+                </span>
+              </div>
+              {result.error && (
+                <Notice tone="danger" className="blog-result-error">
+                  파일을 읽지 못했어요. 폴더를 옮겼다면 연결을 해제하고 새 위치를
+                  다시 연결해주세요. {result.error}
+                </Notice>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {!results.length && (
-        <p>
-          아직 연결한 결과가 없어요. 기존 추출 결과 폴더를 한 번 연결하면 앱을
-          다시 켜도 목록에 남아요.
+        <p className="ui-meta blog-empty">
+          아직 연결한 결과가 없어요. 결과 폴더를 한 번 연결하면 다시 켜도 남아요.
         </p>
       )}
       {preview && (
         <section ref={previewPanel} tabIndex={-1} className="blog-preview-panel" aria-label="템플릿 미리보기">
-          <div className="blog-preview-heading">
+          <Toolbar className="blog-preview-heading">
             <h3>{results.find(r=>r.id===active)?.names.join(" · ")??"레퍼런스"} · 미리보기</h3>
-            <button onClick={closePreview}>미리보기 닫기</button>
-          </div>
+            <Spacer />
+            <Button onClick={closePreview}>미리보기 닫기</Button>
+          </Toolbar>
           <iframe
             className="blog-result-preview"
             title="저장된 블로그 템플릿 미리보기"
@@ -202,12 +213,13 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
           />
         </section>
       )}
-      <details>
+      <details className="blog-structure-import">
         <summary>구조 파일 직접 가져오기</summary>
-        <h3>원본 레퍼런스 구조 탐색</h3>
-        <p>
-          blog-reference-extract 스킬로 추출한 Markdown 또는 JSON을 열어 원본과
-          블록 구조를 비교해요. 원고 배치는 바뀌지 않아요.
+        <p
+          className="ui-meta"
+          title="위의 “네이버 블로그 URL로 추출”을 쓰거나, 에이전트에게 Dashboard MCP 도구 reels_extract_blog_reference로 URL을 넘기면 같은 기능이 실행돼요. 이 항목은 이미 가진 reference-structures.md/JSON 파일을 직접 열 때만 써요."
+        >
+          blog-reference-extract 스킬로 만든 Markdown·JSON을 열어 원본과 블록 구조를 비교해요 · 원고 배치는 바뀌지 않고, 이 창에서만 유지돼요
         </p>
         <label>
           레퍼런스 구조 파일{" "}
@@ -226,44 +238,34 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
             }}
           />
         </label>
-        <details>
-          <summary>추출을 요청하는 방법</summary>
-          <p>
-            위의 “네이버 블로그 URL로 추출”을 쓰거나, 에이전트에게 Dashboard MCP
-            도구 reels_extract_blog_reference로 URL을 넘기면 같은 기능이
-            실행돼요. 이 항목은 이미 가진 reference-structures.md/JSON 파일을
-            직접 열 때만 써요.
-          </p>
-        </details>
-        <p className="blog-source">
-          직접 가져온 파일은 이 창에서만 유지돼요. 계속 볼 자료는 위에서 결과
-          폴더로 연결해주세요.
-        </p>
       </details>
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       {!preview && r && b && (
         <>
-          <div className="blog-reference-toolbar">
-            {references.map((x, i) => (
-              <button
-                key={i}
-                aria-pressed={i === author}
-                onClick={() => {
-                  setAuthor(i);
-                  setSelected(0);
-                  setFrame(x.pageUrl);
-                }}
-              >
-                {x.name}
-              </button>
-            ))}
-            <button onClick={() => setShowOriginal(!showOriginal)}>
+          <Toolbar className="blog-reference-toolbar">
+            <div className="ui-segmented" role="group" aria-label="레퍼런스 작성자">
+              {references.map((x, i) => (
+                <button
+                  key={i}
+                  aria-pressed={i === author}
+                  onClick={() => {
+                    setAuthor(i);
+                    setSelected(0);
+                    setFrame(x.pageUrl);
+                  }}
+                >
+                  {x.name}
+                </button>
+              ))}
+            </div>
+            <Spacer />
+            <Button onClick={() => setShowOriginal(!showOriginal)}>
               {showOriginal ? "구조 도식 보기" : "원본 페이지 보기"}
-            </button>
-            <a href={r.url} target="_blank" rel="noopener noreferrer">
+            </Button>
+            <a className="blog-reference-link" href={r.url} target="_blank" rel="noopener noreferrer">
               원본 새 창
             </a>
-          </div>
+          </Toolbar>
           <div className="blog-reference-grid">
             <div className="blog-reference-list" aria-label="원본 블록 목록">
               {r.blocks.map((x, i) => (
@@ -282,7 +284,7 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
             <div className="blog-reference-canvas">
               {showOriginal ? (
                 <>
-                  <p>원본 사이트가 삽입을 제한하면 새 창으로 확인해주세요.</p>
+                  <p className="ui-meta">원본 사이트가 삽입을 제한하면 새 창으로 확인해주세요.</p>
                   <iframe
                     title="레퍼런스 원본"
                     src={frame}
@@ -355,7 +357,7 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
                     </div>
                   ))}
                   {!b.images.length && !b.paragraphs.length && (
-                    <p>
+                    <p className="ui-meta">
                       {blockKind(b)} · 높이 {Math.round(b.rect.height)}px
                     </p>
                   )}
@@ -371,7 +373,7 @@ export function BlogReferences({ api }: { api?: BlogBridge }) {
                   원본 블록 열기
                 </a>
               ) : (
-                <p role="status">
+                <p role="status" className="ui-meta">
                   이 블록에는 이동 앵커가 없어 원본 위치를 유지해요.
                 </p>
               )}

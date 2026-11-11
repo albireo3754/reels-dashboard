@@ -6,6 +6,7 @@ import { markupFixture } from "../fixtures/markup-editor";
 import { startCanonicalEditor } from "../../src/app/blog-editor/server";
 import { parse } from "../../src/shared/blog-markup";
 import { stickerPlan, stickerKey } from "../../src/shared/blog-stickers";
+import { chooseEditorMenu } from "./canonical-editor-helpers";
 
 test("place, move, save and reopen native sticker slots alongside unsaved prose at desktop and mobile widths",async({page,context},info)=>{
   const root=await mkdtemp(path.join(os.tmpdir(),"sticker-ui-"));let server;
@@ -16,7 +17,7 @@ test("place, move, save and reopen native sticker slots alongside unsaved prose 
     await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:server.url});
     await page.goto(server.url+'/?blogEditor=1');
     const frame=page.frameLocator('iframe[title="정본 본문 편집"]');
-    await page.getByRole('button',{name:'스티커 (0)',exact:true}).click();
+    await chooseEditorMenu(page,'스티커 (0)');
     await frame.locator('[data-tid="P1"]').click();
     await expect(page.getByLabel('새 스티커 위치')).toHaveValue(stickerKey({bundleId:'B1',before:3}));
     await page.getByRole('button',{name:'맛있다 스티커 자리 추가'}).click();
@@ -41,7 +42,7 @@ test("place, move, save and reopen native sticker slots alongside unsaved prose 
     await page.reload();
     await expect(frame.locator('.photo-block + [data-sticker-id]')).toHaveCount(1);
     await expect(frame.locator('[data-tid="P2"]')).toHaveText('Second line edited');
-    await page.getByRole('button',{name:'스티커 (1)',exact:true}).click();
+    await chooseEditorMenu(page,'스티커 (1)');
     for(const width of [1440,390]){
       await page.setViewportSize({width,height:1000});
       await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

@@ -8,6 +8,7 @@ test("signed follow template edits, previews, persists and exports a PNG without
   await page
     .getByRole("button", { name: "로컬 영상 열기", exact: true })
     .click();
+  await page.getByRole("tab", { name: "표지·마지막 장", exact: true }).click();
   await page
     .getByRole("button", {
       name: "6번 서명 있는 팔로우 마지막 장",
@@ -44,7 +45,8 @@ test("signed follow template edits, previews, persists and exports a PNG without
   await page
     .getByRole("region", { name: "편집 템플릿" })
     .screenshot({ path: info.outputPath("follow-template.png") });
-  await page.getByRole("button", { name: "마지막 장 PNG 내보내기" }).click();
+  await page.getByRole("button", { name: "결과 내보내기", exact: true }).click();
+  await page.getByRole("menuitem", { name: "마지막 장 PNG 내보내기" }).click();
   await expect(
     page.getByRole("heading", { name: "내보내기 완료", exact: true }),
   ).toBeVisible();

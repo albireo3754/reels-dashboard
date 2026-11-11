@@ -1,46 +1,45 @@
+/* 대화 피드: 무테 목록 + hover 배경. 색은 토큰만 쓴다. */
 .conversation-feed {
   list-style: none;
   padding: 0;
-  margin: 12px 0;
-  background: var(--surface, #fff);
-  border: 1px solid var(--line, #dce2e7);
-  border-radius: var(--radius-md);
+  margin: var(--space-3) 0;
+  background: transparent;
+  border: 0;
   overflow: hidden;
 }
 .conversation-day {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 16px 12px 8px;
-  color: var(--muted, #63716d);
+  gap: var(--space-3);
+  margin: var(--space-4) var(--space-3) var(--space-2);
+  color: var(--color-text-subtle);
   font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 .conversation-day::before,
 .conversation-day::after {
   content: "";
   height: 1px;
-  background: var(--line, #e4e8e6);
+  background: var(--color-border);
   flex: 1;
 }
 .conversation-day span {
-  padding: 3px 10px;
-  border: 1px solid var(--line, #e4e8e6);
-  border-radius: var(--radius-xl);
+  padding: 0 var(--space-1);
 }
 .conversation-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 8px;
-  padding: 10px 16px 10px 8px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
 }
 .conversation-row:hover,
 .conversation-row:focus-within {
-  background: color-mix(in srgb, currentColor 3%, transparent);
+  background: var(--color-hover);
 }
 .conversation-row[data-grouped="true"] {
-  padding-top: 3px;
-  padding-bottom: 3px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 .conversation-gutter {
   display: flex;
@@ -51,13 +50,13 @@
 .conversation-avatar {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  background: #e6eee9;
-  color: #245e4b;
+  width: 28px;
+  height: 28px;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-semibold);
 }
 .conversation-body {
   min-width: 0;
@@ -65,56 +64,58 @@
 .conversation-body > header {
   display: flex;
   align-items: baseline;
-  gap: 9px;
-  margin-bottom: 3px;
+  gap: var(--space-2);
+  margin-bottom: 2px;
 }
 .conversation-body > header strong {
   font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
 }
 .conversation-body time,
 .conversation-hover-time {
   font-size: var(--text-xs);
-  color: var(--muted, #63716d);
+  color: var(--color-text-subtle);
 }
 .conversation-hover-time {
   visibility: hidden;
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 .conversation-row:is(:hover, :focus-within) .conversation-hover-time {
   visibility: visible;
 }
 .conversation-title {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-size: var(--text-sm);
-  color: var(--muted, #63716d);
+  color: var(--color-text-subtle);
 }
 .conversation-status {
   font-size: var(--text-sm);
-  margin-top: 5px;
-  color: var(--muted, #63716d);
+  margin-top: var(--space-1);
+  color: var(--color-text-subtle);
 }
 .conversation-row[data-state="warning"] .conversation-status {
-  color: #815600;
+  color: var(--color-warning-text);
 }
 .conversation-row[data-state="error"] .conversation-status {
-  color: #ac392b;
+  color: var(--color-danger-text);
 }
 .conversation-row[data-state="success"] .conversation-status {
-  color: #245e4b;
+  color: var(--color-text-subtle);
 }
 .conversation-evidence {
   display: flex;
   flex-wrap: wrap;
   list-style: none;
   padding: 0;
-  gap: 6px;
-  margin: 8px 0 0;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
 }
 .conversation-evidence li {
   margin: 0;
-  padding: 3px 7px;
-  border: 1px solid var(--line, #dce2e7);
-  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
@@ -131,16 +132,13 @@
 }
 @media (max-width: 560px) {
   .conversation-row {
-    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-columns: 32px minmax(0, 1fr);
     gap: 6px;
-    padding-right: 10px;
-    padding-left: 4px;
+    padding-right: var(--space-2);
+    padding-left: var(--space-1);
   }
   .conversation-avatar {
-    width: 28px;
-    height: 28px;
-  }
-  .conversation-hover-time {
-    font-size: var(--text-xs);
+    width: 24px;
+    height: 24px;
   }
 }

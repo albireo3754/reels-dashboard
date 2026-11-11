@@ -13,10 +13,12 @@ import { TerminalPane } from "./TerminalPane";
 import { reconcileSelection, toggleDrawer, type DrawerMode } from "../model/drawer";
 import { workbenchShortcutTarget } from "../model/shortcut-target";
 import {
+  agentStartIntent,
   dotState,
-  menuKeyTarget,
   startChoices,
   tabKeyTarget,
+  tabTooltip,
+  type StartChoice,
 } from "../model/session-tabs";
 import {
   acceptsInput,
@@ -40,6 +42,13 @@ import {
   useKeymap,
   useShortcut,
 } from "../../../shared/ui/shortcuts";
+import { Menu, type MenuEntry } from "../../../shared/ui/Popover";
+import {
+  ChevronDownIcon,
+  CloseIcon,
+  PlusIcon,
+  Segmented,
+} from "../../../shared/ui/primitives";
 import "./workbench.css";
 
 const DRAWER_ACTIONS = [
@@ -48,6 +57,19 @@ const DRAWER_ACTIONS = [
   "closeTab",
   ...Array.from({ length: 9 }, (_, index) => goToTab(index + 1)!),
 ] as const satisfies readonly KeyAction[];
+
+/** Short segment labels; the full names stay in phaseLabels (tooltips, prompts). */
+const PHASE_SHORT: Record<WorkPhase, string> = {
+  design: "설계",
+  implement: "구현",
+  review: "리뷰",
+  fix: "수정",
+};
+const PHASES = (Object.keys(phaseLabels) as WorkPhase[]).map((value) => ({
+  value,
+  label: PHASE_SHORT[value],
+  title: phaseLabels[value],
+}));
 
 export function DevWorkspace({
   api,
@@ -81,13 +103,13 @@ export function DevWorkspace({
   const [preview, setPreview] = useState(false);
   const [version, setVersion] = useState(0);
   const [notice, setNotice] = useState("");
+  const [showPrompt, setShowPrompt] = useState(false);
   const pending = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   // Arrow-key tab moves keep focus on the tab strip; every other selection hands focus to the terminal.
   const [terminalTakesFocus, setTerminalTakesFocus] = useState(true);
-  const menuRoot = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
+  // Layout contract: the shell reads --terminal-height (main padding, blog editor reserve).
   useLayoutEffect(() => {
     const element = panel.current;
     const shell = element?.closest<HTMLElement>('.app-shell');
@@ -98,7 +120,6 @@ export function DevWorkspace({
     measure();
     return () => { observer.disconnect(); shell.style.removeProperty('--terminal-height'); };
   }, []);
-  const menuToggle = useRef<HTMLButtonElement>(null);
   const appliedFeedback = useRef<number | null>(null);
   const appliedSession = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -175,7 +196,6 @@ export function DevWorkspace({
   };
   const start = (kind: TerminalKind) =>
     run(async () => {
-      setMenuOpen(false);
       setTerminalTakesFocus(true);
       const session = await api.start({
         kind,
@@ -185,6 +205,18 @@ export function DevWorkspace({
       setSelected(session.id);
       onModeChange("open");
     });
+  /** The + menu and the empty screen: a written request is shown in the composer before it is sent. */
+  const openChoice = (choice: StartChoice) => {
+    if (agentStartIntent(choice.kind, task.trim() !== "", settingsOpen) === "reveal") {
+      setSettingsOpen(true);
+      setProvider(choice.kind as AgentProvider);
+      setError("");
+      setNotice("작성한 요청문을 함께 보내요. 내용을 확인하고 시작을 누르세요.");
+      requestAnimationFrame(() => document.getElementById("dev-task")?.focus());
+      return;
+    }
+    void start(choice.kind);
+  };
   const setBackend = (id: TerminalBackendId) =>
     run(async () => {
       acceptState(await api.setTerminalBackend(id));
@@ -236,20 +268,6 @@ export function DevWorkspace({
     }
   });
   useEffect(() => {
-    if (!menuOpen) return;
-    const away = (event: PointerEvent) => {
-      if (!menuRoot.current?.contains(event.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", away);
-    menuRoot.current
-      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
-      ?.focus();
-    return () => document.removeEventListener("pointerdown", away);
-  }, [menuOpen]);
-  useEffect(() => {
-    if (mode !== "open") setMenuOpen(false);
-  }, [mode]);
-  useEffect(() => {
     if (mode !== "open" || !selected) return;
     document
       .getElementById(`dev-tab-${selected}`)
@@ -279,28 +297,6 @@ export function DevWorkspace({
         `[data-session-id="${id}"] .xterm-helper-textarea`,
       )
       ?.focus();
-  const onMenuKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setMenuOpen(false);
-      menuToggle.current?.focus();
-      return;
-    }
-    if (event.key === "Tab") {
-      setMenuOpen(false);
-      return;
-    }
-    const items = [
-      ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ),
-    ];
-    const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    const to = menuKeyTarget(event.key, at, items.length);
-    if (to === undefined) return;
-    event.preventDefault();
-    items[to]?.focus();
-  };
   const session = state?.sessions.find((s) => s.id === selected);
   const choices = startChoices(state?.providers ?? [], task.trim() !== "");
   const canStart = !busy && !!state?.workspace;
@@ -308,18 +304,75 @@ export function DevWorkspace({
   const runningPreview = state?.sessions.some(
     (s) => s.kind === "preview" && s.state === "running",
   );
+  const open = mode === "open";
+  const newItems: MenuEntry[] = choices.map((choice) => ({
+    label: choice.label,
+    onSelect: () => openChoice(choice),
+    disabled: !canStart,
+    title:
+      choice.kind === "shell"
+        ? `${choice.detail} (${hint("newTerminal")})`
+        : choice.detail,
+    testId: `dev-start-${choice.id}`,
+  }));
+  const moreItems: MenuEntry[] = [
+    ...(session
+      ? [
+          {
+            label: "Ctrl+C 보내기",
+            title: "선택한 세션에 인터럽트를 보내요",
+            disabled: busy || !acceptsInput(session),
+            onSelect: () => void run(() => api.write(session.id, "\x03")),
+          },
+          metaAction(session) === "stop"
+            ? {
+                label: "세션 종료",
+                title: "프로세스를 종료하고 탭은 남겨요",
+                tone: "danger" as const,
+                disabled: busy,
+                onSelect: () => void run(() => api.stop(session.id)),
+              }
+            : {
+                label: "목록에서 지우기",
+                disabled: busy,
+                onSelect: () => void run(() => api.remove(session.id)),
+              },
+        ]
+      : []),
+    ...(session && openSite ? [{ separator: true as const }] : []),
+    ...(openSite
+      ? [
+          {
+            label: "운영 브리핑 사이트",
+            disabled: busy,
+            onSelect: () => void run(openSite),
+          },
+        ]
+      : []),
+  ];
+  const providerLabel = (id: AgentProvider | null) =>
+    state?.providers.find((option) => option.id === id)?.label ?? "";
   return (
     <section
       ref={panel}
       className="dev-workspace"
       aria-label="터미널"
       data-drawer-state={mode}
+      data-settings={open && settingsOpen ? "open" : undefined}
       hidden={mode === "closed"}
     >
       <header className="dev-tabbar" data-testid="dev-tabbar">
+        <strong className="dev-tabbar-title" hidden={open}>
+          터미널
+          <small>
+            {state?.sessions.length
+              ? ` · 세션 ${state.sessions.length}개`
+              : ""}
+          </small>
+        </strong>
         <div
           className="dev-session-tabs"
-          hidden={mode !== "open" || !state?.sessions.length}
+          hidden={!open || !state?.sessions.length}
           role="tablist"
           aria-label="터미널 세션"
           onKeyDown={onTabKeyDown}
@@ -353,37 +406,24 @@ export function DevWorkspace({
                   setTerminalTakesFocus(true);
                   setSelected(s.id);
                 }}
-                title={`${s.title} · ${sessionStateLabel(s)}${
-                  index < 9 ? ` · ${hint(goToTab(index + 1))}` : ""
-                }`}
+                title={tabTooltip(
+                  s,
+                  sessionStateLabel(s),
+                  index < 9 ? hint(goToTab(index + 1)) : "",
+                )}
               >
                 <span
                   className="dev-tab-dot"
                   data-state={dotState(s)}
+                  data-backend={s.backend}
+                  data-restored={s.restored ? "true" : undefined}
                   aria-hidden="true"
                 />
                 <span className="dev-tab-title">{s.title}</span>
-                {s.backend === "herdr" && (
-                  <span
-                    className="dev-backend-badge"
-                    data-testid="dev-backend-badge"
-                    data-backend="herdr"
-                    data-restored={s.restored ? "true" : undefined}
-                    aria-label={
-                      s.restored
-                        ? "herdr 세션, 이전 실행에서 복원됨"
-                        : "herdr 세션"
-                    }
-                    title={
-                      s.restored
-                        ? "이전 실행에서 복원한 herdr 세션이에요. 앱을 종료해도 유지돼요."
-                        : "herdr가 소유한 세션이에요. 앱을 종료해도 유지돼요."
-                    }
-                  >
-                    herdr
-                  </span>
-                )}
-                <span className="dev-sr-only">{sessionStateLabel(s)}</span>
+                <span className="ui-sr-only">
+                  {sessionStateLabel(s)}
+                  {s.backend === "herdr" ? ", herdr 세션" : ""}
+                </span>
                 <ShortcutHint
                   action={
                     target(goToTab(index + 1))?.kind === "session"
@@ -392,27 +432,14 @@ export function DevWorkspace({
                   }
                 />
               </button>
-              {canReattach(s) && (
-                <button
-                  className="dev-tab-reattach"
-                  data-testid="dev-tab-reattach"
-                  tabIndex={s.id === selected ? 0 : -1}
-                  disabled={busy}
-                  aria-label={`${s.title} 다시 연결`}
-                  title="이 창으로 세션을 다시 가져와요"
-                  onClick={() => reattach(s.id)}
-                >
-                  다시 연결
-                </button>
-              )}
               <button
-                className="dev-tab-close"
+                className="dev-tab-close icon-button small"
                 disabled={busy}
                 aria-label={`${s.title} 세션 닫기`}
                 title={closeTitle(s)}
                 onClick={() => closeSession(s.id)}
               >
-                <span aria-hidden="true">×</span>
+                <CloseIcon />
                 <ShortcutHint
                   className="end"
                   action={
@@ -425,172 +452,115 @@ export function DevWorkspace({
             </div>
           ))}
         </div>
-        <div className="dev-new" ref={menuRoot} hidden={mode !== "open"}>
+        <div className="dev-new" hidden={!open}>
           <button
-            className="dev-new-tab"
+            className="dev-new-tab icon-button"
             data-testid="dev-new-tab"
             disabled={!canStart}
             onClick={() => start("shell")}
             title={`새 터미널 (${hint("newTerminal")})`}
             aria-label="새 터미널"
           >
-            <span aria-hidden="true">+</span>
+            <PlusIcon />
             {/* run() drops ⌘T while another operation is pending, so hide its hint too. */}
             <ShortcutHint
               action={mode !== "closed" && !busy ? "newTerminal" : undefined}
             />
           </button>
-          <button
-            ref={menuToggle}
-            className="dev-new-menu"
-            data-testid="dev-new-menu"
-            disabled={!canStart}
-            aria-label="새 세션 종류 선택"
-            title="터미널, Codex, Claude, 미리보기, 검증"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            aria-controls="dev-new-menu-list"
-            onClick={() => setMenuOpen((open) => !open)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown" && !menuOpen) {
-                event.preventDefault();
-                setMenuOpen(true);
-              }
+          {open && <Menu
+            label="새 세션 종류 선택"
+            menuLabel="새 세션"
+            trigger={<ChevronDownIcon />}
+            triggerClassName="icon-button dev-new-menu"
+            triggerProps={{
+              "data-testid": "dev-new-menu",
+              disabled: !canStart,
+              title: "새 세션: 터미널, Codex, Claude, 미리보기, 검증",
             }}
-          >
-            <span aria-hidden="true">▾</span>
-          </button>
-          {menuOpen && (
-            <div
-              id="dev-new-menu-list"
-              className="dev-new-list"
-              role="menu"
-              aria-label="새 세션"
-              onKeyDown={onMenuKeyDown}
-            >
-              {choices.map((choice) => (
-                <button
-                  key={choice.id}
-                  role="menuitem"
-                  data-testid={`dev-start-${choice.id}`}
-                  disabled={!canStart}
-                  title={choice.detail}
-                  onClick={() => start(choice.kind)}
-                >
-                  {choice.label}
-                </button>
-              ))}
-            </div>
-          )}
+            placement="bottom-start"
+            items={newItems}
+          />}
         </div>
-        <strong className="dev-tabbar-title" hidden={mode === "open"}>
-          터미널
-          <small>
-            {state?.sessions.length
-              ? ` · 세션 ${state.sessions.length}개`
-              : ""}
-          </small>
-        </strong>
         <div className="dev-tabbar-actions">
+          {open && runningPreview && (
+            <>
+              <button
+                className="icon-button small"
+                aria-label="미리보기 나란히 보기"
+                aria-pressed={preview}
+                title="미리보기 나란히 보기 · 서버 준비 완료 로그를 확인한 뒤 열어주세요. 웹 변경은 자동 반영돼요."
+                onClick={() => setPreview((value) => !value)}
+              >
+                <SplitIcon />
+              </button>
+              <button
+                className="icon-button small"
+                aria-label="브라우저에서 열기"
+                title="미리보기를 브라우저에서 열기"
+                disabled={busy}
+                onClick={() => run(() => api.openPreview())}
+              >
+                <ExternalIcon />
+              </button>
+            </>
+          )}
           <button
-            className="dev-icon-button"
+            className="icon-button small"
             data-testid="dev-settings-toggle"
-            hidden={mode !== "open"}
+            hidden={!open}
             aria-label="터미널 설정"
             aria-expanded={settingsOpen}
             aria-controls="dev-settings"
-            title="소스 연결 · 개선 요청 · 코딩 도구 · 세션 유지"
-            onClick={() => setSettingsOpen((open) => !open)}
+            title="요청 작성 · 코딩 도구 · 소스 폴더 · 세션 유지"
+            onClick={() => setSettingsOpen((value) => !value)}
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-            </svg>
+            <GearIcon />
           </button>
+          {open && moreItems.length > 0 && (
+            <Menu
+              label="터미널 더 보기"
+              triggerClassName="small"
+              triggerProps={{ "data-testid": "dev-more-menu" }}
+              items={moreItems}
+            />
+          )}
           <button
-            aria-label={mode === "open" ? "터미널 접기" : "터미널 펼치기"}
-            title={`${hint("toggleDrawer")} 열기·접기`}
+            className="icon-button small dev-fold"
+            data-folded={open ? undefined : "true"}
+            aria-label={open ? "터미널 접기" : "터미널 펼치기"}
+            title={`${open ? "접기" : "펼치기"} (${hint("toggleDrawer")})`}
             onClick={() => onModeChange(toggleDrawer(mode))}
           >
-            {mode === "open" ? "접기" : "펼치기"}
+            <ChevronDownIcon />
             <ShortcutHint
               action={mode !== "closed" ? "toggleDrawer" : undefined}
             />
           </button>
           <button
+            className="icon-button small"
             aria-label="터미널 닫기"
             title="패널만 숨기고 세션은 유지해요"
             onClick={() => onModeChange("closed")}
           >
-            닫기
+            <CloseIcon />
             <ShortcutHint
               action={closing?.kind === "closeDrawer" ? "closeTab" : undefined}
             />
           </button>
         </div>
       </header>
-      <div className="dev-drawer-body" hidden={mode !== "open"}>
+      <div className="dev-drawer-body" hidden={!open}>
         <div
           id="dev-settings"
           className="dev-setup"
           data-testid="dev-settings"
           role="group"
-          aria-label="소스 연결 · 개선 요청 · 코딩 도구 · 세션 유지"
+          aria-label="터미널 설정"
           hidden={!settingsOpen}
         >
-          <div className="dev-connect">
-            <div>
-              <strong>Reels Dashboard 소스</strong>
-              <code>{state?.workspace ?? "앱 소스 폴더를 연결해주세요"}</code>
-            </div>
-            <button
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  acceptState(await api.chooseWorkspace());
-                })
-              }
-            >
-              소스 폴더 연결
-            </button>
-            {openSite && (
-              <button disabled={busy} onClick={() => run(openSite)}>
-                운영 브리핑 사이트
-              </button>
-            )}
-          </div>
-          {state && (
-            <BackendSetting
-              state={state}
-              busy={busy}
-              onChange={setBackend}
-            />
-          )}
-          <div className="dev-loop" role="group" aria-label="개선 단계">
-            {(Object.keys(phaseLabels) as WorkPhase[]).map((p, i) => (
-              <button
-                key={p}
-                aria-pressed={phase === p}
-                onClick={() => setPhase(p)}
-              >
-                <small>0{i + 1}</small>
-                {phaseLabels[p]}
-              </button>
-            ))}
-          </div>
           <div className="dev-compose">
-            <label htmlFor="dev-task">
-              개선 요청 · 이전 단계 결과와 리뷰 지적
+            <label htmlFor="dev-task" className="ui-sr-only">
+              개선 요청
             </label>
             <textarea
               id="dev-task"
@@ -607,155 +577,176 @@ export function DevWorkspace({
                   void start(provider);
                 }
               }}
-              placeholder="개선할 동작과 완료 기준을 적으세요. 다음 단계에서는 이전 결과나 리뷰 지적을 함께 전달하세요."
+              placeholder="개선할 동작과 완료 기준을 적으세요. 다음 단계에는 이전 결과나 리뷰 지적을 붙여 주세요."
               rows={3}
             />
-            <p id="dev-task-keys" className="dev-hint">Enter로 선택한 도구의 새 세션 시작 · Shift+Enter로 줄바꿈</p>
-            <div className="dev-actions">
-              <label>
-                코딩 도구{" "}
-                <select
-                  aria-label="코딩 도구"
-                  value={provider ?? ""}
-                  disabled={busy || !state}
-                  onChange={(e) => setProvider(e.target.value as AgentProvider)}
-                >
-                  {state?.providers.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <span id="dev-task-keys" className="ui-sr-only">
+              Enter로 선택한 도구의 새 세션 시작 · Shift+Enter로 줄바꿈
+            </span>
+            <div className="dev-compose-row">
+              <Segmented
+                label="개선 단계"
+                items={PHASES}
+                value={phase}
+                onChange={setPhase}
+                size="small"
+              />
+              <span className="dev-compose-spacer" />
+              <select
+                aria-label="코딩 도구"
+                className="ui-inline"
+                value={provider ?? ""}
+                disabled={busy || !state}
+                onChange={(e) => setProvider(e.target.value as AgentProvider)}
+              >
+                {state?.providers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {/* 패널은 다른 화면 위에 열리므로 채움 버튼을 쓰지 않는다(화면당 primary 1개). */}
               <button
-                className="primary"
+                className="secondary"
                 data-testid="dev-start-selected"
                 disabled={busy || !state?.workspace || !provider}
+                title={`${providerLabel(provider)}로 ${phaseLabels[phase]} 세션을 새 탭에서 시작해요 (Enter)`}
                 onClick={() => provider && start(provider)}
               >
-                {phaseLabels[phase]} 세션 시작
+                {PHASE_SHORT[phase]} 세션 시작
               </button>
+              <Menu
+                label="요청 더 보기"
+                triggerClassName="small"
+                items={[
+                  {
+                    label: "현재 세션용 프롬프트 복사",
+                    title: "진행 중인 세션에 붙여넣어 이어갈 수 있어요",
+                    disabled: busy || !task.trim(),
+                    onSelect: () =>
+                      void run(async () => {
+                        await navigator.clipboard.writeText(
+                          workPrompt(phase, task),
+                        );
+                        setNotice(
+                          "프롬프트를 복사했어요. 진행 중인 세션에 붙여넣어 이어갈 수 있어요.",
+                        );
+                      }),
+                  },
+                  {
+                    label: "실행할 단계 프롬프트 보기",
+                    checked: showPrompt,
+                    onSelect: () => setShowPrompt((value) => !value),
+                  },
+                ]}
+              />
+            </div>
+            {showPrompt && (
+              <pre className="dev-prompt" aria-label="실행할 단계 프롬프트">
+                {workPrompt(phase, task || "(입력한 요청)")}
+              </pre>
+            )}
+          </div>
+          <div className="dev-setup-meta">
+            <div className="dev-connect">
+              <span className="dev-setup-label">소스</span>
+              <code title={state?.workspace ?? undefined}>
+                {state?.workspace ?? "앱 소스 폴더를 연결해주세요"}
+              </code>
               <button
-                disabled={busy || !task.trim()}
+                className="small"
+                disabled={busy}
                 onClick={() =>
                   run(async () => {
-                    await navigator.clipboard.writeText(
-                      workPrompt(phase, task),
-                    );
-                    setNotice(
-                      "프롬프트를 복사했어요. 진행 중인 세션에 붙여넣어 이어갈 수 있어요.",
-                    );
+                    acceptState(await api.chooseWorkspace());
                   })
                 }
               >
-                현재 세션용 프롬프트 복사
+                소스 폴더 연결
               </button>
             </div>
-            <p className="dev-hint">
-              탭 바의 Codex 열기·Claude 열기는 이 요청문과 단계를 전달해요.
-              요청문이 비어 있으면 요청 없이 대화형으로 열어요. 세션은 선택한
-              폴더에서 실행되고, 같은 파일의 구현·수정은 한 세션에서 진행하며
-              결과를 다음 단계에 전달하세요. 탭 전환은 세션을 유지해요.{" "}
-              {appExitNote(state?.terminalBackend, state?.sessions ?? [])}
-            </p>
-            <details>
-              <summary>실행할 단계 프롬프트</summary>
-              <pre>{workPrompt(phase, task || "(입력한 요청)")}</pre>
-            </details>
+            {state && (
+              <BackendSetting
+                state={state}
+                busy={busy}
+                onChange={setBackend}
+              />
+            )}
           </div>
-          <p className="dev-hint">
-            검증: 타입 → 구조 → 단위 테스트 → 빌드. Electron main·preload 변경은
-            새 앱 빌드 후 별도 실행으로 확인하세요. AI 로그인과 권한 요청은
-            터미널에서 처리해요. 탭의 ×와 {hint("closeTab")}는 선택한 세션을
-            종료해요(herdr 세션도 실제로 종료돼요). 접기·패널 닫기는 세션을
-            유지해요.
-          </p>
         </div>
         {error && (
-          <p className="dev-error" role="alert">
+          <p className="dev-error ui-notice" data-tone="danger" role="alert">
             {error}
           </p>
         )}
-        {notice && <p role="status">{notice}</p>}
+        {notice && (
+          <p className="dev-notice ui-status" role="status">
+            {notice}
+          </p>
+        )}
+        {session?.state === "detached" && (
+          <div
+            className="dev-banner"
+            data-testid="dev-detached-note"
+            role="status"
+            title="다른 곳에서 세션을 가져갔거나 herdr 서버가 다시 시작됐을 수 있어요. 다시 연결하면 이 창으로 가져와요."
+          >
+            <span className="ui-truncate">
+              연결이 끊긴 세션이에요. 세션은 그대로 살아 있어요.
+            </span>
+            {canReattach(session) && (
+              <button
+                className="small secondary"
+                data-testid="dev-reattach"
+                disabled={busy}
+                onClick={() => reattach(session.id)}
+              >
+                다시 연결
+              </button>
+            )}
+          </div>
+        )}
         <div className={`dev-panels ${preview ? "with-preview" : ""}`}>
-          <div className="dev-console">
-            {session ? (
-              <>
-                <div className="dev-session-meta">
-                  <code>{session.cwd}</code>
-                  {session.backend === "herdr" && (
-                    <span className="dev-session-backend">herdr</span>
-                  )}
-                  {canReattach(session) && (
-                    <button
-                      className="primary"
-                      data-testid="dev-reattach"
-                      disabled={busy}
-                      onClick={() => reattach(session.id)}
-                    >
-                      다시 연결
-                    </button>
-                  )}
-                  <button
-                    disabled={busy || !acceptsInput(session)}
-                    onClick={() => run(() => api.write(session.id, "\x03"))}
-                  >
-                    Ctrl+C
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      run(() =>
-                        metaAction(session) === "stop"
-                          ? api.stop(session.id)
-                          : api.remove(session.id),
-                      )
-                    }
-                  >
-                    {metaAction(session) === "stop"
-                      ? "세션 종료"
-                      : "목록에서 지우기"}
-                  </button>
-                </div>
-                {session.state === "detached" && (
-                  <p
-                    className="dev-session-note"
-                    data-testid="dev-detached-note"
-                    role="status"
-                  >
-                    연결이 끊긴 세션이에요. 다른 곳에서 이 세션을 가져갔거나 herdr
-                    서버가 다시 시작됐을 수 있어요. 세션은 그대로 살아 있어요.
-                    다시 연결하면 이 창으로 가져와요.
-                  </p>
-                )}
-              </>
-            ) : (
+          <div className="dev-console" data-empty={session ? undefined : "true"}>
+            {!session && (
               <div className="dev-terminal-empty" data-testid="dev-empty">
-                <strong>무엇을 열까요?</strong>
-                <div className="dev-empty-actions">
+                <p className="dev-empty-title">무엇을 열까요?</p>
+                <ul className="ui-list dev-empty-list">
                   {choices
                     .filter((choice) => choice.primary)
                     .map((choice) => (
-                      <button
-                        key={choice.id}
-                        className={choice.kind === "shell" ? "" : "primary"}
-                        data-testid={`dev-empty-${choice.id}`}
-                        disabled={!canStart}
-                        title={choice.detail}
-                        onClick={() => start(choice.kind)}
-                      >
-                        {choice.kind === "shell" ? "터미널 열기" : choice.label}
-                      </button>
+                      <li key={choice.id}>
+                        <button
+                          className="ui-row"
+                          data-testid={`dev-empty-${choice.id}`}
+                          disabled={!canStart}
+                          title={choice.detail}
+                          onClick={() => openChoice(choice)}
+                        >
+                          {choice.kind === "shell" ? <PromptIcon /> : <AgentIcon />}
+                          <span className="ui-row-title">
+                            {choice.kind === "shell" ? "터미널 열기" : choice.label}
+                          </span>
+                          {choice.kind === "shell" && (
+                            <span className="ui-row-meta" aria-hidden="true">
+                              {hint("newTerminal")}
+                            </span>
+                          )}
+                        </button>
+                      </li>
                     ))}
-                </div>
+                </ul>
                 {!state?.workspace && (
-                  <p>먼저 설정에서 앱 소스 폴더를 연결해주세요.</p>
+                  <p className="dev-empty-note">
+                    먼저 설정에서 앱 소스 폴더를 연결해주세요.
+                  </p>
                 )}
               </div>
             )}
             {state?.sessions.map((item) => (
               <div
                 key={item.id}
+                className="dev-tabpanel"
                 role="tabpanel"
                 id={`dev-panel-${item.id}`}
                 aria-labelledby={`dev-tab-${item.id}`}
@@ -765,7 +756,7 @@ export function DevWorkspace({
                 <TerminalPane
                   api={api}
                   id={item.id}
-                  active={mode === "open" && selected === item.id}
+                  active={open && selected === item.id}
                   inputEnabled={acceptsInput(item)}
                   takeFocus={terminalTakesFocus}
                 />
@@ -775,11 +766,23 @@ export function DevWorkspace({
           {preview && (
             <div className="dev-preview">
               <div className="dev-preview-bar">
-                <strong>로컬 웹 · 예시 데이터</strong>
-                <button onClick={() => setVersion((v) => v + 1)}>
-                  새로고침
+                <span className="ui-meta ui-truncate">로컬 웹 · 예시 데이터</span>
+                <button
+                  className="icon-button small"
+                  aria-label="미리보기 새로고침"
+                  title="새로고침"
+                  onClick={() => setVersion((v) => v + 1)}
+                >
+                  <ReloadIcon />
                 </button>
-                <button onClick={() => setPreview(false)}>닫기</button>
+                <button
+                  className="icon-button small"
+                  aria-label="미리보기 닫기"
+                  title="미리보기 닫기"
+                  onClick={() => setPreview(false)}
+                >
+                  <CloseIcon />
+                </button>
               </div>
               <iframe
                 key={version}
@@ -790,20 +793,6 @@ export function DevWorkspace({
             </div>
           )}
         </div>
-        {runningPreview && (
-          <div className="dev-actions dev-preview-actions">
-            <button disabled={preview} onClick={() => setPreview(true)}>
-              미리보기 나란히 보기
-            </button>
-            <button disabled={busy} onClick={() => run(() => api.openPreview())}>
-              브라우저에서 열기
-            </button>
-            <span>
-              서버의 준비 완료 로그를 확인한 뒤 열어주세요. 웹 변경은 자동
-              반영돼요.
-            </span>
-          </div>
-        )}
       </div>
     </section>
   );
@@ -840,26 +829,26 @@ function BackendSetting({
       aria-describedby="dev-backend-status"
       disabled={busy || !!reason}
     >
-      <legend>세션 유지</legend>
-      <div className="dev-backend-options">
-        {options.map((option) => (
-          <label key={option.id} className="dev-backend-option">
-            <input
-              type="radio"
-              name="terminal-backend"
-              value={option.id}
-              data-testid={`dev-backend-${option.id}`}
-              checked={backend.selected === option.id}
-              onChange={() => onChange(option.id)}
-            />
-            <span>
-              <strong>{option.label}</strong>
-              <small>{option.detail}</small>
-            </span>
-          </label>
-        ))}
-      </div>
-      <p id="dev-backend-status" className="dev-hint" data-testid="dev-backend-status">
+      <legend className="dev-setup-label">세션 유지</legend>
+      {options.map((option) => (
+        <label key={option.id} className="ui-check" title={option.detail}>
+          <input
+            type="radio"
+            name="terminal-backend"
+            value={option.id}
+            data-testid={`dev-backend-${option.id}`}
+            checked={backend.selected === option.id}
+            onChange={() => onChange(option.id)}
+          />
+          {option.label}
+        </label>
+      ))}
+      <span
+        id="dev-backend-status"
+        className="dev-backend-line"
+        data-testid="dev-backend-status"
+        title={`미리보기·검증 실행은 항상 직접 실행해요. ${appExitNote(backend, state.sessions)}`}
+      >
         {backendStatus(backend)}
         {!backend.checking && backend.effective === "herdr" && (
           <>
@@ -868,24 +857,85 @@ function BackendSetting({
             {backend.herdrVersion ? `, herdr ${backend.herdrVersion}` : ""})
           </>
         )}
-        . 미리보기·검증 실행은 항상 직접 실행해요.
-      </p>
+      </span>
       {reason && (
-        <p className="dev-hint" data-testid="dev-backend-lock">
+        <span className="dev-backend-line" data-testid="dev-backend-lock">
           {reason}
-        </p>
+        </span>
       )}
       {backend.error && (
-        <p className="dev-hint" data-testid="dev-herdr-error" role="status">
+        <span className="dev-backend-line" data-testid="dev-herdr-error" role="status">
           {backend.error}
-        </p>
+        </span>
       )}
       {missing && (
-        <p className="dev-hint" data-testid="dev-herdr-missing" role="status">
-          herdr 미설치 — 직접 실행 중이에요. 설치하려면 터미널에서{" "}
-          <code>brew install herdr</code> 를 실행한 뒤 앱을 다시 열어주세요.
-        </p>
+        <span className="dev-backend-line" data-testid="dev-herdr-missing" role="status">
+          herdr 미설치 — 직접 실행 중이에요. <code>brew install herdr</code> 후 앱을 다시 열어주세요.
+        </span>
       )}
     </fieldset>
+  );
+}
+
+/* Panel-only icons (16px, currentColor), same stroke style as the shared icons. */
+const iconProps = {
+  viewBox: "0 0 16 16",
+  width: 16,
+  height: 16,
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+
+function GearIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1.75v1.5M8 12.75v1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M1.75 8h1.5M12.75 8h1.5M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05" />
+    </svg>
+  );
+}
+
+function SplitIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M8 3v10" />
+    </svg>
+  );
+}
+
+function ExternalIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" />
+    </svg>
+  );
+}
+
+function ReloadIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M13 8a5 5 0 1 1-1.5-3.55M13 2.5v3h-3" />
+    </svg>
+  );
+}
+
+function PromptIcon() {
+  return (
+    <svg {...iconProps} className="ui-row-icon">
+      <path d="M3 4.5 6.5 8 3 11.5M8 12h5" />
+    </svg>
+  );
+}
+
+function AgentIcon() {
+  return (
+    <svg {...iconProps} className="ui-row-icon">
+      <path d="M8 2v2.5M8 11.5V14M2 8h2.5M11.5 8H14M4.2 4.2l1.6 1.6M10.2 10.2l1.6 1.6M4.2 11.8l1.6-1.6M10.2 5.8l1.6-1.6" />
+    </svg>
   );
 }
