@@ -1333,12 +1333,7 @@
     padding: 35px 10px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
-}
+/* prefers-reduced-motion 전역 규칙은 src/shared/ui/components.css로 옮겼다. */
 @media (max-width: 560px) {
   .project-grid {
     grid-template-columns: 1fr;
