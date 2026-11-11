@@ -210,4 +210,9 @@ React: `<Toolbar divided>…<Spacer />…</Toolbar>`.
 ## 적용 현황
 
 - 2026-11-11 기반 단계: 토큰·`components.css`·`primitives.tsx`·`Popover.tsx`·`terminal-theme.ts`와 공용 `markdown/conversation/execution-logs.css`를 새 기준으로 바꿨다. 전역 기본 요소 규칙은 모두 `components.css`에 있다(`styles.css`의 reduced-motion 블록도 옮겼다).
-- 화면 CSS(`styles.css`, `shell.css`, `content-board`, `canonical-editor.css`, `blog.css`, `workbench.css`, `workflow.css` 등)에는 아직 녹색 계열 hex와 테두리 카드가 남아 있다. 블로그·터미널부터 화면 단계에서 이 문서 기준으로 옮긴다.
+- 2026-11-12 화면 단계(`refactor/notion-ui`): 셸·대시보드·촬영 보관함·설정·검색/히스토리, 블로그(호스트·프로젝트 목록·정본 에디터), 하단 터미널 패널, 실행 로그, 영상 편집(한 줄 상단 바·원본|합성 미리보기 나란히·무테 설정), 카드뉴스(한 줄 상단 바·선택한 카드만 펼치는 목록), 미디어 분석·촬영 지도·화면 검사 다이얼로그, Codex 진행 표시를 이 기준으로 옮겼다.
+  - 마무리 수정: 터미널 패널이 열린 동안 문서 세로 스크롤바를 감춘다(`styles.css`, 고정 패널 오른쪽 띠 제거). 카드뉴스 카드 종류 select를 라벨 아래로 맞추고 상시 안내 문단을 문구 입력 툴팁으로 옮겼다. 실행 로그를 가운데 정렬 대신 본문 여백에 맞췄다.
+  - 검증: typecheck·FSD 통과, 단위 472개(통과 468·건너뜀 4), 웹 Playwright 155개 전부 통과(`canonical-sdk` 제외), Electron 88개 중 통과 72·실패 2·건너뜀 14(옵트인). 실패 2개와 import 단계에서 실패하는 Electron spec 4개(`input-form-window`, `workflow-embedded`, `workflow-experience`, `workflow-sdk`)는 리팩토링 전부터 있던 실패다. 1440×900 Electron 화면 30장을 캡처해 리팩토링 전 화면과 비교했다.
+- 남은 일
+  - 워크플로 화면(`workflow.css`, `WorkflowPanel`)은 다른 작업이 진행 중이라 적용하지 않았다. 테두리 버튼형 탭, 설명 문단, 테두리 카드, 큰 라운드가 남아 있다.
+  - `@opentelemetry` 로드 시 `createContextKey` TypeError로 `src/app/workflow/server`를 import하는 spec(`tests/web/canonical-sdk.spec.ts`, `tests/electron/markup-editor.spec.ts:132`, 위 Electron 4개)이 실패한다. `tests/electron/desktop.spec.ts:20`은 preload에 추가된 `devBuild`·`icloud` 키를 기대 목록에 반영하지 않아 실패한다. 둘 다 UI 리팩토링과 무관하다.
