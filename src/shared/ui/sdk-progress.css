@@ -1,0 +1,108 @@
+/*
+ * Codex 실행 상태(SdkProgress)와 모델·사용량(AiUsageDetails).
+ * 테두리 상자 대신 상태 점 + 한 줄, 진행 기록과 사용량은 접힌 한 줄 요약. 색은 토큰만 쓴다.
+ */
+.sdk-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  min-width: 0;
+}
+.sdk-progress-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-height: var(--control-sm);
+  font-size: var(--text-base);
+}
+.sdk-progress-line > strong {
+  font-weight: var(--weight-semibold);
+}
+.sdk-progress-auth {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+.sdk-progress-line > button {
+  margin-left: auto;
+}
+.sdk-progress[data-status="running"] .ui-dot {
+  animation: sdk-progress-pulse 1.4s ease-in-out infinite;
+}
+@keyframes sdk-progress-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.sdk-progress-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger-text);
+  overflow-wrap: anywhere;
+}
+.sdk-progress-details > summary,
+.ai-usage > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.sdk-progress-details > summary::marker,
+.ai-usage > summary::marker {
+  content: "";
+}
+.sdk-progress-details > summary::before,
+.ai-usage > summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  color: var(--color-text-subtle);
+}
+.sdk-progress-details[open] > summary::before,
+.ai-usage[open] > summary::before {
+  content: "▾";
+}
+.sdk-progress-usage {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+/* ---------- 모델·사용량·예상 비용 ---------- */
+.ai-usage-label {
+  flex: 0 0 auto;
+}
+.ai-usage-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-subtle);
+}
+.ai-usage-attempt {
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.ai-usage-attempt:first-of-type {
+  margin-top: var(--space-2);
+}
+.ai-usage-attempt > strong {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+.ai-usage-attempt p {
+  margin: 2px 0 0;
+}
+.ai-usage-attempt details {
+  margin-top: var(--space-1);
+}
+.ai-usage-attempt details > summary {
+  color: var(--color-text-subtle);
+}
+.ai-usage-attempt details p {
+  color: var(--color-text-subtle);
+}

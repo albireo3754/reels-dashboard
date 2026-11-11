@@ -1,23 +1,48 @@
 import type { AiObservation } from "../ai-observation";
+import "./sdk-progress.css";
 const number = (value: number | null | undefined) =>
   value == null ? "확인 불가" : value.toLocaleString();
+const sum = (values: (number | null | undefined)[]) =>
+  values.some((v) => v == null)
+    ? null
+    : values.reduce<number>((total, v) => total + (v ?? 0), 0);
+
+/** 접힌 한 줄 요약(모델 · 토큰 · 비용). 펼치면 시도별 상세와 기록 근거. */
+function usageSummary(observation: AiObservation): string {
+  const attempts = observation.attempts;
+  if (!attempts.length) return "기록 없음";
+  const models = [...new Set(attempts.flatMap((a) => a.runtimeModels))];
+  const input = sum(attempts.map((a) => a.usage?.input));
+  const output = sum(attempts.map((a) => a.usage?.output));
+  const estimated = attempts.filter((a) => a.cost.status === "estimated");
+  const cost = attempts.every((a) => a.cost.status === "not-applicable")
+    ? "API 비용 없음"
+    : estimated.length === attempts.length
+      ? `약 $${estimated.reduce((t, a) => t + (a.cost.usd ?? 0), 0).toFixed(4)}`
+      : "비용 확인 불가";
+  return [
+    models.join(", ") || "모델 확인 불가",
+    `입력 ${number(input)} · 출력 ${number(output)} 토큰`,
+    cost,
+    attempts.length > 1 ? `시도 ${attempts.length}회` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function AiUsageDetails({
   observation,
 }: {
   observation: AiObservation;
 }) {
   return (
-    <details aria-label="모델·사용량·예상 비용" open>
-      <summary>모델 · 사용량 · 예상 비용</summary>
+    <details className="ai-usage" aria-label="모델·사용량·예상 비용">
+      <summary>
+        <span className="ai-usage-label">사용량</span>
+        <span className="ai-usage-summary">{usageSummary(observation)}</span>
+      </summary>
       {observation.attempts.map((attempt) => (
-        <article
-          key={attempt.id}
-          style={{
-            borderTop: "1px solid #dce4de",
-            padding: "10px 0",
-            overflowWrap: "anywhere",
-          }}
-        >
+        <article key={attempt.id} className="ai-usage-attempt">
           <strong>
             시도 {attempt.ordinal} ·{" "}
             {attempt.auth === "api-key" ? "API 키" : "Codex 로그인"}
