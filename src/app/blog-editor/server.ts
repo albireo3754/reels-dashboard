@@ -17,8 +17,11 @@ export async function startCanonicalEditor(
   webRoot = path.resolve("dist"),
   capture?: (url:string,bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>,
   nativeClipboard?: (text:string)=>void | Promise<void>,
-  deps: {suggest?: SuggestCall; chat?: ChatCall} = {},
+  deps: {suggest?: SuggestCall; chat?: ChatCall; desktopFrame?: boolean} = {},
 ) {
+  // desktopFrame: the desktop app embeds this page in an iframe of its file:// renderer.
+  // Electron 45 accepted only `'self' file:` for that parent (`file://`, an exact file URL and `*` were refused).
+  const frameAncestors = deps.desktopFrame ? "'self' file:" : "'self'";
   const store = config.format === "markup" ? new MarkupStore(config,capture?((ids,dir,rev)=>capture("http://127.0.0.1:"+(server.address() as {port:number}).port+"/api/blog/frame",ids,dir,rev)):undefined) : new CanonicalStore(config);
   await store.load();
   const annotations = config.format === "markup" ? new AnnotationStore(config.canon) : undefined;
@@ -39,8 +42,15 @@ export async function startCanonicalEditor(
     };
     try {
       const host = `127.0.0.1:${(server.address() as { port: number }).port}`;
+      // The desktop iframe's document request comes from the file:// parent, so it is cross-site.
+      const desktopEmbed =
+        deps.desktopFrame &&
+        req.method === "GET" &&
+        req.url === "/?blogEditor=1" &&
+        req.headers["sec-fetch-dest"] === "iframe" &&
+        req.headers["sec-fetch-mode"] === "navigate";
       if (
-        req.headers["sec-fetch-site"] === "cross-site" ||
+        (req.headers["sec-fetch-site"] === "cross-site" && !desktopEmbed) ||
         req.headers.host !== host ||
         (req.headers.origin && req.headers.origin !== `http://${host}`)
       )
@@ -53,7 +63,7 @@ export async function startCanonicalEditor(
           !req.headers["content-type"]?.startsWith("application/json")
         )
           return json(403, { error: "Same-origin JSON required" });
-        const v: any = await readJsonBody(req, 512000, "본문이 너무 커요.");
+        const v: any = await readJsonBody(req, 8_000_000, "본문이 너무 커요.");
         if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.update(v));
         if (u.pathname === "/api/blog/copy-sticker-plan" && nativeClipboard) {
           if (typeof v.text !== "string" || !v.text.trim() || v.text.length > 20000) throw new Error("잘못된 배치 메모");
@@ -94,14 +104,19 @@ export async function startCanonicalEditor(
         return json(405, { error: "Method not allowed" });
       if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.list());
       if (u.pathname === "/api/blog/review-status" && worker)
-        return json(200,{requests:await worker.status(),reviews:(await store.load()).reviews});
+        {
+        const current=await store.load();
+        return json(200,{requests:await worker.status(),reviews:current.reviews,revision:current.revision});
+      }
+      if (u.pathname === "/api/blog/evidence" && store instanceof MarkupStore)
+        return json(200, await store.evidenceLibrary());
       if (u.pathname === "/api/blog/document")
-        return json(200, {...await store.load(),...(nativeClipboard?{nativeClipboard:true}:{})});
+        return json(200, {...await (store instanceof MarkupStore?store.load(true):store.load()),...(nativeClipboard?{nativeClipboard:true}:{})});
       if (u.pathname === "/api/blog/frame") {
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy":
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-ancestors 'self'",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-ancestors " + frameAncestors,
         });
         res.end(await store.frame());
         return;
@@ -126,6 +141,8 @@ export async function startCanonicalEditor(
           u.searchParams.get("kind") ?? "",
           u.searchParams.get("name") ?? "",
         );
+      else if (u.pathname === "/api/blog/evidence-image" && store instanceof MarkupStore)
+        file = await store.evidenceImage(u.searchParams.get("id") ?? "", u.searchParams.has("thumbnail"));
       else {
         if (u.pathname === "/" && !u.search) {
           res.writeHead(302, { Location: "/?blogEditor=1" });
@@ -159,6 +176,7 @@ export async function startCanonicalEditor(
         return json(404, { error: "Not found" });
       res.writeHead(200, {
         "Content-Type": types[path.extname(file)] ?? "application/octet-stream",
+        ...(deps.desktopFrame && path.extname(file) === ".html" ? { "Content-Security-Policy": "frame-ancestors " + frameAncestors } : {}),
       });
       res.end(await readFile(file));
     } catch (e) {

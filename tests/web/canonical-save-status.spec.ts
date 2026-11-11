@@ -5,7 +5,7 @@ import path from "node:path";
 import {markupFixture} from "../fixtures/markup-editor";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
 
-test("save status distinguishes dirty, saving, saved, auto-save and failed review; reload discards DOM edits",async({page},info)=>{
+test("save status distinguishes dirty, saving, saved, auto-save and failed review; no reload step",async({page},info)=>{
  const root=await mkdtemp(path.join(os.tmpdir(),"save-status-"));let server;
  try{
   const config=await markupFixture(root);server=await startCanonicalEditor(config);
@@ -28,12 +28,7 @@ test("save status distinguishes dirty, saving, saved, auto-save and failed revie
   await expect(status).toContainText("✓ 저장 완료");
   await expect(save).toHaveText("✓ 저장됨");
   const firstSaved=await readFile(config.canon,"utf8");expect(firstSaved).toContain("Saved first");
-  await p.fill("Discard unsaved");
-  page.once("dialog",d=>d.accept());
-  await page.getByRole("button",{name:"다시 불러오기",exact:true}).click();
-  await expect(p).toHaveText("Saved first");
-  await expect(status).toContainText("✓ 저장 완료");
-  await expect(page.getByText("정본과 미리보기를 저장했어요. 저장 전 사본도 보관했어요.",{exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"다시 불러오기",exact:true})).toHaveCount(0);
   await p.fill("Saved for review");
   await page.route("**/api/blog/review",route=>route.fulfill({status:200,contentType:"application/json",body:'{"id":"fixture"}'}));
   await page.getByRole("button",{name:"이 묶음 검토",exact:true}).click();
@@ -65,5 +60,9 @@ test("save failure retains edits and never shows saved completion",async({page})
   await expect(p).toHaveText("Still unsaved");
   await expect(page.getByRole("button",{name:"정본 저장",exact:true})).toBeEnabled();
   expect(await readFile(config.canon,"utf8")).toBe(original);
+  // Nobody presses anything: the retry lands it once saving works again.
+  await page.unrouteAll({behavior:"ignoreErrors"});
+  await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:20000});
+  expect(await readFile(config.canon,"utf8")).toContain("Still unsaved");
  }finally{await page.unrouteAll({behavior:"ignoreErrors"});await server?.close();await rm(root,{recursive:true,force:true});}
 });

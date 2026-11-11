@@ -1,7 +1,7 @@
 import {InputFormWindows} from "./input-form-window";
 import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
-import { DesktopCanonicalEditor } from "./canonical-editor";
+import { CANONICAL_EDITOR_HELP_URL, DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
 import { workflowRequest } from "../app/workflow/client";
 import { workflowAction, type WorkflowAction } from "../shared/workflow";
@@ -32,7 +32,8 @@ import {
 import os from "node:os";
 import { syncSnapshot } from "./sync";
 import { Workbench, PREVIEW_URL } from "./workbench";
-import { DEFAULT_KEYMAP, matchAction } from "../shared/keymap";
+import { DEFAULT_KEYMAP, matchAction, type KeyAction } from "../shared/keymap";
+import { trustedIpcSender } from "./ipc-trust";
 import {
   developmentModeEnabled,
   DEVELOPMENT_MODE_ARGUMENT,
@@ -42,7 +43,8 @@ import { installApplicationIdentity } from "./application-identity";
 import { APP_NAME, DEV_BUILD_ARGUMENT, appDisplayName } from "./build-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
-import { ContentLibrary, BoardMedia } from "../features/content-library";
+import { ContentLibrary, BoardMedia, ICloudDelivery } from "../features/content-library";
+import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
 import { CardNewsService } from "./card-news";
@@ -84,6 +86,37 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 let window: BrowserWindow;
+/**
+ * Host-scope actions (HOST_ACTIONS) are matched here in the main process, not by
+ * a renderer keydown listener as upstream workdesk does: the cross-origin preview
+ * iframe, the blog tab's embedded editor and xterm hold keyboard focus, so the top
+ * renderer would never see these keys. Only the trusted top renderer receives the
+ * action name; renderer-scope actions are left to it.
+ */
+function forwardHostShortcuts(
+  contents: Electron.WebContents,
+  send: (action: KeyAction) => void,
+) {
+  contents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    const action = matchAction(
+      DEFAULT_KEYMAP,
+      {
+        code: input.code,
+        metaKey: input.meta,
+        ctrlKey: input.control,
+        altKey: input.alt,
+        shiftKey: input.shift,
+        isComposing: input.isComposing,
+      },
+      "host",
+    );
+    if (!action) return;
+    // Suppress native menu/iframe/xterm handling and key-repeat duplication.
+    event.preventDefault();
+    if (!input.isAutoRepeat) send(action);
+  });
+}
 const fixture = process.env.REELS_DEMO === "1";
 const developmentMode = developmentModeEnabled(process.env);
 const grants = new Set<string>();
@@ -190,7 +223,13 @@ async function awaitReady() {
   );
   const routeLibrary = new RouteLibrary(contentLibrary);
   const blogs = new BlogLibrary(store, contentLibrary);
-  const canonicalEditor = new DesktopCanonicalEditor(root, path.join(app.getAppPath(),"dist"), backgroundQA);
+  // QA only: with REELS_QA_STUBBED_DIALOGS=1 a background-QA spec that stubbed
+  // dialog.showMessageBoxSync reaches the real unsaved-change dialog branches.
+  const canonicalEditor = new DesktopCanonicalEditor(
+    root,
+    path.join(app.getAppPath(), "dist"),
+    backgroundQA && process.env.REELS_QA_STUBBED_DIALOGS !== "1",
+  );
   const blogResults = new BlogResults(store, () => emit("blog:results-changed", null));
   const blogExtractor = new BlogExtractor({
     store,
@@ -217,6 +256,12 @@ async function awaitReady() {
     logs,
     undefined,
     path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
+  );
+  const icloudDelivery = new ICloudDelivery(
+    contentLibrary,
+    path.resolve(process.env.PHOTOSINDEX_EXPORT_ROOT ?? path.join(os.homedir(), "Library/Mobile Documents/com~apple~CloudDocs/Naver Clip")),
+    paths => native.request("icloud.status", { paths: JSON.stringify(paths) }) as Promise<ICloudUploadStatus>,
+    path.join(root,"outbound-history"),
   );
   const editorService = new EditorService({
     logs,
@@ -342,7 +387,7 @@ async function awaitReady() {
       : dialog.showMessageBoxSync(options);
   };
   const workBusy = () =>
-    activeOperations > 0 || editorService.busy || cardNews.busy;
+    activeOperations > 0 || editorService.busy || cardNews.busy || icloudDelivery.busy;
   const confirmAbortJobs = () =>
     messageBox({
       type: "warning",
@@ -355,6 +400,43 @@ async function awaitReady() {
     }) === 1;
   // Set when the dashboard close guard already asked; consumed by the next before-quit.
   let jobAbortConfirmed = false;
+  /**
+   * "그래도 닫기" for the blog tab's embedded editors (and the dashboard page, probed with
+   * them) holds for this one close or quit attempt only: every branch that cancels the
+   * attempt calls cancelCloseAttempt(), and it expires on its own as a backstop.
+   */
+  let discardConfirmedAt = 0;
+  const DISCARD_CONFIRM_TTL_MS = 5000;
+  const discardConfirmed = () =>
+    discardConfirmedAt > 0 && Date.now() - discardConfirmedAt < DISCARD_CONFIRM_TTL_MS;
+  const cancelCloseAttempt = () => {
+    discardConfirmedAt = 0;
+  };
+  let askingEditorDiscard = false;
+  /** With embedded editors open, asks once (async) and calls `then` to retry the close or quit. */
+  const editorsMayClose = (then: () => void) => {
+    const host = liveWindow(window);
+    if (
+      discardConfirmed() ||
+      !host ||
+      !canonicalEditor.frames(host.webContents).length
+    )
+      return true;
+    if (!askingEditorDiscard) {
+      askingEditorDiscard = true;
+      void canonicalEditor
+        .confirmDiscard(host.webContents, host, undefined, true)
+        .then(({ close }) => {
+          if (!close) return;
+          discardConfirmedAt = Date.now();
+          then();
+        })
+        .finally(() => {
+          askingEditorDiscard = false;
+        });
+    }
+    return false;
+  };
   app.on("before-quit", (event) => {
     if (shutdown.mayQuit()) return;
     // Every quit during cleanup (e.g. window-all-closed after the editors close) waits.
@@ -363,13 +445,24 @@ async function awaitReady() {
     const confirmed = jobAbortConfirmed;
     jobAbortConfirmed = false;
     if (workBusy()) {
+      cancelCloseAttempt();
       messageBox({
         type: "info",
         message: "진행 중인 작업이 끝난 뒤 종료해주세요.",
       });
       return;
     }
-    if (workflowHost.runningJobs() > 0 && !confirmed && !confirmAbortJobs())
+    if (workflowHost.runningJobs() > 0 && !confirmed && !confirmAbortJobs()) {
+      cancelCloseAttempt();
+      return;
+    }
+    if (
+      !editorsMayClose(() => {
+        // The job question (if any) was already answered in this quit.
+        jobAbortConfirmed = true;
+        app.quit();
+      })
+    )
       return;
     workflowNotifications.dispose();
     for (const toast of workflowToasts) toast.close();
@@ -392,11 +485,19 @@ async function awaitReady() {
       () => app.quit(),
     );
   });
+  // Only the dashboard window's main frame: the blog tab's embedded editors are subframes.
   const handle = (name: string, fn: (...args: any[]) => unknown) =>
     ipcMain.handle(`reels:${name}`, async (event, ...args) => {
+      const dashboard = liveWindow(window);
       if (
-        event.sender !== window.webContents ||
-        event.senderFrame !== window.webContents.mainFrame
+        !trustedIpcSender({
+          sender: event.sender,
+          frame: event.senderFrame,
+          dashboard: dashboard && {
+            sender: dashboard.webContents,
+            frame: dashboard.webContents.mainFrame,
+          },
+        })
       )
         throw new Error("Untrusted IPC sender");
       return fn(...args);
@@ -409,7 +510,20 @@ async function awaitReady() {
     if (workflowOpen?.sequence === sequence) workflowOpen = null;
   });
   handle("blog:canonicalProjects", () => canonicalEditor.projects());
-  handle("blog:openCanonical", (projectId) => canonicalEditor.open(projectId));
+  handle("blog:openCanonical", (projectId) =>
+    canonicalEditor.open(String(projectId), liveWindow(window)?.webContents),
+  );
+  handle("blog:closeCanonical", (projectId) => {
+    const host = liveWindow(window);
+    if (!host) return { close: true, unsaved: false };
+    return canonicalEditor
+      .confirmDiscard(host.webContents, host, String(projectId))
+      .then((result) => {
+        // The renderer removes the iframe next; the server goes once no frame is left.
+        if (result.close) canonicalEditor.release(String(projectId), host.webContents);
+        return result;
+      });
+  });
   handle("blog:readDocument", (projectId, file) => blogs.readDocument(projectId, file));
   handle("blog:results", () => blogResults.list());
   handle("blog:readResult", (id) => blogResults.read(id));
@@ -469,6 +583,8 @@ async function awaitReady() {
       "stop",
       "remove",
       "close",
+      "setTerminalBackend",
+      "reattach",
     ] as const) {
       handle(`workbench:${method}`, (...args: unknown[]) => {
         if (workbenchError)
@@ -565,6 +681,17 @@ async function awaitReady() {
     return result;
   };
   handle("request", requestPhotos);
+  handle("icloud:status", (value: unknown) => icloudDelivery.status(icloudStatusInput.parse(value).paths));
+  handle("icloud:list", () => icloudDelivery.list());
+  handle("icloud:configure", (input: unknown) => {
+    agentSession.assertWritable();
+    return icloudDelivery.configure(input);
+  });
+  handle("icloud:start", (input: unknown) => {
+    agentSession.assertWritable();
+    return icloudDelivery.start(input);
+  });
+  handle("icloud:get", (jobId: string) => icloudDelivery.get(jobId));
   handle("agent:context", (context) => agentSession.update(context));
   handle("saveDocument", async (name: string, data: unknown) => {
     safeDocumentName(name);
@@ -711,32 +838,20 @@ async function awaitReady() {
       },
     });
     if (developmentMode) {
-      // Host-scope actions (HOST_ACTIONS) are matched here in the main process,
-      // not by a renderer keydown listener as upstream workdesk does: the
-      // cross-origin preview iframe and xterm hold keyboard focus, so the top
-      // renderer would never see these keys. Only the trusted top renderer
-      // receives the action name; renderer-scope actions are left to it.
-      window.webContents.on("before-input-event", (event, input) => {
-        if (input.type !== "keyDown") return;
-        const action = matchAction(
-          DEFAULT_KEYMAP,
-          {
-            code: input.code,
-            metaKey: input.meta,
-            ctrlKey: input.control,
-            altKey: input.alt,
-            shiftKey: input.shift,
-            isComposing: input.isComposing,
-          },
-          "host",
-        );
-        if (!action) return;
-        // Suppress native menu/iframe/xterm handling and key-repeat duplication.
-        event.preventDefault();
-        if (!input.isAutoRepeat) emit("workbench:shortcut", action);
-      });
+      forwardHostShortcuts(window.webContents, (action) =>
+        emit("workbench:shortcut", action),
+      );
     }
-    window.webContents.setWindowOpenHandler(({ url }) => {
+    window.webContents.setWindowOpenHandler(({ url, referrer }) => {
+      // An embedded editor may open only its help page. The handler is not told which
+      // frame asked: a clicked editor link has focus, a script call sends the editor as referrer.
+      if (
+        canonicalEditor.owns(window.webContents.focusedFrame?.url) ||
+        canonicalEditor.owns(referrer.url)
+      ) {
+        if (url === CANONICAL_EDITOR_HELP_URL) void shell.openExternal(url);
+        return { action: "deny" };
+      }
       try {
         const parsed = new URL(url);
         if (
@@ -751,14 +866,37 @@ async function awaitReady() {
       return { action: "deny" };
     });
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    // An embedded editor frame stays on its own server's origin.
+    window.webContents.on("will-frame-navigate", (event) => {
+      if (event.isMainFrame || !canonicalEditor.owns(event.frame?.url)) return;
+      if (new URL(event.frame!.url).origin !== new URL(event.url).origin)
+        event.preventDefault();
+    });
+    // A real beforeunload refusal (an editor, the 원고·배치 draft or the experience form)
+    // that this attempt's probe did not already settle; quit cleanup already asked.
+    window.webContents.on("will-prevent-unload", (event) => {
+      if (
+        shutdown.started ||
+        discardConfirmed() ||
+        canonicalEditor.confirmUnload(window)
+      )
+        event.preventDefault();
+      else cancelCloseAttempt();
+    });
     window.on("focus", () => workflowNotifications.clearUnread());
     window.webContents.session.setPermissionRequestHandler(
       (_webContents, _permission, callback) => callback(false),
+    );
+    // Embedded editors had a partition that refused every permission check too.
+    window.webContents.session.setPermissionCheckHandler(
+      (_webContents, _permission, requestingOrigin) =>
+        !canonicalEditor.owns(requestingOrigin),
     );
     window.on("close", (event) => {
       if (shutdown.started) return;
       if (workBusy()) {
         event.preventDefault();
+        cancelCloseAttempt();
         messageBox({
           type: "info",
           message: "진행 중인 작업이 끝난 뒤 닫아주세요.",
@@ -767,12 +905,17 @@ async function awaitReady() {
       }
       // Closing the dashboard quits the app, which aborts embedded SDK jobs: ask here,
       // while the window still exists, and quit only on 종료.
+      const host = window;
+      if (!editorsMayClose(() => host.close())) {
+        event.preventDefault();
+        return;
+      }
       if (workflowHost.runningJobs() > 0) {
         event.preventDefault();
         if (confirmAbortJobs()) {
           jobAbortConfirmed = true;
           app.quit();
-        }
+        } else cancelCloseAttempt();
       }
     });
     void window.loadFile(path.join(app.getAppPath(), "dist/index.html"));
@@ -790,6 +933,7 @@ async function awaitReady() {
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
+      icloud: icloudDelivery,
       editor: editorService,
       session: agentSession,
       dashboard: () => store.load(),

@@ -1,4 +1,11 @@
 .blog-workspace {padding: 20px;}
+.blog-workspace-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.blog-workspace-heading h2 {margin:0}
+.blog-terminal-dialog {width:min(620px,calc(100vw - 40px));max-height:80vh;overflow:auto;border:1px solid var(--border,#ddd);border-radius:12px;padding:20px}
+.blog-terminal-dialog::backdrop {background:#0006}
+.blog-workspace .blog-terminal-dialog label {display:block;margin:12px 0}
+.blog-workspace .blog-terminal-dialog textarea {height:120px;white-space:pre-wrap}
+.blog-terminal-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
 .blog-project-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;max-width:1100px;}
 .blog-project-card {border:1px solid var(--border,#ddd);border-radius:12px;padding:20px;min-width:0;}
 .blog-project-card h4 {font-size:18px;margin:12px 0;overflow-wrap:anywhere;}
@@ -43,3 +50,15 @@
 .blog-reference-run-text{white-space:pre-wrap;line-height:1.7}
 
 .blog-preview-panel{scroll-margin-top:85px;outline:none;margin-top:20px}.blog-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.blog-preview-heading h3{margin:0;font-size:18px}
+
+/* Opened project editors: tabs next to the workspace modes, each an embedded iframe. */
+.blog-workspace-tabs{align-items:center}
+.blog-editor-tab{display:inline-flex;align-items:center;margin:4px;border:1px solid #c9c2b6;border-radius:8px;background:#fbf9f6}
+.blog-editor-tab[data-active]{border-color:var(--accent,#526f69)}
+.blog-workspace .blog-editor-tab button{margin:0;border:0;background:none;padding:6px 10px}
+.blog-workspace .blog-editor-tab button:first-child{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blog-workspace .blog-editor-tab button:last-child{padding:6px 10px 6px 4px;opacity:.7}
+.blog-workspace .blog-editor-tab button[aria-pressed=true]{outline:none;font-weight:700}
+.blog-editor-host{--blog-editor-reserve:16px}
+.blog-editor-frame{display:block;width:100%;height:max(var(--blog-editor-min-height,320px),calc(100vh - var(--blog-editor-top,180px) - var(--blog-editor-reserve)));border:1px solid var(--border,#ddd);border-radius:8px;background:#fff}
+.blog-editor-frame[hidden]{display:none}

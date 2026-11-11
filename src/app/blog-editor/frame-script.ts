@@ -119,15 +119,18 @@ document.addEventListener('keydown',e=>{
  send({type:'remove-paragraph',id:p.dataset.tid});
 },true);
 function afterHide(){const r=refocusAfterRemove;if(!r)return;const el=document.querySelector('[data-tid="'+CSS.escape(r.id)+'"]');if(el&&!el.hidden&&!el.closest('[hidden]'))return;refocusAfterRemove=null;if(r.to&&!r.to.hidden&&!r.to.closest('[hidden]'))placeEnd(r.to);}
-function change(el){if(ghost&&ghost.p===el)removeGhost();send({type:'change',id:el.dataset.tid,runs:serialize(el)});}
+// Each change is numbered so a sync can tell which typing it was built without.
+let changeSeq=0;const changedAt=new Map();
+function change(el){if(ghost&&ghost.p===el)removeGhost();changedAt.set(el.dataset.tid,++changeSeq);send({type:'change',seq:changeSeq,id:el.dataset.tid,runs:serialize(el)});}
 document.addEventListener('click',e=>{
  const node=e.target.closest('[data-node-index]');
  if(node&&document.documentElement.dataset.markup==='true')send({type:'sticker-anchor',bundleId:node.dataset.bundle,before:Number(node.dataset.nodeIndex)+1});
 });
 let picked=null;function pick(b){document.querySelectorAll('.editor-bundle.picked').forEach(x=>x.classList.remove('picked'));picked=b||null;if(picked)picked.classList.add('picked');}
 document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tid]');if(!el)return;pick(null);selected=el;document.querySelectorAll('.active').forEach(x=>x.classList.remove('active'));const b=el.closest('[data-bundle]');b?.classList.add('active');send({type:'select',id:el.dataset.tid,bundleId:b?.dataset.bundle});});
-document.addEventListener('input',e=>{const el=e.target.closest('[data-tid]');if(!el)return;change(el);if(review.items.length)holdParagraph(el);});
-document.addEventListener('paste',e=>{if(!e.target.closest('[data-tid]'))return;e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain').replace(/\n\s*\n/g,'\n'));});
+document.addEventListener('input',e=>{const el=e.target.closest('[data-tid]');if(!el)return;deferred.delete(el.dataset.tid);change(el);if(review.items.length)holdParagraph(el);});
+// A blank line in pasted text stays: the next save turns it into a paragraph break.
+document.addEventListener('paste',e=>{if(!e.target.closest('[data-tid]'))return;e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));});
 document.addEventListener('drop',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{
  if(e.isComposing||e.keyCode===229)return;
@@ -667,7 +670,7 @@ function fillHint(h,t,hasNext,hasPrev){
  const open=review.open.has(item.id);
  if(!note)button('why','이유','이유','','',false).setAttribute('aria-expanded',String(open));
  const again=button('rereview','다시 검토','다시 검토','','',review.locked);
- again.dataset.bundleId=item.bundleId;again.title='이 묶음을 다시 검토해요. 저장 전 변경이 있으면 먼저 저장해요.';
+ again.dataset.bundleId=item.bundleId;again.title='이 묶음을 다시 검토해요. 저장되지 않은 변경이 있으면 먼저 저장해요.';
  h.append(actions);
  if(!note){
   // The full before/after stays reachable even when the popover shows a clipped line.
@@ -945,7 +948,7 @@ document.addEventListener('keydown',e=>{
 // Fallbacks for edits without a keydown (paste, drag, IME without key events, automation).
 document.addEventListener('beforeinput',e=>{const p=paragraphFrom(e.target);if(p)holdParagraph(p);},true);
 document.addEventListener('compositionstart',e=>{removeGhost();review.composing=true;holdParagraph(paragraphFrom(e.target));});
-document.addEventListener('compositionend',()=>{review.composing=false;scheduleRender();});
+document.addEventListener('compositionend',()=>{review.composing=false;scheduleRender();if(pendingSync){const m=pendingSync;pendingSync=null;setTimeout(()=>applySync(m),0);}});
 document.addEventListener('dragstart',e=>{const s0=saveSel();if(s0)holdParagraph(s0.p);},true);
 document.addEventListener('cut',e=>{const p=paragraphFrom(e.target);if(p){removeGhost();holdParagraph(p);}},true);
 // Copy never carries review UI (inserted words live in attributes, the ghost is real text).
@@ -973,6 +976,8 @@ document.addEventListener('selectionchange',()=>{
  updateNav();
 });
 document.addEventListener('focusout',e=>{
+ applyDeferred(e.target);
+ if(e.target.closest&&e.target.closest('[data-tid]'))send({type:'blur'});
  if(ghost&&e.target===ghost.p)removeGhost();
  // Focus moved to another element in the frame while waiting: the answer no longer belongs to the caret.
  // (A window/app switch has no relatedTarget and keeps the request.)
@@ -981,6 +986,7 @@ document.addEventListener('focusout',e=>{
  setTimeout(updateNav,0);
 });
 window.addEventListener('resize',()=>{if(ghost)renderGhost();updateNav();});
+window.addEventListener('blur',()=>send({type:'blur'}));
 // Review controls never take focus or move the caret out of the paragraph.
 document.addEventListener('mousedown',e=>{if(e.target.closest?.('[data-review-ui="hint"],[data-review-ui] button,[data-review-ui="ins"],[data-review-ui="marker"]'))e.preventDefault();},true);
 document.addEventListener('click',e=>{
@@ -1020,17 +1026,160 @@ function returnFromHint(){
  if(r&&r.p&&r.p.isConnected){r.p.focus({preventScroll:true});restoreSel(r);updateNav();}
 }
 function ghostReturnFocus(){const p=selected;if(p&&p.isContentEditable&&document.activeElement!==p)p.focus({preventScroll:true});}
+// Stickers and unsaved photos share gaps: always redraw both so a gap keeps the saved order (sticker, then photo).
+let draftStickers=null,draftPhotos=[];
+function placeDraft(item,el){
+ const bundle=[...document.querySelectorAll('.editor-bundle')].find(b=>b.dataset.bundle===item.bundleId);if(!bundle)return;
+ const before=[...bundle.querySelectorAll('[data-node-index]')].find(n=>Number(n.dataset.nodeIndex)===item.before);
+ el.dataset.bundle=item.bundleId;
+ if(before)before.before(el);else bundle.append(el);
+}
+function placeDrafts(){
+ document.querySelectorAll('[data-pending-photo]').forEach(el=>el.remove());
+ if(draftStickers){
+  document.querySelectorAll('[data-sticker-id]').forEach(el=>el.remove());
+  for(const s of draftStickers){
+   const template=document.createElement('template');template.innerHTML=s.html;
+   const el=template.content.firstElementChild;if(el)placeDraft(s,el);
+  }
+ }
+ for(const p of draftPhotos){
+  const figure=document.createElement('figure');figure.className='photo-block';figure.dataset.component='PhotoBlock';figure.dataset.pendingPhoto=p.id;figure.contentEditable='false';
+  const img=document.createElement('img');img.src=p.src;img.alt=p.alt;figure.append(img);
+  placeDraft(p,figure);
+ }
+}
+// ---- Live sync ---------------------------------------------------------------
+// Saves and outside changes reach this page as a rendered article, patched into the open
+// document: scroll, caret and undo survive. A paragraph is left alone while it is focused
+// or has unsaved text; a focused one picks the new text up when it loses focus.
+const deferred=new Map();let pendingSync=null;
+function applyDeferred(el){
+ const id=el&&el.dataset&&el.dataset.tid,html=id&&deferred.get(id);if(html===undefined)return;
+ deferred.delete(id);
+ // Null: the paragraph left the file while it was in focus, and nothing was typed since.
+ if(html===null){el.remove();send({type:'deferred-applied',id,gone:true});return;}
+ if(id==='$title')el.textContent=html;else{if(nav.active&&nav.active.p===el)hideHint();review.targets=review.targets.filter(t=>t.p!==el);review.hl=review.hl.filter(h=>h.p!==el);paintHighlights();el.innerHTML=html;if(review.items.length)scheduleRender();}
+ send({type:'deferred-applied',id});
+}
+/** Cuts p at each blank line so it matches a save that split it; the caret stays on its character. */
+function splitParagraph(id,ids){
+ const p=paragraphOf(id);if(!p||ids.slice(1).every(x=>paragraphOf(x)))return [];
+ if(ghost&&ghost.p===p)removeGhost();
+ const keep=document.activeElement===p?saveSel():null;
+ removeDecor(p);
+ // Where each part's text sat in the old paragraph, so the selection can follow its characters.
+ const parts=[];let holder=p,offset=0;
+ const made=[p];let cur=p;
+ for(const next of ids.slice(1)){
+  const el=p.cloneNode(false);el.dataset.tid=next;el.setAttribute('aria-label',next+' 문단');
+  const map=plainMap(cur),gap=/\n\s*\n\s*/.exec(map.text),b=gap&&boundary(map,gap.index+gap[0].length,false);
+  if(gap&&b){
+   const tail=document.createRange();tail.setStart(b[0],b[1]);tail.setEnd(cur,cur.childNodes.length);el.append(tail.extractContents());
+   const m2=plainMap(cur),s=boundary(m2,gap.index,false);
+   if(s){const cut=document.createRange();cut.setStart(s[0],s[1]);cut.setEnd(cur,cur.childNodes.length);cut.deleteContents();}
+   parts.push({el:cur,start:offset,end:offset+gap.index});offset+=gap.index+gap[0].length;holder=el;
+  }
+  cur.after(el);made.push(el);cur=el;
+ }
+ parts.push({el:holder,start:offset,end:Infinity});
+ if(keep&&keep.p===p){
+  const place=o=>{const part=parts.find(x=>o<=x.end);return [part.el,Math.max(0,o-part.start)];};
+  const a=place(keep.a),b=place(keep.b);
+  // A selection across the new boundary has no single paragraph to live in: keep its end.
+  if(a[0]!==b[0])setCaret(b[0],b[1],b[1],true);
+  else{setCaret(a[0],a[1],b[1],true);if(keep.back){const s=getSelection();if(s.rangeCount)selectRange(s.getRangeAt(0),true);}}
+ }
+ for(const el of made)change(el);
+ return made.map(el=>el.dataset.tid);
+}
+function nodeKey(n){
+ if(n.nodeType!==1)return '#'+n.nodeType+':'+n.textContent;
+ if(n.dataset.tid)return 'p:'+n.dataset.tid;
+ if(n.classList.contains('editor-bundle'))return 'b:'+n.dataset.bundle;
+ const inner=n.querySelector('[data-tid]');
+ return inner?'c:'+n.tagName+':'+inner.dataset.tid:'h:'+n.outerHTML;
+}
+function morphNode(old,next,keep,held){
+ if(old.nodeType!==1)return;
+ const paragraph=!!old.dataset.tid;
+ for(const a of [...next.attributes]){
+  if(a.name==='contenteditable'||a.name==='hidden'||(a.name==='class'&&!paragraph))continue;
+  if(old.getAttribute(a.name)!==a.value)old.setAttribute(a.name,a.value);
+ }
+ for(const a of [...old.attributes])if(a.name.startsWith('data-')&&!next.hasAttribute(a.name))old.removeAttribute(a.name);
+ if(!paragraph){if(old.querySelector('[data-tid]')||old.classList.contains('editor-bundle'))morphChildren(old,next,keep,held);return;}
+ const id=old.dataset.tid;
+ // Whatever waited for this paragraph is out of date once it matches or has newer typing.
+ if(keep.has(id)){deferred.delete(id);return;}
+ const same=old.innerHTML===next.innerHTML;
+ if(old===document.activeElement&&!same){deferred.set(id,next.innerHTML);held.push(id);return;}
+ deferred.delete(id);
+ if(!same)old.innerHTML=next.innerHTML;
+}
+/** Whether a node holds the paragraph in focus or one with unsaved text. */
+function writing(n,keep){
+ if(n.nodeType!==1)return false;
+ const hit=p=>keep.has(p.dataset.tid)||p===document.activeElement;
+ return n.dataset.tid?hit(n):[...n.querySelectorAll('[data-tid]')].some(hit);
+}
+function morphChildren(parentEl,next,keep,held){
+ const pool=new Map();
+ for(const c of [...parentEl.childNodes]){const k=nodeKey(c);if(!pool.has(k))pool.set(k,[]);pool.get(k).push(c);}
+ const wanted=[...next.childNodes].map(n=>{
+  const old=pool.get(nodeKey(n))?.shift();
+  if(!old)return document.importNode(n,true);
+  morphNode(old,n,keep,held);return old;
+ });
+ for(const rest of pool.values())for(const n of rest){
+  if(!writing(n,keep)){n.remove();continue;}
+  // The file no longer has it, but it is being written in: it stays where it is for now.
+  let prior=n.previousSibling;while(prior&&!wanted.includes(prior))prior=prior.previousSibling;
+  wanted.splice(prior?wanted.indexOf(prior)+1:0,0,n);
+  const active=document.activeElement;
+  if(n===active||n.contains(active)){if(active.dataset.tid&&!keep.has(active.dataset.tid))deferred.set(active.dataset.tid,null);}
+ }
+ let cursor=parentEl.firstChild;
+ for(const n of wanted){if(n===cursor)cursor=cursor.nextSibling;else parentEl.insertBefore(n,cursor);}
+}
+function applySync(m){
+ const splits=Object.entries(m.splits||{});
+ // Splitting moves the text under an open IME composition, so it waits for the composition.
+ if(review.composing&&splits.length){pendingSync=m;return;}
+ const keep=new Set(m.keep||[]),held=[];
+ // Typing the host had not seen when it built this sync is still unsaved text.
+ for(const [id,seq] of changedAt)if(seq>(m.seen||0))keep.add(id);
+ const sel=saveSel();
+ for(const [id,ids] of splits){const el=paragraphOf(id);if(el&&(el===document.activeElement||keep.has(id)))for(const made of splitParagraph(id,ids))keep.add(made);}
+ clearReview();
+ document.querySelectorAll('[data-pending-photo],[data-sticker-id],[data-annotation-badge]').forEach(e=>e.remove());
+ const article=document.querySelector('article'),fresh=new DOMParser().parseFromString(m.html,'text/html').querySelector('article');
+ if(article&&fresh){
+  for(const a of [...fresh.attributes])article.setAttribute(a.name,a.value);
+  morphChildren(article,fresh,keep,held);
+ }
+ const title=paragraphOf('$title');
+ if(title&&typeof m.title==='string'){
+  if(keep.has('$title')||title.textContent===m.title)deferred.delete('$title');
+  else if(title===document.activeElement){deferred.set('$title',m.title);held.push('$title');}
+  else{deferred.delete('$title');title.textContent=m.title;}
+ }
+ // Moving a node drops its focus; a split already placed the caret itself.
+ if(sel&&sel.p.isConnected&&!splits.some(([id])=>paragraphOf(id)===sel.p)){if(document.activeElement!==sel.p)sel.p.focus({preventScroll:true});restoreSel(sel);}
+ void annotationBadges();
+ placeDrafts();
+ if(review.composing)scheduleRender();else{renderReview();updateNav();}
+ sendTypography();
+ send({type:'synced',token:m.token,held});
+}
 window.addEventListener('message',e=>{
  if(e.origin!==location.origin||e.source!==parent||!e.data?.editor)return;const m=e.data;
- if(m.type==='stickers'&&parent!==window&&Array.isArray(m.items)){
-  document.querySelectorAll('[data-sticker-id]').forEach(el=>el.remove());
-  for(const s of m.items){
-   const bundle=[...document.querySelectorAll('.editor-bundle')].find(b=>b.dataset.bundle===s.bundleId);if(!bundle)continue;
-   const before=[...bundle.querySelectorAll('[data-node-index]')].find(n=>Number(n.dataset.nodeIndex)===s.before);
-   const template=document.createElement('template');template.innerHTML=s.html;
-   const el=template.content.firstElementChild;if(!el)continue;el.dataset.bundle=s.bundleId;
-   if(before)before.before(el);else bundle.append(el);
-  }
+ if(m.type==='sync'&&parent!==window&&typeof m.html==='string')applySync(m);
+ if(m.type==='stickers'&&parent!==window&&Array.isArray(m.items)){draftStickers=m.items;placeDrafts();}
+ if(m.type==='photos'&&parent!==window&&Array.isArray(m.items)){draftPhotos=m.items;placeDrafts();}
+ if(m.type==='reveal-photo'){
+  const el=[...document.querySelectorAll('[data-pending-photo]')].find(n=>n.dataset.pendingPhoto===m.id);
+  if(el)send({type:'scroll',top:el.getBoundingClientRect().top+scrollY});
  }
  if(m.type==='reveal-sticker'){
   const el=[...document.querySelectorAll('[data-sticker-id]')].find(n=>n.dataset.stickerId===m.id);
@@ -1041,7 +1190,7 @@ window.addEventListener('message',e=>{
  if(m.type==='hide-bundles'&&Array.isArray(m.ids)){document.querySelectorAll('.editor-bundle').forEach(b=>{b.hidden=m.ids.includes(b.dataset.bundle);});if(picked&&picked.hidden)pick(null);afterHide();}
  if(m.type==='hide-paragraphs'&&Array.isArray(m.ids)){document.querySelectorAll('[data-tid]').forEach(p=>{if(p.dataset.tid!=='$title')p.hidden=m.ids.includes(p.dataset.tid);});afterHide();}
  if(m.type==='jump'){const b=[...document.querySelectorAll('[data-bundle]')].find(b=>b.dataset.bundle===m.id);if(b)send({type:'scroll',top:b.getBoundingClientRect().top+scrollY});}
- if(m.type==='replace'){const el=[...document.querySelectorAll('[data-tid]')].find(p=>p.dataset.tid===m.id);if(el){if(ghost&&ghost.p===el)removeGhost();if(nav.active&&nav.active.p===el)hideHint();review.targets=review.targets.filter(t=>t.p!==el);review.hl=review.hl.filter(h=>h.p!==el);paintHighlights();el.innerHTML=m.html;change(el);if(review.items.length)scheduleRender();}}
+ if(m.type==='replace'){const el=[...document.querySelectorAll('[data-tid]')].find(p=>p.dataset.tid===m.id);if(el){deferred.delete(m.id);if(ghost&&ghost.p===el)removeGhost();if(nav.active&&nav.active.p===el)hideHint();review.targets=review.targets.filter(t=>t.p!==el);review.hl=review.hl.filter(h=>h.p!==el);paintHighlights();el.innerHTML=m.html;change(el);if(review.items.length)scheduleRender();}}
  if(m.type==='proposals'&&parent!==window&&Array.isArray(m.items)){const key=JSON.stringify(m.items)+'|'+!!m.locked;if(key!==review.key){review.key=key;review.items=m.items;review.locked=!!m.locked;renderReview();}}
  if(m.type==='proposals'&&parent!==window){resolveAfter();updateNav();}
  if(m.type==='reveal-proposal'&&typeof m.id==='string')revealProposal(m.id);
@@ -1060,6 +1209,7 @@ if(paper){
  document.fonts.ready.then(measure);
  measure();
 }
-send({type:'typography',styles:Object.fromEntries([...document.querySelectorAll('[data-tid]')].map(p=>{const css=getComputedStyle(p);return [p.dataset.tid,{fontFamily:css.fontFamily,fontSize:parseFloat(css.fontSize)}];}))});
+function sendTypography(){send({type:'typography',styles:Object.fromEntries([...document.querySelectorAll('[data-tid]')].map(p=>{const css=getComputedStyle(p);return [p.dataset.tid,{fontFamily:css.fontFamily,fontSize:parseFloat(css.fontSize)}];}))});}
+sendTypography();
 send({type:'ready'});
 `;

@@ -32,6 +32,8 @@ test("user can recolor around existing unsupported sizes but cannot introduce ne
   const saved=await store.save({revision:base.revision,edits:[{id:"P2",source:'<span style="color:#a64132">Second</span> line'}]});
   assert.match(await readFile(config.canon,"utf8"),/up20/);
   assert.ok(saved.document.warnings?.some(s=>s.includes("20px")));
-  await assert.rejects(store.save({revision:saved.document.revision,edits:[{id:"P2",source:'<span style="font-size:22px">Second</span> line'}]}),/validation/);
+  const refused=await store.save({revision:saved.document.revision,edits:[{id:"P2",source:'<span style="font-size:22px">Second</span> line'}]});
+  assert.deepEqual(refused.skipped.map(s=>s.id),["P2"]);
+  assert.doesNotMatch(await readFile(config.canon,"utf8"),/22/);
  }finally{await rm(root,{recursive:true,force:true});}
 });

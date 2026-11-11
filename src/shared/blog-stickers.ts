@@ -16,7 +16,11 @@ export interface StickerPlacement {
   before: number;
   note?: string;
 }
-export interface StickerAnchor { bundleId: string; before: number; label: string }
+export interface StickerAnchor {
+  bundleId: string; before: number; label: string;
+  /** What follows the gap, so a placement can find its gap again after the nodes shift. Absent at the end of a bundle. */
+  next?: string;
+}
 export const stickerKey = (s: Pick<StickerPlacement, "bundleId" | "before">) => JSON.stringify([s.bundleId, s.before]);
 export const isSticker = (n: MarkupNode): n is ComponentNode & { tag: "Sticker" } => n.kind === "component" && n.tag === "Sticker";
 export const stickerPreset = (id: unknown) => STICKER_PRESETS.find(p => p.id === id);
@@ -36,11 +40,22 @@ function nodeLabel(n: MarkupNode): string {
   if (n.tag === "Collage") return "사진 묶음";
   return ({ Heading: "소제목", Title: "제목", Tags: "태그", Map: "지도", VisitCard: "방문 정보", PriceBox: "가격 정보", Divider: "구분선", Info: "정보", Source: "출처", QuestionCard: "질문 카드" } as Record<string,string>)[n.tag] ?? n.tag;
 }
-export function stickerAnchors(doc: MarkupDoc): StickerAnchor[] {
+const gapNode = (n: MarkupNode | undefined): string | undefined => !n ? undefined : n.kind === "paragraph" ? n.id
+  : n.children?.[0]?.id ?? `${n.tag}:${String(n.attrs.file ?? n.attrs.files ?? n.text ?? "")}`;
+export const stickerAnchors = (doc: MarkupDoc): StickerAnchor[] => placementGaps(doc).map(({ next: _, ...gap }) => gap);
+/** The stored gap of a placement in `to`, given it was placed against `from`. */
+export function movedGap(from: StickerAnchor[], to: StickerAnchor[], item: Pick<StickerPlacement, "bundleId" | "before">): number {
+  const gaps = to.filter(a => a.bundleId === item.bundleId);
+  const old = from.find(a => a.bundleId === item.bundleId && a.before === item.before);
+  const same = old && gaps.find(a => a.next === old.next);
+  return same ? same.before : gaps.some(a => a.before === item.before) ? item.before : gaps.at(-1)?.before ?? item.before;
+}
+export function placementGaps(doc: MarkupDoc): StickerAnchor[] {
   return doc.bundles.flatMap(b => {
     const nodes = b.nodes.filter(n => !isSticker(n));
     return Array.from({ length: nodes.length + 1 }, (_, before) => ({ bundleId: b.id, before,
       label: `${b.name} / ${before ? nodeLabel(nodes[before - 1]) + " 뒤" : "묶음 시작"}`,
+      next: gapNode(nodes[before]),
     })).filter(a => {
       const prior = nodes[a.before - 1], next = nodes[a.before];
       // Title is hidden in the editor, tags are outside the published body.

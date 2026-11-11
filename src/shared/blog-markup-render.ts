@@ -1,5 +1,5 @@
 import { isSticker, stickerHtml, STICKER_CSS, type StickerPreset } from "./blog-stickers";
-import { type MarkupDoc, type ParagraphNode, type ComponentNode } from "./blog-markup";
+import { collageRatios, collageRows, type MarkupDoc, type ParagraphNode, type ComponentNode } from "./blog-markup";
 import { escapeHtml } from "./canonical-blog";
 const esc=(s:unknown)=>escapeHtml(String(s??""));
 const safeUrl=(s:string)=> /^(https?:\/\/[^\s]+|(?!(?:[a-z]+:|\/\/))[^\s]*)$/i.test(s)?s:"";
@@ -33,7 +33,21 @@ export function renderHtml(doc:MarkupDoc,style:RenderStyle={}, editable=false):s
     switch(n.tag) {
       case "Sticker":return stickerHtml({id:String(a.id),preset:String(a.preset) as StickerPreset,note:a.note?String(a.note):undefined});
       case "Photo": {const i=img(String(a.file??""),String(a.alt??""));return a.pair?`<div class="photo-group" data-layout="precomposed"><figure class="photo-block" data-component="PhotoGroup">${i}</figure></div>`:`<figure class="photo-block" data-component="PhotoBlock">${i}</figure>`;}
-      case "Collage":return `<figure class="photo-grid4 even" data-component="PhotoCollage4" data-layout="${esc(a.layout)}">${String(a.files??"").split(" · ").map((f,i)=>`<div>${img(f,String(a.alts??"").split(" · ")[i]??"")}</div>`).join("")}</figure>`;
+      case "Collage": {
+        const files=String(a.files??"").split(" · "),alts=String(a.alts??"").split(" · "),ratios=collageRatios(a.ratios,files.length);
+        if(ratios){
+          // Justified rows: each cell grows by its own width/height, so a row of mixed ratios shares one height.
+          const cell=(k:number)=>`<div style="--r:${Number(ratios[k].toFixed(4))}">${img(files[k],alts[k]??"")}</div>`;
+          let at=0;
+          const rows=collageRows(String(a.layout??""),files.length).map(size=>{
+            const cells=Array.from({length:size},(_,i)=>cell(at+i)).join("");
+            at+=size;
+            return `<div class="collage-row">${cells}</div>`;
+          }).join("");
+          return `<figure class="photo-collage-rows" data-component="PhotoCollageRows" data-layout="${esc(a.layout)}">${rows}</figure>`;
+        }
+        return `<figure class="photo-grid4 even" data-component="PhotoCollage4" data-layout="${esc(a.layout)}">${String(a.files??"").split(" · ").map((f,i)=>`<div>${img(f,String(a.alts??"").split(" · ")[i]??"")}</div>`).join("")}</figure>`;
+      }
       case "Heading":return `<blockquote class="section-heading"><h2>${esc(n.text)}</h2></blockquote>`;
       case "Title":return `<header><h1>${esc(n.text)}</h1></header>`;
       case "Tags":return `<p class="tags">${esc(n.text)}</p>`;
@@ -72,5 +86,10 @@ article{font-family:var(--bodyFont,se-nanumbareunhipi);font-size:var(--bodyPx,16
 article .info,article .source,article .price-box,article .visit-card,article .native-card,article .tags,article h2{font-family:var(--infoFont,se-nanumgothic)}
 article .section-heading h2,main.mobile article .section-heading h2{font-size:var(--headingPx,19px);color:var(--headingColor,#85613f)}
 main.mobile article{font-size:var(--mobileBodyPx,17px)}
+article .photo-collage-rows{display:flex;flex-direction:column;gap:8px;margin:30px 0}
+article .photo-collage-rows .collage-row{display:flex;gap:8px}
+article .photo-collage-rows .collage-row>div{flex:var(--r,1) 1 0;min-width:0;aspect-ratio:var(--r,1);overflow:hidden}
+article .photo-collage-rows img{display:block;width:100%;height:100%;max-width:none;margin:0;object-fit:cover}
+@media(max-width:600px){article .photo-collage-rows,article .photo-collage-rows .collage-row{gap:6px}}
 @media(max-width:600px){article{font-size:var(--mobileBodyPx,17px)}}
 </style>`;

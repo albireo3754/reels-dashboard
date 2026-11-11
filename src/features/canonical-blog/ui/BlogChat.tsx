@@ -99,14 +99,14 @@ export function BlogChat({attachments,revision,bundleId,disabled,focusToken,sour
 
   return <section className="ce-chat" aria-label="구절 채팅">
     <h3>구절 채팅 {turns.length>0&&<button type="button" className="ce-chat-reset" disabled={pending} onClick={()=>{setTurns([]);setError("");}}>새 대화</button>}</h3>
-    <p className="ce-chat-help">본문에서 구절을 드래그한 뒤 <b>채팅에 추가</b>를 누르고 물어보세요. 답변은 이 화면에만 있고, <b>본문에 반영</b>을 눌러야 원고가 바뀌어요(저장 전).</p>
+    <p className="ce-chat-help">본문에서 구절을 드래그한 뒤 <b>채팅에 추가</b>를 누르고 물어보세요. 답변은 이 화면에만 있고, <b>본문에 반영</b>을 눌러야 원고가 바뀌어요.</p>
     {turns.length>0&&<ol className="ce-chat-log" ref={log} aria-live="polite">
       {turns.map((t,i)=><li key={t.id} className={"ce-chat-turn is-"+t.role}>
         {t.attachments?.map(a=><blockquote key={a.key}><button type="button" className="ce-chat-jump" onClick={()=>onJump(a.paragraphId)} aria-label={`${a.paragraphId} 구절로 이동`}>{a.paragraphId}</button> {clip(a.quote,160)}</blockquote>)}
         <p>{t.text}</p>
         {t.rewrites?.map((r,j)=><div key={j} className="ce-chat-rewrite">
           <p><del>{clip(r.quote,200)}</del> → <ins>{r.replacement?clip(r.replacement,400):"(삭제)"}</ins></p>
-          <button type="button" disabled={disabled||r.state==="applied"} onClick={()=>apply(t.id,j)}>{r.state==="applied"?"반영됨 · 저장 전":"본문에 반영"}</button>
+          <button type="button" disabled={disabled||r.state==="applied"} onClick={()=>apply(t.id,j)}>{r.state==="applied"?"반영됨":"본문에 반영"}</button>
           {r.state==="failed"&&<small role="alert">{r.message}</small>}
         </div>)}
         {t.role==="assistant"&&turns[i-1]?.attachments?.length?<button type="button" className="ce-chat-memo" disabled={t.memo==="saved"} onClick={()=>void memo(t.id)}>{t.memo==="saved"?"메모로 남김":"답변을 메모로 남기기"}</button>:null}

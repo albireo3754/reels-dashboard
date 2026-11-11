@@ -71,7 +71,7 @@ Verification: 144 unit tests, types, architecture and public audit passed. Elect
 
 ## Save-state UX — 2026-11-01
 
-The header distinguishes unsaved edits, saving, save failure and saved completion. Clean documents show the actual file modification time and a disabled but clearly labelled “✓ 저장됨” button with an explanation, rather than only “정본 연결됨”. Unsaved review actions say “저장 후 … 검토”; after the save they explicitly confirm that review saved the edits first. A review submission failure after successful save says the source was saved and only review failed. Failed saves retain editable changes and never display saved completion.
+Edits save themselves and outside file changes apply in place; see [autosave and live sync](canonical-blog-editor.md#자동-저장실시간-동기화--2026-11-05). The header distinguishes unsaved edits, saving, save failure and saved completion. Clean documents show the actual file modification time and a disabled but clearly labelled “✓ 저장됨” button with an explanation, rather than only “정본 연결됨”. Unsaved review actions say “저장 후 … 검토”; after the save they explicitly confirm that review saved the edits first. A review submission failure after successful save says the source was saved and only review failed. Failed saves retain editable changes and never display saved completion.
 
 Manual reload clears outdated action messages and recreates the editable frame even when the file revision is unchanged, so discarded edits cannot linger in the DOM while the header says saved. File modification time is returned by both legacy and markup stores; review polling does not overwrite the user's edit baseline.
 

@@ -28,7 +28,9 @@ const providers: Record<AgentProvider, ProviderAdapter> = {
   claude: {
     id: "claude",
     label: "Claude Code",
-    enabled: false,
+    enabled: true,
+    // Never bypassPermissions or --dangerously-skip-permissions. "manual" is a
+    // valid choice of the installed CLI and keeps a user-level bypass default out.
     args: (phase) => [
       "claude",
       "--permission-mode",
@@ -48,6 +50,6 @@ export function availableAgentProviders(): AgentProviderOption[] {
 export function agentProvider(id: AgentProvider): ProviderAdapter {
   const provider = providers[id];
   if (!provider?.enabled)
-    throw new Error("아직 사용할 수 없는 코딩 도구예요. Codex를 선택해주세요.");
+    throw new Error("아직 사용할 수 없는 코딩 도구예요. Codex나 Claude Code를 선택해주세요.");
   return provider;
 }

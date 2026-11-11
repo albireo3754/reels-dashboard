@@ -182,15 +182,13 @@ test("AI proposals render as inline diffs next to their target and never leak in
     await expect(keepItem.locator(".ce-chip")).toHaveText("현재 유지");
     expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
 
-    // 적용 replaces only the target phrase in the editable body; nothing is written until save.
+    // 적용 replaces only the target phrase in the editable body.
     await openProposal(frame,"ending");
     await hint.locator("[data-act=apply]").click();
     await expect(frame.locator('[data-tid="P3"]')).toHaveText("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
     await expect(mark(frame,"ending")).toHaveCount(0);
     await expect.poll(()=>highlightsIn(page,"P3")).toEqual([]);
-    await expect(save).toBeEnabled();
     await expect(list.filter({hasText:"쉬었다"})).toHaveAttribute("data-state","applied");
-    expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
 
     // Applying one of several proposals re-validates the rest against the new paragraph.
     await openProposal(frame,"multiA");
@@ -222,6 +220,8 @@ test("AI proposals render as inline diffs next to their target and never leak in
       const pr=p.getBoundingClientRect(),ui=[...p.querySelectorAll("[data-review-ui]")];
       return ui.length>0&&ui.every(n=>[...n.getClientRects()].every(r=>r.left>=pr.left-1&&r.right<=pr.right+1));
     })).toBe(true);
+    // The save of the edit above redraws the popover; measure the settled one.
+    await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
     await openProposal(frame,"multiC");
     await expect.poll(()=>noOverflow(page)).toBe(true);
     expect((await hint.locator("[data-act=apply]").boundingBox())!.height).toBeGreaterThanOrEqual(36);
@@ -230,8 +230,7 @@ test("AI proposals render as inline diffs next to their target and never leak in
     await page.setViewportSize({width:1440,height:1000});
 
     // Save: only manuscript text reaches the source and derived preview.
-    await save.click();
-    await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+    await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
     const saved=await readFile(config.canon,"utf8");
     expect(saved).toContain("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
     expect(saved).toContain("아메리카노는 진했어요. 케이크도 맛있었어요.");
@@ -336,7 +335,6 @@ test("inline proposals stay correct across links, re-reviews, edits and keyboard
     await openProposal(frame,"ending");
     await hint.locator("[data-act=apply]").click();
     await expect(frame.locator('[data-tid="P3"]')).toHaveText("벤치에서 잠시 쉬었습니다. 바람이 좋았어요.");
-    expect(await readFile(config.canon,"utf8")).toBe(LINK_SOURCE);
     expect(errors).toEqual([]);
   }finally{await page.close();await server?.close();await rm(root,{recursive:true,force:true});}
 });

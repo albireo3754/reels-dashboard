@@ -11,9 +11,13 @@ export type BlogSpan=z.infer<typeof blogSpan>;
 export type BlogStyle=z.infer<typeof blogStyle>;
 export type BlogBlock = z.infer<typeof blogBlock>;
 export type BlogDraft = z.infer<typeof blogDraft>;
+/** An opened project editor: the blog tab embeds `url` (its own loopback server) under `title`. */
+export interface CanonicalEditorTab {projectId:string;title:string;url:string}
 export interface BlogBridge {
   canonicalProjects?():Promise<Array<{id:string;title:string}>>;
-  openCanonical?(projectId:string):Promise<string>;
+  openCanonical?(projectId:string):Promise<CanonicalEditorTab>;
+  /** Asks before an editor tab closes; `close` false means the writer chose to keep editing. */
+  closeCanonical?(projectId:string):Promise<{close:boolean;unsaved:boolean}>;
   /** URL → in-app extraction → result folder registered in results(). Same service as MCP reels_extract_blog_reference. */
   extract(input:import('./blog-restore').BlogExtractInput):Promise<import('./blog-restore').BlogExtractResult>;
   extractDirectory():Promise<string|null>;

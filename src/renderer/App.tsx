@@ -75,6 +75,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const [workflowVisited, setWorkflowVisited] = useState(tab === "workflow");
   useEffect(() => { if (tab === "workflow") setWorkflowVisited(true); }, [tab]);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
+  const [requestedTerminal, setRequestedTerminal] = useState("");
   const [inspecting, setInspecting] = useState(false);
   const [feedbackDrafts, setFeedbackDrafts] = useState<{ id: number; text: string; phase: "fix" }[]>([]);
   const feedbackSequence = useRef(0);
@@ -1294,6 +1295,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             <Suspense fallback={null}>
               <DevWorkspace
                 api={bridge.workbench}
+                requestedSessionId={requestedTerminal}
                 feedbackDraft={feedbackDrafts[0]}
                 onFeedbackApplied={acknowledgeFeedback}
                 mode={drawerMode}
@@ -1321,7 +1323,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div hidden={tab !== "cards"}>
           <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
-        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}/></div>
+        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}
+          onOpenTerminal={bridge.workbench ? () => setDrawerMode("open") : undefined}
+          onStartTerminal={bridge.workbench ? async task => {
+            const session = await bridge.workbench!.start({kind: "codex", phase: "implement", task});
+            setRequestedTerminal(session.id);
+            setDrawerMode("open");
+          } : undefined}
+        /></div>
         {tab === "logs" && bridge.executionLogs && <ExecutionLogsPanel bridge={bridge.executionLogs} />}
         {(workflowVisited || tab === "workflow") && <div hidden={tab !== "workflow"}><WorkflowPanel openRunRequest={notificationRun} /></div>}
         {tab === "transfers" &&

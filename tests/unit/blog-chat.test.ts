@@ -77,13 +77,14 @@ test("/api/blog/chat sends unsaved attached text, never writes files, and reject
   assert.equal((await post(server.url,{revision:doc.revision,bundleId:"B1",attachments:[],history:[],question:"이 묶음 어때요?"})).status,200);
   assert.match(received[1].context,/Second line/);
 
-  // The quote must still be in the paragraph text; unknown paragraphs and stale revisions are rejected.
+  // The quote must still be in the paragraph text; unknown paragraphs are rejected. An old revision
+  // is fine: autosave moves it all the time and the question reads the current file.
   const stale=await post(server.url,{revision:doc.revision,attachments:[{paragraphId:"P2",quote:"gone",source:"Second line"}],history:[],question:"?"});
   assert.equal(stale.status,400);assert.match((await stale.json()).error,/바뀌었어요/);
   assert.equal((await post(server.url,{revision:doc.revision,attachments:[{paragraphId:"P9",quote:"x",source:"x"}],history:[],question:"?"})).status,400);
-  assert.equal((await post(server.url,{revision:"old",attachments:[],history:[],question:"?"})).status,409);
+  assert.equal((await post(server.url,{revision:"old",attachments:[],history:[],question:"?"})).status,200);
   assert.equal((await post(server.url,{revision:doc.revision,attachments:[],history:[],question:"   "})).status,400);
-  assert.equal(received.length,2);
+  assert.equal(received.length,3);
 
   assert.deepEqual(await snapshot(root),files,"chat never writes files");
   assert.equal(await readFile(config.canon,"utf8"),canon);

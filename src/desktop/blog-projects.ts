@@ -7,6 +7,7 @@ const config=z.object({
   format:z.literal("markup"),canon:absolutePath,layers:absolutePath,layout:absolutePath,media:absolutePath,
   review:absolutePath.optional(),requests:absolutePath.optional(),
   reviewGuidance:z.array(absolutePath).optional(),assetFiles:z.array(absolutePath).optional(),
+  mediaEvidence:absolutePath.optional(),
 });
 const registry=z.object({version:z.literal(1),projects:z.array(z.object({
   id:z.string().min(1).max(160),title:z.string().trim().min(1).max(300),config,

@@ -191,15 +191,11 @@ test.describe("Cursor-style inline diffs",()=>{
       await page.keyboard.press("Tab");
       await expect.poll(()=>innerText(page,"P3")).toBe("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
       await expect(mark(frame,"ending")).toHaveCount(0);
-      await expect(save).toBeEnabled();
-      // Unsaved until the writer saves.
-      expect(await readFile(s.config.canon,"utf8")).toBe(SOURCE);
       // Next proposal in order: the blocked marker at the end of P4.
       await expect.poll(()=>caret(page)).toEqual({tid:"P4",offset:P4.length});
       await expect(hint).toHaveAttribute("data-pid","twice");
       expect(await innerText(page,"P4")).toBe(P4);
-      await save.click();
-      await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+      await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
       expect(body(await readFile(s.config.canon,"utf8"))).toBe(body(SOURCE.replace(P3,"벤치에서 잠시 쉬었다. 바람이 좋았어요.")));
     }finally{await s.close();}
   });
@@ -283,8 +279,7 @@ test.describe("Cursor-style inline diffs",()=>{
       }
       expect(sent.filter(c=>c.id==="P6").at(-1)!.text).toBe(P6+"!");
 
-      await page.getByRole("button",{name:"정본 저장",exact:true}).click();
-      await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+      await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
       const saved=await readFile(s.config.canon,"utf8");
       expect(body(saved)).toBe(body(SOURCE.replace(P3,"벤치에서 잠시 쉬었다. 바람이 좋았어요.").replace(`¶ P6\n${P6}`,`¶ P6\n${P6}!`)));
       expect(saved).not.toMatch(REVIEW_MARKUP);
@@ -352,7 +347,7 @@ test.describe("Cursor-style inline diffs",()=>{
         expect(c.text).not.toContain("아주");
       }
       expect(sent.filter(c=>c.id==="P3").at(-1)!.text).toBe(P3.slice(0,at)+"네"+P3.slice(at));
-      expect(await readFile(s.config.canon,"utf8")).toBe(SOURCE);
+      expect(await readFile(s.config.canon,"utf8")).not.toMatch(REVIEW_MARKUP);
     }finally{await s.close();}
   });
 
@@ -411,9 +406,7 @@ test.describe("Cursor-style inline diffs",()=>{
       expect(await innerText(page,"P2")).toBe("Second line");
       await expect(m).toHaveCount(0);
       expect(await highlightsIn(page,"P2")).toEqual([]);
-      expect(await readFile(s.config.canon,"utf8")).toBe(SOURCE);
-      await page.getByRole("button",{name:"정본 저장",exact:true}).click();
-      await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+      await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
       const saved=await readFile(s.config.canon,"utf8");
       expect(saved).toMatch(/¶ P2\nSecond ⟦line⟧/);
       expect(saved).not.toMatch(REVIEW_MARKUP);
@@ -493,10 +486,11 @@ test.describe("phone",()=>{
       expect((await hint.locator("[data-act=apply]").boundingBox())!.height).toBeGreaterThanOrEqual(36);
       await expect.poll(()=>noHorizontalOverflow(page)).toBe(true);
       await page.screenshot({path:info.outputPath("inline-diff-phone.png")});
-      // Tapping 적용 applies; nothing is saved until the writer saves.
+      // Tapping 적용 applies, and only the applied words reach the file.
       await hint.locator("[data-act=apply]").tap();
       await expect.poll(()=>innerText(page,"P5")).toBe("오늘은 아주 좋았어요.");
-      expect(await readFile(s.config.canon,"utf8")).toBe(SOURCE);
+      await expect.poll(()=>readFile(s.config.canon,"utf8"),{timeout:10000}).toContain("오늘은 아주 좋았어요.");
+      expect(await readFile(s.config.canon,"utf8")).not.toMatch(REVIEW_MARKUP);
     }finally{await s.close();}
   });
 });

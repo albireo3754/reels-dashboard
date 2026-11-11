@@ -20,11 +20,9 @@ test("real PTY input, tab reattach, resize, source lock and explicit lifecycle",
     await expect(
       page.getByRole("region", { name: "터미널" }),
     ).toContainText(resolve("."));
+    await page.getByTestId("dev-settings-toggle").click();
     await page
-      .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "일반 터미널", exact: true })
+      .getByRole("button", { name: "새 터미널", exact: true })
       .click();
     await expect(page.locator(".dev-session-tabs")).toContainText("실행 중");
     const id = await page.evaluate(
@@ -65,7 +63,7 @@ test("real PTY input, tab reattach, resize, source lock and explicit lifecycle",
       page.locator(`.dev-terminal[data-session-id="${id}"]`),
     ).toContainText("KEY_INPUT");
     await page
-      .getByRole("button", { name: "일반 터미널", exact: true })
+      .getByRole("button", { name: "새 터미널", exact: true })
       .click();
     await page
       .getByRole("tablist", { name: "터미널 세션" })
@@ -119,7 +117,10 @@ test("preview server shows real dashboard without desktop bridge and stops clean
     await page
       .getByRole("button", { name: "터미널", exact: true })
       .click();
-    await page.getByRole("button", { name: "미리보기 서버 시작" }).click();
+    await page.getByTestId("dev-new-menu").click();
+    await page
+      .getByRole("menuitem", { name: "미리보기 서버", exact: true })
+      .click();
     const session = await page.evaluate(
       async () => (await window.reels!.workbench!.state()).sessions[0],
     );
@@ -190,7 +191,7 @@ test("preview server shows real dashboard without desktop bridge and stops clean
   }
 });
 
-test("installed Codex reaches an interactive screen without submitting work", async () => {
+test("installed Codex and Claude Code reach an interactive screen without submitting work", async () => {
   test.skip(
     process.env.REELS_CLI_QA !== "1",
     "Explicit local CLI smoke check only",
@@ -200,7 +201,11 @@ test("installed Codex reaches an interactive screen without submitting work", as
   try {
     app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
     const page = await app.firstWindow();
-    for (const kind of ["codex"] as const) {
+    const screens = {
+      codex: /codex|trust|sign.in|theme/i,
+      claude: /claude|trust|sign.in|log.?in|theme|welcome|permission/i,
+    } as const;
+    for (const kind of ["codex", "claude"] as const) {
       const session = await page.evaluate(
         async (kind) => window.reels!.workbench!.start({ kind }),
         kind,
@@ -216,7 +221,9 @@ test("installed Codex reaches an interactive screen without submitting work", as
             expect(snapshot.output).not.toMatch(
               /command not found|unknown option|bad option/,
             );
-            return /codex|trust|sign.in|theme/i.test(snapshot.output);
+            // Never run Claude with a bypassed permission mode.
+            expect(snapshot.output).not.toMatch(/bypass permissions on/i);
+            return screens[kind].test(snapshot.output);
           },
           { timeout: 20000 },
         )

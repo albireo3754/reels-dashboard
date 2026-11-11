@@ -12,14 +12,45 @@ export interface StartTerminal {
   phase?: WorkPhase;
   task?: string;
 }
+/** direct: node-pty owns the process. herdr: a herdr workspace owns it and the app only attaches. */
+export type TerminalBackendId = "direct" | "herdr";
+export const TERMINAL_BACKENDS: readonly TerminalBackendId[] = ["direct", "herdr"];
+/** Kinds that may run in herdr; preview and checks always run direct (exit code and child cleanup). */
+export const HERDR_TERMINAL_KINDS: readonly TerminalKind[] = [
+  "shell",
+  "codex",
+  "claude",
+];
+/** running: attached/owned. detached: herdr workspace alive but not attached (takeover, server restart). */
+export type WorkTerminalState = "running" | "detached" | "exited";
 export interface WorkTerminal {
   id: string;
   kind: TerminalKind;
   title: string;
   cwd: string;
-  state: "running" | "exited";
+  backend: TerminalBackendId;
+  state: WorkTerminalState;
+  /** Omitted when unknown (a herdr workspace that ended on its own). */
   exitCode?: number;
   startedAt: string;
+  /** Re-attached from a herdr workspace left by an earlier app run. */
+  restored?: boolean;
+}
+export interface TerminalBackendState {
+  /** Saved choice or env override; default "herdr". */
+  selected: TerminalBackendId;
+  /** What new shell/agent sessions use: "direct" when herdr is not installed or `error` is set. */
+  effective: TerminalBackendId;
+  herdrInstalled: boolean;
+  herdrVersion?: string;
+  /** herdr session name the workspaces live in (as given, when `error` rejects it). */
+  session: string;
+  /** REELS_TERMINAL_BACKEND decided `selected`. */
+  forcedByEnv: boolean;
+  /** The startup herdr check and restore are still running: herdrInstalled/effective are not final yet. */
+  checking: boolean;
+  /** Why herdr is disabled for this run (a malformed REELS_HERDR_SESSION). */
+  error?: string;
 }
 export interface TerminalSnapshot {
   session: WorkTerminal;
@@ -35,6 +66,7 @@ export interface WorkbenchState {
   previewURL: string;
   providers: AgentProviderOption[];
   defaultProvider: AgentProvider;
+  terminalBackend: TerminalBackendState;
 }
 export interface WorkbenchBridge {
   state(): Promise<WorkbenchState>;
@@ -46,6 +78,10 @@ export interface WorkbenchBridge {
   stop(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   close(id: string): Promise<void>;
+  /** Saves the backend for new sessions; rejected while a session is running or detached. */
+  setTerminalBackend(id: TerminalBackendId): Promise<WorkbenchState>;
+  /** Re-attaches a detached herdr session (taking it over from other clients). */
+  reattach(id: string): Promise<WorkTerminal>;
   hideWindow(): Promise<void>;
   openPreview(): Promise<void>;
   onEvent(callback: (event: WorkbenchEvent) => void): () => void;

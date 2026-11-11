@@ -71,10 +71,7 @@ function diff(base:string[], next:string[]):Edit[] {
   return edits;
 }
 export type MergeResult = {ok:true;text:string}|{ok:false;conflicts:unknown[]};
-export function merge3(base:string,mine:string,current:string):MergeResult {
-  let b:string[],m:string[],c:string[];
-  try { [b,m,c]=[base,mine,current].map(s=>normalize(s).split("\n")); }
-  catch(e) { return {ok:false,conflicts:[{kind:"parse",message:String(e)}]}; }
+function mergeLines(b:string[],m:string[],c:string[]):{ok:true;lines:string[]}|{ok:false;conflicts:unknown[]} {
   const left=diff(b,m),right=diff(b,c), all=[...left];
   const conflicts:unknown[]=[];
   for(const r of right) {
@@ -93,6 +90,19 @@ export function merge3(base:string,mine:string,current:string):MergeResult {
   let at=0;const out:string[]=[];
   for(const e of all){out.push(...b.slice(at,e.start),...e.lines);at=e.end;}
   out.push(...b.slice(at));
-  try {return {ok:true,text:normalize(out.join("\n"))};}
+  return {ok:true,lines:out};
+}
+export function merge3(base:string,mine:string,current:string):MergeResult {
+  let b:string[],m:string[],c:string[];
+  try { [b,m,c]=[base,mine,current].map(s=>normalize(s).split("\n")); }
+  catch(e) { return {ok:false,conflicts:[{kind:"parse",message:String(e)}]}; }
+  const merged=mergeLines(b,m,c);
+  if(!merged.ok)return merged;
+  try {return {ok:true,text:normalize(merged.lines.join("\n"))};}
   catch(e){return {ok:false,conflicts:[{kind:"merged-parse",message:String(e)}]};}
+}
+/** The same merge for one paragraph's source. Undefined when both sides changed the same line. */
+export function mergeParagraph(base:string,mine:string,current:string):string|undefined {
+  const merged=mergeLines(base.split("\n"),mine.split("\n"),current.split("\n"));
+  return merged.ok?merged.lines.join("\n"):undefined;
 }

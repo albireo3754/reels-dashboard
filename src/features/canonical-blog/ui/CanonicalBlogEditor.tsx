@@ -1,5 +1,7 @@
 import { StickerPlanner } from "./StickerPlanner";
-import { stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
+import { PhotoPicker } from "./PhotoPicker";
+import { evidenceImageUrl, type PhotoInsert } from "../../../shared/blog-evidence";
+import { movedGap, stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
 import {applyFinding,findingApplicability,findingTarget,replaceInlineText} from "../../../shared/review-applicability";
 import {UserAnnotations,type AnnotationTarget} from "./UserAnnotations";
 import {BlogChat,type ChatAttachment} from "./BlogChat";
@@ -8,7 +10,10 @@ import { FormattingToolbar, type SelectionFormat } from "./FormattingToolbar";
 import { CanonicalSdkReview } from "./CanonicalSdkReview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {planInlineProposals,proposalSignature,type InlineProposal} from "../../../shared/inline-review";
+import {safeRuns} from "../../../shared/blog-markup-edit";
+import {createAutosave,type AutosaveState} from "../model/autosave";
 import {
+  escapeHtml,
   inlineHtml,
   inlineSource,
   readInline,
@@ -32,6 +37,25 @@ async function api(action: string, input?: unknown, signal?: AbortSignal) {
   const value = await r.json();
   if (!r.ok) throw new Error(value.error ?? "작업에 실패했어요.");
   return value;
+}
+/** Deleting and placing photos stay undoable for this long; everything else saves on the quiet delay. */
+const UNDO_GRACE_MS=8000;
+/** What the server would not take is tried again on its own, less and less often. */
+const REFUSED_RETRY_MS=30_000,REFUSED_RETRY_MAX_MS=300_000;
+/** Browsers refuse keepalive bodies above 64KB, so a larger page-hide save cannot be sent at all. */
+const KEEPALIVE_LIMIT=60_000;
+const bodyBytes=(body:object)=>new TextEncoder().encode(JSON.stringify(body)).length;
+const documentSources=(d:CanonicalDocument)=>new Map<string,string>([...d.paragraphs.map(p=>[p.id,p.source] as [string,string]),["$title",d.title]]);
+/** What one save carried, so the reply clears exactly that and leaves newer typing alone. */
+interface SaveSnapshot{
+  revision:string;edits:Record<string,string>;title?:string;stickers?:StickerPlacement[];
+  photos:PhotoInsert[];deleteBundles:string[];deleteParagraphs:string[];
+}
+interface SaveReply{
+  document:CanonicalDocument;conflicts?:{id:string;kind?:string}[];
+  skipped?:{kind:string;id:string;reason:string}[];splits?:Record<string,string[]>;
+  /** Each edit as the server understood it, before any merge. */
+  written?:Record<string,string>;
 }
 const SUGGEST_STALE="본문이 바뀌어 추천을 버렸어요. 다시 요청해주세요.";
 const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
@@ -69,6 +93,9 @@ export function CanonicalBlogEditor() {
   const [stickerOpen,setStickerOpen]=useState(false);
   const [stickerTarget,setStickerTarget]=useState("");
   const stickersRef=useRef(stickers);stickersRef.current=stickers;
+  const [photos,setPhotos]=useState<PhotoInsert[]>([]);
+  const [photoOpen,setPhotoOpen]=useState(false);
+  const photosRef=useRef(photos);photosRef.current=photos;
   const [edits, setEdits] = useState<Record<string, string>>({});
   // Bundles removed on this screen; they leave the source only when saved.
   const [deleted, setDeleted] = useState<string[]>([]);
@@ -86,6 +113,9 @@ export function CanonicalBlogEditor() {
   const [width, setWidth] = useState(430);
   const [busy, setBusy] = useState(false);
   const [saveState,setSaveState]=useState<"idle"|"saving"|"failed">("idle");
+  const [saveRetry,setSaveRetry]=useState<{error:string;retryInMs:number}>();
+  // Small, non-blocking: both sides changed a paragraph, or part of a save had to wait.
+  const [syncNote,setSyncNote]=useState("");
   const [savedForReview,setSavedForReview]=useState(false);
   const [frameEpoch,setFrameEpoch]=useState(0);
   const [error, setError] = useState("");
@@ -166,13 +196,17 @@ export function CanonicalBlogEditor() {
   }, [narrow, reviewOpen]);
   const frame = useRef<HTMLIFrameElement>(null);
   const stickersDirty=!!doc && JSON.stringify(stickers)!==JSON.stringify(doc.stickers??[]);
+  const live=doc?.format==="markup";
+  // An emptied title cannot be saved: it waits, and the status says so instead of promising a save.
+  const titleBlank=live&&!title.trim();
   const dirty =
     stickersDirty ||
+    photos.length > 0 ||
     deleted.length > 0 ||
     removedParas.length > 0 ||
     Object.keys(edits).length > 0 ||
     Object.keys(invalid).length > 0 ||
-    (!!doc && title !== doc.title);
+    (!!doc && title !== doc.title && !titleBlank);
   const busyRef = useRef(busy);
   busyRef.current = busy;
   const docRef = useRef(doc);
@@ -195,6 +229,13 @@ export function CanonicalBlogEditor() {
     );
   const sendStickers=()=>send({type:"stickers",items:stickersRef.current.map(s=>({...s,html:stickerHtml(s)}))});
   useEffect(()=>{if(doc?.format==="markup")sendStickers();},[stickers,doc?.frameVersion]);
+  const sendPhotos=()=>send({type:"photos",items:photosRef.current.filter(p=>!deletedRef.current.includes(p.bundleId)).map(p=>({...p,src:evidenceImageUrl(p.imageId)}))});
+  useEffect(()=>{if(doc?.format==="markup")sendPhotos();},[photos,deleted,doc?.frameVersion]);
+  function changePhotos(next:PhotoInsert[]){
+    setChanged(old=>[...new Set([...old,...photos.map(p=>p.bundleId),...next.map(p=>p.bundleId)])]);
+    holdForUndo();
+    setPhotos(next);setQueued([]);
+  }
   function changeStickers(next:StickerPlacement[]){
     setChanged(old=>[...new Set([...old,...stickers.map(s=>s.bundleId),...next.map(s=>s.bundleId)])]);
     setStickers(next);setQueued([]);
@@ -230,7 +271,7 @@ export function CanonicalBlogEditor() {
     setError("");
     try {
       const d = await api("document");
-      setDoc(d);setStickers(d.stickers??[]);setStickerTarget("");
+      setDoc(d);setStickers(d.stickers??[]);setStickerTarget("");setPhotos([]);
       setFrameEpoch(v=>v+1);
       setSaveState("idle");setSavedForReview(false);setNotice("");
       setTitle(d.title);
@@ -257,16 +298,260 @@ export function CanonicalBlogEditor() {
   }, []);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (dirty) {
+      // Live pages hand pending changes over on pagehide; only a failing save needs a warning.
+      if (live ? saveState === "failed" || heldTotal() > 0 || tooLargeToHandOver() : dirty) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, live, saveState]);
+  /** What the server could not take stays local; it goes again on a slow retry or an explicit save. */
+  const refusedRef=useRef<{edits:Record<string,string>;photos:Set<string>;stickers?:string}>({edits:{},photos:new Set()});
+  const retryRef=useRef<{timer?:ReturnType<typeof setTimeout>;count:number;now:boolean}>({count:0,now:false});
+  /** Skip notes already shown, so a retry does not bring back one the writer closed. */
+  const notedRef=useRef(new Set<string>());
+  /** The text an edit or the title really started from, when doc has moved on since. */
+  const heldBaseRef=useRef<Record<string,string>>({});
+  /** Paragraphs the file lost: typing in one that is still on screen brings it back in place. */
+  const goneRef=useRef<Record<string,{source:string;after?:string;bundleId?:string}>>({});
+  /** The save on its way to the server: until the reply, doc does not show what the file will be. */
+  const inflightRef=useRef<SaveSnapshot>(undefined);
+  /** Newest frame change seen here; a sync carries it so the frame can spot typing that crossed it. */
+  const seenSeqRef=useRef(0);
+  const graceUntilRef=useRef(0);
+  const graceTimerRef=useRef<ReturnType<typeof setTimeout>>(undefined);
+  const syncsRef=useRef(new Map<string,Map<string,string>>());
+  const waitingSplitRef=useRef(false);
+  const externalRef=useRef(false);
+  const titleRef=useRef(title);titleRef.current=title;
+  const saveReasonRef=useRef<"auto"|"manual"|"review">("auto");
+  function changeEdits(next:(old:Record<string,string>)=>Record<string,string>){
+    editsRef.current=next(editsRef.current);
+    setEdits(editsRef.current);
+  }
+  function holdForUndo(){graceUntilRef.current=Date.now()+UNDO_GRACE_MS;}
+  function heldItems(){
+    const refused=refusedRef.current;
+    return {
+      paragraphs:Object.entries(editsRef.current).filter(([id,source])=>refused.edits[id]===source).length,
+      photos:photosRef.current.filter(p=>refused.photos.has(p.id)).length,
+      stickers:refused.stickers===JSON.stringify(stickersRef.current)?1:0,
+    };
+  }
+  function heldTotal(){const held=heldItems();return held.paragraphs+held.photos+held.stickers;}
+  /** Page-hide cannot carry this much: warn, and start an ordinary save that has no such limit. */
+  function tooLargeToHandOver(){
+    const snap=snapshot(true);
+    if(!snap||bodyBytes(pageHideBody(snap.body))<=KEEPALIVE_LIMIT)return false;
+    void autosave.current?.flush(true);
+    return true;
+  }
+  /** The server still knows this base without the text, and the text would eat the keepalive limit. */
+  function pageHideBody(body:object){const {baseText:_,...rest}=body as {baseText?:string};return rest;}
+  function scheduleRefusedRetry(){
+    const retry=retryRef.current;
+    clearTimeout(retry.timer);
+    if(!heldTotal()){retry.count=0;notedRef.current.clear();return;}
+    const wait=Math.min(REFUSED_RETRY_MAX_MS,REFUSED_RETRY_MS*2**retry.count++);
+    retry.timer=setTimeout(()=>{retry.now=true;void autosave.current?.flush();},wait);
+  }
+  /** The state to save now, or undefined when nothing can go yet. */
+  function snapshot(force:boolean):{sent:SaveSnapshot;body:object}|undefined{
+    const d=docRef.current;if(!d)return undefined;
+    const graceOver=force||Date.now()>=graceUntilRef.current;
+    const removedNow=removedParasRef.current,deletedNow=deletedRef.current;
+    const again=force||retryRef.current.now,refused=refusedRef.current;
+    const edits=Object.fromEntries(Object.entries(editsRef.current).filter(([id,source])=>!removedNow.includes(id)&&(again||refused.edits[id]!==source)));
+    const usable=titleRef.current.trim();
+    const title=usable&&titleRef.current!==d.title?titleRef.current:undefined;
+    const stickerText=JSON.stringify(stickersRef.current);
+    const stickers=stickerText!==JSON.stringify(d.stickers??[])&&(again||refused.stickers!==stickerText)?stickersRef.current:undefined;
+    // An outside change moves the gaps, so photos go with the base they were placed on.
+    const photos=graceOver||externalRef.current?photosRef.current.filter(p=>!deletedNow.includes(p.bundleId)&&(again||!refused.photos.has(p.id))):[];
+    const deleteBundles=graceOver?deletedNow:[],deleteParagraphs=graceOver?removedNow:[];
+    if(!Object.keys(edits).length&&title===undefined&&!stickers&&!photos.length&&!deleteBundles.length&&!deleteParagraphs.length)return undefined;
+    const sent={revision:d.revision,edits,title,stickers,photos,deleteBundles,deleteParagraphs};
+    return {sent,body:{
+      revision:d.revision,baseText:d.sourceText,
+      edits:Object.entries(edits).map(([id,source])=>({id,source,...(heldBaseRef.current[id]!==undefined?{base:heldBaseRef.current[id]}:{}),...(goneRef.current[id]?.after?{after:goneRef.current[id].after}:{})})),
+      ...(title!==undefined?{title,...(heldBaseRef.current.$title!==undefined?{titleBase:heldBaseRef.current.$title}:{})}:{}),...(stickers?{stickers}:{}),...(photos.length?{photos}:{}),
+      ...(deleteBundles.length?{deleteBundles}:{}),...(deleteParagraphs.length?{deleteParagraphs}:{}),
+    }};
+  }
+  /** Moves the page to a new document in place. `sent` clears what that save carried. */
+  function applyDocument(d:CanonicalDocument,sent?:SaveSnapshot,reply?:SaveReply){
+    const prev=docRef.current;
+    docRef.current=d;setDoc(d);
+    const skips=reply?.skipped??[],written=reply?.written??{},splits=reply?.splits??{},refused=refusedRef.current;
+    const skipped=new Set(skips.filter(s=>s.kind==="paragraph").map(s=>s.id));
+    const sources=documentSources(d),before=prev?documentSources(prev):new Map<string,string>();
+    for(const id of skipped)if(sent?.edits[id]!==undefined)refused.edits[id]=sent.edits[id];
+    changeEdits(old=>Object.fromEntries(Object.entries(old).filter(([id,source])=>{
+      if(skipped.has(id))return true;
+      if(sent?.edits[id]===source||sent?.deleteParagraphs.includes(id)||sources.get(id)===source){
+        delete heldBaseRef.current[id];delete refused.edits[id];return false;
+      }
+      return true;
+    })));
+    prev?.paragraphs.forEach((p,i)=>{
+      if(!sources.has(p.id)&&!sent?.deleteParagraphs.includes(p.id))goneRef.current[p.id]={source:p.source,after:prev.paragraphs[i-1]?.id,bundleId:prev.bundles.find(b=>b.paragraphIds.includes(p.id))?.id};
+    });
+    for(const id of Object.keys(goneRef.current))if(sources.has(id))delete goneRef.current[id];
+    /** Text that stays local now stands on what this save wrote, or on what it stood on before. */
+    const rebase=(id:string)=>{
+      const from=written[id]??heldBaseRef.current[id]??before.get(id);
+      if(splits[id]||from===undefined||from===sources.get(id))delete heldBaseRef.current[id];
+      else heldBaseRef.current[id]=from;
+    };
+    Object.keys(editsRef.current).forEach(rebase);
+    if(sent?.title!==undefined&&sent.title===titleRef.current)delete heldBaseRef.current.$title;
+    if(titleRef.current===(sent?.title??prev?.title)){titleRef.current=d.title;setTitle(d.title);}
+    else rebase("$title");
+    const shifted=<T extends {bundleId:string;before:number}>(items:T[])=>prev?items.map(item=>({...item,before:movedGap(prev.stickerAnchors??[],d.stickerAnchors??[],item)})):items;
+    const stickerRefused=skips.some(s=>s.kind==="sticker");
+    if(!stickerRefused&&JSON.stringify(stickersRef.current)===JSON.stringify(sent?.stickers??prev?.stickers??[])){stickersRef.current=d.stickers??[];setStickers(stickersRef.current);}
+    else{stickersRef.current=shifted(stickersRef.current);setStickers(stickersRef.current);}
+    if(stickerRefused)refused.stickers=JSON.stringify(stickersRef.current);
+    else if(sent?.stickers)delete refused.stickers;
+    const bundles=new Set(d.bundles.map(b=>b.id)),paragraphs=new Set(d.paragraphs.map(p=>p.id));
+    if(sent?.photos.length){
+      const gone=new Set(sent.photos.map(p=>p.id));
+      for(const s of skips)if(s.kind==="photo"){gone.delete(s.id);refused.photos.add(s.id);}
+      for(const id of gone)refused.photos.delete(id);
+      photosRef.current=photosRef.current.filter(p=>!gone.has(p.id));setStickerTarget("");
+    }
+    photosRef.current=shifted(photosRef.current.filter(p=>bundles.has(p.bundleId)));setPhotos(photosRef.current);
+    // The server would not delete these (the last bundle, say): they come back rather than wait forever.
+    const undeleted=new Set(skips.some(s=>s.kind==="delete")?sent?.deleteBundles:[]);
+    deletedRef.current=deletedRef.current.filter(id=>bundles.has(id)&&!undeleted.has(id));setDeleted(deletedRef.current);
+    removedParasRef.current=removedParasRef.current.filter(id=>paragraphs.has(id));setRemovedParas(removedParasRef.current);
+    setRemovals(old=>old.filter(r=>(r.kind==="bundle"?bundles.has(r.id)&&!undeleted.has(r.id):paragraphs.has(r.id))));
+    setChanged(old=>old.filter(id=>bundles.has(id)));
+    setSelected(old=>bundles.has(old)?old:(d.bundles[0]?.id??""));
+    handledRef.current=new Set();
+    if(prev&&d.frameVersion!==prev.frameVersion){setFrameEpoch(v=>v+1);return;}
+    // What the frame's text stood on before this sync: this save's own text is not an outside change.
+    syncsRef.current.set(pushDocument(splits),new Map([...before,...Object.entries(written)]));
+  }
+  function pushDocument(splits:Record<string,string[]>={}){
+    const d=docRef.current!,token=crypto.randomUUID();
+    if(Object.keys(splits).length)waitingSplitRef.current=true;
+    send({type:"sync",token,html:d.articleHtml??"",title:d.title,splits,seen:seenSeqRef.current,
+      keep:[...Object.keys(editsRef.current),...(titleRef.current!==d.title?["$title"]:[])]});
+    return token;
+  }
+  /** Typing that crossed a sync on its way here started from the text the frame had then. */
+  function noteCrossedBase(id:string,now:string|undefined){
+    if(heldBaseRef.current[id]!==undefined)return;
+    for(const before of syncsRef.current.values()){
+      const old=before.get(id);
+      if(old!==undefined&&old!==now){heldBaseRef.current[id]=old;return;}
+    }
+  }
+  function markChanged(id:string){
+    const latest=docRef.current,owner=goneRef.current[id]?.bundleId;
+    if(!latest)return;
+    const i=latest.bundles.findIndex(b=>b.paragraphIds.includes(id)||b.id===owner);
+    if(i<0)return;
+    setChanged(old=>[...new Set([...old,...latest.bundles.slice(Math.max(0,i-1),i+2).map(b=>b.id)])].filter(x=>!deletedRef.current.includes(x)));
+    setQueued([]);
+  }
+  function reportReply(reply:SaveReply){
+    const notes:string[]=[];
+    const conflicts=reply.conflicts??[];
+    const kept=conflicts.filter(c=>c.kind!=="delete"),removed=conflicts.filter(c=>c.kind==="delete");
+    if(kept.length)notes.push(`다른 곳에서도 고친 부분(${kept.map(c=>c.id==="$title"?"제목":c.id).join(", ")})은 지금 쓰신 글을 남겼어요. 다른 버전은 원고 폴더의 .history에 보관했어요.`);
+    if(removed.length)notes.push(`지운 부분(${removed.map(c=>c.id).join(", ")})은 다른 곳에서도 고쳐졌지만 삭제를 유지했어요. 고친 글은 원고 폴더의 .history에 보관했어요.`);
+    for(const s of reply.skipped??[]){
+      const key=[s.kind,s.id,s.reason].join("\n");
+      if(notedRef.current.has(key))continue;
+      notedRef.current.add(key);
+      notes.push(s.kind==="title"?s.reason:`${s.kind==="paragraph"?s.id+" 문단":s.kind==="photo"?"사진 1장":s.kind==="sticker"?"스티커 배치":"삭제"}은 저장하지 못했고 나머지는 저장했어요. ${s.reason}`);
+    }
+    if(notes.length)setSyncNote(notes.join(" "));
+  }
+  /** Runs inside the autosave cycle: one at a time, always from the latest state. */
+  async function runSave(force:boolean){
+    const d=docRef.current;
+    if(!d)return;
+    // A split waiting for an IME composition still owns that paragraph's text.
+    if(waitingSplitRef.current){setTimeout(()=>autosave.current?.touch(),300);return;}
+    const snap=snapshot(force);
+    retryRef.current.now=false;
+    if(!snap){
+      if(externalRef.current){
+        externalRef.current=false;
+        const latest=await api("document");
+        if(latest.revision!==docRef.current?.revision)applyDocument(latest);
+      }
+    }else{
+      externalRef.current=false;
+      inflightRef.current=snap.sent;
+      let reply:SaveReply;
+      try{reply=await api("save",snap.body);}
+      finally{inflightRef.current=undefined;}
+      applyDocument(reply.document,snap.sent,reply);
+      reportReply(reply);
+      scheduleRefusedRetry();
+      setSavedForReview(saveReasonRef.current==="review");
+      if(saveReasonRef.current==="manual")setNotice("정본과 미리보기를 저장했어요. 저장 전 사본도 보관했어요.");
+      saveReasonRef.current="auto";
+    }
+    armGrace();
+  }
+  /** Undoable changes wait out their grace period, then save like any other change. */
+  function armGrace(){
+    clearTimeout(graceTimerRef.current);
+    if(!deletedRef.current.length&&!removedParasRef.current.length&&!photosRef.current.some(p=>!refusedRef.current.photos.has(p.id)))return;
+    const wait=graceUntilRef.current-Date.now();
+    // Past the grace period, what remains either goes with this timer or has nothing left to send.
+    if(wait<=0&&!snapshot(false))return;
+    graceTimerRef.current=setTimeout(()=>void autosave.current?.flush(),wait>0?wait+20:1000);
+  }
+  const runSaveRef=useRef(runSave);runSaveRef.current=runSave;
+  const autosave=useRef<ReturnType<typeof createAutosave>>(undefined);
+  useEffect(()=>{
+    const saver=createAutosave({
+      save:force=>runSaveRef.current(force),
+      onState:(s:AutosaveState)=>{
+        if(s.phase==="failed"){setSaveState("failed");setSaveRetry({error:s.error??"",retryInMs:s.retryInMs??0});return;}
+        if(s.phase==="saving"){setSaveState("saving");return;}
+        setSaveState("idle");setSaveRetry(undefined);
+      },
+    });
+    autosave.current=saver;
+    return ()=>{saver.stop();clearTimeout(graceTimerRef.current);clearTimeout(retryRef.current.timer);};
+  },[]);
+  useEffect(()=>{
+    if(!live||!dirty)return;
+    autosave.current?.touch();armGrace();
+  },[live,edits,title,stickers,photos,deleted,removedParas]);
+  useEffect(()=>{
+    if(!live)return;
+    const hide=()=>{if(document.visibilityState==="hidden"&&autosave.current?.pending)void autosave.current.flush();};
+    // The page is going away: last chance, so undoable changes go too. A save in flight may
+    // carry the same edits: the server takes the same text and the same split twice unharmed.
+    const leave=()=>{
+      const snap=snapshot(true);if(!snap)return;
+      const body=pageHideBody(snap.body);
+      // beforeunload already warned and started an ordinary save for a body this large.
+      if(bodyBytes(body)>KEEPALIVE_LIMIT)return;
+      void fetch("/api/blog/save",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).catch(()=>{});
+    };
+    document.addEventListener("visibilitychange",hide);window.addEventListener("pagehide",leave);
+    return()=>{document.removeEventListener("visibilitychange",hide);window.removeEventListener("pagehide",leave);};
+  },[live]);
+  /** Saves everything now, undoable changes included. */
+  async function flushNow(reason:"manual"|"review"):Promise<CanonicalDocument|undefined>{
+    saveReasonRef.current=reason;
+    const ok=await autosave.current?.flush(true);
+    return ok?docRef.current:undefined;
+  }
   async function save(reason:"manual"|"review"="manual"): Promise<CanonicalDocument | undefined> {
     if (!doc) return;
+    if (doc.format==="markup") return flushNow(reason);
     if (Object.keys(invalid).length) {
       setSaveState("failed");
       setError("입력 오류가 있는 문단을 고친 뒤 저장해주세요.");
@@ -281,9 +566,12 @@ export function CanonicalBlogEditor() {
         ...(removedParas.length ? { deleteParagraphs: removedParas } : {}),
         ...(title !== doc.title ? { title } : {}),
         ...(stickersDirty ? {stickers} : {}),
+        ...(photos.some(p=>!deleted.includes(p.bundleId)) ? {photos:photos.filter(p=>!deleted.includes(p.bundleId))} : {}),
         ...(deleted.length ? { deleteBundles: deleted } : {}),
       });
       setDoc(result.document);setStickers(result.document.stickers??[]);
+      // Saved photos renumber the gaps, so an old position would point somewhere else.
+      if(photos.length){setPhotos([]);setStickerTarget("");}
       setFrameEpoch(v=>v+1);setSaveState("idle");setSavedForReview(reason==="review");
       setTitle(result.document.title);
       setEdits({});setDeleted([]);setRemovedParas([]);setRemovals([]);
@@ -344,10 +632,10 @@ export function CanonicalBlogEditor() {
         .map((s: unknown) => (typeof s === "string" ? s : (s as { text?: unknown } | null)?.text))
         .filter((s: unknown): s is string => typeof s === "string" && !!s.trim())
         .slice(0, 3);
-      // A save/reload in the meantime means the caret context is gone; the frame
-      // re-checks the paragraph text, caret and focus itself.
+      // Autosave changes the revision without touching the caret, so for markup the
+      // frame's own check of paragraph text, caret and focus decides.
       const stale =
-        docRef.current?.revision !== revision ||
+        (docRef.current?.format !== "markup" && docRef.current?.revision !== revision) ||
         (typeof result?.paragraphId === "string" && result.paragraphId !== paragraphId) ||
         (typeof result?.offset === "number" && result.offset !== offset);
       send({ type: "suggest-result", token, suggestions, stale });
@@ -407,7 +695,12 @@ export function CanonicalBlogEditor() {
     let alive=true;
     const poll=async()=>{try{
       const result=await api("review-status");
-      if(alive){setReviewJobs(result.requests);setQueued(result.requests.filter((j:any)=>["pending","running"].includes(j.status)).flatMap((j:any)=>j.bundleIds));setReviewStatusError("");setDoc(old=>old?{...old,reviews:result.reviews}:old);}
+      if(alive){
+        setReviewJobs(result.requests);setQueued(result.requests.filter((j:any)=>["pending","running"].includes(j.status)).flatMap((j:any)=>j.bundleIds));setReviewStatusError("");
+        setDoc(old=>old?{...old,reviews:result.reviews}:old);
+        // The file moved without this page: merge through a save, or update in place.
+        if(result.revision&&result.revision!==docRef.current?.revision){externalRef.current=true;void autosave.current?.flush();}
+      }
     }catch(e){if(alive)setReviewStatusError("검토 상태를 확인하지 못했어요: "+String(e));}};
     void poll();const timer=setInterval(()=>void poll(),1500);
     return()=>{alive=false;clearInterval(timer);};
@@ -417,31 +710,33 @@ export function CanonicalBlogEditor() {
   function deleteBundle(id: string) {
     if (!doc || busy) return;
     if (doc.format !== "markup") return setError("이 형식에서는 묶음 삭제를 지원하지 않아요.");
-    const live = doc.bundles.filter((b) => !deleted.includes(b.id));
-    const i = live.findIndex((b) => b.id === id);
+    const remaining = doc.bundles.filter((b) => !deleted.includes(b.id));
+    const i = remaining.findIndex((b) => b.id === id);
     if (i < 0) return;
-    if (live.length <= 1) return setError("마지막 묶음은 지울 수 없어요.");
+    if (remaining.length <= 1) return setError("마지막 묶음은 지울 수 없어요.");
     const next = [...deleted, id];
+    holdForUndo();
     setDeleted(next);
     setRemovals((old) => [...old, { kind: "bundle", id }]);
     send({ type: "hide-bundles", ids: next });
     // The neighbours now meet each other, so their transition needs review.
-    setChanged((old) => [...new Set([...old, ...[live[i - 1], live[i + 1]].filter(Boolean).map((b) => b!.id)])].filter((x) => !next.includes(x)));
+    setChanged((old) => [...new Set([...old, ...[remaining[i - 1], remaining[i + 1]].filter(Boolean).map((b) => b!.id)])].filter((x) => !next.includes(x)));
     setQueued([]);
-    const neighbour = live[i + 1] ?? live[i - 1];
+    const neighbour = remaining[i + 1] ?? remaining[i - 1];
     if (selected === id && neighbour) setSelected(neighbour.id);
     setError("");
-    setNotice(`‘${live[i].name}’ 묶음을 지웠어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장하거나 삭제 취소를 눌러주세요.`);
+    setNotice(`‘${remaining[i].name}’ 묶음을 지웠어요. 몇 초 뒤 저장돼요. 그 전에 삭제 취소로 되돌릴 수 있어요.`);
   }
   function removeParagraph(id: string) {
     if (!doc || busy || doc.format !== "markup") return;
     const p = doc.paragraphs.find((x) => x.id === id);
     const bundle = doc.bundles.find((b) => b.paragraphIds.includes(id));
     if (!p || !bundle || deleted.includes(bundle.id) || removedParas.includes(id)) return;
-    const live = bundle.paragraphIds.filter((x) => !removedParas.includes(x));
+    const others = bundle.paragraphIds.filter((x) => !removedParas.includes(x));
     // The bundle's last paragraph: remove the whole bundle (photos included), undoable.
-    if (live.length <= 1) return deleteBundle(bundle.id);
+    if (others.length <= 1) return deleteBundle(bundle.id);
     const next = [...removedParas, id];
+    holdForUndo();
     setRemovedParas(next);
     setRemovals((old) => [...old, { kind: "paragraph", id }]);
     setInvalid((old) => { const n = { ...old }; delete n[id]; return n; });
@@ -450,11 +745,17 @@ export function CanonicalBlogEditor() {
     setChanged((old) => [...new Set([...old, ...doc.bundles.slice(Math.max(0, i - 1), i + 2).map((b) => b.id)])].filter((x) => !deleted.includes(x)));
     setQueued([]);
     setError("");
-    setNotice("빈 문단을 지웠어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장하거나 삭제 취소를 눌러주세요.");
+    setNotice("빈 문단을 지웠어요. 몇 초 뒤 저장돼요. 그 전에 삭제 취소로 되돌릴 수 있어요.");
+  }
+  /** A delete on its way to the server can no longer be taken back from this page. */
+  function deleteInFlight(item:{kind:"bundle"|"paragraph";id:string}){
+    const sending=inflightRef.current;
+    return !!sending&&(item.kind==="bundle"?sending.deleteBundles:sending.deleteParagraphs).includes(item.id);
   }
   function undoDelete() {
     const last = removals.at(-1);
     if (!last) return;
+    if (deleteInFlight(last)) return setNotice("삭제를 이미 저장하는 중이라 되돌릴 수 없어요. 지운 내용은 원고 폴더의 .history에 있어요.");
     setRemovals(removals.slice(0, -1));
     if (last.kind === "paragraph") {
       const next = removedParas.filter((x) => x !== last.id);
@@ -479,8 +780,8 @@ export function CanonicalBlogEditor() {
   deletedRef.current = deleted;
   function saveShortcut() {
     if (busyRef.current) return;
-    if (Object.keys(invalid).length) return setError("입력 오류가 있는 문단을 고친 뒤 저장해주세요.");
-    if (!dirty) return setNotice("저장할 변경이 없어요.");
+    if (!live && Object.keys(invalid).length) return setError("입력 오류가 있는 문단을 고친 뒤 저장해주세요.");
+    if (!dirty) return setNotice(titleBlank?"제목을 입력하면 저장돼요. 본문은 그대로 저장돼 있어요.":"저장할 변경이 없어요.");
     void save();
   }
   const saveShortcutRef = useRef(saveShortcut);
@@ -495,6 +796,13 @@ export function CanonicalBlogEditor() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
+  function resendDrafts(){
+    if(docRef.current?.format==="markup"){sendStickers();sendPhotos();}
+    send({ type: "hide-bundles", ids: deletedRef.current });
+    send({ type: "hide-paragraphs", ids: removedParasRef.current });
+    send({ type: "lock", locked: busyRef.current });
+    send({ type: "proposals", items: proposalsRef.current, locked: busyRef.current });
+  }
   useEffect(() => {
     const listener = (e: MessageEvent) => {
       if (
@@ -505,6 +813,24 @@ export function CanonicalBlogEditor() {
       )
         return;
       const m = e.data;
+      if (m.type === "blur" && live && autosave.current?.pending) void autosave.current.flush();
+      if (m.type === "deferred-applied" && typeof m.id === "string") {
+        delete heldBaseRef.current[m.id];
+        // A paragraph held only by the caret left: the frame can now match the file.
+        if (m.gone) pushDocument();
+      }
+      if (m.type === "synced") {
+        waitingSplitRef.current = false;
+        const before = syncsRef.current.get(m.token);
+        syncsRef.current.delete(m.token);
+        const now = docRef.current ? documentSources(docRef.current) : new Map<string, string>();
+        for (const id of Array.isArray(m.held) ? m.held : []) {
+          const old = before?.get(id);
+          if (old !== undefined && old !== now.get(id)) heldBaseRef.current[id] ??= old;
+        }
+        resendDrafts();
+        return;
+      }
       if(m.type==="annotation-open")setReviewOpen(true);
       if(m.type==="annotate"&&doc.format==="markup"&&typeof m.text==="string"&&typeof m.context==="string"&&doc.paragraphs.some(p=>p.id===m.id)){
         setAnnotationTarget({id:m.id,text:m.text,context:m.context,checked:!!m.checked,requestId:crypto.randomUUID()});
@@ -526,11 +852,13 @@ export function CanonicalBlogEditor() {
       if (m.type === "ready") {
         // A reloaded frame has no spinner or caret for an old request.
         if (suggestRef.current) cancelSuggestRef.current();
-        if(doc.format==="markup")sendStickers();
-        send({ type: "hide-bundles", ids: deletedRef.current });
-        send({ type: "hide-paragraphs", ids: removedParasRef.current });
-        send({ type: "lock", locked: busyRef.current });
-        send({ type: "proposals", items: proposalsRef.current, locked: busyRef.current });
+        waitingSplitRef.current=false;seenSeqRef.current=0;syncsRef.current.clear();
+        resendDrafts();
+        // A reloaded frame shows the file; unsaved text lives here and goes back in.
+        if(doc.format==="markup"){
+          for(const [id,source] of Object.entries(editsRef.current))send({type:"replace",id,html:inlineHtml(source)});
+          if(titleRef.current!==(docRef.current??doc).title)send({type:"replace",id:"$title",html:escapeHtml(titleRef.current)});
+        }
       }
       if (m.type === "proposal-action" && typeof m.id === "string" && (m.action === "apply" || m.action === "keep")) {
         const item = proposalsRef.current.find((i) => i.id === m.id);
@@ -605,8 +933,12 @@ export function CanonicalBlogEditor() {
       }
       if (m.type === "change")
         try {
+          if (Number.isFinite(m.seq)) seenSeqRef.current = Math.max(seenSeqRef.current, m.seq);
           if (!Array.isArray(m.runs)) return;
-          const source = inlineSource(m.runs as InlineRun[]);
+          // The newest document decides what counts as an edit, not the one this listener saw.
+          const latest = docRef.current ?? doc;
+          const runs = latest.format === "markup" ? safeRuns(m.runs as InlineRun[]) : m.runs as InlineRun[];
+          const source = inlineSource(runs);
           readInline(source);
           setInvalid((old) => {
             const next = { ...old };
@@ -614,29 +946,37 @@ export function CanonicalBlogEditor() {
             return next;
           });
           if (m.id === "$title") {
-            setTitle(m.runs.map((r: InlineRun) => r.text).join(""));
-            setChanged(doc.bundles.map((b) => b.id));
+            const next = (m.runs as InlineRun[]).map((r) => r.text).join("");
+            noteCrossedBase("$title", latest.title);
+            titleRef.current = latest.format === "markup" ? next.replace(/\s*\n\s*/g, " ") : next;
+            setTitle(titleRef.current);
+            setChanged(latest.bundles.map((b) => b.id));
             return;
           }
-          const p = doc.paragraphs.find((p) => p.id === m.id);
+          const gone = goneRef.current[m.id];
+          const p = latest.paragraphs.find((p) => p.id === m.id) ?? (gone && { id: m.id as string, source: gone.source });
           if (!p) return;
-          setEdits((old) => {
+          // A save on its way will change the file, so matching the old text is an edit, not a return to clean.
+          const settled = source === p.source && !(inflightRef.current && p.id in inflightRef.current.edits);
+          const had = editsRef.current[p.id];
+          if (settled ? had === undefined : had === source) return;
+          if (had === undefined) {
+            noteCrossedBase(p.id, p.source);
+            if (gone) heldBaseRef.current[p.id] ??= gone.source;
+          }
+          changeEdits((old) => {
             const next = { ...old };
-            if (source === p.source) delete next[p.id];
-            else next[p.id] = source;
+            if (settled) {
+              delete next[p.id];
+              delete heldBaseRef.current[p.id];
+            } else next[p.id] = source;
             return next;
           });
-          const i = doc.bundles.findIndex((b) => b.paragraphIds.includes(p.id));
-          setChanged((old) => [
-            ...new Set([
-              ...old,
-              ...doc.bundles.slice(Math.max(0, i - 1), i + 2).map((b) => b.id),
-            ]),
-          ]);
-          setQueued([]);
+          markChanged(p.id);
         } catch (e) {
+          // Only this paragraph waits; it stays on screen and everything else keeps saving.
           setInvalid((old) => ({ ...old, [m.id]: String(e) }));
-          setError(String(e));
+          setNotice("이 문단의 서식을 읽지 못해 이 문단만 저장을 미뤘어요. 다른 문단은 계속 저장돼요.");
         }
     };
     window.addEventListener("message", listener);
@@ -654,11 +994,14 @@ export function CanonicalBlogEditor() {
     try {
       if(doc.format==="markup"){const state=findingApplicability(f,source);if(!state.canApply)throw new Error(state.reason);}
       source = applyFinding(f, source);
+      // Replacing the text drops whatever older text a focused paragraph was still showing.
+      if(!(original.id in editsRef.current))delete heldBaseRef.current[original.id];
       editsRef.current={...editsRef.current,[original.id]:source};
       setEdits(old=>({...old,[original.id]:source}));
       send({ type: "replace", id: original.id, html: inlineHtml(source) });
+      markChanged(original.id);
       setDecisions((old) => ({ ...old, [key]: "적용 · 저장 전" }));
-      setNotice("본문에 반영했어요. 아직 저장 전입니다. 정본 저장 또는 저장 후 검토를 눌러주세요.");
+      setNotice(doc.format==="markup"?"본문에 반영했어요. 곧 자동으로 저장돼요.":"본문에 반영했어요. 아직 저장 전입니다. 정본 저장 또는 저장 후 검토를 눌러주세요.");
       return true;
     } catch (e) {
       setError(String(e));
@@ -690,14 +1033,14 @@ export function CanonicalBlogEditor() {
       if(plain.indexOf(rw.quote,start+1)>=0)return "같은 구절이 문단에 여러 번 있어요. 본문에서 직접 고쳐주세요.";
       const next=replaceInlineText(source,start,start+rw.quote.length,rw.replacement);
       readInline(next);
+      if(!(rw.paragraphId in editsRef.current))delete heldBaseRef.current[rw.paragraphId];
       editsRef.current={...editsRef.current,[rw.paragraphId]:next};
       const original=doc.paragraphs.find(p=>p.id===rw.paragraphId)!;
       setEdits(old=>{const n={...old};if(next===original.source)delete n[rw.paragraphId];else n[rw.paragraphId]=next;return n;});
       send({type:"replace",id:rw.paragraphId,html:inlineHtml(next)});
-      const i=doc.bundles.findIndex(b=>b.paragraphIds.includes(rw.paragraphId));
-      setChanged(old=>[...new Set([...old,...doc.bundles.slice(Math.max(0,i-1),i+2).map(b=>b.id)])].filter(x=>!deleted.includes(x)));
-      setQueued([]);setError("");
-      setNotice("채팅 제안을 본문에 반영했어요. 아직 저장 전입니다. ⌘/Ctrl+S로 저장해주세요.");
+      markChanged(rw.paragraphId);
+      setError("");
+      setNotice("채팅 제안을 본문에 반영했어요. 곧 자동으로 저장돼요.");
       return undefined;
     }catch(e){return errorText(e);}
   }
@@ -721,6 +1064,9 @@ export function CanonicalBlogEditor() {
     send({ type: "reveal-proposal", id: item.id });
   }
   const bundle = doc?.bundles.find((b) => b.id === selected);
+  const held = heldItems();
+  const heldLabel = [held.paragraphs&&`문단 ${held.paragraphs}개`,held.photos&&`사진 ${held.photos}장`,held.stickers&&"스티커 배치"].filter(Boolean).join(" · ");
+  const lastRemoval = removals.at(-1);
   const format = (command: string, value?: string) =>
     send({ type: "format", command, value });
   if (!doc)
@@ -753,11 +1099,11 @@ export function CanonicalBlogEditor() {
           <small>REELS DASHBOARD / BLOG</small>
           <h1>릴스 스마트 에디터</h1>
         </div>
-        <span id="ce-save-status" className={"ce-status ce-save-status "+(saveState==="failed"?"is-error":dirty?"is-dirty":"is-saved")} role="status" aria-live="polite">
-          <strong>{saveState==="saving"?"저장 중…":saveState==="failed"?"저장 실패 · 편집 내용 유지":dirty?"● 저장 전 변경":"✓ 저장 완료"}</strong>
-          <small>{saveState==="saving"?"원고와 미리보기를 저장하고 있어요.":dirty?"아직 파일에 저장되지 않았어요.":doc.savedAt?<><time dateTime={doc.savedAt} title={new Date(doc.savedAt).toLocaleString()}>{new Date(doc.savedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</time>{savedForReview?" · 검토 전에 자동 저장했어요.":" · 저장할 변경이 없어요."}</>:"저장할 변경이 없어요."}</small>
+        <span id="ce-save-status" className={"ce-status ce-save-status "+(saveState==="failed"||heldLabel?"is-error":dirty||titleBlank?"is-dirty":"is-saved")} role="status" aria-live="polite">
+          <strong>{saveState==="saving"?"저장 중…":saveState==="failed"?(live?"저장 실패 · 자동으로 다시 시도":"저장 실패 · 편집 내용 유지"):heldLabel?"● 일부 저장 안 됨":dirty?"● 저장 전 변경":titleBlank?"● 제목 비어 있음":"✓ 저장 완료"}</strong>
+          <small>{saveState==="saving"?"원고와 미리보기를 저장하고 있어요.":saveState==="failed"&&saveRetry?`편집 내용은 그대로예요. ${Math.ceil(saveRetry.retryInMs/1000)}초 뒤 다시 저장해요.`:heldLabel?`${heldLabel}은 아직 파일에 없어요. 자동으로 다시 시도해요.`:titleBlank&&!dirty?"제목을 입력하면 저장돼요. 본문은 계속 저장돼요.":dirty?(live?(deleted.length||removedParas.length||photos.length?"삭제·사진은 몇 초 뒤 저장돼요.":"곧 자동으로 저장돼요."):"아직 파일에 저장되지 않았어요."):doc.savedAt?<><time dateTime={doc.savedAt} title={new Date(doc.savedAt).toLocaleString()}>{new Date(doc.savedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</time>{savedForReview?" · 검토 전에 자동 저장했어요.":live?" · 변경은 자동으로 저장돼요.":" · 저장할 변경이 없어요."}</>:"저장할 변경이 없어요."}</small>
         </span>
-        <button
+        {!live && <button
           disabled={busy}
           onClick={() => {
             if (
@@ -768,13 +1114,13 @@ export function CanonicalBlogEditor() {
           }}
         >
           다시 불러오기
-        </button>
+        </button>}
         <button
           className={"ce-primary"+(!dirty&&saveState==="idle"?" ce-save-done":"")}
           aria-label="정본 저장"
           aria-describedby="ce-save-status"
           title={saveState==="saving"?"저장 중입니다":dirty?"현재 편집 내용을 파일에 저장합니다":"모든 변경이 저장돼 있어요"}
-          disabled={busy || !dirty || Object.keys(invalid).length > 0}
+          disabled={busy || !dirty || saveState==="saving" || (!live && Object.keys(invalid).length > 0)}
           onClick={() => void save()}
         >
           {saveState==="saving"?"저장 중…":!dirty?"✓ 저장됨":"정본 저장"}
@@ -805,6 +1151,7 @@ export function CanonicalBlogEditor() {
               "✦ 추천 받기"
             )}
           </button>
+          {doc.format==="markup" && <button aria-expanded={photoOpen} aria-controls="ce-photo-picker" onClick={()=>setPhotoOpen(!photoOpen)}>사진 넣기 ({photos.length})</button>}
           {doc.format==="markup" && <button aria-expanded={stickerOpen} aria-controls="ce-sticker-planner" onClick={()=>setStickerOpen(!stickerOpen)}>스티커 ({stickers.length})</button>}
           <label>
             본문 폭{" "}
@@ -819,13 +1166,13 @@ export function CanonicalBlogEditor() {
           </label>
           {doc.format==="markup" && <button
             aria-keyshortcuts="Delete"
-            title="선택한 묶음을 지웁니다. 본문에서 묶음의 글 밖(사진·이름표)을 클릭한 뒤 Delete/Backspace로도 지울 수 있어요. 저장해야 정본에 반영됩니다."
+            title="선택한 묶음을 지웁니다. 본문에서 묶음의 글 밖(사진·이름표)을 클릭한 뒤 Delete/Backspace로도 지울 수 있어요. 몇 초 안에 삭제 취소로 되돌릴 수 있어요."
             disabled={busy || !bundle || doc.bundles.length - deleted.length <= 1}
             onClick={() => deleteBundle(selected)}
           >
             묶음 삭제
           </button>}
-          {removals.length > 0 && <button disabled={busy} onClick={undoDelete}>삭제 취소 ({removals.length})</button>}
+          {removals.length > 0 && <button disabled={busy || (!!lastRemoval && deleteInFlight(lastRemoval))} title={lastRemoval && deleteInFlight(lastRemoval) ? "삭제를 저장하는 중이에요" : undefined} onClick={undoDelete}>삭제 취소 ({removals.length})</button>}
           <button aria-label="이 묶음 검토" title={dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다"} disabled={busy} onClick={() => void request("selected")}>
             {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
           </button>
@@ -844,14 +1191,18 @@ export function CanonicalBlogEditor() {
           </button>
         </div>
       </div>
+      {syncNote && <p className="ce-sync-note" role="status">{syncNote} <button aria-label="알림 닫기" onClick={()=>setSyncNote("")}>닫기</button></p>}
       <div className="ce-feedback" aria-live="polite">
-        {error ? (
+        {saveState==="failed"&&saveRetry ? (
+          <span role="alert">저장하지 못했어요. 편집 내용은 화면에 남아 있고 자동으로 다시 시도해요. {saveRetry.error==="BUSY"?"다른 도구가 저장하는 중이에요.":saveRetry.error}</span>
+        ) : error ? (
           <span role="alert">{error}</span>
         ) : (
           notice ||
-          "본문을 클릭해 바로 수정하세요. ⌘/Ctrl+S 저장 · 묶음 바깥 클릭 후 Delete 묶음 삭제 · 빈 문단에서 Backspace 문단 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
+          "본문을 클릭해 바로 수정하세요. 변경은 자동으로 저장돼요(⌘/Ctrl+S는 바로 저장) · 묶음 바깥 클릭 후 Delete 묶음 삭제 · 빈 문단에서 Backspace 문단 삭제 · AI 제안은 해당 구절에 diff로 표시돼요: Tab 적용·다음 · Esc 유지 · Shift+Tab 이전 · ⌥/Alt+↓ 제안 버튼 · ✦ 추천 받기(⌥\\) · 검토는 ⌘/Ctrl + Enter"
         )}
       </div>
+      {doc.format==="markup" && photoOpen && <PhotoPicker revision={doc.revision} placements={photos} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changePhotos} onReveal={id=>send({type:"reveal-photo",id})} onClose={()=>setPhotoOpen(false)}/>}
       {doc.format==="markup" && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})}/></div>}
       <button
         className="ce-outline-toggle"
@@ -911,7 +1262,7 @@ export function CanonicalBlogEditor() {
             ref={frame}
             title="정본 본문 편집"
             scrolling="no"
-            src={`/api/blog/frame?v=${doc.revision}&layout=${doc.frameVersion}&reload=${frameEpoch}`}
+            src={`/api/blog/frame?${live?"":`v=${doc.revision}&`}layout=${doc.frameVersion}&reload=${frameEpoch}`}
             style={{ width: `min(100%, ${width}px)`, height }}
           />
         </div>
@@ -1042,8 +1393,7 @@ export function CanonicalBlogEditor() {
             onApply={apply}
           />}
           <p className="ce-review-note">
-            제안 선택은 이 화면에 유지됩니다. 적용한 본문은 정본 저장을 눌러
-            보관하세요.
+            제안 선택은 이 화면에 유지됩니다. {live?"적용한 본문은 자동으로 저장돼요.":"적용한 본문은 정본 저장을 눌러 보관하세요."}
           </p>
         </aside>
       </div>

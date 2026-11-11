@@ -31,6 +31,8 @@ export interface EditorConfig {
   media: string;
   port?: number;
   assetFiles?: string[];
+  /** Completed evidence results.json offered by the editor's photo picker. */
+  mediaEvidence?: string;
 }
 const hash = sha256Hex;
 const key = (g: any) =>

@@ -81,9 +81,8 @@ test("drag → 채팅에 추가 → ask → 본문에 반영 → save, and keep 
   const rewrites=panel.locator(".ce-chat-rewrite");
   await expect(rewrites).toHaveCount(2);
   await rewrites.nth(0).getByRole("button",{name:"본문에 반영"}).click();
-  await expect(rewrites.nth(0).getByRole("button",{name:"반영됨 · 저장 전"})).toBeDisabled();
+  await expect(rewrites.nth(0).getByRole("button",{name:"반영됨"})).toBeDisabled();
   await expect.poll(()=>plain(page,"P3")).toBe("벤치에서 한참 쉬었어요. 바람이 좋았어요.");
-  await expect(save).toBeEnabled();
   await page.keyboard.press("ControlOrMeta+s");
   await expect.poll(async()=>(await readFile(config.canon,"utf8")).includes("벤치에서 한참 쉬었어요.")).toBe(true);
   const saved=await readFile(config.canon,"utf8");

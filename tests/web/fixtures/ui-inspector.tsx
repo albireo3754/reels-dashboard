@@ -13,8 +13,19 @@ if (new URLSearchParams(location.search).has("enabled")) {
     workspace: "/tmp/synthetic-reels-source",
     sessions: [],
     previewURL: "http://127.0.0.1:4183",
-    providers: [{ id: "codex" as const, label: "Codex" }],
+    providers: [
+      { id: "codex" as const, label: "Codex" },
+      { id: "claude" as const, label: "Claude Code" },
+    ],
     defaultProvider: "codex" as const,
+    terminalBackend: {
+      selected: "direct" as const,
+      effective: "direct" as const,
+      herdrInstalled: false,
+      session: "default",
+      forcedByEnv: true,
+      checking: false,
+    },
   };
   const workbench: WorkbenchBridge = {
     state: async () => state,
@@ -32,6 +43,10 @@ if (new URLSearchParams(location.search).has("enabled")) {
     stop: async () => {},
     remove: async () => {},
     close: async () => {},
+    setTerminalBackend: async () => state,
+    reattach: async () => {
+      throw new Error("No terminal sessions");
+    },
     hideWindow: async () => {},
     openPreview: async () => {},
     onEvent: () => () => {},

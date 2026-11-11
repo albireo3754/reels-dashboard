@@ -11,16 +11,26 @@ export function TerminalPane({
   api,
   id,
   active,
+  inputEnabled = true,
+  takeFocus = true,
 }: {
   api: WorkbenchBridge;
   id: string;
   active: boolean;
+  /** False for detached/exited sessions: the host rejects their input, so keystrokes are dropped quietly. */
+  inputEnabled?: boolean;
+  /** False while the user moves between tabs with the arrow keys: focus stays on the tab. */
+  takeFocus?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const takeFocusRef = useRef(takeFocus);
+  takeFocusRef.current = takeFocus;
+  const inputRef = useRef(inputEnabled);
+  inputRef.current = inputEnabled;
   useEffect(() => {
     const term = new Terminal({
       cursorBlink: true,
@@ -72,7 +82,8 @@ export function TerminalPane({
       })
       .catch(report);
     const input = term.onData((data) => {
-      if (activeRef.current) void api.write(id, data).catch(report);
+      if (activeRef.current && inputRef.current)
+        void api.write(id, data).catch(report);
     });
     const resized = term.onResize(({ cols, rows }) => {
       if (activeRef.current) void api.resize(id, cols, rows).catch(report);
@@ -97,12 +108,23 @@ export function TerminalPane({
       fitRef.current = null;
     };
   }, [api, id]);
+  // After a reattach the host attaches a fresh PTY: give it the current size.
+  const wasEnabled = useRef(inputEnabled);
+  useEffect(() => {
+    const becameEnabled = inputEnabled && !wasEnabled.current;
+    wasEnabled.current = inputEnabled;
+    if (!becameEnabled || !activeRef.current) return;
+    const term = terminalRef.current;
+    if (host.current?.clientWidth && host.current?.clientHeight)
+      fitRef.current?.fit();
+    if (term) void api.resize(id, term.cols, term.rows).catch(() => {});
+  }, [api, id, inputEnabled]);
   useEffect(() => {
     if (active) {
       const frame = requestAnimationFrame(() => {
         if (host.current?.clientWidth && host.current?.clientHeight)
           fitRef.current?.fit();
-        terminalRef.current?.focus();
+        if (takeFocusRef.current) terminalRef.current?.focus();
       });
       return () => cancelAnimationFrame(frame);
     }

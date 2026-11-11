@@ -4,6 +4,8 @@ The desktop owns three independent boundaries: media preprocessing (`MediaAnalys
 
 ## Use
 
+For an already extracted set of captures/images, use the [complete evidence segment](media-evidence.md) before editorial selection. It analyzes every listed image with source/time provenance and explicit coverage checks; it does not replace that set with the three-frame video sampling described below.
+
 Open **사진·영상 메타데이터 분석** on a production project card. Choose a linked folder and analyzer, then start. Only direct photo/video children of that folder are included; subfolders, final outputs elsewhere, and unrelated files are not implicitly included. The default maximum is 100 source files (MCP allows up to 200); exceeding it is an explicit error, not silent truncation.
 
 Each photo produces one JPEG preview. Each video produces up to three stills near the beginning, midpoint and end. Results retain source path, file version (size/mtime fingerprint), frame time and image identity. This is sampled image analysis, not continuous video, audio or action recognition. A pair of raised glasses does not prove a toast occurred. OCR remains a candidate, not verified venue/menu/price data.

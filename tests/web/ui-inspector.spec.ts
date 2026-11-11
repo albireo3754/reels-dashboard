@@ -15,9 +15,7 @@ test("inspection blocks underlying action and appends only explicit feedback to 
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1");
   await page.getByRole("button", { name: "터미널", exact: true }).click();
-  await page
-    .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-    .click();
+  await page.getByTestId("dev-settings-toggle").click();
   await page.locator("#dev-task").fill("기존 요청을 유지해주세요.");
   await page.getByRole("button", { name: "터미널 닫기", exact: true }).click();
   await page.getByRole("button", { name: "화면 검사", exact: true }).click();
@@ -68,9 +66,7 @@ test("multiple pending inspection notes survive a full request draft", async ({
 }) => {
   await page.goto("/tests/web/fixtures/ui-inspector.html?enabled=1");
   await page.getByRole("button", { name: "터미널", exact: true }).click();
-  await page
-    .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-    .click();
+  await page.getByTestId("dev-settings-toggle").click();
   await page.locator("#dev-task").fill("x".repeat(15990));
   for (const comment of [
     "첫 번째 의견을 보존해주세요.",

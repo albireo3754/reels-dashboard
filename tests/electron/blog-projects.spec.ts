@@ -3,8 +3,9 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {markupFixture} from '../fixtures/markup-editor';
 import {launchApp,makeProfile,closeApp,cleanProfile} from './helpers';
+import {closeEditorTab,editorIframe,openBlogEditor,windowCount} from './blog-editor-helpers';
 
-test('blog projects open isolated editors, reuse windows and retain connections after restart',async({},testInfo)=>{
+test('blog projects open isolated editors, reuse tabs and retain connections after restart',async({},testInfo)=>{
   const profile=await makeProfile();let app;
   try{
     const projects:Array<{id:string;title:string;config:Awaited<ReturnType<typeof markupFixture>>}>=[];
@@ -22,30 +23,33 @@ test('blog projects open isolated editors, reuse windows and retain connections 
     await expect(card('first')).toBeVisible();await expect(card('second')).toBeVisible();
     await expect(main.getByRole('button',{name:'정본 스마트 에디터 열기',exact:true})).toHaveCount(0);
     await main.screenshot({path:testInfo.outputPath('blog-projects.png')});
-    let opened=app.waitForEvent('window');
-    await card('first').getByRole('button',{name:'프로젝트 열기',exact:true}).click();
-    const first=await opened;
+    const windows=await windowCount(app);
+    const first=await openBlogEditor(app,main,'first',card('first'));
     await expect(first.getByText('✓ 저장 완료',{exact:true})).toBeVisible();
-    const windows=app.windows().length;
+    await main.getByRole('button',{name:'프로젝트',exact:true}).click();
     await card('first').getByRole('button',{name:'프로젝트 열기',exact:true}).click();
-    expect(app.windows()).toHaveLength(windows);
-    opened=app.waitForEvent('window');
-    await card('second').getByRole('button',{name:'프로젝트 열기',exact:true}).click();
-    const second=await opened;
+    await expect(editorIframe(main,'first')).toBeVisible();
+    await expect(main.locator('iframe.blog-editor-frame')).toHaveCount(1);
+    const second=await openBlogEditor(app,main,'second',card('second'));
     await expect(second.getByText('✓ 저장 완료',{exact:true})).toBeVisible();
+    expect(await windowCount(app)).toBe(windows);
     expect(new URL(second.url()).origin).not.toBe(new URL(first.url()).origin);
+    // Tabs: the first project's editor is hidden behind the second until its tab is selected.
+    await expect(editorIframe(main,'first')).toBeHidden();
+    await main.getByRole('button',{name:'first project',exact:true}).click();
     await first.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]').fill('Only first project changed');
-    await first.getByRole('button',{name:'정본 저장',exact:true}).click();
+    await expect(first.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:15000});
     await expect.poll(()=>readFile(projects[0].config.canon,'utf8')).toContain('Only first project changed');
     expect(await readFile(projects[1].config.canon,'utf8')).toBe(secondBefore);
+    await main.getByRole('button',{name:'second project',exact:true}).click();
     await expect(second.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toHaveText('Second line');
+    await closeEditorTab(main,'second project');
     await expect(main.evaluate(()=>window.reels!.blog!.openCanonical!('missing'))).rejects.toThrow();
     await closeApp(app);app=await launchApp(profile);main=await app.firstWindow();
     await main.getByRole('button',{name:'블로그',exact:true}).click();
     await expect(card('second')).toBeVisible();
-    opened=app.waitForEvent('window');
-    await card('first').getByRole('button',{name:'프로젝트 열기',exact:true}).click();
-    await expect((await opened).frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toHaveText('Only first project changed');
+    const reopened=await openBlogEditor(app,main,'first',card('first'));
+    await expect(reopened.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toHaveText('Only first project changed');
   }finally{await closeApp(app);await cleanProfile(profile);}
 });
 

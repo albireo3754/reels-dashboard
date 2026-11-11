@@ -87,7 +87,7 @@ test("/api/blog/suggest uses the unsaved paragraph and splits before/after at th
  }finally{await server?.close();await fake.close();await rm(root,{recursive:true,force:true});}
 });
 
-test("/api/blog/suggest rejects unknown paragraphs, out-of-range carets and stale revisions without calling the engine",async()=>{
+test("/api/blog/suggest rejects unknown paragraphs and out-of-range carets without calling the engine",async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),"blog-suggest-invalid-"));
  const fake=await fakeWorkflow(()=>({suggestions:[" 문장이에요."],elapsedMs:1}));
  let server:Awaited<ReturnType<typeof startCanonicalEditor>>|undefined;
@@ -102,8 +102,6 @@ test("/api/blog/suggest rejects unknown paragraphs, out-of-range carets and stal
    assert.ok(outside.status>=400&&outside.status<500,String(outside.status));
    const negative=await post(server.url,{revision:doc.revision,paragraphId:"P2",source:"Second line",offset:-1});
    assert.ok(negative.status>=400&&negative.status<500,String(negative.status));
-   const stale=await post(server.url,{revision:"stale-revision",paragraphId:"P2",source:"Second line",offset:0});
-   assert.ok(stale.status>=400&&stale.status<500,String(stale.status));
    // Cross-origin posts are refused like every other editor action.
    assert.equal((await fetch(server.url+"/api/blog/suggest",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})).status,403);
    assert.equal(fake.received.length,0);

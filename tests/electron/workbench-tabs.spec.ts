@@ -47,9 +47,7 @@ test("drawer shortcuts retain editor content and mounted terminal tabs", async (
     });
     await expect(drawer).toHaveAttribute("data-drawer-state", "open");
     await expect(heading).toBeVisible();
-    await page
-      .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-      .click();
+    await page.getByTestId("dev-settings-toggle").click();
     const task = page.locator("#dev-task");
     await task.fill("Keep this request while switching terminal tabs.");
     await pressWorkbenchKey(app, "t");
@@ -179,12 +177,16 @@ test("drawer shortcuts retain editor content and mounted terminal tabs", async (
     await expect(task).toHaveValue(
       "Keep this request while switching terminal tabs.",
     );
-    await page
-      .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-      .click();
+    await page.getByTestId("dev-settings-toggle").click();
+    await page.getByTestId("dev-new-menu").click();
     await expect(
-      page.getByRole("button", { name: "Codex 시작", exact: true }),
+      page.getByRole("menuitem", { name: "Codex 열기", exact: true }),
     ).toBeEnabled();
+    await expect(
+      page.getByRole("menuitem", { name: "Claude 열기", exact: true }),
+    ).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await page.screenshot({
       path: info.outputPath("workbench-drawer-default.png"),
     });
@@ -198,9 +200,7 @@ test("drawer shortcuts retain editor content and mounted terminal tabs", async (
     await page.screenshot({
       path: info.outputPath("workbench-drawer-760.png"),
     });
-    await page
-      .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-      .click();
+    await page.getByTestId("dev-settings-toggle").click();
     await page.locator(".dev-drawer-body").evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });

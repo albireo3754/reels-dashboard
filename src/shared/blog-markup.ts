@@ -112,7 +112,7 @@ export interface ComponentSpec {
 export const COMPONENTS: Record<ComponentTag, ComponentSpec> = {
   Sticker: { smartEditor: "se-sticker (기본 스티커에서 직접 선택)", preview: "StickerSlot (자리 표시)", draft: null, form: "self", attrs: ["id", "preset", "note?"], example: '<Sticker id="s1" preset="yum" note="기본 · 먹고 만족하는 표정"/>' },
   Photo: { smartEditor: "se-image", preview: "PhotoBlock", draft: "image", form: "self", attrs: ["file", "alt", "ratio?", "pair?"], example: '<Photo file="grill.jpg" alt="그릴에서 굽는 모습"/>' },
-  Collage: { smartEditor: "se-imageGroup se-l-collage", preview: "PhotoCollage4", draft: "image (합성 한 장, 개별 사진 정보 손실)", form: "self", attrs: ["layout", "files", "alts?"], example: '<Collage layout="2x2" files="a.jpg · b.jpg · c.jpg · d.jpg"/>' },
+  Collage: { smartEditor: "se-imageGroup se-l-collage", preview: "PhotoCollage4", draft: "image (합성 한 장, 개별 사진 정보 손실)", form: "self", attrs: ["layout", "files", "alts?", "ratios?"], example: '<Collage layout="2x2" files="a.jpg · b.jpg · c.jpg · d.jpg" ratios="3:4 · 4:3 · 4:3 · 4:3"/>' },
   Heading: { smartEditor: "se-quotation se-l-quotation_line", preview: "SectionHeading", draft: "text role=heading", form: "text", attrs: [], example: "<Heading>디저트</Heading>" },
   Title: { smartEditor: "se-documentTitle", preview: "BlogArticle header", draft: "text role=title", form: "text", attrs: [], example: "<Title>동네 카페 후기</Title>" },
   PriceBox: { smartEditor: "se-quotation", preview: "price-box", draft: "text role=info", form: "container", attrs: [], example: "<PriceBox> … </PriceBox>" },
@@ -491,6 +491,24 @@ function paragraphs(doc: MarkupDoc): Located[] {
   );
 }
 
+/** Photos per row. "2x2" is columns x rows, "2+1" lists each row. Unknown layouts fall back to rows of two. */
+export function collageRows(layout: string, count: number): number[] {
+  const plus = /^\d+(\+\d+)+$/.test(layout) ? layout.split("+").map(Number) : null;
+  if (plus && plus.every((n) => n > 0)) return plus;
+  const columns = Math.max(1, Number(/^(\d+)x\d+$/.exec(layout)?.[1] ?? 2));
+  const rows: number[] = [];
+  for (let left = count; left > 0; left -= columns) rows.push(Math.min(columns, left));
+  return rows;
+}
+
+/** Width / height of each photo in a mixed-ratio collage; null when the attribute is absent or malformed. */
+export function collageRatios(value: unknown, count: number): number[] | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parts = value.split(" · ").map((p) => /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(p.trim()));
+  if (parts.length !== count || parts.some((p) => !p || !Number(p[1]) || !Number(p[2]))) return null;
+  return parts.map((p) => Number(p![1]) / Number(p![2]));
+}
+
 /**
  * 폭과 무관하게 판정할 수 있는 것만 본다. 강조 개수·비율에는 목표를 두지 않는다.
  * 줄 길이와 굵게 단독 검사는 본문 문단에만 한다. 컨테이너(PriceBox·VisitCard·Info·Source) 안은 정보 글꼴과 다른 폭을 쓴다.
@@ -507,6 +525,12 @@ export function validate(doc: MarkupDoc, opts: ValidateOptions = {}): MarkupIssu
     if (!b.question) issues.push({ level: "warn", where: b.id, message: "묶음 질문이 비어 있음" });
     for (const n of b.nodes) {
       if (n.kind === "component" && n.tag === "Photo" && !n.attrs.alt) issues.push({ level: "warn", where: b.id, message: `사진 alt 없음: ${n.attrs.file}` });
+      if (n.kind === "component" && n.tag === "Collage" && n.attrs.ratios !== undefined) {
+        const count = String(n.attrs.files ?? "").split(" · ").length;
+        const layout = String(n.attrs.layout ?? "");
+        if (!collageRatios(n.attrs.ratios, count)) issues.push({ level: "error", where: b.id, message: `Collage ratios는 사진 ${count}장마다 "가로:세로"를 " · "로 구분해 적음: ${n.attrs.ratios}` });
+        if (collageRows(layout, count).reduce((a, c) => a + c, 0) !== count) issues.push({ level: "error", where: b.id, message: `Collage layout ${layout}의 칸 수가 사진 ${count}장과 다름` });
+      }
     }
   }
   const pids = new Set<string>();

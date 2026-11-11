@@ -9,7 +9,7 @@ import {parse} from "../../src/shared/blog-markup";
 import {paragraphNodes} from "../../src/shared/blog-markup-source";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
 
-test("markup editor saves AST, preserves mark roles, merges outside edits and refuses conflict",async()=>{
+test("markup editor saves AST, preserves mark roles, merges outside edits and settles a conflict for the writer",async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),"markup-editor-"));
   try{
     const config=await markupFixture(root),store=new MarkupStore(config);
@@ -25,12 +25,15 @@ test("markup editor saves AST, preserves mark roles, merges outside edits and re
     assert.match(await readFile(config.layout,"utf8"),/edited/);
     const base=await store.load();
     await writeFile(config.canon,(await readFile(config.canon,"utf8")).replace("External line","Concurrent"));
-    await assert.rejects(store.save({revision:base.revision,edits:[{id:"P2",source:"Mine"}]}),/저장할 수/);
-    assert.match(await readFile(config.canon,"utf8"),/Concurrent/);
+    const settled=await store.save({revision:base.revision,edits:[{id:"P2",source:"Mine"}]});
+    assert.deepEqual(settled.conflicts,[{id:"P2"}]);
+    assert.match(await readFile(config.canon,"utf8"),/Mine/);
     const current=await store.load();
     const request=await store.request({revision:current.revision,bundleIds:["B1"]});
     assert.match(request.source,/<Bundle/);assert.match(request.source,/Keep facts/);assert.ok(!request.source.includes("Private history"));
-    await assert.rejects(store.save({revision:current.revision,edits:[{id:"P1",source:'<span style="font-size:20px">Invalid</span>'}]}),/validation/);
+    const refused=await store.save({revision:current.revision,edits:[{id:"P1",source:'<span style="font-size:20px">Invalid</span>'},{id:"P2",source:"Still saved"}]});
+    assert.deepEqual(refused.skipped.map(s=>s.id),["P1"]);
+    assert.match(await readFile(config.canon,"utf8"),/Still saved/);assert.doesNotMatch(await readFile(config.canon,"utf8"),/Invalid/);
   }finally{await rm(root,{recursive:true,force:true});}
 });
 test("markup HTTP serves editable frame and enforces origin on saves",async()=>{

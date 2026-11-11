@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DashboardBridge } from "../shared/contracts";
-import type { KeyAction } from "../shared/keymap";
-import type { WorkbenchBridge } from "../shared/workbench";
+import { createWorkbenchBridge } from "./workbench-bridge";
 import { DEVELOPMENT_MODE_ARGUMENT } from "./development-mode";
 import { DEV_BUILD_ARGUMENT } from "./build-identity";
 const invoke = (name: string, ...args: unknown[]) =>
@@ -14,25 +13,7 @@ const subscribe = (name: string, callback: (value: any) => void) => {
     ipcRenderer.removeListener(name, listener);
   };
 };
-const workbench: WorkbenchBridge = {
-  state: () => invoke("workbench:state"),
-  chooseWorkspace: () => invoke("workbench:chooseWorkspace"),
-  start: (input) => invoke("workbench:start", input),
-  snapshot: (id) => invoke("workbench:snapshot", id),
-  write: (id, data) => invoke("workbench:write", id, data),
-  resize: (id, cols, rows) => invoke("workbench:resize", id, cols, rows),
-  stop: (id) => invoke("workbench:stop", id),
-  remove: (id) => invoke("workbench:remove", id),
-  close: (id) => invoke("workbench:close", id),
-  hideWindow: () => invoke("workbench:hideWindow"),
-  openPreview: () => invoke("workbench:openPreview"),
-  onEvent: (callback) => subscribe("workbench:event", callback),
-  // The payload is a KeyAction name (src/shared/keymap.ts HOST_ACTIONS).
-  onShortcut: (callback) =>
-    subscribe("workbench:shortcut", (action) => {
-      if (typeof action === "string") callback(action as KeyAction);
-    }),
-};
+const workbench = createWorkbenchBridge(ipcRenderer);
 const bridge: DashboardBridge = {
   executionLogs: { list: () => invoke("executionLogs:list") },
   workflow: {
@@ -52,7 +33,7 @@ const bridge: DashboardBridge = {
       return () => { active = false; unsubscribe(); };
     },
   },
-  blog: { canonicalProjects: () => invoke("blog:canonicalProjects"), openCanonical: id => invoke("blog:openCanonical", id), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
+  blog: { canonicalProjects: () => invoke("blog:canonicalProjects"), openCanonical: id => invoke("blog:openCanonical", id), closeCanonical: id => invoke("blog:closeCanonical", id), extract: input => invoke("blog:extract", input), extractDirectory: () => invoke("blog:extractDirectory"), chooseExtractDirectory: () => invoke("blog:chooseExtractDirectory"), onExtractProgress: callback => subscribe("blog:extract-progress", callback), onResultsChanged: callback => subscribe("blog:results-changed", callback), removeResult: id => invoke("blog:removeResult", id), results: () => invoke("blog:results"), addResult: () => invoke("blog:addResult"), readResult: id => invoke("blog:readResult", id), previewResult: id => invoke("blog:previewResult", id), readDocument: (id, file) => invoke("blog:readDocument", id, file), load: id => invoke("blog:load", id), save: draft => invoke("blog:save", draft) },
   analysis: {
     mosaicSample: (projectId, sampleId) => invoke("analysis:mosaicSample", projectId, sampleId),
     mosaicExport: (input) => invoke("analysis:mosaicExport", input),
@@ -85,6 +66,13 @@ const bridge: DashboardBridge = {
       invoke("contentMedia:list", id, folder, offset),
     thumbnail: (id, file) => invoke("contentMedia:thumbnail", id, file),
     open: (id, file) => invoke("contentMedia:open", id, file),
+  },
+  icloud: {
+    configure: input => invoke("icloud:configure", input),
+    list: () => invoke("icloud:list"),
+    status: paths => invoke("icloud:status", { paths }),
+    start: input => invoke("icloud:start", input),
+    get: id => invoke("icloud:get", id),
   },
   request: (method, args = {}) => invoke("request", method, args),
   editor: {

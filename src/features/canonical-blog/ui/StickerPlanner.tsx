@@ -39,6 +39,6 @@ export function StickerPlanner({ placements, anchors, target, disabled, nativeCl
       <button disabled={disabled} aria-label={`스티커 ${i+1} 위치 보기`} onClick={()=>onReveal(s.id)}>위치 보기</button><button disabled={disabled} aria-label={`스티커 ${i+1} 삭제`} onClick={()=>onChange(placements.filter(p=>p.id!==s.id))}>삭제</button>
     </li>)}</ol> : <p className="ce-sticker-hint">아직 스티커가 없어요. 모든 묶음에 넣을 필요는 없어요.</p>}
     <details><summary>네이버에서 기본 스티커 넣는 방법</summary><p>저장한 순서대로 본문을 옮긴 뒤, 표시한 위치에서 도구 막대의 <b>스티커</b>를 열어요. 기본 목록에서 위 용도에 맞는 표정을 골라 본문으로 끌어 놓고, 자리 표시를 교체해 주세요. 선택한 캐릭터·표정은 메모로 남겨두면 다시 찾기 쉬워요.</p><p>대시보드는 자리와 선택 메모를 저장해요. 실제 스티커 삽입·발행은 네이버에서 확인해 주세요.</p><a href="https://help.naver.com/service/5593/contents/15529?lang=ko" target="_blank" rel="noreferrer">네이버 공식 스티커 첨부 안내 ↗</a></details>
-    <div className="ce-sticker-copy"><button disabled={!placements.length || disabled} onClick={()=>void copyGuide()}>배치 메모 복사</button><span role="status">{copyState}</span><small>본문과 함께 ‘정본 저장’을 눌러주세요.</small></div>
+    <div className="ce-sticker-copy"><button disabled={!placements.length || disabled} onClick={()=>void copyGuide()}>배치 메모 복사</button><span role="status">{copyState}</span><small>배치는 본문과 함께 자동으로 저장돼요.</small></div>
   </section>;
 }

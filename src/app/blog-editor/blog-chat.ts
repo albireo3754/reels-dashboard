@@ -30,7 +30,7 @@ export async function handleChat(store:MarkupStore|undefined,value:unknown,signa
   try{input=await store.chatInput(value);}
   catch(e){
     const message=e instanceof ZodError?"채팅 요청 형식이 올바르지 않아요.":e instanceof Error?e.message:String(e);
-    return {status:/편집 기준이 만료/.test(message)?409:400,body:{error:message}};
+    return {status:400,body:{error:message}};
   }
   const started=Date.now();
   const timeout=AbortSignal.timeout(chatTimeoutMs()+10000);

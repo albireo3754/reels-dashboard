@@ -70,6 +70,10 @@ export interface CanonicalDocument {
   bundles: CanonicalBundle[];
   reviews: CanonicalReview[];
   frameVersion: string;
+  /** Markup only: the exact text behind `revision`, sent back so a save survives a lost base. */
+  sourceText?: string;
+  /** Markup only: the rendered article, applied in place to the open frame. */
+  articleHtml?: string;
   fontCss?: string;
 }
 export const escapeHtml = (s: string) =>

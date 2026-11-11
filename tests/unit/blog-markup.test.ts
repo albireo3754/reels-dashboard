@@ -12,9 +12,11 @@ import {
   serialize,
   styleTokens,
   validate,
+  collageRows,
   type MarkupDoc,
   type ParagraphNode,
 } from "../../src/shared/blog-markup";
+import { renderHtml } from "../../src/shared/blog-markup-render";
 
 const sample = `<!-- 범례는 무시된다 -->
 <Bundle id="B02" name="대기" core question="들어가기까지 얼마나 기다렸나" in="자리 모양 → 앉기까지">
@@ -192,4 +194,27 @@ test("모든 컴포넌트 예시는 문법에 맞는 한 줄이다", () => {
     const node = doc.bundles[0].nodes[0];
     assert.equal(node.kind === "component" && node.tag, tag);
   }
+});
+
+test("비율 혼합 콜라주는 행마다 사진 비율대로 폭을 나누고, ratios가 없으면 균등 격자를 유지한다", () => {
+  assert.deepEqual(collageRows("2x2", 4), [2, 2]);
+  assert.deepEqual(collageRows("2+1", 3), [2, 1]);
+  assert.deepEqual(collageRows("2x1", 2), [2]);
+  const mixed = `<Bundle id="B1" name="첫" question="q">
+<Collage layout="2x2" files="a.jpg · b.jpg · c.jpg · d.jpg" alts="가 · 나 · 다 · 라" ratios="3:4 · 4:3 · 4:3 · 16:9"/>
+<Collage layout="2x1" files="e.jpg · f.jpg" alts="마 · 바"/>
+</Bundle>`;
+  const doc = parse(mixed);
+  assert.equal(serialize(doc), serialize(parse(serialize(doc))));
+  assert.equal(validate(doc).filter((i) => i.level === "error").length, 0);
+  const html = renderHtml(doc, { media: "m/" });
+  assert.equal(html.match(/class="collage-row"/g)?.length, 2);
+  assert.match(html, /<div style="--r:0.75"><img alt="가" src="m\/a.jpg"><\/div><div style="--r:1.3333"><img alt="나"/);
+  assert.match(html, /--r:1.7778"><img alt="라"/);
+  assert.match(html, /class="photo-grid4 even" data-component="PhotoCollage4" data-layout="2x1"/);
+  const bad = parse(mixed.replace("3:4 · 4:3 · 4:3 · 16:9", "3:4 · 4:3").replace('layout="2x2"', 'layout="2+1"'));
+  const errors = validate(bad).filter((i) => i.level === "error").map((i) => i.message);
+  assert.ok(errors.some((m) => m.includes("Collage ratios")));
+  assert.ok(errors.some((m) => m.includes("칸 수")));
+  assert.match(renderHtml(bad), /photo-grid4 even/);
 });

@@ -9,7 +9,7 @@ test('linked layout CSS fits photos and collages without nested scroll or duplic
   const root=await mkdtemp(path.join(os.tmpdir(),'markup-layout-'));let server;
   try{
     const config=await markupFixture(root);
-    const source=(await readFile(config.canon,'utf8')).replace('<Photo file="photo.png" alt="Example photo"/>','<Title>Old duplicate title</Title>\n<Photo file="photo.svg" alt="Large photo"/>\n<Collage layout="2x1" files="photo.svg · photo.svg" alts="Left · Right"/>');
+    const source=(await readFile(config.canon,'utf8')).replace('<Photo file="photo.png" alt="Example photo"/>','<Title>Old duplicate title</Title>\n<Photo file="photo.svg" alt="Large photo"/>\n<Collage layout="2x1" files="photo.svg · photo.svg" alts="Left · Right"/>\n<Collage layout="2x2" files="photo.svg · photo.svg · photo.svg · photo.svg" alts="Tall · Wide · Wide2 · Wide3" ratios="3:4 · 4:3 · 16:9 · 4:3"/>');
     await writeFile(config.canon,source);
     await writeFile(path.join(config.media,'photo.svg'),'<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600"><rect width="900" height="600" fill="#789987"/></svg>');
     await writeFile(path.join(root,'layout.css'),'body{margin:0}*{box-sizing:border-box}article{word-break:keep-all}h1{font:700 24px/1.5 sans-serif;margin:0}figure{margin:28px 0}img{display:block;width:100%;height:auto}.photo-grid4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}');
@@ -28,6 +28,14 @@ test('linked layout CSS fits photos and collages without nested scroll or duplic
         return [...d.images].every(i=>i.complete&&i.naturalWidth>0)&&html.scrollWidth<=html.clientWidth+1&&html.scrollHeight<=html.clientHeight+1;
       })).toBe(true);
       await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+      // Mixed-ratio rows: cells in a row share one height, fill the figure width and keep their own ratio.
+      expect(await page.locator('iframe').evaluate((el:HTMLIFrameElement)=>{
+        const figure=el.contentDocument!.querySelector('.photo-collage-rows')!,full=figure.getBoundingClientRect().width;
+        return [...figure.querySelectorAll('.collage-row')].map(row=>{
+          const cells=[...row.children].map(c=>c.getBoundingClientRect());
+          return Math.abs(cells[0].height-cells[1].height)<1.5&&Math.abs(cells[1].right-cells[0].left-full)<1.5&&cells.every((c,i)=>Math.abs(c.width/c.height-Number((row.children[i] as HTMLElement).style.getPropertyValue('--r')))<0.03);
+        });
+      })).toEqual([true,true]);
     }
     await page.setViewportSize({width:1440,height:1000});
     await page.screenshot({path:info.outputPath('linked-layout.png')});

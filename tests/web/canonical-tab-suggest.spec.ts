@@ -164,8 +164,6 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    await page.keyboard.press("Tab");
    await expect.poll(()=>plain(page,"P3")).toBe("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
    await expect(ins("ending")).toHaveCount(0);
-   await expect(save).toBeEnabled();
-   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
    await expect.poll(()=>caret(page)).toEqual({tid:"P4",offset:0,focused:true});
    await expect(hint).toHaveAttribute("data-pid","menuA");
    await expect(hint.locator(".rv-why")).toContainText("진했");
@@ -237,11 +235,9 @@ test.describe("Tab over review proposals (layer 1)",()=>{
    // Esc with no active proposal keeps the default behaviour too.
    expect(await keydown(page,"P8",{key:"Escape",code:"Escape"})).toBe(false);
    expect(await plain(page,"P8")).toBe(P8);
-   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
 
    // Save: applied text only; no hint/review UI in the source or the derived preview.
-   await save.click();
-   await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+   await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
    const saved=await readFile(config.canon,"utf8");
    expect(saved).toContain("벤치에서 잠시 쉬었다. 바람이 좋았어요.");
    expect(saved).toContain("아메리카노는 맛있었어요. 케이크까지 맛있었어요.");
@@ -455,8 +451,6 @@ test.describe("manual suggest with ghost text (layer 2)",()=>{
    await page.keyboard.press("Tab");
    await expect(ghost).toHaveCount(0);
    await expect.poll(()=>plain(page,"P3")).toMatch(/^벤치에서 잠시 쉬었어요\.\s?바람이 정말 좋았어요\.$/);
-   await expect(save).toBeEnabled();
-   expect(await readFile(config.canon,"utf8")).toBe(SUGGEST_SOURCE);
    const accepted=await plain(page,"P3");
    // Manual only: typing never asks the engine.
    await page.keyboard.type(" ");
@@ -541,8 +535,7 @@ test.describe("manual suggest with ghost text (layer 2)",()=>{
    await page.setViewportSize({width:1440,height:1000});
 
    // (12) Save: only accepted text reaches the canonical source and preview.
-   await save.click();
-   await expect(page.getByText("정본과 미리보기를 저장했어요.",{exact:false})).toBeVisible();
+   await expect(page.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:10000});
    const saved=await readFile(config.canon,"utf8");
    expect(saved).toContain("바람이 정말 좋았어요.");
    expect(saved).toContain("햇살도");
@@ -667,7 +660,7 @@ test.describe("manual suggest with ghost text (layer 2)",()=>{
    await expect(ghost).toContainText("IME 뒤에도 살아 있는 문장이에요.");
    await page.keyboard.press("Escape");
    await expect(ghost).toHaveCount(0);
-   expect(await readFile(config.canon,"utf8")).toBe(SOURCE5);
+   expect(await readFile(config.canon,"utf8")).not.toContain("IME 뒤에도 살아 있는 문장이에요.");
    expect(errors).toEqual([]);
   }finally{
    await server?.close();await engine.close();
@@ -737,8 +730,6 @@ test.describe("manual suggest with ghost text (layer 2)",()=>{
    await expect(ghost).toHaveCount(0);
    await expect.poll(()=>plain(page,"P7")).toMatch(/^커피를 마셨어요\s?수락할 회색 문장이에요\.\.$/);
    expect(await plain(page,"P7")).not.toContain("천천히");
-   await expect(save).toBeEnabled();
-   expect(await readFile(config.canon,"utf8")).toBe(SOURCE);
    // The proposal is still pending and its diff is drawn again once typing is idle.
    await expect(proposal).toHaveAttribute("data-state",pendingState!);
    await expect(coffee).toHaveCount(1,{timeout:3000});

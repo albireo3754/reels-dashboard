@@ -36,6 +36,9 @@ export async function launchApp(
     process.env.REELS_ELECTRON_HEADED === "1" ? "0" : "1";
   env.REELS_USER_DATA = profile;
   env.REELS_DEMO = demo ? "1" : "0";
+  // Terminal sessions default to herdr when installed. Keep existing scenarios
+  // deterministic (and off the user's herdr server); herdr scenarios opt in below.
+  env.REELS_TERMINAL_BACKEND = "direct";
   for (const [key, value] of Object.entries(envOverrides)) {
     if (value === undefined) delete env[key];
     else env[key] = value;

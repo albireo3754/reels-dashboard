@@ -1,11 +1,13 @@
-import {useEffect,useRef,useState} from 'react';
-import type {BlogBlock,BlogBridge,BlogDraft,BlogSpan,BlogStyle} from '../../../shared/blog';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import type {BlogBlock,BlogBridge,BlogDraft,BlogSpan,BlogStyle,CanonicalEditorTab} from '../../../shared/blog';
 import type {Project} from '../../../shared/contracts';
 import type {ContentMediaBridge,ContentMediaItem} from '../../../shared/content-media';
 import './blog.css';
 import {BlogReferences} from './BlogReferences';
 import {BlogProjects} from './BlogProjects';
 import {importSpec} from '../model/import-spec';
+import {blogTerminalContext} from '../model/terminal-context';
+import {BlogTerminal} from './BlogTerminal';
 
 function Rich({text,spans=[]}:{text:string;spans?:BlogSpan[]}) {
   const matches: Array<{start:number;end:number;span?:BlogSpan;bold?:boolean;href?:string;label?:string}>=[];
@@ -37,8 +39,43 @@ function Photo({api,projectId,path,alt}:{api:ContentMediaBridge;projectId:string
   useEffect(()=>{let live=true;setUrl('');setError(false);api.open(projectId,path).then(v=>{if(live && v.kind==='image')setUrl(v.url);}).catch(()=>{if(live)setError(true);});return()=>{live=false;};},[api,projectId,path]);
   return error?<p>연결된 사진을 읽지 못했어요.</p>:url?<img src={url} alt={alt}/>:<p>사진 불러오는 중…</p>;
 }
-export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[]}) {
-  const [mode,setMode]=useState<'projects'|'draft'|'reference'>('projects');
+/**
+ * Project editors live in this tab as iframes, one per opened project, each on its own
+ * loopback server. They have no preload or bridge (the dashboard main process accepts IPC
+ * from its main frame only) and stay mounted until their tab is closed, so switching tabs
+ * or menus keeps unsaved edits.
+ */
+const EDITOR_SANDBOX='allow-scripts allow-same-origin allow-forms allow-modals allow-popups';
+const editorKey=(projectId:string)=>`editor:${projectId}`;
+function EmbeddedEditors({editors,mode}:{editors:CanonicalEditorTab[];mode:string}){
+  const host=useRef<HTMLDivElement>(null);
+  const active=editors.some(tab=>mode===editorKey(tab.projectId));
+  // The frame fills the window below the tab row; --blog-editor-reserve (styles.css) keeps it clear of the terminal panel.
+  useLayoutEffect(()=>{
+    if(!active)return;
+    const measure=()=>{const el=host.current;if(el&&el.offsetParent!==null)el.style.setProperty('--blog-editor-top',`${Math.round(el.getBoundingClientRect().top+window.scrollY)}px`);};
+    measure();window.addEventListener('resize',measure);
+    return()=>window.removeEventListener('resize',measure);
+  },[active,editors.length]);
+  return <div className="blog-editor-host" ref={host} hidden={!active}>
+    {editors.map(tab=><iframe key={tab.projectId} className="blog-editor-frame" hidden={mode!==editorKey(tab.projectId)} src={tab.url} title={`${tab.title} 스마트에디터`} data-blog-editor={tab.projectId} sandbox={EDITOR_SANDBOX} referrerPolicy="no-referrer"/>)}
+  </div>;
+}
+
+export function BlogWorkspace({api,media,projects,onOpenTerminal,onStartTerminal}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[];onOpenTerminal?:()=>void;onStartTerminal?:(task:string)=>Promise<void>}) {
+  const [mode,setMode]=useState<string>('projects');
+  const [editors,setEditors]=useState<CanonicalEditorTab[]>([]);
+  const [closingEditor,setClosingEditor]=useState('');
+  const openEditor=(tab:CanonicalEditorTab)=>{setEditors(old=>old.some(e=>e.projectId===tab.projectId)?old:[...old,tab]);setMode(editorKey(tab.projectId));};
+  const closeEditor=async(tab:CanonicalEditorTab)=>{
+    setClosingEditor(tab.projectId);setError('');
+    try{
+      const result=await api!.closeCanonical?.(tab.projectId)??{close:true};
+      if(!result.close)return;
+      setEditors(old=>old.filter(e=>e.projectId!==tab.projectId));
+      setMode(current=>current===editorKey(tab.projectId)?'projects':current);
+    }catch(e){setError(String(e));}finally{setClosingEditor('');}
+  };
   const [sourceTools,setSourceTools]=useState(true);
   const [projectId,setProjectId]=useState(''); const project=projects.find(p=>p.id===projectId);
   const [draft,setDraft]=useState<BlogDraft>(); const [dirty,setDirty]=useState(false); const [busy,setBusy]=useState(false);
@@ -53,7 +90,12 @@ export function BlogWorkspace({api,media,projects}:{api?:BlogBridge;media?:Conte
   const list=async(directory:string,offset=0)=>{if(!projectId || !media)return;try{const page=await media.list(projectId,directory||undefined,offset);setItems(offset?old=>[...old,...page.items]:page.items);setNext(page.nextOffset);}catch(e){setError(String(e));}};
   if(!api || !media)return <section className="blog-workspace"><p>블로그 작업은 데스크톱 앱에서 사용할 수 있어요.</p></section>;
   return <section className="blog-workspace" aria-label="블로그 작업">
-    <h2>블로그 작업</h2><div className="blog-reference-toolbar"><button aria-pressed={mode==='projects'} onClick={()=>setMode('projects')}>프로젝트</button><button aria-pressed={mode==='draft'} onClick={()=>setMode('draft')}>원고·배치</button><button aria-pressed={mode==='reference'} onClick={()=>setMode('reference')}>레퍼런스 추출·탐색</button></div><div hidden={mode!=='projects'}><BlogProjects api={api}/></div><div hidden={mode!=='reference'}><BlogReferences api={api}/></div><div hidden={mode!=='draft'}><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
+    <div className="blog-workspace-heading"><h2>블로그 작업</h2>{onOpenTerminal && onStartTerminal && <div><BlogTerminal context={blogTerminalContext({mode,editors,project,dirty})} onOpen={onOpenTerminal} onStart={onStartTerminal}/></div>}</div><div className="blog-reference-toolbar blog-workspace-tabs"><button aria-pressed={mode==='projects'} onClick={()=>setMode('projects')}>프로젝트</button><button aria-pressed={mode==='draft'} onClick={()=>setMode('draft')}>원고·배치</button><button aria-pressed={mode==='reference'} onClick={()=>setMode('reference')}>레퍼런스 추출·탐색</button>
+      {editors.map(tab=><span className="blog-editor-tab" key={tab.projectId} data-active={mode===editorKey(tab.projectId)||undefined}>
+        <button aria-pressed={mode===editorKey(tab.projectId)} title={tab.title} onClick={()=>setMode(editorKey(tab.projectId))}>{tab.title}</button>
+        <button aria-label={`${tab.title} 탭 닫기`} title="탭 닫기" disabled={closingEditor===tab.projectId} onClick={()=>void closeEditor(tab)}>×</button>
+      </span>)}
+    </div><div hidden={mode!=='projects'}><BlogProjects api={api} onOpen={openEditor}/></div><EmbeddedEditors editors={editors} mode={mode}/><div hidden={mode!=='reference'}><BlogReferences api={api}/></div><div hidden={mode!=='draft'}><p>기존 프로젝트의 원고와 사진을 골라 배치해요. 원고 파일은 수정하지 않으며, 이 화면에서 선택한 내용만 미리보기에 들어가요.</p>
     <label>프로젝트 <select aria-label="블로그 프로젝트" value={projectId} disabled={busy} onChange={e=>void switchProject(e.target.value)}><option value="">프로젝트 선택</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
     {project && draft && <>
       <details className="blog-source-tools" open={sourceTools} onToggle={e=>setSourceTools(e.currentTarget.open)}><summary>원고·사진 가져오기 및 블록 배치</summary><div className="blog-columns"><div>

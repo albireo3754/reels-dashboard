@@ -4,6 +4,8 @@ Photo selection belongs at the start of `draft`, after experience answers and fo
 
 ## Preparation
 
+Data extraction precedes editorial selection. Inventory the complete relevant capture set and all existing individual frames/photos, including scenes not chosen for publication. Keep source/frame/result identities and latest user corrections; do not reduce an already extracted frame set to three samples. The [complete evidence segment](media-evidence.md) provides manifest validation, batch analysis and expected/resolved/missing/failed checks. Verify semantic corrections separately before reducing those results to scenes. A complete result count does not establish complete photo-library coverage or correct interpretation.
+
 For a photo-based new article/full composition, inspect actual previews alongside analysis descriptions, OCR and user corrections, including useful scenes outside the existing shortlist. Similar shots may share one scene. Submit **one** `media-scenes.json` in preparation evidence (or initial tracked inputs):
 
 ```json

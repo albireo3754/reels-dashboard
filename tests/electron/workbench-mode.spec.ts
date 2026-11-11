@@ -62,7 +62,7 @@ for (const flag of [undefined, "0", "true"]) {
   });
 }
 
-test("opt-in offers Codex and rejects a forged future provider request", async ({}, testInfo) => {
+test("opt-in offers Codex (default) and Claude Code and rejects a forged unknown tool request", async ({}, testInfo) => {
   const profile = await makeProfile();
   let app;
   try {
@@ -71,15 +71,25 @@ test("opt-in offers Codex and rejects a forged future provider request", async (
     await page
       .getByRole("button", { name: "터미널", exact: true })
       .click();
-    await page
-      .getByText("소스 연결 · 개선 요청 · 코딩 도구", { exact: true })
-      .click();
+    await page.getByTestId("dev-settings-toggle").click();
     const provider = page.getByRole("combobox", { name: "코딩 도구" });
     await expect(provider).toHaveValue("codex");
-    await expect(provider.locator("option")).toHaveText(["Codex"]);
+    await expect(provider.locator("option")).toHaveText([
+      "Codex",
+      "Claude Code",
+    ]);
+    const listed = await page.evaluate(async () => {
+      const state = await window.reels!.workbench!.state();
+      return { providers: state.providers, defaultProvider: state.defaultProvider };
+    });
+    expect(listed.providers.map((option) => option.id)).toEqual([
+      "codex",
+      "claude",
+    ]);
+    expect(listed.defaultProvider).toBe("codex");
     const result = await page.evaluate(async () => {
       try {
-        await window.reels!.workbench!.start({ kind: "claude" });
+        await window.reels!.workbench!.start({ kind: "gemini" as never });
         return { error: "accepted", sessions: -1 };
       } catch (error) {
         return {
@@ -88,10 +98,11 @@ test("opt-in offers Codex and rejects a forged future provider request", async (
         };
       }
     });
-    expect(result.error).toContain("아직 사용할 수 없는 코딩 도구");
+    expect(result.error).not.toBe("accepted");
+    expect(result.error).toMatch(/kind|Invalid/);
     expect(result.sessions).toBe(0);
     await page.screenshot({
-      path: testInfo.outputPath("workbench-codex-default.png"),
+      path: testInfo.outputPath("workbench-tools-default.png"),
       fullPage: true,
     });
   } finally {

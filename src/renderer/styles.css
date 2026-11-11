@@ -1384,6 +1384,9 @@
 .compact-shell .shell-page-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .compact-shell[data-terminal="open"] .main { padding-bottom: 72vh; }
 .compact-shell[data-terminal="folded"] .main { padding-bottom: 90px; }
+/* The blog tab's embedded editor is sized to the window, so it shrinks above the panel instead. */
+.compact-shell[data-terminal="open"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, min(70vh, 760px)) + 12px); --blog-editor-min-height: 0px; }
+.compact-shell[data-terminal="folded"] .blog-editor-host { --blog-editor-reserve: calc(var(--terminal-height, 78px) + 12px); --blog-editor-min-height: 0px; }
 @media (max-width: 850px) { .compact-shell .sidebar nav { margin-top: 0; } }
 @media (max-width: 560px) {
   .compact-shell .sidebar { top: 52px; padding: 7px 12px; }

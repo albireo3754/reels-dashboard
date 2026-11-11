@@ -29,7 +29,7 @@ export async function handleSuggest(store:MarkupStore|undefined,value:unknown,si
   try{input=await store.suggestInput(value);}
   catch(e){
     const message=e instanceof ZodError?"추천 요청 형식이 올바르지 않아요.":e instanceof Error?e.message:String(e);
-    return {status:/편집 기준이 만료/.test(message)?409:400,body:{error:message}};
+    return {status:400,body:{error:message}};
   }
   const started=Date.now();
   // The engine has its own timeout; this one only guards against a hung connection.
