@@ -57,7 +57,7 @@ test("URL extraction in the Blog tab writes, registers, renders and verifies a r
     }, { outer, post, mobile, png: PNG });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "블로그", exact: true }).click();
-    await page.getByRole("button", { name: "레퍼런스 추출·탐색", exact: true }).click();
+    await page.getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true }).click();
     await expect(page.getByText(`저장 위치: ${parent}`)).toBeVisible();
     await page.getByLabel("글 주소").fill(POST);
     await page.getByLabel("표시 이름").fill("합성 글");
@@ -141,7 +141,7 @@ test("extraction failure on a non-SmartEditor page writes nothing", async () => 
     });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "블로그", exact: true }).click();
-    await page.getByRole("button", { name: "레퍼런스 추출·탐색", exact: true }).click();
+    await page.getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true }).click();
     await page.getByLabel("글 주소").fill("https://blog.naver.com/fixture/7654321");
     await page.getByRole("button", { name: "추출", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("se-main-container를 찾지 못했어요", { timeout: 60_000 });
@@ -163,7 +163,7 @@ test("agents run the same extraction through the Dashboard MCP", async () => {
     const page = await app.firstWindow();
     // Keep the Blog tab open: MCP changes must appear without pressing refresh.
     await page.getByRole("button", { name: "블로그", exact: true }).click();
-    await page.getByRole("button", { name: "레퍼런스 추출·탐색", exact: true }).click();
+    await page.getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true }).click();
     await app.evaluate(({ session }, fixture) => {
       for (const partition of ["blog-extract", "blog-restore-verify"]) {
         session.fromPartition(partition).protocol.handle("https", async (request) => {
@@ -225,7 +225,7 @@ test("live Naver post extraction (opt-in)", async ({}, testInfo) => {
     app = await launchApp(profile);
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "블로그", exact: true }).click();
-    await page.getByRole("button", { name: "레퍼런스 추출·탐색", exact: true }).click();
+    await page.getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true }).click();
     await page.getByLabel("글 주소").fill(live!);
     if (process.env.REELS_BLOG_LIVE_NAME) await page.getByLabel("표시 이름").fill(process.env.REELS_BLOG_LIVE_NAME);
     await page.getByRole("button", { name: "추출", exact: true }).click();

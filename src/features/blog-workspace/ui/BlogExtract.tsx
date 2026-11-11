@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BlogBridge } from "../../../shared/blog";
 import type { BlogExtractProgress, BlogExtractResult } from "../../../shared/blog-restore";
+import { Button, Notice } from "../../../shared/ui/primitives";
 
 const STAGES: Record<BlogExtractProgress["stage"], string> = {
   open: "원본 열기",
@@ -47,8 +48,11 @@ export function BlogExtract({ api, onDone }: { api?: BlogBridge; onDone(result: 
   return (
     <section className="blog-extract" aria-label="블로그 URL 추출">
       <h3>네이버 블로그 URL로 추출</h3>
-      <p>
-        글의 블록 순서·중첩 서식·원문·사진 배치를 저장 위치에 보관하고, 결과 목록에 등록한 뒤 복원 화면과 원본 높이를 대조해요. 사진은 파일 없이 원본 주소만 저장해요.
+      <p
+        className="ui-meta"
+        title="글의 블록 순서·중첩 서식·원문·사진 배치를 저장 위치에 보관하고, 결과 목록에 등록한 뒤 복원 화면과 원본 높이를 대조해요."
+      >
+        블록 순서·서식·원문·사진 배치를 저장하고 복원 화면과 대조해요 · 사진은 원본 주소만 저장해요
       </p>
       <div className="blog-extract-form">
         <label>
@@ -59,9 +63,13 @@ export function BlogExtract({ api, onDone }: { api?: BlogBridge; onDone(result: 
           표시 이름
           <input value={name} placeholder="비우면 블로그 아이디" maxLength={100} disabled={running} onChange={(e) => setName(e.target.value)} />
         </label>
+        <Button variant="primary" size="large" disabled={running || !url.trim() || !directory} onClick={() => void run()}>
+          {running ? "추출 중…" : "추출"}
+        </Button>
         <div className="blog-extract-directory">
-          <span>저장 위치: {directory ?? "선택 필요"}</span>
-          <button
+          <span className="ui-truncate" title={directory ?? undefined}>저장 위치: {directory ?? "선택 필요"}</span>
+          <Button
+            size="small"
             disabled={running}
             onClick={async () => {
               try {
@@ -73,20 +81,17 @@ export function BlogExtract({ api, onDone }: { api?: BlogBridge; onDone(result: 
             }}
           >
             저장 위치 선택
-          </button>
+          </Button>
         </div>
-        <button disabled={running || !url.trim() || !directory} onClick={() => void run()}>
-          {running ? "추출 중…" : "추출"}
-        </button>
       </div>
       {progress && (running || progress.stage === "error") && (
-        <p role="status" data-stage={progress.stage}>
+        <p role="status" className="ui-meta" data-stage={progress.stage}>
           {STAGES[progress.stage]} · {progress.message}
         </p>
       )}
-      {error && <p role="alert">추출하지 못했어요. {error}</p>}
+      {error && <Notice tone="danger">추출하지 못했어요. {error}</Notice>}
       {result && (
-        <p role="status" className="blog-extract-result">
+        <p role="status" className="ui-meta blog-extract-result">
           {result.name} · {result.blocks}개 블록 저장 → {result.directory}
           {f && ` · 복원 높이 ±5% ${f.within5pct}/${f.measured}`}
           {result.mobileCrosscheck.ok && (result.mobileCrosscheck.allMatch ? " · 모바일 교차검증 일치" : " · 모바일 교차검증 불일치")}

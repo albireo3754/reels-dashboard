@@ -26,7 +26,7 @@ test('blog projects open isolated editors, reuse tabs and retain connections aft
     const windows=await windowCount(app);
     const first=await openBlogEditor(app,main,'first',card('first'));
     await expect(first.getByText('✓ 저장 완료',{exact:true})).toBeVisible();
-    await main.getByRole('button',{name:'프로젝트',exact:true}).click();
+    await main.getByRole('tab',{name:'프로젝트',exact:true}).click();
     await card('first').getByRole('button',{name:'프로젝트 열기',exact:true}).click();
     await expect(editorIframe(main,'first')).toBeVisible();
     await expect(main.locator('iframe.blog-editor-frame')).toHaveCount(1);
@@ -36,12 +36,12 @@ test('blog projects open isolated editors, reuse tabs and retain connections aft
     expect(new URL(second.url()).origin).not.toBe(new URL(first.url()).origin);
     // Tabs: the first project's editor is hidden behind the second until its tab is selected.
     await expect(editorIframe(main,'first')).toBeHidden();
-    await main.getByRole('button',{name:'first project',exact:true}).click();
+    await main.getByRole('tab',{name:'first project',exact:true}).click();
     await first.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]').fill('Only first project changed');
     await expect(first.locator("#ce-save-status")).toContainText("✓ 저장 완료",{timeout:15000});
     await expect.poll(()=>readFile(projects[0].config.canon,'utf8')).toContain('Only first project changed');
     expect(await readFile(projects[1].config.canon,'utf8')).toBe(secondBefore);
-    await main.getByRole('button',{name:'second project',exact:true}).click();
+    await main.getByRole('tab',{name:'second project',exact:true}).click();
     await expect(second.frameLocator('iframe[title="정본 본문 편집"]').locator('[data-tid="P2"]')).toHaveText('Second line');
     await closeEditorTab(main,'second project');
     await expect(main.evaluate(()=>window.reels!.blog!.openCanonical!('missing'))).rejects.toThrow();

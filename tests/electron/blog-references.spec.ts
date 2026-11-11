@@ -14,7 +14,7 @@ test("blog reference import selects child anchors, keeps location for unanchored
     );
     await page.getByRole("button", { name: "블로그", exact: true }).click();
     await page
-      .getByRole("button", { name: "레퍼런스 추출·탐색", exact: true })
+      .getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true })
       .click();
     await page.getByText("구조 파일 직접 가져오기", { exact: true }).click();
     const rect = { x: 0, y: 1000, width: 600, height: 200 };
@@ -64,9 +64,9 @@ test("blog reference import selects child anchors, keeps location for unanchored
     await expect(
       page.getByText("이 블록에는 이동 앵커가 없어 원본 위치를 유지해요."),
     ).toBeVisible();
-    await page.getByRole("button", { name: "원고·배치", exact: true }).click();
+    await page.getByRole("tab", { name: "원고·배치", exact: true }).click();
     await page
-      .getByRole("button", { name: "레퍼런스 추출·탐색", exact: true })
+      .getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "구조 확인용", exact: true }),
@@ -123,7 +123,7 @@ test("saved analysis folder opens structure and preview and remains after restar
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "블로그", exact: true }).click();
     await page
-      .getByRole("button", { name: "레퍼런스 추출·탐색", exact: true })
+      .getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true })
       .click();
     await page
       .getByRole("button", { name: "분석 결과 폴더 연결", exact: true })
@@ -148,7 +148,7 @@ test("saved analysis folder opens structure and preview and remains after restar
     page = await app.firstWindow();
     await page.getByRole("button", { name: "블로그", exact: true }).click();
     await page
-      .getByRole("button", { name: "레퍼런스 추출·탐색", exact: true })
+      .getByRole("tab", { name: "레퍼런스 추출·탐색", exact: true })
       .click();
     await page
       .getByRole("button", { name: "저장된 분석 결과 · 1개 블록", exact: true })
@@ -179,7 +179,7 @@ test("preview opens in view below a long list, switches targets and returns focu
   app=await launchApp(profile);const page=await app.firstWindow();
   await page.setViewportSize({width:1100,height:800});
   await page.getByRole("button",{name:"블로그",exact:true}).click();
-  await page.getByRole("button",{name:"레퍼런스 추출·탐색",exact:true}).click();
+  await page.getByRole("tab",{name:"레퍼런스 추출·탐색",exact:true}).click();
   const buttons=page.getByRole("button",{name:"템플릿 미리보기 열기",exact:true});
   await expect(buttons).toHaveCount(8);
   const panel=page.getByRole("region",{name:"템플릿 미리보기",exact:true});
@@ -210,7 +210,7 @@ test("provided reference previews restore actual saved templates",async({},testI
   await writeFile(join(profile,"blog-results.json"),JSON.stringify(entries));
   app=await launchApp(profile);const page=await app.firstWindow();
   await page.getByRole("button",{name:"블로그",exact:true}).click();
-  await page.getByRole("button",{name:"레퍼런스 추출·탐색",exact:true}).click();
+  await page.getByRole("tab",{name:"레퍼런스 추출·탐색",exact:true}).click();
   const report=[];
   for(let i=0;i<dirs.length;i++){
    const templates=JSON.parse(await readFile(join(dirs[i],"reference-templates.json"),"utf8"));

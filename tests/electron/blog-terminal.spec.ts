@@ -37,11 +37,17 @@ test('blog terminal passes current context, retains failed requests and selects 
     await openBlogEditor(app, page, 'article-a');
     const iframe = editorIframe(page, 'article-a');
     const editorURL = await iframe.getAttribute('src');
-    await page.getByRole('button', { name: '터미널 열기', exact: true }).click();
+    // The blog header no longer duplicates the toolbar's terminal toggle (⌘N / 터미널).
+    const blog = page.getByRole('region', { name: '블로그 작업', exact: true });
+    await expect(blog.getByRole('button', { name: '터미널 열기', exact: true })).toHaveCount(0);
+    await expect(blog.getByRole('button', { name: '맥락과 함께 수정', exact: true })).toHaveCount(1);
+    await page.getByRole('button', { name: '터미널', exact: true }).click();
     const drawer = page.getByRole('region', { name: '터미널', exact: true });
     await expect(drawer).toBeVisible();
+    // Session tabs live in the drawer; the blog's own mode/document tabs are a separate tablist.
+    const sessionTabs = drawer.getByRole('tab');
     await page.getByRole('button', { name: '새 터미널', exact: true }).click();
-    await expect(page.getByRole('tab')).toHaveCount(1);
+    await expect(sessionTabs).toHaveCount(1);
     const firstId = await page.evaluate(async () => (await window.reels!.workbench!.state()).sessions[0].id);
     await page.getByRole('button', { name: '맥락과 함께 수정', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '블로그 화면 수정' });
@@ -77,7 +83,7 @@ test('blog terminal passes current context, retains failed requests and selects 
       }));
     });
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole('tab')).toHaveCount(2);
+    await expect(sessionTabs).toHaveCount(2);
     const requests = await app.evaluate(() => (globalThis as any).blogRequests);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ kind: 'codex', phase: 'implement' });
@@ -96,7 +102,7 @@ test('blog terminal passes current context, retains failed requests and selects 
     await page.locator(`#dev-tab-${firstId}`).click();
     await page.evaluate(async id => window.reels!.workbench!.stop(id), secondId);
     await expect(page.locator(`#dev-tab-${firstId}`)).toHaveAttribute('aria-selected', 'true');
-    await page.getByRole('button', { name: '레퍼런스 추출·탐색', exact: true }).click();
+    await page.getByRole('tab', { name: '레퍼런스 추출·탐색', exact: true }).click();
     await page.getByRole('button', { name: '맥락과 함께 수정', exact: true }).click();
     await expect(dialog.locator('pre')).toContainText('선택 프로젝트: 없음');
     await expect(dialog.locator('pre')).not.toContainText('article-a');
