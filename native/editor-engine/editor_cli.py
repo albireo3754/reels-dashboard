@@ -123,6 +123,8 @@ def cover_arguments(request, output):
     args = [str(source_path(request['sourcePath'])), str(output), '--place', request['place']['name'],
             '--hook', hook.replace('\n', '|'), '--template', cover['template'],
             '--t', number(cover['time'], 'cover.time', 0, 86400)]
+    if 'coverSignature' in request:
+        args += ['--signature', request['coverSignature']]
     if not isinstance(cover['useDefaultPosition'], bool):
         raise ValueError('cover.useDefaultPosition must be a boolean')
     if not cover['useDefaultPosition']:

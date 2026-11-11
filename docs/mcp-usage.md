@@ -244,3 +244,84 @@ Before `reels_start_analysis`, follow [context intake](media-analysis.md#context
 ## Shared input forms — 2026-11-02
 
 `reels_open_input_form {formId}` opens/focuses the common form/result window in the native Dashboard. Creation, saved replies, bounded waiting and application results are exposed by the shared workflow-server MCP `reels_form_*` tools and `npm run forms`. They do not require creating a workflow. See [contracts and CLI](shared-input-forms.md).
+
+## Local cover signature and Clip upload bundle — 2026-11-12
+
+The desktop **설정 → 표지 계정 서명** panel and these tools share the same
+private `cover-preferences.json` under the app's user-data directory
+(`REELS_USER_DATA` in isolated QA). It is not stored in projects, shared snapshots,
+or the repository. The public default remains `@your_account 🌹`.
+
+- `reels_get_cover_preferences {}` → `{signature}`.
+- `reels_set_cover_preferences {signature}` → saved `{signature}`. Accepts an
+  optional `@`, 1–30 ASCII account characters (letters, numbers, `_`, `.`), and
+  an optional ` 🌹` suffix. For example: `{"signature":"@example 🌹"}`.
+- Every new `rosy-auto`/`rosy-large` cover preview/render reads this setting once
+  when staging its request. `reels_preview_frame`, `reels_start_render` (`cover`
+  or `both`) and desktop rendering use that same engine input; the style manifest
+  records `signature.text`. Existing files/previews are not rewritten: generate
+  a fresh preview after changing preferences. Explicit `rosy-follow` closing-card
+  signatures continue to use the saved project's `followSignature` field.
+
+`reels_create_clip_upload_bundle` prepares disposable browser-upload copies.
+The desktop exposes the same action under each project card's **클립 업로드 묶음**.
+It does not publish or invoke the browser and does not replace the single-outbound
+contract above.
+
+Input:
+
+```json
+{
+  "projectId": "project ID from get_content",
+  "expectedUpdatedAt": "dashboard revision returned by get_content",
+  "description": "Confirmed Clip description\n\n#travel"
+}
+```
+
+Optional `videoPath` and `coverPath` select explicit registered output resources.
+Without them, selection uses current outbound files first, then the newest
+`production.exports.recordedAt` for each role, then a unique registered output.
+A tie or multiple resources requires explicit selection (`UPLOAD_SELECTION`);
+filesystem modification time and filenames never guess which version is latest.
+Video roles are `final`/`draft` (`.mp4`, `.mov`, `.m4v`), cover is `cover`
+(`.png`, `.jpg`, `.jpeg`). Missing/stale/symlinked inputs fail; current outbound
+bytes must match its saved hashes. A changing dashboard revision also fails.
+The description is the exact caller-confirmed string, not an automatic extraction
+from a canonical document; its new UTF-8 text file preserves line breaks.
+
+Output: `{projectId, createdAt, directory, sources, files, receipt, cleanup}`.
+`files.video`, `files.cover`, `files.description` and `receipt` each contain
+`{path, bytes, sha256}`. Each call creates a new private `/tmp/reels-clip-*` folder
+with ASCII filenames `video.<original extension>`, `cover.jpg`, `description.txt`
+and `receipt.json`. The video is byte-for-byte verified; the cover is decoded
+and encoded as JPEG at quality 95. The receipt also records source hashes.
+Original media, canonical text, outbound files/binding/history and dashboard
+state are unchanged. Explicit choices may intentionally select older registered
+outputs; returned `sources` makes that choice reviewable.
+
+Folders are temporary (`cleanup: "temporary-manual-or-os"`): remove after upload,
+and expect the OS to clear them eventually. There is no app-triggered automatic
+expiry, so a file selection already in progress is not disrupted. Failed creation
+removes only its own new folder. After a lost response inspect `/tmp/reels-clip-*`
+and receipts before creating another copy. The copies do not prove upload or
+publication success. An installed app must be rebuilt/restarted and its MCP
+client reconnected to discover these tools; this change does not perform that
+installation or restart.
+
+Preload equivalents: `window.reels.coverPreferences.get/set` and
+`window.reels.clipUpload.create`. No separate config or exporter is needed in a skill.
+
+Focused validation (synthetic local inputs; no iCloud writes):
+
+```sh
+node --import tsx --test tests/unit/clip-upload.test.ts
+npm run test:electron -- tests/electron/clip-upload.spec.ts
+```
+
+Verification on 2026-11-12: 462 Node tests passed (4 existing conditional skips),
+14 bundled editor tests including HDR, the new Electron UI/MCP integration, and
+both existing editor MCP integration tests passed. Type/FSD/public-source checks,
+web/desktop/editor builds and diff checks passed. `verify:spec` still fails on the
+pre-existing Swift AppCommandRouterTests baseline hash mismatch; that file is
+unchanged from HEAD. No installed app restart/replacement, real iCloud mutation,
+packaging or Naver upload was performed.

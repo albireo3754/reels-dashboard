@@ -1,3 +1,4 @@
+import { CoverPreferencesPanel } from "./ClipUploadControls";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
 import {
@@ -1529,6 +1530,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           ))}
         {tab === "settings" && (
           <>
+            {!readOnly && <CoverPreferencesPanel bridge={bridge} />}
             {!readOnly ? (
               <section className="panel">
                 <h2>Photos 연결</h2>

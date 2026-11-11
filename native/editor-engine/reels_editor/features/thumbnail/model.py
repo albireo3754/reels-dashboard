@@ -121,7 +121,7 @@ def render_thumbnail_groups(img: Image.Image, hook_lines: list[str], place: str,
                    style: ThumbnailStyle = THUMBNAIL_STYLES[DEFAULT_THUMBNAIL],
                    *, align='left', x=None, y=None, place_x=None, place_y=None,
                    offset_x=0, offset_y=0, place_offset_x=0, place_offset_y=0,
-                   hook_offset_x=0, hook_offset_y=0) -> list[OverlayGroup]:
+                   hook_offset_x=0, hook_offset_y=0, signature_text=BYLINE_TEXT) -> list[OverlayGroup]:
     w, h = img.size
     scale = w / style.reference_width
     font = ImageFont.truetype(KR_FONT, round(hook_size * scale), index=KR_BOLD)
@@ -135,7 +135,7 @@ def render_thumbnail_groups(img: Image.Image, hook_lines: list[str], place: str,
         fit_to_instagram_safe_zone(glyph, w, h, left, top, '썸네일 훅')
         hook.alpha_composite(glyph, (left, top))
     signature = Image.new('RGBA', img.size)
-    glyph = render_byline_overlay(round(style.signature_size*scale))
+    glyph = render_byline_overlay(round(style.signature_size*scale), signature_text)
     left, top, _ = fit_to_instagram_safe_zone(glyph, w, h,
         visible_left(glyph, w, anchor_x, align), round(h*style.signature_y), '서명')
     signature.alpha_composite(glyph, (left, top))

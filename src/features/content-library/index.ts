@@ -6,3 +6,5 @@ export {
   prepareLocalMedia,
 } from "./api/prepare-local-media";
 export { ICloudDelivery } from "./api/icloud-delivery";
+
+export { ClipUpload } from "./api/clip-upload";

@@ -31,6 +31,8 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  coverPreferences?: import("../../../shared/clip-upload").CoverPreferencesBridge;
+  clipUpload?: import("../../../shared/clip-upload").ClipUploadBridge;
   icloud?: import("../../../shared/icloud-delivery").ICloudBridge;
   forms?: import("../../../shared/workflow").WorkflowBridge;
   inputForms?: {open(input:unknown):Promise<unknown>};
@@ -84,6 +86,16 @@ export function createAgentDispatch(ports: AgentPorts) {
     const formTool = inputFormTools.find(tool=>tool[1]===name);
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
+      case "reels_get_cover_preferences":
+        if (!ports.coverPreferences) throw new Error("UNSUPPORTED");
+        return ports.coverPreferences.get();
+      case "reels_set_cover_preferences":
+        if (!ports.coverPreferences) throw new Error("UNSUPPORTED");
+        return ports.coverPreferences.set(input);
+      case "reels_create_clip_upload_bundle":
+        session.assertWritable();
+        if (!ports.clipUpload) throw new Error("UNSUPPORTED");
+        return ports.clipUpload.create(input);
       case "reels_set_project_outbound":
         session.assertWritable();
         if (!ports.icloud) throw new Error("UNSUPPORTED");

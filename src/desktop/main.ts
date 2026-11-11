@@ -1,3 +1,4 @@
+import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import {InputFormWindows} from "./input-form-window";
 import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
@@ -43,7 +44,7 @@ import { installApplicationIdentity } from "./application-identity";
 import { APP_NAME, DEV_BUILD_ARGUMENT, appDisplayName } from "./build-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
-import { ContentLibrary, BoardMedia, ICloudDelivery } from "../features/content-library";
+import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
@@ -257,6 +258,18 @@ async function awaitReady() {
     undefined,
     path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
   );
+  const coverPreferences = new CoverPreferencesStore(root);
+  const clipUpload = new ClipUpload(contentLibrary, async bytes => {
+    const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+    if (image.isEmpty()) throw new Error("UPLOAD_COVER_INVALID: 표지 이미지를 읽지 못했어요.");
+    return image.toJPEG(95);
+  });
+  const createClipBundle = async (input: unknown) => {
+    agentSession.assertWritable();
+    activeOperations++;
+    try { return await clipUpload.create(input); }
+    finally { activeOperations--; }
+  };
   const icloudDelivery = new ICloudDelivery(
     contentLibrary,
     path.resolve(process.env.PHOTOSINDEX_EXPORT_ROOT ?? path.join(os.homedir(), "Library/Mobile Documents/com~apple~CloudDocs/Naver Clip")),
@@ -681,6 +694,9 @@ async function awaitReady() {
     return result;
   };
   handle("request", requestPhotos);
+  handle("cover-preferences:get", () => coverPreferences.get());
+  handle("cover-preferences:set", (input: unknown) => coverPreferences.set(input));
+  handle("clip-upload:create", createClipBundle);
   handle("icloud:status", (value: unknown) => icloudDelivery.status(icloudStatusInput.parse(value).paths));
   handle("icloud:list", () => icloudDelivery.list());
   handle("icloud:configure", (input: unknown) => {
@@ -933,6 +949,8 @@ async function awaitReady() {
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
+      coverPreferences,
+      clipUpload: { create: createClipBundle },
       icloud: icloudDelivery,
       editor: editorService,
       session: agentSession,

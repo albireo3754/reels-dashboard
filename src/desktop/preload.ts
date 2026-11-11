@@ -67,6 +67,8 @@ const bridge: DashboardBridge = {
     thumbnail: (id, file) => invoke("contentMedia:thumbnail", id, file),
     open: (id, file) => invoke("contentMedia:open", id, file),
   },
+  coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
+  clipUpload: { create: input => invoke("clip-upload:create", input) },
   icloud: {
     configure: input => invoke("icloud:configure", input),
     list: () => invoke("icloud:list"),

@@ -1,5 +1,16 @@
 # Reels Dashboard 진행 상태
 
+## 로컬 표지 서명·클립 업로드 묶음 — 2026-11-12
+
+- [x] 표지 서명: user-data의 비공개 `cover-preferences.json`, 기본 `@your_account 🌹` 유지. 앱 설정·MCP가 같은 서비스를 사용하고 요청별 서명을 표지 엔진·manifest에 전달. 팔로우 마지막 장의 명시적 서명은 유지.
+- [x] 업로드 묶음: 현재 outbound 우선, 없으면 최신 기록된 출력/유일한 등록 자료. 모호한 선택은 오류로 명시 선택 요구. 설명은 호출자가 확인한 문안 그대로 UTF-8 저장. `/tmp/reels-clip-*` 전용 새 폴더에 ASCII 영상명·JPEG 표지·설명·영수증을 만들며 원본/outbound/대시보드 상태는 변경하지 않음. 자동 만료 삭제는 하지 않고 사용 후 사용자 삭제 또는 OS 임시 정리를 따름.
+- [x] 앱 설정 UI·프로젝트 카드의 묶음 생성·preload·MCP 연결. `reels_get_cover_preferences`/`reels_set_cover_preferences`, `reels_create_clip_upload_bundle` 계약은 [MCP 사용법](docs/mcp-usage.md#local-cover-signature-and-clip-upload-bundle--2026-11-12)에 기록.
+- [x] `npm run typecheck`, `npm run check:architecture`, `npm run audit:public`, `git diff --check`, `npm run build` 및 `npm run build:editor` 통과. `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 npm test`: 462개 통과·기존 환경 조건 4개 skip. 새 묶음/설정 단위 7개 포함.
+- [x] `npm run test:editor-engine`: 번들 엔진 14개(HDR 포함) 통과. 서명 변경/장미 제외 픽셀·manifest, 기본값·팔로우 표지 회귀 확인. 소스의 새 서명 테스트도 통과. 최초 서명 문자열과 이미지 변수명 충돌은 수정 후 재검증.
+- [x] `npm run test:electron -- tests/electron/clip-upload.spec.ts`: 격리된 background QA 앱 1개 통과. 실제 UI 저장·MCP 조회/수정·표지 preview/render·JPEG 디코딩(720×1280)·ASCII 경로/해시·설명 UTF-8·원본/대시보드 보존·UI 묶음 생성 확인, 화면 캡처 검토. 초기 테스트의 렌더 종료 직후 `EDITOR_BUSY`는 UI 상태 갱신까지 기다리는 방식으로 수정. 기존 `npm run test:mcp` 2개도 통과.
+- 검사 실패 보존: `npm run verify:spec`은 기존 `AppCommandRouterTests.swift` 기준 해시 불일치로 실패. 해당 파일이 HEAD와 동일함을 확인했으며 이번 범위에서 기준을 변경하지 않음. 전체 웹·실제 iCloud·설치 패키지 검증은 하지 않음.
+- [ ] 사용자 확인 필요: 설치 앱 반영·실계정 설정·실제 네이버 파일 선택/업로드. 기존 앱 재시작·iCloud 변경·push/PR/배포는 수행하지 않음.
+
 ## CPU 자동 인코딩 제거 — 2026-11-11
 
 - [x] 기존 Dolby Vision의 `libx265` 선택은 메타데이터 보존 목적이었다. 실제 입력에서 FFmpeg 인코더만 VideoToolbox로 바꾸면 HLG/10비트는 남고 Dolby Vision 신호는 사라지는 점을 확인.

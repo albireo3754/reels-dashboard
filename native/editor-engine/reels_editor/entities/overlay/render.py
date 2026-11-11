@@ -155,15 +155,15 @@ def render_hook_overlay(
     return overlay
 
 
-def render_byline_overlay(font_px: int) -> Image.Image:
+def render_byline_overlay(font_px: int, signature: str = BYLINE_TEXT) -> Image.Image:
     """썸네일과 같은 Bradley Hand Bold + 로즈핑크 서명을 영상용으로 렌더링한다."""
     font = ImageFont.truetype(BYLINE_FONT, font_px, index=BYLINE_INDEX)
-    text = BYLINE_TEXT[:-1].rstrip() if BYLINE_TEXT.endswith("🌹") else BYLINE_TEXT
+    text = signature[:-1].rstrip() if signature.endswith("🌹") else signature
     probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     tb = probe.textbbox((0, 0), text, font=font)
     text_w, text_h = tb[2] - tb[0], tb[3] - tb[1]
-    rose = render_brand_emoji("🌹", round(font_px * 0.9))
-    gap = round(font_px * 0.28)
+    rose = render_brand_emoji("🌹", round(font_px * 0.9)) if signature.endswith("🌹") else Image.new("RGBA", (0, 0))
+    gap = round(font_px * 0.28) if signature.endswith("🌹") else 0
     stroke = max(1, round(font_px * 0.025))
     pad = max(3, stroke * 2)
     width = text_w + gap + rose.width + pad * 2

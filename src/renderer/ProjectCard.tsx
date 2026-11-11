@@ -1,3 +1,4 @@
+import { ClipUploadControls } from "./ClipUploadControls";
 import type {
   DashboardBridge,
   LocalResource,
@@ -84,6 +85,7 @@ export function ProjectCard({
             </ul>
           </details>
         )}
+        {!readOnly && <ClipUploadControls bridge={bridge} project={project} />}
         <div className="project-footer">
           {project.publicURL ? (
             <a href={project.publicURL} target="_blank" rel="noreferrer">

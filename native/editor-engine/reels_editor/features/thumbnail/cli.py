@@ -22,6 +22,7 @@ from PIL import Image
 from reels_editor.entities.overlay import (
     KR_FONT,
     KR_BOLD,
+    BYLINE_TEXT,
     BYLINE_FONT,
     BYLINE_INDEX,
     DEFAULT_THUMBNAIL,
@@ -45,6 +46,7 @@ def main(argv=None, *, preset=None) -> None:
     add_position_arguments(ap)
     ap.add_argument("video")
     ap.add_argument("output")
+    ap.add_argument("--signature", default=BYLINE_TEXT)
     ap.add_argument("--hook", required=True, help="훅 텍스트, 줄바꿈은 | 로 구분")
     ap.add_argument("--place", help="장소 핀 (기본 템플릿 필수)")
     ap.add_argument("--keep-existing-pin", action="store_true",
@@ -57,6 +59,9 @@ def main(argv=None, *, preset=None) -> None:
     ap.add_argument("--t", type=float, default=3.0, help="영상 프레임 추출 시점(초). PNG/JPG/WebP는 정지 이미지 그대로 사용")
     ap.add_argument("--badge-y", type=float, default=0.235, help="배지 세로 위치 비율")
     args = ap.parse_args(argv)
+    import re
+    if not re.fullmatch(r"@?[A-Za-z0-9_.]{1,30}(?: 🌹)?", args.signature):
+        ap.error("Invalid cover signature")
     import math
     if not math.isfinite(args.t) or args.t < 0:
         ap.error('--t는 0 이상의 유한한 초 단위 값이어야 합니다')
@@ -111,7 +116,7 @@ def main(argv=None, *, preset=None) -> None:
             align=args.align or 'left', x=args.x, y=args.y,
             place_x=args.place_x, place_y=args.place_y, offset_x=args.offset_x, offset_y=args.offset_y,
             place_offset_x=args.place_offset_x, place_offset_y=args.place_offset_y,
-            hook_offset_x=args.hook_offset_x, hook_offset_y=args.hook_offset_y)
+            hook_offset_x=args.hook_offset_x, hook_offset_y=args.hook_offset_y, signature_text=args.signature)
         for group in groups:
             img.alpha_composite(group.composite())
         layers = {layer.name: layer_record(layer.image) for group in groups for layer in group.layers}
@@ -134,6 +139,7 @@ def main(argv=None, *, preset=None) -> None:
             'hook_size_at_2160': hook_size, 'hook_sizing': sizing,
             'hook_font': font_record(KR_FONT, KR_BOLD, round(hook_size * w / style.reference_width)),
             'place_font': place_font,
+            'signature': {'text': args.signature},
             'signature_font': font_record(BYLINE_FONT, BYLINE_INDEX, round(style.signature_size * w / style.reference_width)),
         }
     else:

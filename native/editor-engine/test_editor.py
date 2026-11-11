@@ -42,7 +42,9 @@ class TimingTests(unittest.TestCase):
 
     def test_vendored_source_changes_are_explicit(self):
         inventory = json.loads((ROOT / 'source-inventory.json').read_text())
-        modified = {'reels_editor/features/video_overlay/cli.py', 'reels_editor/shared/media.py'}
+        modified = {'reels_editor/features/video_overlay/cli.py', 'reels_editor/shared/media.py',
+                    'reels_editor/entities/overlay/render.py', 'reels_editor/features/thumbnail/model.py',
+                    'reels_editor/features/thumbnail/cli.py'}
         for item in inventory['files']:
             if item['path'] not in modified:
                 self.assertEqual(hashlib.sha256((ROOT / item['path']).read_bytes()).hexdigest(), item['sourceSha256'], item['path'])
@@ -84,6 +86,24 @@ class EngineTests(unittest.TestCase):
         if ok: self.assertEqual(result.returncode, 0, result.stderr[-3000:])
         else: self.assertNotEqual(result.returncode, 0)
         return result
+
+    def test_local_cover_signature_reaches_pixels_and_manifest(self):
+        request = copy.deepcopy(self.request)
+        config = self.root / 'signature.json'
+        images = []
+        for index, signature in enumerate(('@your_account 🌹', '@example 🌹', '@example')):
+            request['coverSignature'] = signature
+            config.write_text(json.dumps(request, ensure_ascii=False))
+            output = self.root / f'signature-{index}.png'
+            self.call('cover', config, output)
+            manifest = json.loads(output.with_suffix('.style.json').read_text())
+            self.assertEqual(manifest['signature']['text'], signature)
+            images.append(Image.open(output).convert('RGB'))
+        self.assertIsNotNone(ImageChops.difference(images[0], images[1]).getbbox())
+        self.assertIsNotNone(ImageChops.difference(images[1], images[2]).getbbox())
+        request['coverSignature'] = 'invalid\nvalue'
+        config.write_text(json.dumps(request))
+        self.call('cover', config, self.root / 'invalid-signature.png', ok=False)
 
     def test_signed_follow_card_is_separate_from_place_and_preserves_custom_settings(self):
         request = copy.deepcopy(self.request)

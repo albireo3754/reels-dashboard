@@ -1,3 +1,4 @@
+import { CoverPreferencesStore } from "../../../shared/lib/cover-preferences";
 import { writeFileAtomic } from "../../../shared/lib/fs";
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
@@ -244,12 +245,15 @@ export class EditorService implements EditorBridge {
     phase: "video" | "cover" | "export",
   ) {
     const { record, project: valid } = await this.trusted(project, phase);
+    const coverSignature = phase !== "video" && valid.settings.cover.template !== "rosy-follow"
+      ? (await new CoverPreferencesStore(this.options.root).get()).signature
+      : undefined;
     const dir = path.join(this.dir(project.id), "work", randomUUID());
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const request = path.join(dir, "request.json");
     await writeFile(
       request,
-      JSON.stringify({ sourcePath: record.sourcePath, ...valid.settings }),
+      JSON.stringify({ sourcePath: record.sourcePath, ...valid.settings, coverSignature }),
       { mode: 0o600 },
     );
     return { dir, request, record, project: valid };

@@ -1,3 +1,4 @@
+import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
@@ -33,6 +34,18 @@ const nativeID = z
   .refine((v) => !v.includes("\0"));
 const formDefinitions = Object.fromEntries(inputFormTools.map(([_action,name,input,description,readOnly])=>[name,{input,description,readOnly}])) as Record<typeof inputFormTools[number][1], {input:typeof inputFormTools[number][2];description:string;readOnly:boolean}>;
 export const toolDefinitions = {
+  reels_get_cover_preferences: {
+    description: "Read this app profile's local cover signature. Defaults to the public placeholder; never shared in dashboard snapshots.",
+    input: z.strictObject({}), readOnly: true,
+  },
+  reels_set_cover_preferences: {
+    description: "Save the local cover signature for subsequent rosy-auto/rosy-large previews and renders. Existing images and explicit rosy-follow signatures are unchanged.",
+    input: coverPreferencesSchema, readOnly: false,
+  },
+  reels_create_clip_upload_bundle: {
+    description: "Create temporary ASCII upload copies: video, JPEG cover, exact UTF-8 description and receipt, all with paths/bytes/SHA-256. Current outbound wins; otherwise latest recorded export or unique registered output. Ambiguity requires explicit videoPath/coverPath. Use get_content revision. No originals, outbound files, or dashboard state are changed; no upload. Remove the temporary folder after use; OS may also clear it.",
+    input: clipUploadInput, readOnly: false,
+  },
   reels_set_project_outbound: {
     description: "Bind one persistent iCloud outbound directory to a project using get_content's revision. Repeated deliveries reuse this directory. Existing linked files can be adopted; unrelated files are not managed. A different directory is rejected once bound.",
     input: configureOutboundInput, readOnly: false,
