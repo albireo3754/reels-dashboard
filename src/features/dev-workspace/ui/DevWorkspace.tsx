@@ -605,8 +605,9 @@ export function DevWorkspace({
                   </option>
                 ))}
               </select>
+              {/* 패널은 다른 화면 위에 열리므로 채움 버튼을 쓰지 않는다(화면당 primary 1개). */}
               <button
-                className="primary"
+                className="secondary"
                 data-testid="dev-start-selected"
                 disabled={busy || !state?.workspace || !provider}
                 title={`${providerLabel(provider)}로 ${phaseLabels[phase]} 세션을 새 탭에서 시작해요 (Enter)`}

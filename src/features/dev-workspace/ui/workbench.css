@@ -296,6 +296,10 @@
 .dev-backend[disabled] .ui-check {
   opacity: 0.6;
 }
+/* 라디오는 한 줄로 놓인다: 공용 `label + label` 세로 간격을 받지 않는다. */
+.dev-backend .ui-check + .ui-check {
+  margin-top: 0;
+}
 .dev-backend-line {
   min-width: 0;
   color: var(--color-text-subtle);
