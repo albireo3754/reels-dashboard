@@ -423,7 +423,9 @@ export function Menu({
                 {entry.icon}
                 <span className="ui-menu-item-label">{entry.label}</span>
                 {entry.hint && (
-                  <span className="ui-menu-item-hint">{entry.hint}</span>
+                  <span className="ui-menu-item-hint" aria-hidden="true">
+                    {entry.hint}
+                  </span>
                 )}
               </button>
             );
