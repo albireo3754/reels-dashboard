@@ -41,6 +41,9 @@ const media = new Set([
   ".wav",
   ".zip",
 ]);
+export const mediaExtensions = [...media];
+/** The path is registered, but the app does not handle this file type. */
+export class UnsupportedMedia extends Error {}
 const documents = new Set([".md", ".txt", ".json", ".srt", ".vtt", ".html"]);
 
 export class ContentLibrary {
@@ -285,7 +288,7 @@ export class ContentLibrary {
       !info.isDirectory() &&
       (!info.isFile() || !new Set([...media, ...documents]).has(path.extname(normalized).toLowerCase()))
     )
-      throw new Error("미리보기를 지원하지 않는 자료예요.");
+      throw new UnsupportedMedia("미리보기를 지원하지 않는 자료예요.");
     return { path: normalized, info, role: link.role };
   }
 

@@ -22,9 +22,11 @@ One historical template name was used with changing sizes. A tool must return cu
 
 `Codex -> stdio MCP -> private Unix socket -> application composition -> shared editor service`
 
-No HTTP listener or separate user-facing JSON CLI is required. The MCP process has no independent project store or render queue. Electron owns state and jobs; closing the MCP connection does not cancel a render. A stopped app produces an explicit connection error, never synthetic data. The app must be opened before editing; an agent does not silently launch a second app instance.
+`Agent shell -> reels CLI -> private Unix socket -> application composition -> shared editor service`
 
-- `src/app`: composition, MCP entry point, integration of editor and agent tools.
+There is no HTTP listener. The MCP server and the `reels` CLI are both thin clients of the same socket and the same tool definitions, so they cannot drift apart. Neither has an independent project store or render queue. Electron owns state and jobs; closing an MCP connection or ending a CLI process does not cancel a render. A stopped app produces an explicit connection error, never synthetic data. The app must be opened before editing; an agent does not silently launch a second app instance.
+
+- `src/app`: composition, MCP entry point, `reels` CLI entry point (`src/app/cli`), integration of editor and agent tools.
 - `src/features/reel-editing`: existing editor service, importing only lower-level shared contracts/storage. Public API is `index.ts`.
 - `src/features/agent-tools`: typed tool definitions and handlers using an injected editor port. It cannot import the sibling editor feature.
 - `src/entities/agent-session`: active editor context and revision-aware settings operations.
@@ -41,6 +43,8 @@ Photos discovery tools expose only validated status, date indexing, group listin
 
 MCP results use structured JSON for state and jobs, and image content for previews. Tool errors are `isError` results with actionable messages. Runtime input validation also happens at the app boundary; MCP validation alone is not trusted.
 
+The `reels` CLI derives its subcommands, flags and schemas from `toolDefinitions`, sends each write exactly once and never fills in a revision for the caller. It reports one JSON document on stdout and a documented exit code. See [CLI usage](cli-usage.md). A request that was sent but not answered is `CONNECTION_LOST` or `REQUEST_TIMEOUT`, never `APP_OFFLINE`: only a request the app never received may be reported as not applied. A signal during an app call follows the same rule: the CLI reports the write as unknown, and only after it holds a job id does it report the render as started.
+
 ## Acceptance
 
 1. FSD boundary checks, type checks and existing relevant tests pass after extraction.
@@ -48,6 +52,7 @@ MCP results use structured JSON for state and jobs, and image content for previe
 3. Through MCP and a real non-demo Electron app, import synthetic media, change only requested settings, receive a decoded PNG and manifest, render actual media, inspect completion and cancel a running job.
 4. UI reflects agent changes; unsaved UI and stale project writes cannot overwrite each other. Restart/reconnect and app-offline behavior are tested.
 5. A project-scoped MCP configuration is installed in the content workspace without replacing other configuration. Its exact command is exercised locally.
-6. Public audit excludes personal evidence and runtime data. PR review, CI and merge state are verified separately from local test success.
+6. The `reels` CLI lists exactly the MCP tools with the same input schemas, and its round trip, offline, exit-code, image, wait and local-copy behavior pass against a real private socket with a fake dispatch. Its built bundle runs from outside the repository. CLI behavior against a real running app is verified separately.
+7. Public audit excludes personal evidence and runtime data. PR review, CI and merge state are verified separately from local test success.
 
 References: [FSD layers](https://feature-sliced.design/docs/reference/layers), [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), [Codex project MCP configuration](https://developers.openai.com/codex/mcp).

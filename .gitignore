@@ -21,6 +21,7 @@ __pycache__/
 .pytest_cache/
 
 dist-mcp/
+dist-cli/
 
 # Local workspace instructions and independently managed private site.
 /AGENTS.md

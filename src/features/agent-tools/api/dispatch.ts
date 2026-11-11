@@ -188,8 +188,6 @@ export function createAgentDispatch(ports: AgentPorts) {
         const project = await current(input.projectId, input.expectedUpdatedAt);
         const time =
           input.kind === "cover" ? project.settings.cover.time : input.time;
-        if (time === undefined)
-          throw new Error("영상 미리보기에는 time이 필요해요.");
         return ports.preview(project, time, input.kind);
       }
       case "reels_start_render":

@@ -48,6 +48,18 @@
 - [x] 타입/FSD 검사, 단위 전체 343개, 웹 headless `markup-layout` 1개(폭 4종에서 행 높이·전체 폭·칸 비율) 통과. 웹 전체·Electron 스위트는 실행하지 않음.
 - 미구현·미검증: 편집기 화면에서 `ratios`를 고치는 조작 없음(마크업 원문 수정). 실행 중인 앱 교체·패키지 미생성. 네이버 실제 콜라주로 옮겼을 때 같은 행 구성이 되는지 미확인.
 
+## 에이전트 CLI — 2026-11-06
+
+- [x] `reels` 명령 추가(`src/app/cli`, `dist-cli/reels.mjs`). `toolDefinitions`에서 하위 명령·플래그·스키마를 자동 생성하고 MCP와 같은 소켓을 쓴다. 프로젝트 저장소·렌더 큐·재시도·revision 자동 채움은 두지 않는다. [사용법·종료 코드](docs/cli-usage.md).
+- [x] `callAgent`가 요청 전송 뒤 끊김을 `APP_OFFLINE`이 아닌 `CONNECTION_LOST`로 낸다. `timeoutMs`·`signal` 옵션과 `code`·`requestSent`·`reason`, 앱 오류의 `code` 전달을 추가했다. 앱의 코드 없던 오류에 `EDITOR_BUSY`·`OUTPUT_EXISTS`·`RENDER_JOB_NOT_FOUND`·`BLOG_EXTRACT_BUSY`·`RENDER_SAVE_BUSY`를 붙였다(문구는 그대로). 빈 메시지 오류도 실패로 판별하고, 큰 응답은 선형 시간으로 읽으며, `timeoutMs`는 호출 전체의 절대 제한이다.
+- [x] SIGHUP·SIGINT·SIGTERM은 명령 어디서든 JSON 한 건을 남긴다. 앱 호출 중 쓰기는 `unknown`/`inspect_first`, job id를 받은 뒤의 `--wait`만 `applied`/`safe`다.
+- [x] `next`는 실행 가능한 명령 배열로 고정하고 사람용 안내는 `hint`로 분리. `upsert-content` 충돌은 `reels list-projects`로 안내하고 리비전 스키마 설명을 대시보드 기준으로 바로잡았다. 미리보기 `kind=video`의 `time` 필수를 스키마로 올려 MCP도 함께 맞췄다.
+- [x] `reels prepare-media`로 앱 없이 등록 자료 사본을 만든다. 입력은 `--list`로 앱 없이 찾는다. 출력 폴더 생성 전 거부는 `INVALID_INPUT`, 생성 뒤 실패만 `PREPARE_FAILED`다. 파일별 거부 사유는 `issues`로 내고, `dashboard.json`을 못 읽으면 어느 경로든 `STORE_UNREADABLE`이다. 기존 스크립트는 호환 경로로 유지.
+- [x] 결과가 잘리지 않게 했다. `--out`은 임시 파일을 hard link로 올려 완성본만 남고, stdout은 전체 바이트를 확인해 못 쓰면 비0으로 끝난다. hard link가 없는 파일 시스템(exFAT 등)에서는 `--out`이 `OUTPUT_WRITE_FAILED`다.
+- [x] 복구 안내를 채웠다. exit 7 쓰기와 exit 5의 `next`는 입력에서 만든 조회 명령이고, `reels help exit-codes`로 종료 코드를 CLI 안에서 볼 수 있다. 값 자리의 `--help`는 사용법 오류이며, 모든 도구 예시가 스키마를 통과하는지 테스트한다.
+- 통과: 가짜 dispatch와 실제 private socket의 왕복·오프라인·종료 코드·이미지·`--wait`·신호, stub 포트를 넣은 실제 `createAgentDispatch` 왕복, stdio MCP와의 스키마 일치, `node_modules` 없는 폴더로 복사한 번들 실행, 삭제된 작업 폴더에서의 `status`.
+- 미검증: **실제 실행 중인 앱과의 왕복**. 실제 앱에는 어떤 요청도 보내지 않았고 렌더·실제 미디어 처리도 하지 않았다. 패키지 앱에는 포함하지 않는다(`dist-mcp`와 같음).
+
 ## 블로그 자동 저장·실시간 동기화 — 2026-11-05
 
 - [x] 원인: 문단 안 빈 줄이 `문단 내부의 빈 문단·HTML은 지원하지 않아요.`로 저장 전체를 막았고, 외부 변경 뒤에는 기준 revision이 만료됐다. 빈 줄은 문단 나눔(서식 유지, 새 ID), `< >` 등 예약 글자는 비슷한 글자로 저장, 문제 있는 문단만 보류.

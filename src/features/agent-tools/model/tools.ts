@@ -1,7 +1,7 @@
 import {inputFormTools} from "../../../shared/input-form-tools";
 import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
-import { mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
+import { dashboardRevision, mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
 import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
 import { blogExtractInput } from "../../../shared/blog-restore";
@@ -10,6 +10,10 @@ import {
   localPathSchema,
 } from "../../../shared/local-resources";
 import { settingsPatchSchema } from "../../../entities/agent-session";
+
+/** Operating rules shared by the MCP server and the `reels` CLI. */
+export const agentGuidance =
+  "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. No social publishing, Photos deletion or arbitrary shell execution is provided. Content prose stays in the content workspace.";
 
 const id = z.string().uuid();
 const revision = z
@@ -113,7 +117,7 @@ export const toolDefinitions = {
       "Register or update one production entry by stable ID and current dashboard updatedAt. Resources are an explicit full replacement; omitted content fields are not accepted. Links existing media/folders/documents without copies, proxies, rendering or publication. New entries are private; existing sharing is preserved. Read list_projects and get_content before updating.",
     input: z.strictObject({
       content: contentInputSchema,
-      expectedUpdatedAt: revision,
+      expectedUpdatedAt: dashboardRevision,
     }),
     readOnly: false,
   },
@@ -135,7 +139,7 @@ export const toolDefinitions = {
   },
   reels_list_projects: {
     description:
-      "List saved editing projects and production dashboard entries. Content prose remains in the content workspace.",
+      "List saved editing projects and production dashboard entries. Editing tools take editorProjects[].id; content tools take dashboard.projects[].id. Content prose remains in the content workspace.",
     input: z.strictObject({}),
     readOnly: true,
   },
@@ -175,12 +179,21 @@ export const toolDefinitions = {
   reels_preview_frame: {
     description:
       "Generate a real PNG and resolved style manifest for one saved project revision. Video uses time; cover uses settings.cover.time. Check only the requested visual change rather than extracting every frame.",
-    input: z.strictObject({
-      projectId: id,
-      expectedUpdatedAt: revision,
-      kind: z.enum(["video", "cover"]),
-      time: z.number().min(0).optional(),
-    }),
+    input: z
+      .strictObject({
+        projectId: id,
+        expectedUpdatedAt: revision,
+        kind: z.enum(["video", "cover"]),
+        time: z
+          .number()
+          .min(0)
+          .optional()
+          .describe("Seconds. Required when kind is video."),
+      })
+      .refine((value) => value.kind !== "video" || value.time !== undefined, {
+        path: ["time"],
+        message: "time is required when kind is video.",
+      }),
     readOnly: true,
   },
   reels_start_render: {

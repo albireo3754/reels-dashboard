@@ -2,6 +2,8 @@
 
 The local MCP server lets an agent work with the running desktop editor. Electron remains the owner of project files, Photos access and render jobs. There is no HTTP port and no second editor state inside the MCP process.
 
+Agents that work from a shell can use the [`reels` CLI](cli-usage.md), which calls the same tools over the same socket.
+
 ## Setup
 
 Build the application and the stdio entry point with `npm ci && npm run build`. Build the native/editor runtimes using the README instructions if they are not already available. Open the desktop app with `npm start` or use the newly packaged app. A previously packaged app needs rebuilding to include the agent socket.
@@ -60,7 +62,7 @@ This moves the place-guide group and selects a cover frame, preserving caption t
 
 The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, or social publication. Explicit iCloud copy/status operations are described below. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
 
-Project edits persist across restart. Render job records are in-memory for the current app instance; normal app quit is blocked during active work. Do not claim crash recovery of jobs. Separately, the shared media services persist bounded process execution logs, visible in the desktop **실행 로그** screen; unfinished observations become interrupted on restart, without claiming the OS process has exited. See [execution logs](execution-logs.md). `STALE_PROJECT` means re-read and compare; `EDITOR_BUSY` means preserve unsaved UI work. After a timeout or lost connection, inspect state before retrying a mutation.
+Project edits persist across restart. Render job records are in-memory for the current app instance; normal app quit is blocked during active work. Do not claim crash recovery of jobs. Separately, the shared media services persist bounded process execution logs, visible in the desktop **실행 로그** screen; unfinished observations become interrupted on restart, without claiming the OS process has exited. See [execution logs](execution-logs.md). `STALE_PROJECT` means re-read and compare; `EDITOR_BUSY` means preserve unsaved UI work. After a timeout or lost connection, inspect state before retrying a mutation. `APP_OFFLINE` means the request never reached the app; `CONNECTION_LOST` means the connection dropped after the request was sent, so the write may or may not have been applied.
 
 The socket directory is private, connection metadata is mode 0600, and requests require the current random token. Both MCP and app boundaries validate input. No credentials or socket tokens are stored in the repository.
 

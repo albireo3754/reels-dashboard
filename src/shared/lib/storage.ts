@@ -1,6 +1,7 @@
 import { mkdir, writeFile, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { errorMessage } from "./errors";
 import { readJsonFile, writeJsonAtomic } from "./fs";
 import { emptyDashboard, type Dashboard } from "../contracts";
 import { validateDashboard } from "../data";
@@ -13,6 +14,17 @@ export function safeDocumentName(name: unknown): string {
     throw new Error("Invalid document name");
   return name.replace(/\.json$/, "");
 }
+/** dashboard.json exists but cannot be used, which no change to a request can fix. */
+export class StoreUnreadable extends Error {
+  readonly code: unknown;
+  constructor(
+    readonly file: string,
+    cause: unknown,
+  ) {
+    super(errorMessage(cause), { cause });
+    this.code = (cause as { code?: unknown } | null)?.code;
+  }
+}
 export class LocalStore {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(readonly root: string) {}
@@ -24,11 +36,15 @@ export class LocalStore {
     });
   }
   async load(): Promise<Dashboard> {
-    return readJsonFile(
-      path.join(this.root, "dashboard.json"),
-      validateDashboard,
-      () => ({ ...emptyDashboard(), updatedAt: "1970-01-01T00:00:00.000Z" }),
-    );
+    const file = path.join(this.root, "dashboard.json");
+    try {
+      return await readJsonFile(file, validateDashboard, () => ({
+        ...emptyDashboard(),
+        updatedAt: "1970-01-01T00:00:00.000Z",
+      }));
+    } catch (error) {
+      throw new StoreUnreadable(file, error);
+    }
   }
   async update(
     change: (current: Dashboard) => Dashboard | Promise<Dashboard>,
