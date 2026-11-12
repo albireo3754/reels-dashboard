@@ -375,7 +375,7 @@ packaging or Naver upload was performed.
 
 ## Silent looping GIF — 2026-11-12
 
-`reels_convert_gif {sourcePath, outputPath, start?, end?, width?, fps?, dither?, maxBytes?, overwrite?}`
+`reels_convert_gif {sourcePath, outputPath, start?, end?, crop?, width?, fps?, dither?, maxBytes?, overwrite?}`
 (CLI `reels convert-gif`) turns a video into a silent, endlessly looping GIF for blog motion clips.
 Defaults: whole length, width 480, 15 fps, `bayer` dither; audio and all metadata removed, display
 rotation applied, HDR/HLG tone-mapped to SDR on VideoToolbox (CPU fallback). It returns
@@ -383,3 +383,6 @@ rotation applied, HDR/HLG tone-mapped to SDR on VideoToolbox (CPU fallback). It 
 Over 20 MB it warns (Naver's limit is unverified); `maxBytes` lowers fps, then width. The source is
 never changed, an existing output needs `overwrite: true`, and the GIF is not registered to a project.
 The board media viewer has the same action as **무음 GIF 만들기**. See [GIF conversion](gif-convert.md).
+`crop {x, y, width, height}` (0-1 fractions of the displayed, rotated frame; drop the top 15% =
+`{"x":0,"y":0.15,"width":1,"height":0.85}`) keeps part of the frame on the VideoToolbox route; width,
+fps and `maxBytes` apply to the cropped area and the result returns `crop` with source `pixels` (or `null`).

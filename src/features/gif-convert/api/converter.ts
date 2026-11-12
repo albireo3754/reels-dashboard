@@ -18,11 +18,12 @@ import type { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedExecFile } from "../../../shared/lib/logged-process";
 import {
   clampRange,
+  cropPixels,
   encodeArgs,
+  frameSize,
   gpuSupported,
   nextAttempt,
   outputFps,
-  outputSize,
   paletteArgs,
   sourceInfo,
   type ProbeStream,
@@ -100,6 +101,8 @@ export class GifConverter implements GifConvertBridge {
     const info = await this.probe(source);
     const range = clampRange(info, input.start ?? 0, input.end, GIF_MAX_SECONDS);
     const dither = input.dither ?? "bayer";
+    // Validates the crop against the real frame before any encoding.
+    const crop = input.crop ? { ...input.crop, pixels: cropPixels(info, input.crop) } : null;
     let route: Route = gpuSupported(info) ? "videotoolbox" : "cpu";
     let settings = { width: input.width ?? GIF_DEFAULT_WIDTH, fps: input.fps ?? GIF_DEFAULT_FPS };
     const attempts: GifAttempt[] = [];
@@ -108,7 +111,7 @@ export class GifConverter implements GifConvertBridge {
     const temporary = path.join(directory, `.${path.basename(target)}.${randomUUID()}.partial`);
     try {
       for (;;) {
-        const size = outputSize(info, settings.width);
+        const size = frameSize(info, settings.width, input.crop);
         const fps = outputFps(info, settings.fps);
         const encode = async (via: Route) => {
           const palette = path.join(work, `palette-${attempts.length}.png`);
@@ -152,6 +155,7 @@ export class GifConverter implements GifConvertBridge {
         accel: route,
         hdrToSDR: info.hdr,
         rotation: info.rotation,
+        crop,
         dither,
         loop: "infinite",
         audio: "removed",

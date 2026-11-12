@@ -206,3 +206,104 @@ test("real conversion falls back to CPU when VideoToolbox fails, and fits maxByt
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+const topCrop = { x: 0, y: 0.15, width: 1, height: 0.85 };
+
+test("crop plan: scale the whole frame on the GPU, cut the kept area after hwdownload", () => {
+  // iPhone portrait 1080x1920, top 15% removed -> 1080x1632 kept -> 480x726 GIF.
+  assert.deepEqual(gifPlan.cropPixels(iphone, topCrop), { x: 0, y: 288, width: 1080, height: 1632 });
+  const size = gifPlan.frameSize(iphone, 480, topCrop);
+  assert.deepEqual(size, { width: 480, height: 726, crop: { scaledWidth: 480, scaledHeight: 854, x: 0, y: 128 } });
+  assert.equal(
+    gifPlan.frameFilters("videotoolbox", iphone, size, 15),
+    "fps=15,transpose_vt=dir=clock,scale_vt=w=480:h=854:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709,hwdownload,format=p010le,crop=480:726:0:128:exact=1",
+  );
+  assert.match(
+    gifPlan.frameFilters("cpu", iphone, size, 15),
+    /^fps=15,transpose=clock,scale=480:854:flags=lanczos,crop=480:726:0:128:exact=1,zscale=t=linear/,
+  );
+  // No crop keeps the old graph.
+  assert.deepEqual(gifPlan.frameSize(iphone, 480), { width: 480, height: 854 });
+  // A small centre crop is never upscaled: 270 px kept -> 270 px wide GIF, scaled frame = source.
+  const centre = gifPlan.frameSize(iphone, 480, { x: 0.375, y: 0.25, width: 0.25, height: 0.5 });
+  assert.deepEqual(centre, { width: 270, height: 960, crop: { scaledWidth: 1080, scaledHeight: 1920, x: 406, y: 480 } });
+  // The size ladder keeps working on the cropped area.
+  const narrow = gifPlan.frameSize(iphone, 330, topCrop);
+  assert.deepEqual([narrow.width, narrow.height], [330, 498]);
+  assert.ok(narrow.crop!.x + narrow.width <= narrow.crop!.scaledWidth && narrow.crop!.y + narrow.height <= narrow.crop!.scaledHeight);
+  assert.throws(() => gifPlan.cropPixels(iphone, { x: 0, y: 0, width: 0.01, height: 1 }), /GIF_CROP/);
+});
+
+test("crop schema rejects out-of-range rectangles", () => {
+  const ok = { sourcePath: "/a/b.mov", outputPath: "/a/b.gif" };
+  assert.ok(gifConvertInput.safeParse({ ...ok, crop: topCrop }).success);
+  assert.ok(gifConvertInput.safeParse({ ...ok, crop: { x: 0.25, y: 0.1, width: 0.75, height: 0.9 } }).success);
+  for (const crop of [
+    { x: 0, y: 0.2, width: 1, height: 0.85 },
+    { x: 0.5, y: 0, width: 0.6, height: 1 },
+    { x: -0.1, y: 0, width: 1, height: 1 },
+    { x: 0, y: 0, width: 0, height: 1 },
+    { x: 0, y: 0, width: 1.2, height: 1 },
+    { x: 1, y: 0, width: 0.1, height: 1 },
+    { x: 0, y: 0, width: 1 },
+    { x: 0, y: 0, width: 1, height: 1, unit: "px" },
+  ])
+    assert.equal(gifConvertInput.safeParse({ ...ok, crop }).success, false, JSON.stringify(crop));
+});
+
+async function firstFrame(file: string, filter?: string) {
+  const { stdout } = await execute(path.join(runtime, "bin/ffmpeg"), ["-v", "error", "-i", file, "-frames:v", "1",
+    ...(filter ? ["-vf", filter] : []), "-f", "rawvideo", "-pix_fmt", "gray", "-"], { encoding: "buffer", maxBuffer: 16 << 20 });
+  return stdout as unknown as Buffer;
+}
+const meanDiff = (a: Buffer, b: Buffer) => {
+  assert.equal(a.length, b.length);
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+};
+
+test("real conversion crops a rotated HLG clip on the GPU route and the CPU fallback alike", { skip: !hasRuntime && "bundled editor runtime not built" }, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "gif-crop-"));
+  try {
+    const source = await fixture(directory);
+    const before = await readFile(source);
+    const whole = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "whole.gif") });
+    const gpu = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "gpu.gif"), crop: topCrop });
+    assert.equal(gpu.accel, "videotoolbox");
+    assert.deepEqual(gpu.warnings, []);
+    assert.equal(gpu.hdrToSDR, true);
+    assert.equal(gpu.rotation, 90);
+    // Displayed 180x320; 15% of 320 = 48 rows removed.
+    assert.deepEqual([gpu.width, gpu.height], [180, 272]);
+    assert.deepEqual(gpu.crop, { ...topCrop, pixels: { x: 0, y: 48, width: 180, height: 272 } });
+    assert.equal(whole.crop, null);
+    assert.deepEqual((await probeGif(gpu.outputPath)).map((s) => [s.width, s.height]), [[180, 272]]);
+    // Same pixels as the bottom of the uncropped GIF, unlike a frame shifted by the crop height.
+    const cropped = await firstFrame(gpu.outputPath);
+    assert.ok(meanDiff(cropped, await firstFrame(whole.outputPath, "crop=180:272:0:48")) < 6, "kept area");
+    assert.ok(meanDiff(cropped, await firstFrame(whole.outputPath, "crop=180:272:0:0")) > 12, "top rows removed");
+
+    const exec = promisify(execFile);
+    const cpu = await new GifConverter(runtime, undefined, (executable, args) =>
+      args.includes("videotoolbox") ? Promise.reject(Object.assign(new Error("vt"), { stderr: "VT unavailable" })) : exec(executable, args),
+    ).convert({ sourcePath: source, outputPath: path.join(directory, "cpu.gif"), crop: topCrop });
+    assert.equal(cpu.accel, "cpu");
+    assert.deepEqual([cpu.width, cpu.height, cpu.crop], [gpu.width, gpu.height, gpu.crop]);
+    assert.ok(meanDiff(await firstFrame(cpu.outputPath), cropped) < 12, "CPU fallback keeps the same area");
+
+    // Width and maxBytes act on the cropped area.
+    const small = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "small.gif"), crop: { x: 0.25, y: 0.25, width: 0.75, height: 0.5 }, width: 120 });
+    assert.deepEqual([small.accel, small.width, small.height], ["videotoolbox", 120, 142]);
+    assert.deepEqual(small.crop!.pixels, { x: 45, y: 80, width: 135, height: 160 });
+    const fitted = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "fit.gif"), crop: topCrop, fps: 30, maxBytes: 256 * 1024 });
+    assert.equal(fitted.accel, "videotoolbox");
+    assert.ok(fitted.attempts.length >= 2, JSON.stringify(fitted.attempts));
+    assert.ok(fitted.bytes <= 256 * 1024);
+    for (const attempt of fitted.attempts)
+      assert.ok(Math.abs(attempt.height / attempt.width - 272 / 180) < 0.03, JSON.stringify(attempt));
+    assert.deepEqual(await readFile(source), before, "source untouched");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

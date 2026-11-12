@@ -96,6 +96,20 @@ test("board video converts to a silent looping GIF through the UI and the real M
       audio: "removed",
     });
     expect(data.bytes).toBe((await stat(mcpOutput)).size);
+    const crop = { x: 0, y: 0.15, width: 1, height: 0.85 };
+    const cropped = await client.callTool(
+      { name: "reels_convert_gif", arguments: { sourcePath: video, outputPath: path.join(profile, "crop.gif"), crop } },
+      { timeout: 120_000 },
+    );
+    expect(cropped.isError, JSON.stringify(cropped.content)).not.toBe(true);
+    expect(cropped.structuredContent).toMatchObject({
+      width: 180,
+      height: 272,
+      accel: "videotoolbox",
+      crop: { ...crop, pixels: { x: 0, y: 48, width: 180, height: 272 } },
+    });
+    const badCrop = await client.callTool({ name: "reels_convert_gif", arguments: { sourcePath: video, outputPath: path.join(profile, "bad.gif"), crop: { ...crop, height: 0.9 } } });
+    expect(badCrop.isError).toBe(true);
     const again = await client.callTool({ name: "reels_convert_gif", arguments: { sourcePath: video, outputPath: mcpOutput } });
     expect(again.isError).toBe(true);
     expect(JSON.stringify(again.content)).toContain("GIF_OUTPUT_EXISTS");

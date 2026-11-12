@@ -19,6 +19,20 @@ const absolutePath = z
   .startsWith("/")
   .refine((v) => !v.includes("\0"), "NUL is not allowed");
 const seconds = z.number().finite().min(0).max(86400);
+/** Allow tiny float noise such as 0.15 + 0.85. */
+const EDGE = 1e-6;
+
+/** Fractions of the displayed frame (after rotation), origin at the top-left. */
+export const gifCrop = z
+  .strictObject({
+    x: z.number().finite().min(0).lt(1).describe("Left edge, 0-1 of the displayed width."),
+    y: z.number().finite().min(0).lt(1).describe("Top edge, 0-1 of the displayed height."),
+    width: z.number().finite().gt(0).max(1).describe("Kept width, 0-1 of the displayed width."),
+    height: z.number().finite().gt(0).max(1).describe("Kept height, 0-1 of the displayed height."),
+  })
+  .refine((v) => v.x + v.width <= 1 + EDGE, { message: "x + width must be at most 1", path: ["width"] })
+  .refine((v) => v.y + v.height <= 1 + EDGE, { message: "y + height must be at most 1", path: ["height"] });
+export type GifCrop = z.infer<typeof gifCrop>;
 
 export const gifConvertInput = z
   .strictObject({
@@ -30,13 +44,18 @@ export const gifConvertInput = z
     end: seconds
       .optional()
       .describe("Range end in seconds. Default: end of the video (whole length)."),
+    crop: gifCrop
+      .optional()
+      .describe(
+        'Keep only this part of the displayed (rotated) frame, as 0-1 fractions. Example: drop the top 15% = {"x":0,"y":0.15,"width":1,"height":0.85}. width/fps/maxBytes then apply to the cropped area. Default: whole frame.',
+      ),
     width: z
       .number()
       .int()
       .min(120)
       .max(1080)
       .optional()
-      .describe(`Output width in pixels after rotation. Default ${GIF_DEFAULT_WIDTH}; never upscaled.`),
+      .describe(`Output width in pixels after rotation and crop. Default ${GIF_DEFAULT_WIDTH}; never upscaled.`),
     fps: z
       .number()
       .int()
@@ -94,6 +113,8 @@ export interface GifConvertResult {
   accel: "videotoolbox" | "cpu";
   hdrToSDR: boolean;
   rotation: number;
+  /** Crop as requested plus the kept rectangle in displayed source pixels; null when not cropped. */
+  crop: (GifCrop & { pixels: { x: number; y: number; width: number; height: number } }) | null;
   dither: "bayer" | "smooth";
   loop: "infinite";
   audio: "removed";

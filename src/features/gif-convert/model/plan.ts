@@ -79,6 +79,62 @@ export function outputSize(info: SourceInfo, requested: number) {
   return { width, height };
 }
 
+export interface CropFraction {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+/**
+ * Output frame size plus, when cropping, how to get there: scale the whole displayed frame
+ * to `scaled` (GPU), then cut `width`x`height` at (`x`, `y`) out of it (CPU, already small).
+ */
+export interface FrameSize {
+  width: number;
+  height: number;
+  crop?: { scaledWidth: number; scaledHeight: number; x: number; y: number };
+}
+/** Below this the source rectangle is too small to be a useful GIF. */
+export const MIN_CROP_PIXELS = 16;
+const even = (value: number) => Math.round(value / 2) * 2;
+
+/** Kept rectangle in displayed source pixels. */
+export function cropPixels(info: SourceInfo, crop: CropFraction) {
+  const display = displaySize(info);
+  const x = Math.round(display.width * crop.x), y = Math.round(display.height * crop.y);
+  const width = Math.min(display.width - x, Math.round(display.width * crop.width));
+  const height = Math.min(display.height - y, Math.round(display.height * crop.height));
+  if (width < MIN_CROP_PIXELS || height < MIN_CROP_PIXELS)
+    throw new Error(`GIF_CROP: 잘라낸 영역이 너무 작아요(${width}×${height}px). 가로·세로 ${MIN_CROP_PIXELS}px 이상이어야 해요.`);
+  return { x, y, width, height };
+}
+
+/**
+ * Even output size of the requested width keeping the cropped aspect, never upscaled.
+ * The crop offsets are even so 4:2:0 chroma lines up and both routes cut the same pixels.
+ */
+export function frameSize(info: SourceInfo, requested: number, crop?: CropFraction): FrameSize {
+  if (!crop) return outputSize(info, requested);
+  const display = displaySize(info);
+  const rect = cropPixels(info, crop);
+  const width = Math.max(2, Math.floor(Math.min(requested, rect.width) / 2) * 2);
+  const scale = width / rect.width;
+  const height = Math.max(2, even(rect.height * scale));
+  const scaledWidth = Math.max(width, even(display.width * scale));
+  const scaledHeight = Math.max(height, even(display.height * scale));
+  const clamp = (value: number, max: number) => Math.min(Math.max(0, even(value)), max);
+  return {
+    width,
+    height,
+    crop: {
+      scaledWidth,
+      scaledHeight,
+      x: clamp(rect.x * scale, scaledWidth - width),
+      y: clamp(rect.y * scale, scaledHeight - height),
+    },
+  };
+}
+
 export function outputFps(info: SourceInfo, requested: number) {
   return Math.max(1, Math.min(requested, Math.round(info.fps)));
 }
@@ -116,11 +172,16 @@ export function gpuSupported(info: SourceInfo) {
  *
  * videotoolbox: decoder frames stay on the GPU through transpose_vt and scale_vt; scale_vt
  * also performs the HDR -> BT.709 conversion (same as the playback proxy), then hwdownload.
- * cpu: autorotated software frames, lanczos scale, zscale/hable tone mapping for HDR.
+ * A crop scales the whole frame on the GPU to the size where the kept area is the output
+ * size, and cuts it right after hwdownload, so the CPU only copies output-sized lines.
+ * cpu: autorotated software frames, lanczos scale, zscale/hable tone mapping for HDR; a crop
+ * cuts the same rectangle at the same point (after scaling, before tone mapping).
  */
-export function frameFilters(route: Route, info: SourceInfo, size: { width: number; height: number }, fps: number) {
+export function frameFilters(route: Route, info: SourceInfo, size: FrameSize, fps: number) {
+  const scaled = size.crop ? { width: size.crop.scaledWidth, height: size.crop.scaledHeight } : size;
+  const cut = size.crop ? [`crop=${size.width}:${size.height}:${size.crop.x}:${size.crop.y}:exact=1`] : [];
   if (route === "videotoolbox") {
-    let scale = `scale_vt=w=${size.width}:h=${size.height}`;
+    let scale = `scale_vt=w=${scaled.width}:h=${scaled.height}`;
     if (info.hdr) scale += ":color_matrix=bt709:color_primaries=bt709:color_transfer=bt709";
     return [
       `fps=${fps}`,
@@ -128,6 +189,7 @@ export function frameFilters(route: Route, info: SourceInfo, size: { width: numb
       scale,
       "hwdownload",
       `format=${info.highBitDepth ? "p010le" : "nv12"}`,
+      ...cut,
     ].join(",");
   }
   const filters = [`fps=${fps}`];
@@ -135,7 +197,7 @@ export function frameFilters(route: Route, info: SourceInfo, size: { width: numb
   if (info.mirrored || (info.rotation && !(info.rotation in CPU_ROTATION)))
     throw new Error("GIF_SOURCE: 반전되었거나 직각이 아닌 회전 영상은 지원하지 않아요.");
   if (info.rotation) filters.push(CPU_ROTATION[info.rotation]);
-  filters.push(`scale=${size.width}:${size.height}:flags=lanczos`);
+  filters.push(`scale=${scaled.width}:${scaled.height}:flags=lanczos`, ...cut);
   if (info.hdr)
     filters.push(
       "zscale=t=linear:npl=100",
@@ -167,7 +229,7 @@ export function paletteFps(duration: number, fps: number) {
 }
 
 /** Pass 1: one global palette from sampled frames (palettegen over every frame is the slow part). */
-export function paletteArgs(route: Route, source: string, info: SourceInfo, range: { start: number; duration: number }, size: { width: number; height: number }, fps: number, palette: string) {
+export function paletteArgs(route: Route, source: string, info: SourceInfo, range: { start: number; duration: number }, size: FrameSize, fps: number, palette: string) {
   return [
     "-hide_banner", "-nostdin", "-y", "-v", "error",
     ...inputArgs(route, source, range),
@@ -181,7 +243,7 @@ export function paletteArgs(route: Route, source: string, info: SourceInfo, rang
 export const DITHER = { bayer: "bayer:bayer_scale=3", smooth: "sierra2_4a" } as const;
 
 /** Pass 2: every frame mapped to the palette; no audio, no metadata, loops forever. */
-export function encodeArgs(route: Route, source: string, info: SourceInfo, range: { start: number; duration: number }, size: { width: number; height: number }, fps: number, dither: keyof typeof DITHER, palette: string, output: string) {
+export function encodeArgs(route: Route, source: string, info: SourceInfo, range: { start: number; duration: number }, size: FrameSize, fps: number, dither: keyof typeof DITHER, palette: string, output: string) {
   return [
     "-hide_banner", "-nostdin", "-y", "-v", "error",
     ...inputArgs(route, source, range),

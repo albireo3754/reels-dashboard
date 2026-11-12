@@ -7,6 +7,9 @@
 - [x] 검증: typecheck, check:architecture, `npm test` 519개(515 통과·4 건너뜀, 새 단위 7개 포함: 합성 HLG·회전·오디오·위치 태그 영상으로 GPU/CPU 경로, 무한 반복, 메타데이터 제거, maxBytes), `npm run build`, Electron background QA `gif-convert`(UI 버튼 + 실제 MCP)·`content-board` 2개 통과.
 - [x] 실측: iPhone HEVC HLG 8초 세로 원본 → 480×854·15fps·120프레임·23.1MB, 4.1~5.0초(첫 실행 8.0초). 고전 CPU palettegen 기준선은 22.8초·28.2MB. 프레임 육안 확인(회전·톤·밴딩) 정상.
 - [ ] 네이버 블로그 실제 업로드 상한 확인, 패키징·실행 중 앱 반영은 하지 않음.
+- [x] 크롭 옵션(2026-11-12): 선택 `crop {x,y,width,height}`(회전 반영 후 화면 기준 0~1 비율, 범위 밖은 스키마 오류, 16px 미만은 `GIF_CROP`). GPU 경로 유지 — `scale_vt`가 전체 프레임을 "남길 영역=출력 크기"가 되게 줄이고 `hwdownload` 직후 작은 프레임에서 `crop`, CPU 경로도 같은 지점에서 같은 사각형. 폭 480 기본·확대 없음·`maxBytes` 재시도는 잘라낸 영역에 적용. 결과에 `crop`(+원본 화면 `pixels`, 없으면 `null`). CLI `--crop '<json>'`·MCP 설명·예시 갱신, 보드 버튼에는 크롭 UI 없음. [문서](docs/gif-convert.md).
+- [x] 크롭 검증: typecheck, check:architecture, `npm test` 522개(518 통과·4 건너뜀·실패 0, 새 단위 3개: 크롭 계획·스키마, 합성 회전 HLG로 GPU 경로 180×272·잘린 위치 픽셀 대조·CPU 대체 동일 크기·maxBytes 재시도), `npm run build`, Electron background QA `gif-convert`(MCP crop 호출 포함) 통과.
+- [x] 크롭 실측: `IMG_7360.MOV`(HLG 세로 8초) `crop {0,0.15,1,0.85}`·`maxBytes 10000000` → `accel: videotoolbox`, 396×598·10fps·9.99MB, 14.2초(재실행 10.9초), 3회 시도. 크롭 없이 같은 `maxBytes`는 334×594·8.4MB·23.6초. 패키징·앱 재시작은 이 작업에서 하지 않음(메인 세션 담당).
 
 ## 보드 문서 뷰어 + 폴더 구분 — 2026-11-12
 
