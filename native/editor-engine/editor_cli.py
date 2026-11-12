@@ -140,20 +140,103 @@ def cover_arguments(request, output):
     return args
 
 
-def proxy(source, output):
-    info = probe(source)
+PROXY_MAX_DIMENSION = 1080
+PROXY_AUDIO = ['-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
+# ffprobe display-matrix rotation -> transpose_vt direction matching FFmpeg's CPU autorotate.
+GPU_ROTATION = {90: 'transpose_vt=dir=cclock', 180: 'transpose_vt=dir=reversal', 270: 'transpose_vt=dir=clock'}
+
+
+def proxy_size(width, height, limit=PROXY_MAX_DIMENSION):
+    """Same result as scale=limit:limit:force_original_aspect_ratio=decrease:force_divisible_by=2."""
+    if width >= height:
+        out_w, out_h = limit, (height * limit + width // 2) // width
+    else:
+        out_w, out_h = (width * limit + height // 2) // height, limit
+    return max(2, out_w // 2 * 2), max(2, out_h // 2 * 2)
+
+
+def display_rotation(stream):
+    """Return (rotation in degrees modulo 360, mirrored) from ffprobe stream metadata."""
+    for item in stream.get('side_data_list', []):
+        if 'rotation' not in item:
+            continue
+        values = [int(value) for line in str(item.get('displaymatrix', '')).splitlines() if ':' in line
+                  for value in line.split(':', 1)[1].split()]
+        mirrored = len(values) >= 5 and values[0] * values[4] - values[1] * values[3] < 0
+        return round(float(item['rotation'])) % 360, mirrored
+    return round(float(stream.get('tags', {}).get('rotate', 0))) % 360, False
+
+
+def gpu_proxy_command(source, output, info, stream):
+    """VideoToolbox decode -> transpose_vt/scale_vt -> h264_videotoolbox, all on GPU frames.
+
+    Frames stay videotoolbox_vld from decoder to encoder. A software -pix_fmt or an output
+    -colorspace option would make FFmpeg insert a CPU scaler that rejects hardware frames,
+    so scale_vt itself performs the HDR -> BT.709 conversion and tags the frames.
+    Returns (command, expected display size), or None when the source cannot use this route.
+    """
+    rotation, mirrored = display_rotation(stream)
+    if mirrored or (rotation and rotation not in GPU_ROTATION):
+        return None
+    width, height = proxy_size(info['width'], info['height'])
+    scale = f'scale_vt=w={width}:h={height}'
+    if info['hdr']:
+        scale += ':color_matrix=bt709:color_primaries=bt709:color_transfer=bt709'
+    filters = [GPU_ROTATION[rotation], scale] if rotation else [scale]
+    command = ['ffmpeg', '-y', '-v', 'error', '-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld',
+               '-noautorotate', '-i', str(source), '-map', '0:v:0', '-map', '0:a:0?', '-vf', ','.join(filters),
+               '-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-b:v', '6M',
+               *PROXY_AUDIO, str(output)]
+    return command, (width, height)
+
+
+def cpu_proxy_command(source, output, info):
     filters = []
     if info['hdr']:
         filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'tonemap=tonemap=hable:desat=0',
                     'zscale=p=bt709:t=bt709:m=bt709:r=tv']
-    filters += ['scale=1080:1080:force_original_aspect_ratio=decrease:force_divisible_by=2', 'format=yuv420p']
+    filters += [f'scale={PROXY_MAX_DIMENSION}:{PROXY_MAX_DIMENSION}:force_original_aspect_ratio=decrease:force_divisible_by=2',
+                'format=yuv420p']
     command = ['ffmpeg', '-y', '-v', 'error', '-i', str(source), '-map', '0:v:0', '-map', '0:a:0?',
-               '-vf', ','.join(filters), *videotoolbox_args(), '-b:v', '6M',
-               '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
+               '-vf', ','.join(filters), *videotoolbox_args(), '-b:v', '6M', *PROXY_AUDIO]
     if info['hdr']:
         command += ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
-    subprocess.run([*command, str(output)], check=True)
-    return {'outputPath': str(output), 'hdrToSDR': info['hdr']}
+    return [*command, str(output)]
+
+
+def gpu_proxy(source, output, info, stream):
+    """Run the VideoToolbox route. Return None on success, otherwise the reason to fall back."""
+    planned = gpu_proxy_command(source, output, info, stream)
+    if planned is None:
+        return 'mirrored or non-right-angle display matrix'
+    command, expected = planned
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        lines = completed.stderr.strip().splitlines()
+        return lines[-1] if lines else f'ffmpeg exited with {completed.returncode}'
+    try:
+        result, size, _ = probe_video(output)
+    except (subprocess.CalledProcessError, ValueError, KeyError, IndexError) as error:
+        return f'unreadable output ({error})'
+    if size != expected or (info['hdr'] and result.get('color_transfer') != 'bt709'):
+        return f'unexpected output {size[0]}x{size[1]} transfer={result.get("color_transfer")}'
+    return None
+
+
+def proxy(source, output):
+    """Playback proxy: GPU (VideoToolbox) decode/scale/colour first, CPU decode/zscale fallback.
+
+    Both routes encode with h264_videotoolbox -allow_sw 0; `accel` names the decode/filter route.
+    """
+    info = probe(source)
+    stream, _, _ = probe_video(source)
+    reason = gpu_proxy(source, output, info, stream)
+    if reason is None:
+        return {'outputPath': str(output), 'hdrToSDR': info['hdr'], 'accel': 'videotoolbox'}
+    print(f'Editor notice: GPU proxy unavailable ({reason}); using CPU decode and filters.', file=sys.stderr)
+    output.unlink(missing_ok=True)
+    subprocess.run(cpu_proxy_command(source, output, info), check=True)
+    return {'outputPath': str(output), 'hdrToSDR': info['hdr'], 'accel': 'cpu'}
 
 
 def main(argv=None):

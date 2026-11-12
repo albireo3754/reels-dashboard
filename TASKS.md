@@ -43,6 +43,13 @@
 - [x] 단위 전체 389개, 엔진 소스/번들 각 13개, 실제 Dolby 입력 포함 하드웨어 5개, 개발/패키지 Electron 각 4개, 타입/FSD/공개 소스 검사 통과. 실제 4K60 26.77초 입력은 33.13초에 렌더링, 1,606프레임·표시 시각·오디오 바이트·Dolby Vision/HLG/10비트 확인. [구현·검증 범위](docs/editor-engine.md#hardware-encoding-policy--2026-11-11).
 - [ ] 실행 중 앱 반영: Mac 잠금 해제 대기. 검증 패키지는 `release/hardware-encoding-20261111/mac-arm64/Reels Dashboard.app`, 설치 대기 사본은 기존 설치 폴더의 `Reels Dashboard.hardware-update.app`. 기존 앱·콘텐츠 출력은 유지.
 
+## 재생용 사본 GPU 가속 — 2026-11-12
+
+- [x] `proxy`가 VideoToolbox 디코딩(`videotoolbox_vld`)→`transpose_vt`/`scale_vt`(HDR은 BT.709 변환 포함)→`h264_videotoolbox -allow_sw 0`로 프레임을 GPU 메모리에 둔 채 사본을 만든다. 하드웨어 프레임은 자동 회전되지 않아 display matrix를 `transpose_vt`로 적용.
+- [x] GPU 경로 실패·출력 크기/색 태그 불일치·좌우 반전 matrix는 기존 CPU 디코딩+zscale/tonemap 경로로 자동 폴백(인코더는 계속 VideoToolbox). 결과 JSON에 `accel: videotoolbox|cpu` 추가.
+- [x] 실제 4K60 HLG/Dolby 8.4 20.78초 샘플: 102.3초→6.4초(CPU user 242초→1.3초), 608×1080 bt709·1,247프레임 동일. 엔진 소스/번들 각 21개 통과. [구현·측정](docs/editor-engine.md#gpu-playback-proxy--2026-11-12).
+- [ ] 실행 중 앱 반영은 별도. TypeScript 호출부는 결과의 `accel`을 아직 사용하지 않음.
+
 ## 프로젝트별 단일 outbound — 2026-11-11 후속 정정
 
 - [x] `Project.outbound`에 폴더 하나·현재 파일 목록·세대·로컬 영수증 경로를 저장. `reels_set_project_outbound`로 한 번 연결하고 이후 전달에는 `destination`을 받지 않음. 다른 폴더 재지정·다른 프로젝트와 경로 중첩 거부.
