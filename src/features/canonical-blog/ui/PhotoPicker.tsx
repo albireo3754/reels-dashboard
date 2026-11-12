@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CloseIcon } from "../../../shared/ui/primitives";
+import { errorMessage } from "../../../shared/lib/errors";
 import { stickerKey, type StickerAnchor } from "../../../shared/blog-stickers";
 import { PHOTO_ALT_LIMIT, defaultAlt, evidenceImageUrl, evidenceThumbnailUrl, searchEvidence, type EvidenceImage, type EvidenceLibrary, type PhotoInsert } from "../../../shared/blog-evidence";
 
@@ -28,7 +29,7 @@ export function PhotoPicker({ revision, placements, anchors, target, disabled, o
     setError("");
     fetch("/api/blog/evidence", { signal: controller.signal })
       .then(async r => { const value = await r.json(); if (!r.ok) throw new Error(value.error ?? "분석 결과를 읽지 못했어요."); setLibrary(value); })
-      .catch(e => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e)); });
+      .catch(e => { if (!controller.signal.aborted) setError(errorMessage(e)); });
     return () => controller.abort();
   }, [revision]);
   const items = library?.items ?? [];

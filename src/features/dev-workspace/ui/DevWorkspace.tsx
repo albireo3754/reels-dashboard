@@ -17,7 +17,6 @@ import { reconcileSelection, toggleDrawer, type DrawerMode } from "../model/draw
 import { workbenchShortcutTarget } from "../model/shortcut-target";
 import {
   agentStartIntent,
-  dotState,
   startChoices,
   tabKeyTarget,
   tabTooltip,
@@ -391,7 +390,7 @@ export function DevWorkspace({
               className="dev-session-tab"
               key={s.id}
               data-selected={s.id === selected ? "true" : undefined}
-              data-state={dotState(s)}
+              data-state={s.state}
               onAuxClick={(event) => {
                 if (event.button === 1 && !busy) {
                   event.preventDefault();
@@ -418,7 +417,7 @@ export function DevWorkspace({
               >
                 <span
                   className="dev-tab-dot"
-                  data-state={dotState(s)}
+                  data-state={s.state}
                   data-backend={s.backend}
                   data-restored={s.restored ? "true" : undefined}
                   aria-hidden="true"

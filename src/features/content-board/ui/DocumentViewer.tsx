@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DashboardBridge } from "../../../shared/contracts";
+import { errorMessage } from "../../../shared/lib/errors";
 import type {
   ContentDocumentText,
   ContentMediaItem,
@@ -132,7 +133,7 @@ function BlogView({
     try {
       return { doc: parse(text) };
     } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
+      return { error: errorMessage(e) };
     }
   }, [markup, text]);
   const [photos, setPhotos] = useState<Record<string, string>>({});

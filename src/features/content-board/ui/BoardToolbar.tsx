@@ -8,6 +8,7 @@ import {
 import { projectStageLabels as stageLabels } from "../../../shared/contracts";
 import { useState } from "react";
 import { Segmented } from "../../../shared/ui/primitives";
+import { errorMessage } from "../../../shared/lib/errors";
 import "./board-controls.css";
 
 export function BoardToolbar({
@@ -171,7 +172,7 @@ export function BoardToolbar({
               try {
                 await onTidy();
               } catch (error) {
-                setTidyError(`정리 터미널을 열지 못했어요: ${error instanceof Error ? error.message : String(error)}`);
+                setTidyError(`정리 터미널을 열지 못했어요: ${errorMessage(error)}`);
               } finally {
                 setTidying(false);
               }

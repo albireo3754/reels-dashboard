@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { lstat, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -16,6 +16,9 @@ import {
   publishReadinessInput,
   type PublishReadiness,
 } from "../../../shared/publish-readiness";
+import { errorMessage } from "../../../shared/lib/errors";
+import { isMissing } from "../../../shared/lib/fs";
+import { sha256Hex } from "../../../shared/lib/hash";
 import type { ContentLibrary } from "./library";
 import { hash } from "./prepare-local-media";
 import { publishOutbound } from "./publish-outbound";
@@ -86,7 +89,7 @@ export class ICloudDelivery implements ICloudBridge {
       )
         throw new Error("OUTBOUND_PATH_CHANGED");
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      if (!isMissing(e)) throw e;
     }
     const files: OutboundFile[] = [];
     const seen = new Set<string>();
@@ -157,7 +160,7 @@ export class ICloudDelivery implements ICloudBridge {
       this.jobs.set(job.id, job);
       const history = path.join(
         this.historyRoot,
-        createHash("sha256").update(input.projectId).digest("hex").slice(0, 24),
+        sha256Hex(input.projectId).slice(0, 24),
         job.id,
       );
       void publishOutbound(this.library, input, outbound, history, job.id)
@@ -168,7 +171,7 @@ export class ICloudDelivery implements ICloudBridge {
         })
         .catch((error) => {
           job.state = "failed";
-          job.error = error instanceof Error ? error.message : String(error);
+          job.error = errorMessage(error);
         });
       return structuredClone(job);
     } finally {
@@ -201,7 +204,7 @@ export class ICloudDelivery implements ICloudBridge {
           const present = info.isFile() && !info.isSymbolicLink();
           return { name: f.name, present, sizeMatches: present && info.size === f.bytes };
         } catch (e) {
-          if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+          if (!isMissing(e)) throw e;
           return { name: f.name, present: false, sizeMatches: false };
         }
       }),
