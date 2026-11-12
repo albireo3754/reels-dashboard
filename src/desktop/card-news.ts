@@ -1,4 +1,5 @@
 import { errorMessage } from "../shared/lib/errors";
+import { readJsonFile } from "../shared/lib/fs";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn, loggedExecFile } from "../shared/lib/logged-process";
 import { upsertExportedProject } from "../shared/production-project";
@@ -171,14 +172,11 @@ export class CardNewsService implements CardNewsBridge {
     const operation = this.queue.then(async () => {
       await this.initialize();
       await this.validateAssets(plan);
-      let previous: CardPlan | undefined;
-      try {
-        previous = cardPlanSchema.parse(
-          JSON.parse(await readFile(this.planFile(plan.id), "utf8")),
-        );
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-      }
+      const previous: CardPlan | undefined = await readJsonFile(
+        this.planFile(plan.id),
+        (value) => cardPlanSchema.parse(value),
+        () => undefined,
+      );
       if ((previous?.updatedAt ?? "") !== plan.updatedAt)
         throw new Error(
           "다른 창에서 변경된 구성입니다. 다시 열어 확인해주세요.",

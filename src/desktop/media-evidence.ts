@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { readJsonFile, writeJsonAtomic } from "../shared/lib/fs";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -106,21 +107,10 @@ export async function prepareEvidence(
   };
 }
 
-async function writeJson(file: string, value: unknown) {
-  const temporary = `${file}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
-    mode: 0o600,
-  });
-  await rename(temporary, file);
-}
-async function readJson(file: string): Promise<unknown | undefined> {
-  try {
-    return JSON.parse(await readFile(file, "utf8"));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
+const writeJson = (file: string, value: unknown) =>
+  writeJsonAtomic(file, value, { mode: 0o600 });
+const readJson = (file: string): Promise<unknown | undefined> =>
+  readJsonFile<unknown>(file, (value) => value, () => undefined);
 const savedBatch = z.strictObject({
   fingerprint: z.string(),
   provider: z.string(),

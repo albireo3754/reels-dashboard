@@ -1,3 +1,4 @@
+import { errorMessage } from "../shared/lib/errors";
 import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import os from "node:os";
@@ -59,12 +60,11 @@ export function workflowCapabilitiesCompatible(capabilities: unknown) {
   );
 }
 
+/** A request that never reached any server, so it is safe to retry elsewhere. */
 const connectionRefused = (error: unknown) => {
   const cause = (error as { cause?: { code?: string } } | undefined)?.cause;
   return cause?.code === "ECONNREFUSED";
 };
-/** A request that never reached any server, so it is safe to retry elsewhere. */
-export const isWorkflowConnectionRefused = connectionRefused;
 
 export async function probeWorkflowServer(
   url: string,
@@ -169,9 +169,6 @@ export interface WorkflowHostOptions {
   raceProbeDelaysMs?: number[];
   sleep?: (ms: number) => Promise<void>;
 }
-
-const readable = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
 
 /**
  * Owns the desktop app's connection to the workflow server.
@@ -327,7 +324,7 @@ export class DesktopWorkflowHost {
       this.env.REELS_WORKFLOW_URL = handle.url;
       return this.set({ state: "embedded", url: handle.url });
     } catch (error) {
-      const message = readable(error);
+      const message = errorMessage(error);
       if (this.port !== 0 && (ownerLockConflict(message) || portInUse(message))) {
         const winner = await this.shareRaceWinner();
         if (winner) {

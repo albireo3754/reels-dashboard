@@ -1,5 +1,6 @@
 import { sha256Hex } from "../shared/lib/hash";
 import { errorMessage } from "../shared/lib/errors";
+import { readJsonFile } from "../shared/lib/fs";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedExecFile } from "../shared/lib/logged-process";
 import { randomUUID } from "node:crypto";
@@ -98,24 +99,23 @@ export class MediaAnalysis {
   }
   private async load(projectId: string): Promise<AnalysisDocument> {
     await this.library.get(projectId);
-    try {
-      const doc = JSON.parse(
-        await readFile(this.file(projectId), "utf8"),
-      ) as AnalysisDocument;
-      if (doc.schemaVersion !== 1 || doc.projectId !== projectId)
-        throw new Error("분석 저장 형식 오류");
-      return doc;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-      return {
+    return readJsonFile<AnalysisDocument>(
+      this.file(projectId),
+      (value) => {
+        const doc = value as AnalysisDocument;
+        if (doc.schemaVersion !== 1 || doc.projectId !== projectId)
+          throw new Error("분석 저장 형식 오류");
+        return doc;
+      },
+      () => ({
         schemaVersion: 1,
         projectId,
         revision: 0,
         runs: [],
         results: [],
         corrections: {},
-      };
-    }
+      }),
+    );
   }
   private update(id: string, change: (d: AnalysisDocument) => void) {
     const operation = this.queue.then(async () => {
