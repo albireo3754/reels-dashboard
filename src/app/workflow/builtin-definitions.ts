@@ -29,6 +29,7 @@ steps:
       질문은 두 경우에만 한다: 사용자만 아는 경험(맛·양·동행·의도)이 비었을 때,
       사용자 진술과 기록이 본문 문장을 바꿀 만큼 어긋날 때.
       규칙·선례·확인된 사실로 하나로 정해지는 것은 묻지 않고 정한 뒤 결정을 한 줄로 기록한다.
+      물을 것이 하나도 없으면 질문을 지어내지 않고, 폼에는 "더 남기거나 바로잡을 경험이 있는지"를 묻는 확인 질문 하나만 둔다(폼은 질문이 하나 이상 있어야 한다).
     tools:
       - {server: reels_dashboard, name: reels_get_content, purpose: 콘텐츠 카드와 연결 자료 확인}
       - {server: reels_dashboard, name: reels_photos_search, purpose: 촬영 시각·위치로 빠진 원본 찾기}
