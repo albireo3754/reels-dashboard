@@ -92,6 +92,13 @@ export function Editor({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [job, setJob] = useState<RenderJob | null>(null);
   const [mediaError, setMediaError] = useState("");
+  // Original-first playback: `project.source.videoURL` streams the source file.
+  // After a load/decode error the editor asks once for a playback copy.
+  const [playback, setPlayback] = useState<{
+    id: string;
+    mode: "preparing" | "copy" | "failed";
+    url: string;
+  } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -164,6 +171,7 @@ export function Editor({
     }
     videoRef.current?.pause();
     setProject(next);
+    setPlayback(null);
     setDirty(false);
     setConflict(false);
     setPreview(null);
@@ -304,6 +312,34 @@ export function Editor({
       ),
     );
   }
+  const currentPlayback =
+    playback && project && playback.id === project.id ? playback : null;
+  const playbackMode = currentPlayback?.mode ?? "original";
+  const playbackURL = currentPlayback
+    ? currentPlayback.url
+    : (project?.source.videoURL ?? "");
+  async function playbackFailed() {
+    const id = project?.id;
+    if (!id || playbackMode === "preparing") return;
+    if (playbackMode !== "original" || !bridge.playbackCopy || readonly) {
+      setMediaError(
+        playbackMode === "copy"
+          ? "재생용 사본도 재생하지 못했어요. 편집 기록을 다시 열어주세요."
+          : "영상을 재생하지 못했어요. 편집 기록을 다시 열어주세요.",
+      );
+      return;
+    }
+    setMediaError("");
+    setPlayback({ id, mode: "preparing", url: "" });
+    try {
+      const url = await bridge.playbackCopy(id);
+      if (projectRef.current?.id === id) setPlayback({ id, mode: "copy", url });
+    } catch (e) {
+      if (projectRef.current?.id !== id) return;
+      setPlayback({ id, mode: "failed", url: "" });
+      setMediaError(errorMessage(e));
+    }
+  }
   const choose = () =>
     run("로컬 영상 준비", async () => {
       const next = await bridge.chooseVideo();
@@ -417,8 +453,12 @@ export function Editor({
                 </span>
                 <span>
                   {project.source.hdr
-                    ? "원본 HDR · 재생용 SDR 프록시"
-                    : "원본 SDR"}
+                    ? playbackMode === "copy"
+                      ? "원본 HDR · 재생용 SDR 사본"
+                      : "원본 HDR 그대로 재생"
+                    : playbackMode === "copy"
+                      ? "원본 SDR · 재생용 사본"
+                      : "원본 SDR"}
                 </span>
               </>
             ) : (
@@ -674,33 +714,41 @@ export function Editor({
             >
               <figure className="editor-frame">
                 <div className="editor-frame-media">
-                  <video
-                    ref={videoRef}
-                    src={project.source.videoURL}
-                    controls
-                    preload="metadata"
-                    playsInline
-                    aria-label="편집 원본 재생"
-                    onTimeUpdate={(e) =>
-                      setTime(
-                        clampedTime(
-                          e.currentTarget.currentTime,
-                          project.source.duration,
-                        ),
-                      )
-                    }
-                    onError={() =>
-                      setMediaError(
-                        "재생용 영상을 불러오지 못했어요. 편집 기록을 다시 열어주세요.",
-                      )
-                    }
-                  />
+                  {playbackMode === "preparing" ? (
+                    <p className="editor-preview-empty" role="status">
+                      원본을 바로 재생하지 못해 재생용 사본을 준비하고 있어요.
+                    </p>
+                  ) : (
+                    <video
+                      ref={videoRef}
+                      key={playbackURL || "none"}
+                      src={playbackURL || undefined}
+                      controls
+                      preload="metadata"
+                      playsInline
+                      aria-label="편집 원본 재생"
+                      onTimeUpdate={(e) =>
+                        setTime(
+                          clampedTime(
+                            e.currentTarget.currentTime,
+                            project.source.duration,
+                          ),
+                        )
+                      }
+                      onLoadedMetadata={(e) => {
+                        // Resume where the original stopped once the copy is loaded.
+                        if (playbackMode === "copy" && time > 0)
+                          e.currentTarget.currentTime = time;
+                      }}
+                      onError={() => void playbackFailed()}
+                    />
+                  )}
                 </div>
                 <figcaption
                   className="ui-meta"
                   title="재생 화면에는 새 문구가 합성되지 않아요. 합성 미리보기로 실제 배치를 확인해주세요."
                 >
-                  원본
+                  {playbackMode === "copy" ? "재생용 사본" : "원본"}
                   {project.source.hdr ? " · 내보내기는 HDR 원본을 사용해요." : ""}
                 </figcaption>
               </figure>

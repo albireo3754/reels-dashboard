@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { writeFile, readFile, realpath, mkdir, unlink } from "node:fs/promises";
+import { writeFile, readFile, realpath, mkdir, unlink, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
@@ -102,6 +102,18 @@ test("packaged board previews actual images, plays/seek videos, browses folders 
       return { status: r.status, bytes: (await r.arrayBuffer()).byteLength };
     }, url);
     expect(stream).toEqual({ status: 206, bytes: 64 });
+    // Original-first playback: the grant streams the source file itself and no
+    // playback copy is cached.
+    await expect(dialog.getByText("원본 파일을 그대로 재생해요.")).toBeVisible();
+    const length = await page.evaluate(
+      async (url) =>
+        Number((await fetch(url!, { method: "HEAD" })).headers.get("content-length")),
+      url,
+    );
+    expect(length).toBe((await stat(video)).size);
+    expect(
+      await readdir(path.join(profile, "board-media")).catch(() => []),
+    ).toEqual([]);
     await dialog
       .getByRole("button", { name: "표지 이미지 보기", exact: true })
       .click();

@@ -11,8 +11,8 @@ import {
   readFile,
   writeFile,
   realpath,
+  rename,
   stat,
-  
   rm,
   readdir } from "node:fs/promises";
 import { createReadStream } from "node:fs";
@@ -30,10 +30,19 @@ import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
 import { parseRange } from "../../../shared/lib/http-range";
+import {
+  isDatalessFile,
+  videoContentType,
+} from "../../../shared/lib/media-playback";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
-  proxyPath: string;
+  /**
+   * Legacy: imports before original-first playback always wrote a copy here. New
+   * records omit it; a copy, when one is needed, lives at `playback.mp4` in the
+   * project folder either way.
+   */
+  proxyPath?: string;
   size: number;
   mtimeMs: number;
 }
@@ -53,6 +62,8 @@ interface Options {
   reveal: (file: string) => void;
   changed?: (project: EditorProject) => void;
   renderStarted?: (job: RenderJob) => void;
+  /** iCloud placeholder check; defaults to the macOS st_flags probe. */
+  dataless?: (file: string) => Promise<boolean>;
 }
 const safeID = (id: unknown) => {
   if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))
@@ -72,6 +83,8 @@ export class EditorService implements EditorBridge {
   private jobs = new Map<string, RenderJob>();
   private completions = new Map<string, Promise<void>>();
   private activeChild?: ChildProcess;
+  private children = new Set<ChildProcess>();
+  private copies = new Map<string, Promise<string>>();
   private activeJob?: RenderJob;
   private pending = 0;
   private closing = false;
@@ -99,7 +112,7 @@ export class EditorService implements EditorBridge {
     tracked = false,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      const child = loggedSpawn(this.options.logs, { source: "editor", label: ({probe: "편집 영상 정보 확인", render: "영상 인코딩", proxy: "편집용 재생 영상 준비", preview: "편집 미리보기", cover: "표지 생성"} as Record<string,string>)[args[0]] ?? `편집 엔진 · ${args[0]}`, projectId: this.activeJob?.projectId, jobId: this.activeJob?.id }, this.executable, args, {
+      const child = loggedSpawn(this.options.logs, { source: "editor", label: ({probe: "편집 영상 정보 확인", render: "영상 인코딩", proxy: "편집 재생용 사본 준비", preview: "편집 미리보기", cover: "표지 생성"} as Record<string,string>)[args[0]] ?? `편집 엔진 · ${args[0]}`, projectId: this.activeJob?.projectId, jobId: this.activeJob?.id }, this.executable, args, {
         cwd: this.options.runtime,
         env: {
           ...process.env,
@@ -111,6 +124,7 @@ export class EditorService implements EditorBridge {
         stdio: ["ignore", "pipe", "pipe"],
       });
       if (tracked) this.activeChild = child;
+      this.children.add(child);
       let stdout = "",
         stderr = "",
         tail = "";
@@ -151,6 +165,7 @@ export class EditorService implements EditorBridge {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        this.children.delete(child);
         if (this.activeChild === child) this.activeChild = undefined;
         if (error) return reject(error);
         try {
@@ -307,9 +322,9 @@ export class EditorService implements EditorBridge {
     const id = randomUUID(),
       dir = this.dir(id);
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    const proxyPath = path.join(dir, "playback.mp4");
     try {
-      await this.invoke(["proxy", sourcePath, proxyPath]);
+      // The original is played directly; a playback copy is made only if the
+      // renderer later reports that it cannot play it (see playbackCopy).
       const source: EditorSource = {
         id,
         name: path.basename(sourcePath),
@@ -330,7 +345,6 @@ export class EditorService implements EditorBridge {
       await this.saveRecord({
         project,
         sourcePath,
-        proxyPath,
         size: info.size,
         mtimeMs: info.mtimeMs,
       });
@@ -664,6 +678,37 @@ export class EditorService implements EditorBridge {
       throw new Error("완료된 결과가 없어요.");
     this.options.reveal(job.outputPath);
   }
+  private copyPath(id: string) {
+    return path.join(this.dir(id), "playback.mp4");
+  }
+  async playbackCopy(id: string) {
+    safeID(id);
+    if (this.closing) throw new Error("앱이 종료 중이에요.");
+    const record = await this.record(id);
+    const url = `reels-media://video/${id}/copy`;
+    const output = this.copyPath(id);
+    if ((await stat(output).catch(() => null))?.size) return url;
+    let work = this.copies.get(id);
+    if (!work) {
+      work = (async () => {
+        const temporary = output + `.${randomUUID()}.mp4`;
+        try {
+          await this.invoke(["proxy", record.sourcePath, temporary]);
+          await rename(temporary, output);
+          return url;
+        } catch {
+          // The engine's stderr stays in the execution log.
+          throw new Error(
+            "재생용 사본을 만들지 못했어요. 실행 로그에서 원인을 확인해주세요.",
+          );
+        } finally {
+          await rm(temporary, { force: true });
+        }
+      })().finally(() => this.copies.delete(id));
+      this.copies.set(id, work);
+    }
+    return work;
+  }
   async media(request: Request): Promise<Response> {
     const origin = request.headers.get("origin");
     const initiator = (request as Request & { initiatorOrigin?: string })
@@ -689,14 +734,23 @@ export class EditorService implements EditorBridge {
         u.search
       )
         throw new Error();
-      const id = safeID(u.pathname.slice(1));
+      // reels-media://video/{id} streams the original; /{id}/copy the playback copy.
+      const [name, variant, ...extra] = u.pathname.slice(1).split("/");
+      if (extra.length || (variant !== undefined && variant !== "copy"))
+        throw new Error();
+      const id = safeID(name);
       const record = await this.record(id);
       if (request.method === "OPTIONS")
         return new Response(null, { status: 204, headers: cors });
-      const file = await realpath(record.proxyPath);
-      if (!file.startsWith((await realpath(this.dir(id))) + path.sep))
-        throw new Error();
+      const copy = variant === "copy";
+      let file: string;
+      if (copy) {
+        file = await realpath(this.copyPath(id));
+        if (!file.startsWith((await realpath(this.dir(id))) + path.sep))
+          throw new Error();
+      } else file = record.sourcePath;
       const info = await stat(file);
+      if (!info.isFile()) throw new Error();
       let range;
       try {
         range = parseRange(request.headers.get("range"), info.size);
@@ -706,9 +760,18 @@ export class EditorService implements EditorBridge {
           headers: { ...cors, "content-range": `bytes */${info.size}` },
         });
       }
+      // An evicted iCloud original would block until the whole file downloads.
+      // Refusing it makes the renderer fall back to a playback copy instead. The
+      // check runs once per load (the first range), not for every seek.
+      if (
+        !copy &&
+        range.start === 0 &&
+        (await (this.options.dataless ?? isDatalessFile)(file))
+      )
+        return new Response(null, { status: 503, headers: cors });
       const headers = {
         ...cors,
-        "content-type": "video/mp4",
+        "content-type": copy ? "video/mp4" : videoContentType(file),
         "accept-ranges": "bytes",
         "content-length": String(range.end - range.start + 1),
         ...(range.partial
@@ -740,5 +803,11 @@ export class EditorService implements EditorBridge {
   async dispose() {
     this.closing = true;
     if (this.activeJob) await this.cancel(this.activeJob.id);
+    // Playback copies and other short engine calls do not outlive the app.
+    for (const child of this.children)
+      if (child.pid)
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {}
   }
 }

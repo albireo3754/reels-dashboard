@@ -1,6 +1,10 @@
 import { localDate } from "./lib/format";
 import { demoRouteMap } from "./route-map-demo";
-import { createDemoEditor, demoVideo } from "./editor-demo";
+import {
+  createDemoEditor,
+  demoUndecodableVideo,
+  demoVideo,
+} from "./editor-demo";
 import type {
   Arguments,
   Asset,
@@ -349,10 +353,21 @@ export function createDemoBridge(
           )
         );
       },
-      async open(_id, file) {
-        return file.endsWith(".png")
-          ? { kind: "image", url: await this.thumbnail(_id, file) }
-          : { kind: "video", url: demoVideo };
+      async open(_id, file, options) {
+        if (file.endsWith(".png"))
+          return { kind: "image", url: await this.thumbnail(_id, file) };
+        if (options?.copy) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return { kind: "video", url: demoVideo, playback: "copy" };
+        }
+        return {
+          kind: "video",
+          url:
+            params.get("demoPlaybackError") === "1"
+              ? demoUndecodableVideo
+              : demoVideo,
+          playback: "original",
+        };
       },
     },
     editor: createDemoEditor(storage, search, (project, stage) => {

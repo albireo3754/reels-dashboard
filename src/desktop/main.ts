@@ -638,6 +638,7 @@ async function awaitReady() {
     "job",
     "cancel",
     "reveal",
+    "playbackCopy",
   ] as const) {
     handle(`editor:${method}`, (...args: unknown[]) =>
       (editor[method] as (...values: unknown[]) => unknown).apply(editor, args),
@@ -809,9 +810,16 @@ async function awaitReady() {
       ? demo.contentMedia!.thumbnail(id, file)
       : boardMedia.thumbnail(id, file),
   );
-  handle("contentMedia:open", (id: string, file: string) =>
-    fixture ? demo.contentMedia!.open(id, file) : boardMedia.open(id, file),
-  );
+  handle("contentMedia:open", (id: string, file: string, options?: unknown) => {
+    // Only an explicit boolean asks for a playback copy; anything else streams the original.
+    const copy =
+      typeof options === "object" &&
+      options !== null &&
+      (options as { copy?: unknown }).copy === true;
+    return fixture
+      ? demo.contentMedia!.open(id, file, { copy })
+      : boardMedia.open(id, file, { copy });
+  });
   handle("revealResource", async (id: unknown, resource: unknown) => {
     if (typeof id !== "string" || typeof resource !== "string")
       throw new Error("Invalid resource request");

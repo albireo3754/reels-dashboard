@@ -1,5 +1,16 @@
 # Reels Dashboard 진행 상태
 
+## 원본 직접 재생 — 2026-11-12
+
+배경: 보드 재생·촬영 지도·편집기 가져오기가 모든 영상을 ffmpeg SDR 사본으로 바꾼 뒤 재생해 첫 재생이 느리고 HDR 원본을 그대로 볼 수 없었다. 사용자 결정으로 원본을 기본 재생하고 사본은 필요할 때만 만든다.
+
+- [x] `reels-media`가 원본을 Range로 스트리밍(보드 `content/{token}` grant, 편집기 `video/{id}`). origin 검사·토큰 grant·등록 자료 제한은 유지. `.mov`는 `video/quicktime`.
+- [x] 사본은 (a) `<video>` 오류 시 UI가 자동 요청(“재생용 사본을 준비하고 있어요” 표시, 보드 `open(..., {copy: true})`, 편집기 `editor.playbackCopy(id)` → `video/{id}/copy`) (b) iCloud dataless 원본(`stat -f %f`의 `SF_DATALESS`, 플래그를 못 읽을 때만 `blocks === 0 && size > 0`)일 때만. 판별 실패는 원본 재생. 편집기는 dataless 원본의 첫 요청을 503으로 거절해 (a)로 넘김.
+- [x] 편집기 가져오기에서 `proxy` 호출 제거. 기존 기록의 `proxyPath`/`playback.mp4`는 그대로 읽고 폴백 때 재사용. 표지·렌더·미리보기 프레임 경로와 Python 엔진은 변경 없음.
+- [x] 검증: `npm run typecheck`, `npm run check:architecture`, `npm test`(494개 중 489 통과·4 건너뜀·1 실패: `agent.test.ts`의 abort 타이밍 테스트로 단독 3회 재실행 모두 통과), 웹 161개 통과(`canonical-sdk.spec.ts`는 공유 node_modules의 OpenTelemetry 로드 오류로 HEAD에서도 수집 불가라 제외), Electron background QA 6개 통과·1개 opt-in skip. 실제 HEVC 10bit HLG 2160×3840 20초 원본이 보드·편집기에서 사본 없이 재생(readyState 4, 2160×3840 디코드, currentTime 1.5초 이상). 결과는 [Electron QA](docs/editor-electron-qa.md#원본-직접-재생--2026-11-12).
+- [ ] 실제 dataless 파일의 사본 경로 end-to-end(다운로드 유발)는 실행하지 않음. 판별은 실제 iCloud placeholder 메타데이터로만 확인. 실행 중 앱 반영·패키징은 하지 않음.
+- 정책: [원본 직접 재생](docs/editor-workflow.md#원본-직접-재생--2026-11-12).
+
 ## 프로젝트의 채널별 게시 상태 — 2026-11-12
 
 배경: 게시 완료가 프로젝트당 `stage` 하나라 인스타그램·네이버클립·블로그 중 일부만 올린 프로젝트를 표현할 수 없었다. 사용자 결정으로 프로젝트는 하나로 두고 그 안에서 채널별로 본다.
