@@ -56,6 +56,9 @@ const intakeInstruction = `
 자료 준비 후 experience-form.json을 만들고 결과 evidence에 포함하세요. 촬영물 선별·메뉴/장소 메타정보·요청한 레퍼런스 추출 및 분석을 먼저 수행하고 완료/한계를 구분하세요. 사진으로 알 수 없는 본인의 감정·맛·방문 계기·동행 반응·아쉬움·다음 선택을 중립적인 질문으로 묶으세요. 알려진 답은 반복 질문하지 마세요. 완식·남긴 양·대기 장면 등 촬영물로 확인할 사항은 전체 관련 촬영물을 먼저 검사하고, 글에 필요하면서 자료로도 해결되지 않은 개인 경험만 질문하세요. 이미지에 빈 접시가 보인다고 누가 전부 먹었는지나 정확한 대기시간까지 단정하지 마세요. 선호/맛을 미리 단정하거나 예시 답변으로 유도하지 마세요.
 형식: {"version":1,"title":"경험 채우기","introduction":"작성 안내","facts":[{"text":"확인한 정보","source":"근거 파일/URL","status":"confirmed|observed|unverified"}],"questions":[{"id":"memory","section":"핵심 기억","prompt":"가장 기억에 남는 점은?","help":"","required":true,"images":[{"path":"media/preview.jpg","caption":"원본 파일명·시점·관찰 내용"}]}]}
 질문 images는 작업폴더 내부의 JPEG/PNG/WebP 미리보기(각 4MB 이하)만 쓰세요. 사실 source와 사용자 경험의 주체를 구분하세요. 질문과 사진을 한 폼에서 받을 준비까지만 하고 답변을 대신 만들지 마세요.`;
+/** A DSL step that writes a photo plan, judged by output name as adopt.ts does. */
+const planStep = (step: DefinitionStep) =>
+  step.outputs.some((file) => path.basename(file) === "story-media-plan.json");
 const State = Annotation.Root({ run: Annotation<WorkflowRun>() });
 const instructions: Record<WorkflowStage, string> = {
   prepare:
@@ -474,6 +477,18 @@ export class WorkflowRuntime {
       .addConditionalEdges("visual_review", next, ["request", END])
       .compile({ checkpointer: this.saver });
   }
+  /**
+   * Scene previews of the tracked media-scenes.json for a step that writes a photo
+   * plan, so they are part of the task's input hashes as in the built-in prepare
+   * stage. Other steps track nothing extra.
+   */
+  private async planPreviews(
+    run: WorkflowRun,
+    step: DefinitionStep,
+    tracked: string[],
+  ) {
+    return planStep(step) ? mediaSceneInputs(run.workspace, tracked) : [];
+  }
   private dslStep(run: WorkflowRun): DefinitionStep {
     const step = run.definition?.definition.steps.find(
       (s) => s.id === run.stepId,
@@ -571,6 +586,12 @@ export class WorkflowRuntime {
       };
     const form = await this.checkDslInputs(run, step);
     let trackedFiles = [...new Set([...run.trackedFiles, ...step.inputs])];
+    trackedFiles = [
+      ...new Set([
+        ...trackedFiles,
+        ...(await this.planPreviews(run, step, trackedFiles)),
+      ]),
+    ];
     if (form) {
       const record =
         this.getExperience(run.runId, run.workspace) ??
@@ -635,14 +656,23 @@ export class WorkflowRuntime {
       throw new Error(
         "MISSING_OUTPUT: include every declared output in evidence",
       );
+    // Same photo-plan rule as the built-in draft stage and as skipping (adopt.ts):
+    // a step that declares story-media-plan.json must cover every tracked scene.
+    if (planStep(step))
+      await validateStoryMediaSubmission(
+        run.workspace,
+        run.task!.inputHashes,
+        input.evidence,
+        true,
+      );
     if (target !== "$complete") {
       const next = run.definition!.definition.steps.find(
         (s) => s.id === target,
       )!;
-      await this.checkDslInputs(run, next, [
-        ...run.trackedFiles,
-        ...input.evidence,
-      ]);
+      const tracked = [...run.trackedFiles, ...input.evidence];
+      await this.checkDslInputs(run, next, tracked);
+      // Fail here, not in the next request, when its scene previews are unusable.
+      await this.planPreviews(run, next, [...tracked, ...next.inputs]);
     }
   }
   async validateDefinition(raw: unknown) {

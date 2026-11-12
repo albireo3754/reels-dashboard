@@ -496,3 +496,129 @@ test("create rejects the guide paths that validate-definition rejects", async ()
     await f.runtime.close();
   }
 });
+
+// Draft submissions in a built-in blog run validate the photo plan like the
+// built-in (legacy) draft stage and like skipping do.
+const twoScenes = {
+  version: 1,
+  scenes: ["s1", "s2"].map((id) => ({
+    id,
+    source: "synthetic",
+    preview: `media/${id}.png`,
+    observed: "x",
+  })),
+};
+const planFor = (sceneIds: string[]) => ({
+  version: 1,
+  inventory: "evidence/media-scenes.json",
+  decisions: sceneIds.map((sceneId) => ({
+    sceneId,
+    decision: "use",
+    reason: "fits",
+    handling: "keep",
+    group: "g1",
+    role: "body",
+  })),
+});
+const syntheticForm = {
+  version: 1,
+  title: "Synthetic form",
+  introduction: "",
+  facts: [],
+  questions: [{ id: "q1", section: "S", prompt: "Prompt q1" }],
+};
+type BlogFixture = Awaited<ReturnType<typeof fixture>>;
+async function blogMediaAndAnswers(f: BlogFixture) {
+  await f.put("media/s1.png", "png-1");
+  await f.put("media/s2.png", "png-2");
+  await f.put("evidence/media-scenes.json", twoScenes);
+  const created = await f.runtime.createForm({
+    workspace: f.workspace,
+    form: syntheticForm,
+  });
+  await f.runtime.saveForm({
+    formId: created.formId,
+    expectedRevision: created.revision,
+    answers: [{ questionId: "q1", status: "answered", text: "a" }],
+    submit: true,
+  });
+}
+/** Work prepare (not skipped); the covered form then skips the input step. */
+async function blogRunAtDraft(f: BlogFixture) {
+  let run = await f.runtime.create(f.input);
+  assert.equal(run.stepId, "prepare");
+  await blogMediaAndAnswers(f);
+  await f.put("experience-form.json", syntheticForm);
+  run = await f.runtime.submit({
+    runId: run.runId,
+    taskId: run.task!.taskId,
+    outcome: "done",
+    summary: "synthetic",
+    evidence: run.task!.step!.outputs,
+  });
+  assert.equal(run.stepId, "draft");
+  return run;
+}
+const submitDraft = (f: BlogFixture, run: WorkflowRun) =>
+  f.runtime.submit({
+    runId: run.runId,
+    taskId: run.task!.taskId,
+    outcome: "done",
+    summary: "synthetic",
+    evidence: run.task!.step!.outputs,
+  });
+
+test("a built-in blog draft whose story-media-plan.json misses a scene is rejected", async () => {
+  const f = await fixture();
+  try {
+    const run = await blogRunAtDraft(f);
+    await f.put("article.markup.md", "draft");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("evidence/story-media-plan.json", planFor(["s1"]));
+    await assert.rejects(submitDraft(f, run), /MEDIA_PLAN_COVERAGE/);
+    const after = await f.runtime.get({ runId: run.runId });
+    assert.equal(after.stepId, "draft");
+    assert.equal(after.task!.taskId, run.task!.taskId);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a built-in blog draft whose plan covers every scene is accepted, with previews tracked", async () => {
+  const f = await fixture();
+  try {
+    const run = await blogRunAtDraft(f);
+    assert.ok(run.task!.inputHashes["media/s1.png"]);
+    assert.ok(run.task!.inputHashes["media/s2.png"]);
+    await f.put("article.markup.md", "draft");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("evidence/story-media-plan.json", planFor(["s1", "s2"]));
+    const next = await submitDraft(f, run);
+    assert.equal(next.stepId, "image_review");
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a built-in blog run that skipped prepare also accepts a covering draft plan", async () => {
+  const f = await fixture();
+  try {
+    await blogMediaAndAnswers(f);
+    const run = await f.runtime.create(f.input);
+    assert.deepEqual(
+      run.history.map((h) => [h.stepId, h.outcome]),
+      [
+        ["prepare", "skipped"],
+        ["experience", "skipped"],
+      ],
+    );
+    assert.equal(run.stepId, "draft");
+    await f.put("article.markup.md", "draft");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("evidence/story-media-plan.json", planFor(["s1", "s2"]));
+    const next = await submitDraft(f, run);
+    assert.equal(next.stepId, "image_review");
+  } finally {
+    await f.runtime.close();
+  }
+});
