@@ -289,6 +289,44 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "publications": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "instagram",
+                    "naver-clip",
+                    "blog"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "planned",
+                    "published"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                "publishedAt": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                }
+              },
+              "required": [
+                "channel",
+                "status",
+                "url"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [

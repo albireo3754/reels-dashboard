@@ -53,6 +53,7 @@ import { Editor } from "./Editor";
 import { MobileBriefing } from "./MobileBriefing";
 import { pages, permissionLabels, type Tab } from "./pages";
 import { ProjectCard } from "./ProjectCard";
+import { publicationsSchema } from "../shared/publications";
 import { ProjectDialog } from "./ProjectDialog";
 import { Empty, Icon, JSONDetails, asRecord, asStrings } from "./ui";
 const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
@@ -493,6 +494,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         !/^https?:\/\//.test(editingProject.publicURL)
       )
         throw new Error("게시 링크는 HTTP 또는 HTTPS 주소를 입력해주세요.");
+      const publications = publicationsSchema.safeParse(
+        editingProject.publications ?? [],
+      );
+      if (!publications.success)
+        throw new Error(
+          publications.error.issues[0]?.message ??
+            "채널별 게시 정보를 확인해주세요.",
+        );
       const value = { ...editingProject, title: editingProject.title.trim() };
       const next = {
         ...dashboard,

@@ -3,6 +3,18 @@ import {
   type Project,
   type Stage,
 } from "../../../shared/contracts";
+import {
+  isPublishedOn,
+  publicationChannelLabels,
+  publicationChannels,
+  publicationOn,
+  type PublicationChannel,
+} from "../../../shared/publications";
+
+export const channelLabels = {
+  all: "모든 채널",
+  ...publicationChannelLabels,
+};
 
 export const sortLabels = {
   newest: "날짜 최신순",
@@ -21,6 +33,8 @@ export type BoardQuery = {
   search: string;
   stage: "all" | "active" | Stage;
   basis: keyof typeof basisLabels;
+  /** One channel narrows the board to projects that target it and judges progress by that channel alone. */
+  channel: "all" | PublicationChannel;
   sort: keyof typeof sortLabels;
   view: "grid" | "list";
 };
@@ -28,6 +42,7 @@ export const defaultBoardQuery: BoardQuery = {
   search: "",
   stage: "active",
   basis: "all",
+  channel: "all",
   sort: "newest",
   view: "grid",
 };
@@ -40,6 +55,8 @@ export function parseBoardQuery(value: unknown): BoardQuery {
     result.stage = v.stage as BoardQuery["stage"];
   if (Object.hasOwn(basisLabels, String(v.basis)))
     result.basis = v.basis as BoardQuery["basis"];
+  if ((publicationChannels as readonly string[]).includes(String(v.channel)))
+    result.channel = v.channel as PublicationChannel;
   if (Object.hasOwn(sortLabels, String(v.sort)))
     result.sort = v.sort as BoardQuery["sort"];
   if (v.view === "list") result.view = "list";
@@ -59,8 +76,20 @@ export function selectBoardProjects(
   query: BoardQuery,
 ): Project[] {
   const words = normalize(query.search).trim().split(/\s+/).filter(Boolean);
+  const channel = query.channel;
   const selected = projects.filter((project) => {
-    if (
+    if (channel !== "all") {
+      if (!publicationOn(project, channel)) return false;
+      // In a channel view "published" means live on that channel, whatever the other channels are doing.
+      const live = isPublishedOn(project, channel);
+      if (query.stage === "active" ? live : query.stage === "published" && !live)
+        return false;
+      if (
+        !["all", "active", "published"].includes(query.stage) &&
+        (live || project.stage !== query.stage)
+      )
+        return false;
+    } else if (
       query.stage === "active"
         ? project.stage === "published"
         : query.stage !== "all" && project.stage !== query.stage

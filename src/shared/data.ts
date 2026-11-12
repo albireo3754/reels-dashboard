@@ -4,6 +4,7 @@ import {
 } from "./production-project";
 import { localResourcesSchema } from "./local-resources";
 import { outboundSchema } from "./icloud-delivery";
+import { publicationsSchema } from "./publications";
 import {
   projectStages,
   type Dashboard,
@@ -63,6 +64,9 @@ export function validateDashboard(value: unknown): Dashboard {
         : {}),
       ...(p.localNotes !== undefined
         ? { localNotes: text(p.localNotes, 4000) }
+        : {}),
+      ...(p.publications !== undefined
+        ? { publications: publicationsSchema.parse(p.publications) }
         : {}),
       ...(p.dateBasis !== undefined
         ? {

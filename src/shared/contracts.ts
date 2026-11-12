@@ -52,6 +52,8 @@ export interface Project {
   resources?: LocalResource[];
   localNotes?: string;
   dateBasis?: "capture" | "publication" | "record";
+  /** Per-channel posting state. `stage` and `publicURL` stay the project-wide summary. */
+  publications?: import("./publications").Publication[];
 }
 export interface Dashboard {
   schemaVersion: 1;

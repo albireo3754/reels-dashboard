@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  publicationChannels,
+  publicationSchema,
+  publicationStatuses,
+  publicationsSchema,
+} from "./publications";
+import { dashboardRevision } from "./production-project";
 
 export const localPathSchema = z
   .string()
@@ -44,5 +51,25 @@ export const contentInputSchema = z.strictObject({
   publicURL: z.string().max(2048),
   localNotes: z.string().max(4000),
   resources: localResourcesSchema,
+  /** Omit to keep the stored channel state; pass a list to replace it. */
+  publications: publicationsSchema.optional(),
 });
 export type ContentInput = z.infer<typeof contentInputSchema>;
+
+export const setPublicationSchema = z
+  .strictObject({
+    projectId: z.string().min(1).max(160),
+    expectedUpdatedAt: dashboardRevision,
+    channel: z.enum(publicationChannels),
+    /** `none` removes the channel from this project's targets. */
+    status: z.enum(["none", ...publicationStatuses]),
+    url: publicationSchema.shape.url.optional(),
+    publishedAt: publicationSchema.shape.publishedAt,
+  })
+  .refine(
+    (v) =>
+      (v.status === "published" || !v.publishedAt) &&
+      (v.status !== "none" || !v.url),
+    "게시일은 게시 완료에만, 링크는 예정·게시 완료에만 넣을 수 있어요.",
+  );
+export type SetPublicationInput = z.infer<typeof setPublicationSchema>;

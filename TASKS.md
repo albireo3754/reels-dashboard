@@ -1,5 +1,17 @@
 # Reels Dashboard 진행 상태
 
+## 프로젝트의 채널별 게시 상태 — 2026-11-12
+
+배경: 게시 완료가 프로젝트당 `stage` 하나라 인스타그램·네이버클립·블로그 중 일부만 올린 프로젝트를 표현할 수 없었다. 사용자 결정으로 프로젝트는 하나로 두고 그 안에서 채널별로 본다.
+
+- [x] `Project.publications`: 채널(`instagram`·`naver-clip`·`blog`)마다 `planned`/`published`·링크·게시일. 기존 dashboard schemaVersion 1의 선택 필드이며 `stage`·`publicURL`은 프로젝트 요약으로 유지. 공유 snapshot에는 넣지 않음.
+- [x] 보드 **채널 필터**: 채널을 고르면 그 채널을 목표로 하는 프로젝트만 보이고 진행 중/게시 완료를 그 채널 기준으로 판정. 카드에 채널 칩·링크, 콘텐츠 기록 폼에 채널별 입력.
+- [x] MCP/CLI `reels_set_publication`: 채널 하나만 갱신(전체 upsert 불필요). 목표 채널이 전부 게시되면 `stage`를 게시 완료로 올리고 되돌리지 않음. 남은 채널은 먼저 `planned`로 등록해야 함. `reels_upsert_content`는 `publications`를 생략하면 기존 값을 유지.
+- [x] 프로젝트 병합: 채널별로 합치고 같은 채널의 서로 다른 게시물은 `PROJECT_PUBLICATION_CONFLICT`로 거절.
+- [x] 검증: `npm run typecheck`, `npm run check:architecture`, `npm test`(479개 중 473 통과·4 건너뜀·2 실패. 실패는 단독 재실행 시 통과하는 `blog-autosave` 타이밍 테스트와 이 worktree에 번들 ffmpeg가 없어 난 `face-mosaic`이며 이번 변경과 무관), 웹 Playwright 10개(`publications`·`board-controls`·`dashboard`) 통과, 카드 화면 스크린샷 확인.
+- [ ] Electron 테스트 미실행. 모바일 공유 화면의 채널 표시 없음. 기존 프로젝트의 채널 상태는 비어 있어 실제 게시 확인 뒤 채워야 함.
+- 설계·사용법: [제작 프로젝트 모델](docs/production-projects.md#채널별-게시-상태--2026-11-12), [MCP 사용법](docs/mcp-usage.md#per-channel-publication-state--2026-11-12).
+
 ## 로컬 표지 서명·클립 업로드 묶음 — 2026-11-12
 
 - [x] 표지 서명: user-data의 비공개 `cover-preferences.json`, 기본 `@your_account 🌹` 유지. 앱 설정·MCP가 같은 서비스를 사용하고 요청별 서명을 표지 엔진·manifest에 전달. 팔로우 마지막 장의 명시적 서명은 유지.

@@ -59,6 +59,9 @@ export interface AgentPorts {
     listEdits?(): Promise<unknown>;
     get(projectId: string): Promise<unknown>;
     upsert(content: ContentInput, expectedUpdatedAt: string): Promise<unknown>;
+    setPublication?(
+      input: import("../../../shared/local-resources").SetPublicationInput,
+    ): Promise<unknown>;
     listFolder(
       directory: string,
       offset: number,
@@ -172,6 +175,10 @@ export function createAgentDispatch(ports: AgentPorts) {
       case "reels_upsert_content":
         session.assertWritable();
         return ports.content.upsert(input.content, input.expectedUpdatedAt);
+      case "reels_set_publication":
+        session.assertWritable();
+        if (!ports.content.setPublication) throw new Error("UNSUPPORTED");
+        return ports.content.setPublication(input);
       case "reels_list_local_media":
         return ports.content.listFolder(
           input.directory,

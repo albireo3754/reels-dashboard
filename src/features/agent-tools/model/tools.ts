@@ -10,6 +10,7 @@ import { blogCommentCreate, blogCommentDelete, blogCommentList, blogCommentUpdat
 import {
   contentInputSchema,
   localPathSchema,
+  setPublicationSchema,
 } from "../../../shared/local-resources";
 import { settingsPatchSchema } from "../../../entities/agent-session";
 
@@ -153,6 +154,12 @@ export const toolDefinitions = {
       content: contentInputSchema,
       expectedUpdatedAt: dashboardRevision,
     }),
+    readOnly: false,
+  },
+  reels_set_publication: {
+    description:
+      "Record where one content entry is posted: set a single channel (instagram, naver-clip or blog) to planned or published with its link and the day it went live, or `none` to drop the channel. Other fields, resources and channels are untouched, so no full upsert is needed. When every targeted channel is published the entry's stage becomes published; it is never moved back. Register the channels still to come as planned first, otherwise a single live channel completes the entry. This records state only and does not post, upload or verify anything. Confirm the live post before recording published.",
+    input: setPublicationSchema,
     readOnly: false,
   },
   reels_list_local_media: {

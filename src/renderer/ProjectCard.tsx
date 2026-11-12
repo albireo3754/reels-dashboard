@@ -8,6 +8,10 @@ import { ContentMediaCard, StageProgress } from "../features/content-board";
 import { ContentRouteMap } from "../features/route-map";
 import { ProjectAnalysis } from "../features/media-analysis";
 import { Icon } from "./ui";
+import {
+  publicationChannelLabels,
+  publicationStatusLabels,
+} from "../shared/publications";
 
 const dateBasisLabels: Record<NonNullable<Project["dateBasis"]>, string> = {
   capture: "촬영",
@@ -44,6 +48,7 @@ export function ProjectCard({
   onReveal?: (path: string) => void;
 }) {
   const resources = project.resources ?? [];
+  const publications = project.publications ?? [];
   return (
     <article className="project-card ui-hover-host">
       <ContentMediaCard
@@ -71,12 +76,34 @@ export function ProjectCard({
             {project.date || "날짜 미정"}
           </span>
           {project.shared && <span className="share-indicator">모바일 공유</span>}
-          {project.publicURL && (
+          {project.publicURL && !publications.length && (
             <a href={project.publicURL} target="_blank" rel="noreferrer">
               게시물 보기 ↗
             </a>
           )}
         </p>
+        {publications.length > 0 && (
+          <ul className="project-channels" aria-label="채널별 게시 상태">
+            {publications.map((p) => {
+              const label = `${publicationChannelLabels[p.channel]} · ${
+                p.status === "published" && p.publishedAt
+                  ? `${p.publishedAt} 게시`
+                  : publicationStatusLabels[p.status]
+              }`;
+              return (
+                <li key={p.channel} data-status={p.status}>
+                  {p.url ? (
+                    <a href={p.url} target="_blank" rel="noreferrer">
+                      {label} ↗
+                    </a>
+                  ) : (
+                    label
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <StageProgress project={project} />
         <p className="project-next">
           {project.nextAction || "다음 할 일을 정해보세요."}

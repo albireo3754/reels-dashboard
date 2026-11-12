@@ -1,3 +1,4 @@
+import { publicationChannels } from "./publications";
 import { localDate } from "./lib/format";
 import { z } from "zod";
 import type { Dashboard, LocalResource, Project } from "./contracts";
@@ -226,6 +227,24 @@ export function mergeProjects(
     throw new Error(
       "PROJECT_PUBLICATION_CONFLICT: 게시 링크가 달라요. 게시 정보를 먼저 정리해주세요.",
     );
+  const publications = [...(target.publications ?? [])];
+  for (const entry of sources.flatMap((p) => p.publications ?? [])) {
+    const existing = publications.find((p) => p.channel === entry.channel);
+    if (!existing) publications.push(entry);
+    else if (entry.status === "published" || entry.url) {
+      // A live post never silently replaces another one on the same channel.
+      if (
+        (existing.status === "published" || existing.url) &&
+        (existing.url !== entry.url ||
+          existing.status !== entry.status ||
+          existing.publishedAt !== entry.publishedAt)
+      )
+        throw new Error(
+          "PROJECT_PUBLICATION_CONFLICT: 같은 채널의 게시 정보가 달라요. 게시 정보를 먼저 정리해주세요.",
+        );
+      publications[publications.indexOf(existing)] = entry;
+    }
+  }
   const model = target.production ?? emptyProduction();
   const outbounds = [target,...sources].flatMap(p => p.outbound ? [p.outbound] : []);
   if (new Set(outbounds.map(o=>o.directory)).size > 1)
@@ -234,6 +253,15 @@ export function mergeProjects(
     ...target,
     ...(outbounds[0] ? {outbound:outbounds[0]} : {}),
     resources: [...(target.resources ?? [])],
+    ...(publications.length
+      ? {
+          publications: publications.sort(
+            (a, b) =>
+              publicationChannels.indexOf(a.channel) -
+              publicationChannels.indexOf(b.channel),
+          ),
+        }
+      : {}),
     production: {
       ...model,
       edits: [...model.edits],

@@ -947,3 +947,44 @@ dialog.clip-upload-dialog {
  * 문서 스크롤바를 감춘다. 휠·트랙패드·키보드 스크롤은 그대로 동작한다.
  */
 :root:has(.compact-shell[data-terminal="open"]) { scrollbar-width: none; }
+
+/* Per-channel posting state on a content card and in its form. */
+.project-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.project-channels li {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-subtle);
+}
+.project-channels li[data-status="published"] {
+  color: var(--color-text);
+}
+.project-channels a {
+  font-size: inherit;
+}
+.project-channel-fields {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.project-channel-row {
+  display: grid;
+  grid-template-columns: 5.5em 8em minmax(0, 1fr) 9.5em;
+  align-items: center;
+  gap: var(--space-2);
+}
+@media (max-width: 640px) {
+  .project-channel-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

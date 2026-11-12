@@ -15,6 +15,11 @@ import {
 import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import {
+  allChannelsPublished,
+  withPublication,
+  withoutPublication,
+} from "../../../shared/publications";
+import {
   mediaKind,
   type ContentMediaPage,
 } from "../../../shared/content-media";
@@ -22,7 +27,9 @@ import type { LocalResource, Dashboard } from "../../../shared/contracts";
 import {
   contentInputSchema,
   localPathSchema,
+  setPublicationSchema,
   type ContentInput,
+  type SetPublicationInput,
 } from "../../../shared/local-resources";
 import { LocalStore } from "../../../shared/lib/storage";
 import type { OutboundFile } from "../../../shared/icloud-delivery";
@@ -191,6 +198,47 @@ export class ContentLibrary {
     }, expectedUpdatedAt);
     this.changed(dashboard);
     return this.get(input.id);
+  }
+
+  /**
+   * Records one channel's posting state without resending the whole entry.
+   * The project is marked published once every channel it targets is live;
+   * it is never moved back when a channel is added or reset later.
+   */
+  async setPublication(value: SetPublicationInput) {
+    const input = setPublicationSchema.parse(value);
+    const dashboard = await this.store.update((current) => {
+      const old = current.projects.find((p) => p.id === input.projectId);
+      if (!old)
+        throw new Error(
+          current.projects.some((p) =>
+            p.production?.mergedIds.includes(input.projectId),
+          )
+            ? "PROJECT_MERGED: 합쳐진 ID예요. 대표 프로젝트 ID를 사용해주세요."
+            : "CONTENT_NOT_FOUND: 등록한 콘텐츠를 찾지 못했어요.",
+        );
+      const publications =
+        input.status === "none"
+          ? withoutPublication(old.publications, input.channel)
+          : withPublication(old.publications, {
+              channel: input.channel,
+              status: input.status,
+              url: input.url ?? "",
+              ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
+            });
+      const { publications: _previous, ...rest } = old;
+      const project = {
+        ...rest,
+        ...(publications.length ? { publications } : {}),
+      };
+      if (allChannelsPublished(project)) project.stage = "published";
+      current.projects = current.projects.map((p) =>
+        p.id === old.id ? project : p,
+      );
+      return current;
+    }, input.expectedUpdatedAt);
+    this.changed(dashboard);
+    return this.get(input.projectId);
   }
 
   async listFolder(directory: string, offset = 0, limit = 100) {

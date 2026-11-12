@@ -1,5 +1,6 @@
 import {
   basisLabels,
+  channelLabels,
   defaultBoardQuery,
   sortLabels,
   type BoardQuery,
@@ -23,7 +24,8 @@ export function BoardToolbar({
   const filtered = Boolean(
     query.search ||
       query.stage !== defaultBoardQuery.stage ||
-      query.basis !== "all",
+      query.basis !== "all" ||
+      query.channel !== "all",
   );
   return (
     <div className="board-controls">
@@ -78,6 +80,20 @@ export function BoardToolbar({
           <option value="all">전체 콘텐츠</option>
         </select>
         <select
+          aria-label="채널 필터"
+          title="채널을 고르면 그 채널에 올리는 콘텐츠만 보이고, 진행·게시 완료도 그 채널 기준으로 걸러요."
+          value={query.channel}
+          onChange={(e) =>
+            set({ channel: e.target.value as BoardQuery["channel"] })
+          }
+        >
+          {Object.entries(channelLabels).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select
           aria-label="날짜 종류"
           title="날짜 종류"
           value={query.basis}
@@ -117,8 +133,10 @@ export function BoardToolbar({
         <button
           className="small"
           aria-label="전체 콘텐츠 보기"
-          aria-pressed={query.stage === "all"}
-          onClick={() => set({ search: "", stage: "all", basis: "all" })}
+          aria-pressed={query.stage === "all" && query.channel === "all"}
+          onClick={() =>
+            set({ search: "", stage: "all", basis: "all", channel: "all" })
+          }
         >
           전체 보기
         </button>

@@ -56,6 +56,21 @@ This moves the place-guide group and selects a cover frame, preserving caption t
 
 `reels_list_local_media`, `reels_get_content` and `reels_upsert_content` connect existing capture folders, completed videos/covers and canonical content documents to the production dashboard without editing imports or proxy generation. Read the current dashboard revision before writing. See [local content workflow](local-content-library.md) for stable IDs, full resource-list replacement, private fields and availability checks.
 
+## Per-channel publication state — 2026-11-12
+
+One project can be posted on Instagram, Naver Clip and the blog on different days. `reels_set_publication` records one channel at a time:
+
+```json
+{"projectId":"content:example","expectedUpdatedAt":"<dashboard updatedAt>","channel":"naver-clip","status":"published","url":"https://…","publishedAt":"2026-11-06"}
+```
+
+- `channel`: `instagram`, `naver-clip` or `blog`. `status`: `planned`, `published`, or `none` to drop the channel. `url` is optional; `publishedAt` is allowed only with `published`.
+- Nothing else on the entry changes, so no full `reels_upsert_content` is needed. `reels_upsert_content` keeps the stored channels when `publications` is omitted and replaces them when it is passed.
+- When every targeted channel is `published`, the entry's `stage` becomes `published` and is never moved back. Register the channels still to come as `planned` first; otherwise a single live channel completes the entry.
+- This is a record. It does not post, upload or check the link. Confirm the live post and its date before recording `published`.
+
+CLI: `reels set-publication` with the same fields.
+
 ## Photos and limits
 
 `reels_photos_status`, `reels_photos_index`, `reels_photos_groups`, `reels_photos_group` and `reels_photos_inspect` use the app's validated native boundary. Inspection creates a bounded evidence page. `reels_import_photos_video` takes a group/index-run/asset selection and uses the same checked materialization as the UI. Existing macOS Photos permission is required; grant it through the app. Re-index after a native-helper restart rather than treating old index-run IDs as persistent project IDs.
