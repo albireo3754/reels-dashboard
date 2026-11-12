@@ -94,4 +94,7 @@ export interface ICloudBridge {
   start(input: ICloudDeliveryInput): Promise<ICloudDeliveryJob>;
   get(jobId: string): Promise<ICloudDeliveryJob>;
   status(paths: string[]): Promise<ICloudUploadStatus>;
+  readiness(
+    input: import("./publish-readiness").PublishReadinessInput,
+  ): Promise<import("./publish-readiness").PublishReadiness>;
 }

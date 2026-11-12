@@ -970,6 +970,16 @@ dialog.clip-upload-dialog {
 .project-channels a {
   font-size: inherit;
 }
+.project-channels li[data-readiness="ready"] {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+.project-channels li[data-readiness="upload-failed"],
+.project-channels li[data-readiness="changed"],
+.project-channels li[data-readiness="incomplete"] {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
 .project-channel-fields {
   display: grid;
   gap: var(--space-2);

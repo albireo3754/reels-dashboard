@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { ClipUploadControls } from "./ClipUploadControls";
 import type {
   DashboardBridge,
@@ -12,6 +13,10 @@ import {
   publicationChannelLabels,
   publicationStatusLabels,
 } from "../shared/publications";
+import {
+  publishReadinessLabels,
+  type PublishReadiness,
+} from "../shared/publish-readiness";
 
 const dateBasisLabels: Record<NonNullable<Project["dateBasis"]>, string> = {
   capture: "촬영",
@@ -49,6 +54,7 @@ export function ProjectCard({
 }) {
   const resources = project.resources ?? [];
   const publications = project.publications ?? [];
+  const readiness = useInstagramReadiness(project, bridge);
   return (
     <article className="project-card ui-hover-host">
       <ContentMediaCard
@@ -85,13 +91,24 @@ export function ProjectCard({
         {publications.length > 0 && (
           <ul className="project-channels" aria-label="채널별 게시 상태">
             {publications.map((p) => {
+              const ready =
+                p.channel === "instagram" && p.status === "planned"
+                  ? readiness
+                  : undefined;
               const label = `${publicationChannelLabels[p.channel]} · ${
                 p.status === "published" && p.publishedAt
                   ? `${p.publishedAt} 게시`
-                  : publicationStatusLabels[p.status]
+                  : ready
+                    ? publishReadinessLabels[ready.state]
+                    : publicationStatusLabels[p.status]
               }`;
               return (
-                <li key={p.channel} data-status={p.status}>
+                <li
+                  key={p.channel}
+                  data-status={p.status}
+                  data-readiness={ready?.state}
+                  title={ready?.message}
+                >
                   {p.url ? (
                     <a href={p.url} target="_blank" rel="noreferrer">
                       {label} ↗
@@ -139,4 +156,48 @@ export function ProjectCard({
       </div>
     </article>
   );
+}
+
+const READINESS_POLL_MS = 20_000;
+
+/**
+ * Instagram readiness for a planned Instagram post that already has an iCloud
+ * outbound folder. Re-checked when a new delivery lands, and polled while
+ * iCloud is still uploading or reporting an error (often transient).
+ */
+function useInstagramReadiness(project: Project, bridge: DashboardBridge) {
+  const [readiness, setReadiness] = useState<PublishReadiness>();
+  const planned = project.publications?.some(
+    (p) => p.channel === "instagram" && p.status === "planned",
+  );
+  const generation = project.outbound?.generation ?? 0;
+  const icloud = bridge.icloud;
+  useEffect(() => {
+    if (!planned || !generation || !icloud?.readiness) {
+      setReadiness(undefined);
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () =>
+      icloud
+        .readiness({ projectId: project.id, channel: "instagram" })
+        .then((next) => {
+          if (cancelled) return;
+          setReadiness(next);
+          if (next.state === "uploading" || next.state === "upload-failed")
+            timer = setTimeout(check, READINESS_POLL_MS);
+        })
+        .catch(() => {
+          // Keep the last known state and try again; a single failed read
+          // (helper busy, files being replaced) must not freeze the chip.
+          if (!cancelled) timer = setTimeout(check, READINESS_POLL_MS);
+        });
+    void check();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [planned, generation, icloud, project.id]);
+  return readiness;
 }

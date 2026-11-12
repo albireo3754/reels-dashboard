@@ -118,6 +118,9 @@ export function createAgentDispatch(ports: AgentPorts) {
         session.assertWritable();
         if (!ports.icloud) throw new Error("UNSUPPORTED");
         return ports.icloud.start(input);
+      case "reels_get_publish_readiness":
+        if (!ports.icloud) throw new Error("UNSUPPORTED");
+        return ports.icloud.readiness(input);
       case "reels_get_icloud_delivery":
         if (!ports.icloud) throw new Error("UNSUPPORTED");
         return ports.icloud.get(input.jobId);
