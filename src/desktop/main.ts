@@ -4,6 +4,7 @@ import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { CANONICAL_EDITOR_HELP_URL, DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
+import { BlogComments } from "./blog-comments";
 import { workflowRequest } from "../app/workflow/client";
 import { workflowAction, type WorkflowAction } from "../shared/workflow";
 import { DesktopWorkflowHost } from "./workflow-host";
@@ -232,6 +233,7 @@ async function awaitReady() {
     backgroundQA && process.env.REELS_QA_STUBBED_DIALOGS !== "1",
   );
   const blogResults = new BlogResults(store, () => emit("blog:results-changed", null));
+  const blogComments = new BlogComments(store);
   const blogExtractor = new BlogExtractor({
     store,
     viewerAssets: path.join(app.getAppPath(), "dist-electron/blog-restore-viewer"),
@@ -960,6 +962,7 @@ async function awaitReady() {
       forms: { request: requestWorkflow },
       analysis,
       blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
+      blogComments,
       preview: async (project, time, kind) => {
         const artifact = await editorService.previewArtifact(
           project,

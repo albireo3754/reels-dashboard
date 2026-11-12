@@ -6,6 +6,7 @@ import { dashboardRevision, mergeProjectsSchema, linkEditSchema } from "../../..
 import { z } from "zod";
 import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
 import { blogExtractInput } from "../../../shared/blog-restore";
+import { blogCommentCreate, blogCommentDelete, blogCommentList, blogCommentUpdate } from "../../../shared/blog-comments";
 import {
   contentInputSchema,
   localPathSchema,
@@ -102,6 +103,26 @@ export const toolDefinitions = {
   reels_unlink_blog_reference: {
     description: "Remove a registered result folder from the Blog tab list by id (from reels_list_blog_references). Files are not deleted.",
     input: z.strictObject({ id: z.string().regex(/^[a-f0-9]{64}$/) }),
+    readOnly: false,
+  },
+  reels_list_blog_comments: {
+    description: "List comments recorded for other Naver blog posts (newest first): post, the blogger's reciprocity promise, status draft/posted/reciprocated/no_reply/neighbor, the comment text and offered drafts. Filter by blogId, postUrl, status or text query. Use it to check earlier comments before drafting a new one.",
+    input: blogCommentList,
+    readOnly: true,
+  },
+  reels_create_blog_comment: {
+    description: "Record a comment for one Naver blog post (status defaults to draft). The URL is normalized to https://m.blog.naver.com/<blogId>/<logNo>; a post that already has a record is rejected with DUPLICATE. Only stores the record; it never posts, likes or follows on Naver.",
+    input: blogCommentCreate,
+    readOnly: false,
+  },
+  reels_update_blog_comment: {
+    description: "Change a recorded comment (status, posted text, drafts, note, postedAt) with updatedAt revision protection. Stores only; never posts to Naver.",
+    input: blogCommentUpdate,
+    readOnly: false,
+  },
+  reels_remove_blog_comment: {
+    description: "Delete one recorded comment by id with updatedAt revision protection. Does not touch the comment on Naver.",
+    input: blogCommentDelete,
     readOnly: false,
   },
   reels_merge_projects: {

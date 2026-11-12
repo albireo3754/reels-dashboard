@@ -1,3 +1,4 @@
+import type { BlogCommentCreateInput, BlogCommentDeleteInput, BlogCommentListInput, BlogCommentUpdateInput } from "../../../shared/blog-comments";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import type { MergeProjectsInput, LinkEditInput } from "../../../shared/production-project";
 import type { ContentInput } from "../../../shared/local-resources";
@@ -41,6 +42,12 @@ export interface AgentPorts {
     results(): Promise<unknown>;
     link(directory: string): Promise<unknown>;
     unlink(id: string): Promise<unknown>;
+  };
+  blogComments?: {
+    list(input: BlogCommentListInput): Promise<unknown>;
+    create(input: BlogCommentCreateInput): Promise<unknown>;
+    update(input: BlogCommentUpdateInput): Promise<unknown>;
+    remove(input: BlogCommentDeleteInput): Promise<unknown>;
   };
   analysis?: Pick<import("../../../shared/media-analysis").AnalysisBridge, "providers" | "start" | "search" | "correct">;
   editor: AgentEditorPort;
@@ -125,6 +132,18 @@ export function createAgentDispatch(ports: AgentPorts) {
       case "reels_unlink_blog_reference":
         if (!ports.blog) throw new Error("UNSUPPORTED");
         return ports.blog.unlink(input.id);
+      case "reels_list_blog_comments":
+        if (!ports.blogComments) throw new Error("UNSUPPORTED");
+        return ports.blogComments.list(input);
+      case "reels_create_blog_comment":
+        if (!ports.blogComments) throw new Error("UNSUPPORTED");
+        return ports.blogComments.create(input);
+      case "reels_update_blog_comment":
+        if (!ports.blogComments) throw new Error("UNSUPPORTED");
+        return ports.blogComments.update(input);
+      case "reels_remove_blog_comment":
+        if (!ports.blogComments) throw new Error("UNSUPPORTED");
+        return ports.blogComments.remove(input);
       case "reels_start_analysis":
         if (!ports.analysis) throw new Error("UNSUPPORTED");
         return ports.analysis.start(input);
