@@ -11,6 +11,11 @@ import {
   type ICloudUploadStatus,
   type OutboundFile,
 } from "../../../shared/icloud-delivery";
+import {
+  evaluatePublishReadiness,
+  publishReadinessInput,
+  type PublishReadiness,
+} from "../../../shared/publish-readiness";
 import type { ContentLibrary } from "./library";
 import { hash } from "./prepare-local-media";
 import { publishOutbound } from "./publish-outbound";
@@ -168,6 +173,55 @@ export class ICloudDelivery implements ICloudBridge {
       return structuredClone(job);
     } finally {
       this.starting.delete(input.projectId);
+    }
+  }
+  /**
+   * Instagram readiness from the saved outbound folder: every delivered file is
+   * still the recorded size and iCloud reports it uploaded. Sizes are compared
+   * instead of hashes so the board can check cheaply; get() keeps the full
+   * hash verification for a delivery job.
+   */
+  async readiness(value: unknown): Promise<PublishReadiness> {
+    const input = publishReadinessInput.parse(value);
+    const { project } = await this.library.get(input.projectId);
+    const outbound = project.outbound;
+    const evaluate = (
+      files?: Parameters<typeof evaluatePublishReadiness>[0]["files"],
+      upload?: ICloudUploadStatus,
+    ) =>
+      evaluatePublishReadiness({ project, channel: input.channel, files, upload });
+    const first = evaluate();
+    if (!outbound || first.state === "published" || first.state === "not-delivered")
+      return first;
+    await this.withinRoot(outbound.directory);
+    const inspect = () => Promise.all(
+      outbound.files.map(async (f) => {
+        try {
+          const info = await lstat(path.join(outbound.directory, f.name));
+          const present = info.isFile() && !info.isSymbolicLink();
+          return { name: f.name, present, sizeMatches: present && info.size === f.bytes };
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+          return { name: f.name, present: false, sizeMatches: false };
+        }
+      }),
+    );
+    const files = await inspect();
+    const checkable = files.filter((f) => f.sizeMatches);
+    if (!checkable.length) return evaluate(files);
+    try {
+      return evaluate(
+        files,
+        await this.status(
+          checkable.map((f) => path.join(outbound.directory, f.name)),
+        ),
+      );
+    } catch (error) {
+      // A delivery can replace files between the size check and the native
+      // read; report that as changed rather than a path error.
+      const again = await inspect();
+      if (again.some((f) => !f.sizeMatches)) return evaluate(again);
+      throw error;
     }
   }
   async get(jobId: string) {

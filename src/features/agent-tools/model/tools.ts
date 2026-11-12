@@ -5,6 +5,7 @@ import { analysisStart, analysisQuery, analysisCorrection } from "../../../share
 import { dashboardRevision, mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
 import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
+import { publishReadinessInput } from "../../../shared/publish-readiness";
 import { blogExtractInput } from "../../../shared/blog-restore";
 import { blogCommentCreate, blogCommentDelete, blogCommentList, blogCommentUpdate } from "../../../shared/blog-comments";
 import {
@@ -59,6 +60,10 @@ export const toolDefinitions = {
   reels_start_icloud_delivery: {
     description: "Publish registered files into the project's saved outbound folder; never choose a version-specific folder. files is the complete current output set with stable names. Replaces managed files and archives prior versions locally; unrelated collisions are rejected. Read get_content for revision, then poll get_icloud_delivery. No Photos deletion or social publishing.",
     input: icloudDeliveryInput, readOnly: false,
+  },
+  reels_get_publish_readiness: {
+    description: "Check whether a project can be posted to Instagram from the phone now: its saved iCloud outbound folder must hold final video, cover and post text (caption·pinned comment·reply) at the delivered sizes, all uploaded to iCloud. States: published, ready, uploading, upload-failed, changed, incomplete, not-delivered. Read-only; no copies, hashing, waiting or posting.",
+    input: publishReadinessInput, readOnly: true,
   },
   reels_get_icloud_delivery: {
     description: "Read a delivery job; after copying, refresh its native iCloud upload state once. Jobs last for this app instance; receipt and output files persist. After reconnect use the same job ID, never blindly repeat start. No blocking upload wait.",

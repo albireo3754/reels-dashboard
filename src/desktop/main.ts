@@ -712,6 +712,7 @@ async function awaitReady() {
     return icloudDelivery.start(input);
   });
   handle("icloud:get", (jobId: string) => icloudDelivery.get(jobId));
+  handle("icloud:readiness", (input: unknown) => icloudDelivery.readiness(input));
   handle("agent:context", (context) => agentSession.update(context));
   handle("saveDocument", async (name: string, data: unknown) => {
     safeDocumentName(name);

@@ -75,6 +75,7 @@ const bridge: DashboardBridge = {
     status: paths => invoke("icloud:status", { paths }),
     start: input => invoke("icloud:start", input),
     get: id => invoke("icloud:get", id),
+    readiness: input => invoke("icloud:readiness", input),
   },
   request: (method, args = {}) => invoke("request", method, args),
   editor: {

@@ -18,6 +18,7 @@ import type {
 } from "./contracts";
 import { emptyDashboard } from "./contracts";
 import { validateDashboard, toSnapshot } from "./data";
+import { evaluatePublishReadiness } from "./publish-readiness";
 
 export function createDemoBridge(
   search = typeof window === "undefined" ? "" : window.location.search,
@@ -313,6 +314,30 @@ export function createDemoBridge(
   }
   return {
     mode: "demo",
+    // Demo has no iCloud: a delivered outbound counts as fully uploaded so the
+    // board can show readiness; delivery itself stays desktop-only.
+    icloud: {
+      async configure() { throw new Error("UNSUPPORTED"); },
+      async list() { return []; },
+      async start() { throw new Error("UNSUPPORTED"); },
+      async get() { throw new Error("UNSUPPORTED"); },
+      async status() { throw new Error("UNSUPPORTED"); },
+      async readiness(input) {
+        const project = loadDashboard().projects.find((p) => p.id === input.projectId);
+        if (!project) throw new Error("PROJECT_NOT_FOUND");
+        const files = project.outbound?.files ?? [];
+        const paths = files.map((f) => `${project.outbound!.directory}/${f.name}`);
+        return evaluatePublishReadiness({
+          project,
+          files: files.map((f) => ({ name: f.name, present: true, sizeMatches: true })),
+          upload: {
+            checkedAt: new Date().toISOString(),
+            state: "completed",
+            files: paths.map((path) => ({ path, isUbiquitous: true, isUploaded: true, isUploading: false, isCurrent: true })),
+          },
+        });
+      },
+    },
     routeMap: { async load(id) { return id === "demo-project-1" ? structuredClone(demoRouteMap) : null; } },
     contentMedia: {
       async list(id, folder, offset = 0) {

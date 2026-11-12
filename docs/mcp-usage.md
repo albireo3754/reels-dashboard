@@ -127,7 +127,7 @@ claim transaction recovery after a process crash. A failed operation never
 justifies creating a different outbound folder.
 
 The desktop preload exposes the same service as `window.reels.icloud` with
-`configure`, `start`, `get`, `list` and `status`. Dashboard cards prefer current
+`configure`, `start`, `get`, `list`, `status` and `readiness`. Dashboard cards prefer current
 outbound visuals and refresh their previews when its generation changes. Older
 outputs remain in the media/history listing. A new delivery-panel UI is outside
 this change.
@@ -136,9 +136,38 @@ Build the desktop/MCP and signed native helper, then restart the desktop app and
 reconnect MCP clients to discover the new tools. Existing app processes do not
 hot-load rebuilt host code.
 
+### Instagram readiness — 2026-11-12
+
+`reels_get_publish_readiness {projectId, channel?: "instagram"}` answers
+"can this be posted from the phone now?" from the saved outbound folder. It is
+read-only: no copies, hashing, waiting or posting. States, decided in order:
+
+| state | meaning |
+|---|---|
+| `published` | the Instagram publication is already `published` |
+| `not-delivered` | no outbound folder, or nothing delivered yet (generation 0) |
+| `incomplete` | the current outbound set lacks `final`, `cover` or `document`; `missingRoles` lists them |
+| `changed` | a delivered file is missing or its size differs from the delivery record |
+| `upload-failed` | iCloud reports an upload error on any file (often transient, e.g. account unreachable; re-check) or a file outside iCloud |
+| `uploading` | iCloud has not finished and reports no error |
+| `ready` | all three roles present at their delivered size and uploaded |
+
+`ready: true` only for `ready`. Sizes are compared instead of SHA-256 so the
+board can check cheaply; `reels_get_icloud_delivery` still hash-verifies a job.
+The `document` role is the post text (caption, pinned comment, reply) that the
+phone copies from.
+
+The desktop bridge exposes it as `window.reels.icloud.readiness`. On the board,
+a planned Instagram chip shows the readiness label (e.g. `인스타그램 · 게시 준비 완료`)
+with the message as its tooltip once the project has a delivered outbound. The
+card re-checks when the outbound generation changes and polls every 20 s while
+uploading or failed; a failed read keeps the last state and retries. The demo bridge treats a delivered outbound as uploaded.
+
 ### Verification commands
 
 ```sh
+node --import tsx --test tests/unit/publish-readiness.test.ts
+npx playwright test -c playwright.web.config.ts tests/web/publish-readiness.spec.ts
 node --import tsx --test tests/unit/icloud-delivery.test.ts tests/unit/content-library.test.ts tests/unit/agent.test.ts
 swift test --package-path native/photosindex --filter AppCommandRouterTests
 npm run test:electron -- tests/electron/icloud-delivery.spec.ts
