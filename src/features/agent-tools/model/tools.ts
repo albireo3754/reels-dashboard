@@ -6,6 +6,7 @@ import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
 import { dashboardRevision, mergeProjectsSchema, linkEditSchema } from "../../../shared/production-project";
 import { z } from "zod";
+import { absolutePathSchema } from "../../../shared/path-schema";
 import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
 import { publishReadinessInput } from "../../../shared/publish-readiness";
 import { blogExtractInput } from "../../../shared/blog-restore";
@@ -26,12 +27,7 @@ const revision = z
   .string()
   .datetime()
   .describe("updatedAt returned by get_project; stale revisions are rejected.");
-const absolutePath = z
-  .string()
-  .min(1)
-  .max(4096)
-  .startsWith("/")
-  .refine((v) => !v.includes("\0"));
+const absolutePath = absolutePathSchema();
 const nativeID = z
   .string()
   .min(1)

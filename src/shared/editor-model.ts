@@ -1,4 +1,21 @@
 import { followCoverDefaults, type EditSettings } from "./editor";
+/** Limits shared by editor validation and the agent settings patch schema. */
+export const EDIT_LIMITS = {
+  placeName: 200,
+  placeDescription: 300,
+  showDuring: 400,
+  captionId: 100,
+  captionText: 1000,
+  maxCaptions: 300,
+  hook: 600,
+  followCta: 100,
+  followSignature: 80,
+  placeSize: { min: 0.005, max: 0.2 },
+  captionFontSizeRatio: { min: 0.005, max: 0.082 },
+  captionY: { min: 0.2, max: 0.79 },
+  hookSize: { min: 1, max: 185 },
+  followDarkness: { min: 0, max: 0.85 },
+} as const;
 const obj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown, max = 2000) => {
@@ -35,38 +52,38 @@ export function validateEditSettings(
     !["rosy-auto", "rosy-large", "rosy-follow"].includes(String(h.template))
   )
     throw new Error("알 수 없는 편집 템플릿이에요.");
-  if (!Array.isArray(c.items) || c.items.length > 300)
+  if (!Array.isArray(c.items) || c.items.length > EDIT_LIMITS.maxCaptions)
     throw new Error("자막은 최대 300개까지 사용할 수 있어요.");
   const result: EditSettings = {
     place: {
       useDefaultPosition: bool(p.useDefaultPosition),
-      name: str(p.name, 200),
-      description: str(p.description, 300),
+      name: str(p.name, EDIT_LIMITS.placeName),
+      description: str(p.description, EDIT_LIMITS.placeDescription),
       material: p.material as EditSettings["place"]["material"],
       x: num(p.x, 0, 1),
       y: num(p.y, 0, 1),
       ...optionalOffsets(p, ["offsetX", "offsetY"]),
-      size: num(p.size, 0.005, 0.2),
+      size: num(p.size, EDIT_LIMITS.placeSize.min, EDIT_LIMITS.placeSize.max),
       persistent: bool(p.persistent),
-      showDuring: str(p.showDuring, 400),
+      showDuring: str(p.showDuring, EDIT_LIMITS.showDuring),
     },
     captions: {
-      fontSizeRatio: num(c.fontSizeRatio, 0.005, 0.082),
-      y: num(c.y, 0.2, 0.79),
+      fontSizeRatio: num(c.fontSizeRatio, EDIT_LIMITS.captionFontSizeRatio.min, EDIT_LIMITS.captionFontSizeRatio.max),
+      y: num(c.y, EDIT_LIMITS.captionY.min, EDIT_LIMITS.captionY.max),
       items: c.items.map((v) => {
         if (!obj(v)) throw new Error("자막 형식을 확인해주세요.");
         return {
-          id: str(v.id, 100),
+          id: str(v.id, EDIT_LIMITS.captionId),
           start: num(v.start, 0, duration),
           end: num(v.end, 0, duration),
-          text: str(v.text, 1000),
+          text: str(v.text, EDIT_LIMITS.captionText),
         };
       }),
     },
     cover: {
       useDefaultPosition: bool(h.useDefaultPosition),
       time: num(h.time, 0, Math.max(0, duration - 0.001)),
-      hook: str(h.hook, 600),
+      hook: str(h.hook, EDIT_LIMITS.hook),
       template: h.template as EditSettings["cover"]["template"],
       x: num(h.x, 0, 1),
       y: num(h.y, 0, 1),
@@ -81,13 +98,13 @@ export function validateEditSettings(
       ...(h.hookSize === undefined ? {} : { hookSize: hookSize(h.hookSize) }),
       ...(h.followCta === undefined
         ? {}
-        : { followCta: str(h.followCta, 100) }),
+        : { followCta: str(h.followCta, EDIT_LIMITS.followCta) }),
       ...(h.followSignature === undefined
         ? {}
-        : { followSignature: str(h.followSignature, 80) }),
+        : { followSignature: str(h.followSignature, EDIT_LIMITS.followSignature) }),
       ...(h.followDarkness === undefined
         ? {}
-        : { followDarkness: num(h.followDarkness, 0, 0.85) }),
+        : { followDarkness: num(h.followDarkness, EDIT_LIMITS.followDarkness.min, EDIT_LIMITS.followDarkness.max) }),
     },
   };
   if (mode !== "draft") {
@@ -138,7 +155,7 @@ function optionalOffsets(value: Record<string, unknown>, keys: string[]) {
   );
 }
 function hookSize(value: unknown) {
-  const size = num(value, 1, 185);
+  const size = num(value, EDIT_LIMITS.hookSize.min, EDIT_LIMITS.hookSize.max);
   if (!Number.isInteger(size))
     throw new Error("표지 글자 크기는 1~185 사이 정수로 입력해주세요.");
   return size;

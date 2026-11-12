@@ -1,6 +1,7 @@
 // Naver blog reference restoration: pure model shared by the desktop extractor, the MCP tool,
 // the restore viewer and tools/blog-restore. No I/O here.
 import { z } from "zod";
+import { absolutePathSchema } from "./path-schema";
 
 export interface TemplateNode {
   type: "element" | "text-slot" | "image-slot";
@@ -71,12 +72,7 @@ export interface PageCapture {
 
 export const blogExtractInput = z.strictObject({
   url: z.string().url().max(2048).describe("Naver blog post URL (blog.naver.com/<id>/<logNo>, m.blog.naver.com or PostView)."),
-  outputDirectory: z
-    .string()
-    .min(1)
-    .max(4096)
-    .startsWith("/")
-    .refine((v) => !v.includes("\0"))
+  outputDirectory: absolutePathSchema()
     .optional()
     .describe("Absolute parent folder. A <blogId>-<logNo> subfolder is created. Defaults to the last folder used in the app."),
   name: z.string().trim().min(1).max(100).optional().describe("Display name for the author; defaults to the blog id."),

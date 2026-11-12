@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { absolutePathSchema } from "./path-schema";
 
 /**
  * Silent, endlessly looping GIF made from a video (blog motion clips).
@@ -12,12 +13,7 @@ export const GIF_DEFAULT_FPS = 15;
 /** Longer ranges make GIFs too large to be useful and outlast the agent socket timeout. */
 export const GIF_MAX_SECONDS = 60;
 
-const absolutePath = z
-  .string()
-  .min(1)
-  .max(4096)
-  .startsWith("/")
-  .refine((v) => !v.includes("\0"), "NUL is not allowed");
+const absolutePath = absolutePathSchema("NUL is not allowed");
 const seconds = z.number().finite().min(0).max(86400);
 /** Allow tiny float noise such as 0.15 + 0.85. */
 const EDGE = 1e-6;
