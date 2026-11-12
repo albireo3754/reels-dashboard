@@ -16,8 +16,21 @@ import {
   executeWorkflowInput,
   sdkJobIdInput,
   isReadOnlyWorkflowAction,
+  type WorkflowAction,
 } from "../../shared/workflow";
 import { workflowRequest } from "./client";
+
+/** Tool handler that forwards to the workflow server and wraps the reply as an MCP result. */
+const forward =
+  (action: WorkflowAction) =>
+  async (input: unknown): Promise<CallToolResult> => {
+    try {
+      const result = await workflowRequest(action, input);
+      return mcpResult(result);
+    } catch (error) {
+      return mcpError(error);
+    }
+  };
 
 const handle = serveStdio(() => {
   const server = new McpServer(
@@ -45,14 +58,7 @@ const handle = serveStdio(() => {
           openWorldHint: false,
         },
       },
-      async (input: unknown): Promise<CallToolResult> => {
-        try {
-          const result = await workflowRequest(action, input);
-          return mcpResult(result);
-        } catch (error) {
-          return mcpError(error);
-        }
-      },
+      forward(action),
     );
   }
   const tools = [
@@ -137,14 +143,7 @@ const handle = serveStdio(() => {
           openWorldHint: false,
         },
       },
-      async (input: unknown): Promise<CallToolResult> => {
-        try {
-          const result = await workflowRequest(action, input);
-          return mcpResult(result);
-        } catch (error) {
-          return mcpError(error);
-        }
-      },
+      forward(action),
     );
   }
   return server;

@@ -1,6 +1,7 @@
-import { lstat, readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { isMissing } from "../../shared/lib/fs";
 import {
   experienceAnswerSchema,
   experienceFormSchema,
@@ -15,7 +16,7 @@ import type {
   DefinitionStep,
   WorkflowDefinition,
 } from "../../shared/workflow-definition";
-import { checkedImage, hashes, resolveFile } from "./files";
+import { checkedImage, hashes, readWorkspaceJson, resolveFile } from "./files";
 import { mediaSceneInputs } from "./story-media";
 
 /** Existing outputs that let a step be skipped, with the reason recorded in history. */
@@ -34,11 +35,8 @@ const submittedAnswers = z.object({
 });
 type SubmittedAnswers = z.infer<typeof submittedAnswers> & { file: string };
 
-async function readJson(workspace: string, file: string, limit = 2_000_000) {
-  const resolved = await resolveFile(workspace, file);
-  if ((await stat(resolved)).size > limit) throw new Error("File too large");
-  return JSON.parse(await readFile(resolved, "utf8"));
-}
+const readJson = (workspace: string, file: string, limit = 2_000_000) =>
+  readWorkspaceJson(workspace, file, limit, "File too large");
 
 /** Submitted form exports in the workspace root, newest first. Unreadable files are ignored. */
 export async function submittedAnswerExports(workspace: string) {
@@ -91,8 +89,7 @@ async function readForm(workspace: string, file: string): Promise<FormState> {
   try {
     await lstat(path.join(workspace, file));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      return { state: "missing" };
+    if (isMissing(error)) return { state: "missing" };
     return { state: "invalid" };
   }
   try {

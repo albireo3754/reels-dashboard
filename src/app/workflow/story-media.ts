@@ -1,16 +1,13 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { mediaScenesSchema, storyMediaPlanSchema, validateSceneCoverage } from "../../shared/story-media";
-import { hashes, resolveFile } from "./files";
+import { hashes, readWorkspaceJson, resolveFile } from "./files";
 
 function named(files: string[], name: string) {
   return [...new Set(files)].filter(file => path.basename(file) === name);
 }
-async function json(workspace: string, file: string) {
-  const resolved = await resolveFile(workspace, file);
-  if ((await stat(resolved)).size > 2_000_000) throw new Error("Media inventory/plan file too large");
-  return JSON.parse(await readFile(resolved, "utf8"));
-}
+const json = (workspace: string, file: string) =>
+  readWorkspaceJson(workspace, file, 2_000_000, "Media inventory/plan file too large");
 
 /** A named inventory opts this run into photo composition; never scan a private library. */
 export async function mediaSceneInputs(workspace: string, files: string[]) {

@@ -1,6 +1,6 @@
 import { localVideoFile } from "../../shared/blog-video";
 import { stickerPlan, stickerAnchors, placementGaps, movedGap, replaceStickers, STICKER_PRESETS, STICKER_CSS, type StickerPlacement } from "../../shared/blog-stickers";
-import { writeFileAtomic } from "../../shared/lib/fs";
+import { isMissing, writeFileAtomic } from "../../shared/lib/fs";
 import type {VisualEvidence} from "../../shared/markup-review";
 import {paragraphSource,findingTarget} from "../../shared/review-applicability";
 import {reviewDocument} from "../../shared/markup-review";
@@ -114,7 +114,7 @@ export class MarkupStore {
           let receipt:any;
           if(this.config.requests&&/^[0-9a-f-]{36}$/i.test(r.requestId??"")){
             try{receipt=reviewDocument(JSON.parse(await readFile(path.join(this.config.requests,r.requestId+".json"),"utf8")).source);}
-            catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
+            catch(e){if(!isMissing(e))throw e;}
           }
           return {...r,visualFresh:r.visualSourceFingerprint===x.base.fingerprint,freshText:hashes[r.bundleId]?.textHash===r.basedOn?.textHash,
             findings:r.findings.map((f:any)=>{
@@ -124,7 +124,7 @@ export class MarkupStore {
               return {...f,sourceAtReview:f.sourceAtReview??(baseline?paragraphSource(baseline):undefined),status:source.corrections?.[f.id]?.status??f.status??"proposed",fresh};
             })};
         }));
-      }catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
+      }catch(e){if(!isMissing(e))throw e;}
     }
     return {
       savedAt:(await stat(this.config.canon)).mtime.toISOString(),

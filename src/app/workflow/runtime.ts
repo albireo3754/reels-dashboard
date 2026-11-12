@@ -19,7 +19,7 @@ import type { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import { openNodeSqliteSaver } from "./sqlite-checkpointer";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { resolveFile, hashes } from "./files";
+import { resolveFile, hashes, readWorkspaceJson } from "./files";
 import { InputFormService } from "./input-form-service";
 import { mediaSceneInputs, validateStoryMediaSubmission } from "./story-media";
 import {
@@ -508,10 +508,8 @@ export class WorkflowRuntime {
   ) {
     await hashes(run.workspace, step.inputs);
     if (step.kind === "input") {
-      const file = await resolveFile(run.workspace, step.formFile!);
-      if ((await stat(file)).size > 200000) throw new Error("Form too large");
       const form = experienceFormSchema.parse(
-        JSON.parse(await readFile(file, "utf8")),
+        await readWorkspaceJson(run.workspace, step.formFile!, 200000, "Form too large"),
       );
       await this.forms.sources(run.workspace, form, [
         ...new Set([...tracked, ...step.inputs, step.formFile!]),
@@ -957,11 +955,8 @@ export class WorkflowRuntime {
           throw new Error(
             "EXPERIENCE_FORM_REQUIRED: 준비 결과에 experience-form.json을 포함해주세요.",
           );
-        const formFile = await resolveFile(run.workspace, formPaths[0]);
-        if ((await stat(formFile)).size > 200000)
-          throw new Error("Form too large");
         const form = experienceFormSchema.parse(
-          JSON.parse(await readFile(formFile, "utf8")),
+          await readWorkspaceJson(run.workspace, formPaths[0], 200000, "Form too large"),
         );
         const registered = await this.forms.registerWorkflow(
           run.runId,
@@ -1058,11 +1053,13 @@ export class WorkflowRuntime {
       throw new Error(
         "FOLLOWUP_MANIFEST_REQUIRED: followup-tasks.json이 필요해요.",
       );
-    const file = await resolveFile(run.workspace, candidates[0]);
-    if ((await stat(file)).size > 200000)
-      throw new Error("Followup manifest too large");
     const manifest = followupManifestSchema.parse(
-      JSON.parse(await readFile(file, "utf8")),
+      await readWorkspaceJson(
+        run.workspace,
+        candidates[0],
+        200000,
+        "Followup manifest too large",
+      ),
     );
     const answers = this.getExperience(run.runId)?.answers ?? [];
     if (
