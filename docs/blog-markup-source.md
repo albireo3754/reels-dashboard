@@ -49,3 +49,24 @@ Not covered: the unknown line cannot be edited in the editor, and the SmartEdito
 Without `ratios` the output is the previous even two-column grid (`figure.photo-grid4.even`), byte for byte. `validate` reports an error when `ratios` does not list one valid ratio per photo or when the `layout` cell count differs from the photo count; the renderer falls back to the even grid for a malformed value.
 
 Not covered: the editor has no control for editing `ratios` (edit the markup source), the legacy layer format is unchanged, and transferring a mixed row to the real Naver collage UI has not been tried. Tests: `tests/unit/blog-markup.test.ts` (rows, round trip, validation, fallback) and `tests/web/markup-layout.spec.ts` (equal row height, full width and per-cell ratio at four widths).
+
+
+## Local video component — 2026-11-12
+
+`<Video>` embeds a real local video in the canonical markup, saved HTML and editor frame:
+
+```text
+<Video file="cheers.MOV" alt="동료들과 잔을 맞대는 순간" poster="cheers.jpg" ratio="4:5" fit="cover" position="50% 60%" muted/>
+```
+
+`file` is a basename in the document's configured media directory (`.mp4`, `.m4v`, `.mov`, `.webm`). Optional attributes are `alt`, `poster` (local JPEG/PNG/WebP basename), `caption`, `ratio` (width:height), `fit` (`contain`, default; or `cover`), `position` (two percentages), `muted`, and `loop`. Unknown attributes, remote URLs, path traversal, invalid ratios/positions and non-boolean flags are validation errors. Serialization preserves the component. Visible captions participate in text hashes and the wording guard; crop/playback changes invalidate visual/structural review only.
+
+The player uses native controls, playsinline and preload=metadata; it never autoplays. Omit `muted` to retain normal user-initiated sound playback. The source bytes, codecs, HDR metadata and audio are not transcoded. Browser/platform codec support still applies. `ratio`, `fit` and `position` change the inline display only: they are **not** a physical crop, privacy redaction or an exported video edit, and fullscreen may show the source frame.
+
+The editor serves only files declared by Video nodes (and declared poster images), through the existing configured media/explicit assetFiles boundary. Video responses support GET/HEAD, bounded single byte ranges (206/416), content type and streaming without reading the entire file into memory. Symlink targets need the same explicit `assetFiles` allowlist as photos. Text autosave retains video components and does not change the frame's style identity just because a derived HTML theme was inserted.
+
+This adds local markup/preview support. It does not upload videos to Naver, create SmartEditor video IDs, or guarantee a display crop transfers there. Naver publishing still requires a real upload and separate verification. Legacy BlogDraft image-only export is unchanged; use the markup source as canonical.
+
+Validation: parser/serialization, invalid inputs, caption text protection, unchanged media bytes, origin/path allowlists, range/HEAD, save persistence; Chromium actual playback/seeking at desktop/mobile widths; opted-in Electron playback of a real 8-second rotated HEVC 10-bit HLG/Dolby Vision source. Original source bytes were not edited.
+
+The installed active app was updated from its current worktree with existing UI/cover changes preserved; workflow protocol 4 was restored at the same time. The real blog editor displayed the new Video components, and a prepared sound-included clip played to its end with volume enabled. Private source paths, captures and deployment receipts remain in the content workspace.

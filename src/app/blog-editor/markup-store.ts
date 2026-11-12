@@ -1,3 +1,4 @@
+import { localVideoFile } from "../../shared/blog-video";
 import { stickerPlan, stickerAnchors, placementGaps, movedGap, replaceStickers, STICKER_PRESETS, STICKER_CSS, type StickerPlacement } from "../../shared/blog-stickers";
 import { writeFileAtomic } from "../../shared/lib/fs";
 import type {VisualEvidence} from "../../shared/markup-review";
@@ -96,7 +97,7 @@ export class MarkupStore {
       const notes=await readFile(note,"utf8");
       rules=notes.match(/^## 규칙\s*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1]??"";
     }
-    return {base,doc,layout,styles:await layoutStyles(layout,this.config.layout),media,rules};
+    return {base,doc,layout,styles:await layoutStyles(layout.replace(/<style id="blog-markup-theme">[\s\S]*?<\/style>/g,""),this.config.layout),media,rules};
   }
   private fonts(layout:string){
     return layout.replace(/url\(([^)]+)\)/g,(_,v)=>`url('/api/blog/asset?kind=font&name=${encodeURIComponent(path.basename(v.replace(/["']/g,"")))}')`);
@@ -139,7 +140,7 @@ export class MarkupStore {
     };
   }
   private photoFiles(doc:ReturnType<typeof parse>){
-    return doc.bundles.flatMap(b=>b.nodes.flatMap(n=>n.kind==="component"?(n.tag==="Photo"?[String(n.attrs.file)]:n.tag==="Collage"?String(n.attrs.files).split(" · "):[]):[]));
+    return doc.bundles.flatMap(b=>b.nodes.flatMap(n=>n.kind==="component"?(n.tag==="Video"&&n.attrs.poster?[String(n.attrs.poster)]:n.tag==="Photo"?[String(n.attrs.file)]:n.tag==="Collage"?String(n.attrs.files).split(" · "):[]):[]));
   }
   async evidenceLibrary():Promise<EvidenceLibrary>{
     if(!this.evidence)return {connected:false,items:[],usedIds:[],unresolved:0};
@@ -156,6 +157,10 @@ export class MarkupStore {
     if(kind==="photo"){
       if(!this.photoFiles(x.doc).includes(name))throw new Error("연결되지 않은 사진");
       file=path.join(x.media,name);
+    }else if(kind==="video"){
+      const linked=x.doc.bundles.some(b=>b.nodes.some(n=>n.kind==="component"&&n.tag==="Video"&&n.attrs.file===name));
+      if(!linked||!localVideoFile(name))throw new Error("연결되지 않은 영상");
+      file=path.join(x.media,name);
     }else if(kind==="font"){
       const ref=[...x.styles.matchAll(/url\(([^)]+)\)/g)].map(m=>m[1].replace(/["']/g,"")).find(p=>path.basename(p)===name&&p.endsWith(".woff2"));
       if(!ref)throw new Error("연결되지 않은 글꼴");
@@ -168,7 +173,7 @@ export class MarkupStore {
   private article(doc:MarkupDoc){
     // The metadata title is editable above the article; do not render a second,
     // stale Title component in the editing view. The source remains untouched.
-    return renderHtml(doc,{media:""},true).replace(/src="([^"]*)"/g,(_,name)=>`src="/api/blog/asset?kind=photo&name=${encodeURIComponent(name)}"`);
+    return renderHtml(doc,{media:"",assetUrl:(name,kind)=>`/api/blog/asset?kind=${kind}&name=${encodeURIComponent(name)}`},true);
   }
   async frame(){
     const x=await this.inputs();
@@ -368,6 +373,8 @@ ${EDITOR_FRAME_CSS}
       html=/<style id="blog-sticker-theme">[\s\S]*?<\/style>/.test(html)
         ? html.replace(/<style id="blog-sticker-theme">[\s\S]*?<\/style>/,()=>stickerStyle)
         : /<\/head>/i.test(html)?html.replace(/<\/head>/i,()=>stickerStyle+"</head>"):stickerStyle+html;
+      html=html.replace(/<style id="blog-markup-theme">[\s\S]*?<\/style>/g,"");
+      html=/<\/head>/i.test(html)?html.replace(/<\/head>/i,()=>MARKUP_STYLE_CSS+"</head>"):MARKUP_STYLE_CSS+html;
       await writeFileAtomic(this.config.layout,html);
     }catch(e){warning="정본은 저장됐지만 미리보기 갱신 실패: "+String(e);}
     const document=await this.load(true);document.warnings!.push(...warnings,...(warning?[warning]:[]));

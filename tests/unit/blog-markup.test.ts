@@ -222,7 +222,7 @@ test("비율 혼합 콜라주는 행마다 사진 비율대로 폭을 나누고,
 test("모르는 컴포넌트는 문서를 막지 않고 원문 줄 그대로 보존한다", () => {
   const src = [
     '<Bundle id="a" name="n" question="q">',
-    '<Video file="cheers.mp4" alt="잔을 맞대는 순간" ratio="4:5"/>',
+    '<Reel file="cheers.mp4" alt="잔을 맞대는 순간" ratio="4:5"/>',
     "",
     "¶ P1",
     "가",
@@ -239,14 +239,14 @@ test("모르는 컴포넌트는 문서를 막지 않고 원문 줄 그대로 보
   ].join("\n");
   const doc = parse(src);
   assert.deepEqual(doc.bundles[0].nodes.map(n => n.kind === "unknown" ? n.source : n.kind), [
-    '<Video file="cheers.mp4" alt="잔을 맞대는 순간" ratio="4:5"/>', "paragraph", '<Later kind="x">', "paragraph", "</Later>", "<Memo>한 줄 <b>그대로</b></Memo>",
+    '<Reel file="cheers.mp4" alt="잔을 맞대는 순간" ratio="4:5"/>', "paragraph", '<Later kind="x">', "paragraph", "</Later>", "<Memo>한 줄 <b>그대로</b></Memo>",
   ]);
   assert.equal(serialize(doc), src);
   assert.deepEqual(validate(doc).filter(i => i.level === "error"), []);
-  assert.equal(validate(doc).filter(i => /모르는 컴포넌트 <Video>/.test(i.message)).length, 1);
+  assert.equal(validate(doc).filter(i => /모르는 컴포넌트 <Reel>/.test(i.message)).length, 1);
   for (const editable of [false, true]) {
     const html = renderHtml(doc, {}, editable);
-    assert.match(html, /<aside data-bundle="a"[^>]* class="unknown-component"[^>]*><code>&lt;Video file=&quot;cheers.mp4&quot;/);
+    assert.match(html, /<aside data-bundle="a"[^>]* class="unknown-component"[^>]*><code>&lt;Reel file=&quot;cheers.mp4&quot;/);
     assert.match(html, /<code>&lt;Memo&gt;한 줄 &lt;b&gt;그대로&lt;\/b&gt;&lt;\/Memo&gt;<\/code>/);
     assert.doesNotMatch(html, /<b>그대로/);
   }

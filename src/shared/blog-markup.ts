@@ -1,5 +1,6 @@
 import { replaceStickers, stickerPlan } from "./blog-stickers";
 import { parseDocument } from "yaml";
+import { videoIssues } from "./blog-video";
 /**
  * 블로그 리뷰 마크업 (blog-markup v1)
  *
@@ -94,7 +95,7 @@ export const DEFAULT_PALETTE: readonly PaletteEntry[] = [
 // ─── 컴포넌트 ───────────────────────────────────────────────────────────────
 
 export type ComponentTag =
-  | "Photo" | "Collage" | "Heading" | "Title" | "PriceBox" | "VisitCard" | "Info" | "Source"
+  | "Photo" | "Video" | "Collage" | "Heading" | "Title" | "PriceBox" | "VisitCard" | "Info" | "Source"
   | "Divider" | "Map" | "QuestionCard" | "Tags" | "Sticker";
 
 export interface ComponentSpec {
@@ -111,6 +112,7 @@ export interface ComponentSpec {
 }
 
 export const COMPONENTS: Record<ComponentTag, ComponentSpec> = {
+  Video: { smartEditor: "se-video (원본 파일 별도 업로드; 로컬 마크업 자동 이관 아님)", preview: "VideoBlock", draft: null, form: "self", attrs: ["file", "alt?", "poster?", "caption?", "ratio?", "fit?", "position?", "muted?", "loop?"], example: '<Video file="cheers.mp4" alt="잔을 맞대는 순간" poster="cheers.jpg" ratio="4:5" fit="cover" position="50% 70%"/>' },
   Sticker: { smartEditor: "se-sticker (기본 스티커에서 직접 선택)", preview: "StickerSlot (자리 표시)", draft: null, form: "self", attrs: ["id", "preset", "note?"], example: '<Sticker id="s1" preset="yum" note="기본 · 먹고 만족하는 표정"/>' },
   Photo: { smartEditor: "se-image", preview: "PhotoBlock", draft: "image", form: "self", attrs: ["file", "alt", "ratio?", "pair?"], example: '<Photo file="grill.jpg" alt="그릴에서 굽는 모습"/>' },
   Collage: { smartEditor: "se-imageGroup se-l-collage", preview: "PhotoCollage4", draft: "image (합성 한 장, 개별 사진 정보 손실)", form: "self", attrs: ["layout", "files", "alts?", "ratios?"], example: '<Collage layout="2x2" files="a.jpg · b.jpg · c.jpg · d.jpg" ratios="3:4 · 4:3 · 4:3 · 4:3"/>' },
@@ -551,6 +553,9 @@ export function validate(doc: MarkupDoc, opts: ValidateOptions = {}): MarkupIssu
     ids.add(b.id);
     if (!b.question) issues.push({ level: "warn", where: b.id, message: "묶음 질문이 비어 있음" });
     for (const n of b.nodes) {
+      if (n.kind === "component" && n.tag === "Video") {
+        for (const message of videoIssues(n.attrs)) issues.push({ level: "error", where: b.id, message });
+      }
       if (n.kind === "component" && n.tag === "Photo" && !n.attrs.alt) issues.push({ level: "warn", where: b.id, message: `사진 alt 없음: ${n.attrs.file}` });
       if (n.kind === "component" && n.tag === "Collage" && n.attrs.ratios !== undefined) {
         const count = String(n.attrs.files ?? "").split(" · ").length;

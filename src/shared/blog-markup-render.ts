@@ -1,3 +1,4 @@
+import { videoIssues, videoRatio, videoPosition, videoFlag } from "./blog-video";
 import { isSticker, stickerHtml, STICKER_CSS, type StickerPreset } from "./blog-stickers";
 import { collageRatios, collageRows, type MarkupDoc, type ParagraphNode, type ComponentNode } from "./blog-markup";
 import { escapeHtml } from "./canonical-blog";
@@ -22,15 +23,23 @@ function paragraph(p:ParagraphNode) {
     return out+inline(line.slice(at));
   }).join("<br>");
 }
-export interface RenderStyle {media?:string;bodyFont?:string;infoFont?:string;bodyPx?:number;mobileBodyPx?:number;headingPx?:number;headingColor?:string;align?:string;lineHeight?:number}
+export interface RenderStyle {assetUrl?:(file:string,kind:"photo"|"video")=>string;media?:string;bodyFont?:string;infoFont?:string;bodyPx?:number;mobileBodyPx?:number;headingPx?:number;headingColor?:string;align?:string;lineHeight?:number}
 export function renderHtml(doc:MarkupDoc,style:RenderStyle={}, editable=false):string {
   const theme={...(doc.metadata?.style as RenderStyle??{}),...style};
   const media=style.media??String(doc.metadata?.media??"");
-  const img=(file:string,alt:string)=>`<img alt="${esc(alt)}" src="${esc(safeUrl(media+file))}">`;
+  const asset=(file:string,kind:"photo"|"video")=>style.assetUrl?.(file,kind)??safeUrl(media+file);
+  const img=(file:string,alt:string)=>`<img alt="${esc(alt)}" src="${esc(asset(file,"photo"))}">`;
   const editing=(p:ParagraphNode)=>editable?` contenteditable="true" spellcheck="false" data-tid="${esc(p.id)}" role="textbox" aria-label="${esc(p.id)} 문단"`:"";
   function component(n:ComponentNode):string {
     const a=n.attrs;const children=n.children??[];
     switch(n.tag) {
+      case "Video": {
+        const errors=videoIssues(a);
+        if(errors.length)return `<aside class="video-error" role="alert">${esc(errors.join(" "))}</aside>`;
+        const ratio=videoRatio(a.ratio),fit=a.fit=== "cover"?"cover":"contain",position=videoPosition(a.position)??"50% 50%";
+        const css=`object-fit:${fit};object-position:${position}`+(ratio?`;aspect-ratio:${ratio}`:"");
+        return `<figure class="video-block" data-component="VideoBlock"><video controls playsinline preload="metadata" src="${esc(asset(String(a.file),"video"))}" aria-label="${esc(a.alt??a.caption??"블로그 영상")}" style="${esc(css)}"${a.poster?` poster="${esc(asset(String(a.poster),"photo"))}"`:""}${videoFlag(a.muted)?" muted":""}${videoFlag(a.loop)?" loop":""}>이 브라우저에서 영상을 재생할 수 없어요.</video>${a.caption?`<figcaption>${esc(a.caption)}</figcaption>`:""}</figure>`;
+      }
       case "Sticker":return stickerHtml({id:String(a.id),preset:String(a.preset) as StickerPreset,note:a.note?String(a.note):undefined});
       case "Photo": {const i=img(String(a.file??""),String(a.alt??""));return a.pair?`<div class="photo-group" data-layout="precomposed"><figure class="photo-block" data-component="PhotoGroup">${i}</figure></div>`:`<figure class="photo-block" data-component="PhotoBlock">${i}</figure>`;}
       case "Collage": {
@@ -86,6 +95,9 @@ article{font-family:var(--bodyFont,se-nanumbareunhipi);font-size:var(--bodyPx,16
 article .info,article .source,article .price-box,article .visit-card,article .native-card,article .tags,article h2{font-family:var(--infoFont,se-nanumgothic)}
 article .section-heading h2,main.mobile article .section-heading h2{font-size:var(--headingPx,19px);color:var(--headingColor,#85613f)}
 main.mobile article{font-size:var(--mobileBodyPx,17px)}
+article .video-block{margin:30px 0;max-width:100%}
+article .video-block video{display:block;width:100%;height:auto;max-width:100%;background:#111}
+article .video-block figcaption{margin-top:8px;font-family:var(--infoFont,se-nanumgothic);font-size:13px;line-height:1.6}
 article .photo-collage-rows{display:flex;flex-direction:column;gap:8px;margin:30px 0}
 article .photo-collage-rows .collage-row{display:flex;gap:8px}
 article .photo-collage-rows .collage-row>div{flex:var(--r,1) 1 0;min-width:0;aspect-ratio:var(--r,1);overflow:hidden}

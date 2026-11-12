@@ -9,6 +9,9 @@ import {handleSuggest,type SuggestCall} from "./inline-suggest";
 import {handleChat,type ChatCall} from "./blog-chat";
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { parseRange } from "../../shared/lib/http-range";
 import path from "node:path";
 import { CanonicalStore, type EditorConfig } from "./store";
 import { frameScript } from "./frame-script";
@@ -100,7 +103,7 @@ export async function startCanonicalEditor(
         }
         return json(404, { error: "Unknown action" });
       }
-      if (req.method !== "GET")
+      if (req.method !== "GET" && !(req.method === "HEAD" && u.pathname === "/api/blog/asset" && u.searchParams.get("kind") === "video"))
         return json(405, { error: "Method not allowed" });
       if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.list());
       if (u.pathname === "/api/blog/review-status" && worker)
@@ -171,7 +174,33 @@ export async function startCanonicalEditor(
         ".webp": "image/webp",
         ".woff2": "font/woff2",
         ".svg": "image/svg+xml",
+        ".mp4": "video/mp4",
+        ".m4v": "video/mp4",
+        ".mov": "video/quicktime",
+        ".webm": "video/webm",
       };
+      if (u.pathname === "/api/blog/asset" && u.searchParams.get("kind") === "video") {
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          res.writeHead(405, { Allow: "GET, HEAD" }); res.end(); return;
+        }
+        const info = await stat(file);
+        if (!info.isFile()) return json(404, { error: "Not found" });
+        let range;
+        try { range = parseRange(req.headers.range ?? null, info.size); }
+        catch {
+          res.writeHead(416, { "Content-Range": `bytes */${info.size}`, "Accept-Ranges": "bytes" }); res.end(); return;
+        }
+        res.writeHead(range.partial ? 206 : 200, {
+          "Content-Type": types[path.extname(file).toLowerCase()] ?? "application/octet-stream",
+          "Accept-Ranges": "bytes",
+          "Content-Length": range.partial ? range.end - range.start + 1 : info.size,
+          ...(range.partial ? { "Content-Range": `bytes ${range.start}-${range.end}/${info.size}` } : {}),
+        });
+        if (req.method === "HEAD" || !info.size) { res.end(); return; }
+        try { await pipeline(createReadStream(file, { start: range.start, end: range.end }), res); }
+        catch (error) { if (!res.destroyed) res.destroy(error as Error); }
+        return;
+      }
       if (!(await stat(file)).isFile())
         return json(404, { error: "Not found" });
       res.writeHead(200, {

@@ -6,7 +6,7 @@ export const paragraphNodes = (doc: MarkupDoc) => doc.bundles.flatMap(bundlePara
 export function textOf(doc: MarkupDoc): string[] {
   return [
     ...(typeof doc.metadata?.title === "string" ? [doc.metadata.title] : []),
-    ...doc.bundles.flatMap(b => b.nodes.flatMap(n => n.kind === "paragraph" ? n.lines : n.text !== undefined ? [n.text] : (n.children ?? []).flatMap(p => p.lines))),
+    ...doc.bundles.flatMap(b => b.nodes.flatMap(n => n.kind === "paragraph" ? n.lines : n.kind === "component" && n.tag === "Video" && typeof n.attrs.caption === "string" ? [n.attrs.caption] : n.text !== undefined ? [n.text] : (n.children ?? []).flatMap(p => p.lines))),
   ];
 }
 /** Text protection is keyed by paragraph identity, so a layout-only reorder is allowed. */
@@ -14,7 +14,7 @@ export function protectedText(doc:MarkupDoc):string {
   return JSON.stringify({
     title:doc.metadata?.title,
     paragraphs:paragraphNodes(doc).map(p=>[p.id,p.lines]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
-    components:doc.bundles.flatMap(b=>b.nodes.flatMap(n=>n.kind==="component"&&n.text!==undefined?[[n.tag,n.text]]:[])).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    components:doc.bundles.flatMap(b=>b.nodes.flatMap(n=>n.kind==="component"?(n.tag==="Video"&&typeof n.attrs.caption==="string"?[[n.tag,n.attrs.caption]]:n.text!==undefined?[[n.tag,n.text]]:[]):[])).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),
   });
 }
 export type Change = "text" | "format" | "structure" | "none";
