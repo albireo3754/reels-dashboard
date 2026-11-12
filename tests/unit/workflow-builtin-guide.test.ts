@@ -679,3 +679,26 @@ test("a step leading into a photo-plan step is not recorded when a scene preview
     await f.runtime.close();
   }
 });
+
+test("a built-in blog prepare with an unreadable scene preview is rejected before the input step is skipped", async (t) => {
+  if (process.getuid?.() === 0) return t.skip("root reads any file");
+  const f = await fixture();
+  const preview = path.join(f.workspace, "media", "s2.png");
+  try {
+    const run = await f.runtime.create(f.input);
+    assert.equal(run.stepId, "prepare");
+    await blogMediaAndAnswers(f);
+    await f.put("experience-form.json", syntheticForm);
+    await chmod(preview, 0o000);
+    await assert.rejects(submitDraft(f, run));
+    const after = await f.runtime.get({ runId: run.runId });
+    assert.equal(after.stepId, "prepare");
+    assert.equal(after.task!.taskId, run.task!.taskId);
+    await chmod(preview, 0o644);
+    const next = await submitDraft(f, run);
+    assert.equal(next.stepId, "draft");
+  } finally {
+    await chmod(preview, 0o644).catch(() => {});
+    await f.runtime.close();
+  }
+});
