@@ -658,12 +658,14 @@ export class WorkflowRuntime {
       );
     // Same photo-plan rule as the built-in draft stage and as skipping (adopt.ts):
     // a step that declares story-media-plan.json must cover every tracked scene.
-    // A submitted scene inventory must have readable previews now: a later
-    // photo-plan step hashes them, possibly after skipped steps in between.
-    await hashes(
-      run.workspace,
-      await mediaSceneInputs(run.workspace, input.evidence),
-    );
+    // In a flow with a photo-plan step, a submitted scene inventory must have
+    // readable previews now: that step hashes them, possibly after skipped steps
+    // in between. Flows without one are unchanged.
+    if (run.definition!.definition.steps.some(planStep))
+      await hashes(
+        run.workspace,
+        await mediaSceneInputs(run.workspace, input.evidence),
+      );
     if (planStep(step)) {
       // A task issued before previews were tracked (older server) cannot pass the
       // plan check; say how to recover instead of a bare stale-input error.
