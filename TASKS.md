@@ -1,5 +1,13 @@
 # Reels Dashboard 진행 상태
 
+## 무음 반복 GIF 변환 — 2026-11-12
+
+- [x] 영상 → 소리 없는 무한 반복 GIF. 기본은 전체 길이·폭 480·15fps, `start`/`end` 구간(최대 60초), 회전 반영, HDR/HLG→SDR, 메타데이터(위치 포함) 제거. 번들 ffmpeg만 사용(새 의존성 없음): VideoToolbox 디코드·회전·톤매핑·축소 + 샘플 프레임 팔레트 + bayer 디더링, GPU 실패 시 CPU 경로. [문서](docs/gif-convert.md).
+- [x] MCP/CLI `reels_convert_gif`, 보드 미디어 보기의 **무음 GIF 만들기**(저장 위치 선택). 20MB 초과 경고(네이버 상한 미확인), `maxBytes`로 fps→폭 자동 축소.
+- [x] 검증: typecheck, check:architecture, `npm test` 519개(515 통과·4 건너뜀, 새 단위 7개 포함: 합성 HLG·회전·오디오·위치 태그 영상으로 GPU/CPU 경로, 무한 반복, 메타데이터 제거, maxBytes), `npm run build`, Electron background QA `gif-convert`(UI 버튼 + 실제 MCP)·`content-board` 2개 통과.
+- [x] 실측: iPhone HEVC HLG 8초 세로 원본 → 480×854·15fps·120프레임·23.1MB, 4.1~5.0초(첫 실행 8.0초). 고전 CPU palettegen 기준선은 22.8초·28.2MB. 프레임 육안 확인(회전·톤·밴딩) 정상.
+- [ ] 네이버 블로그 실제 업로드 상한 확인, 패키징·실행 중 앱 반영은 하지 않음.
+
 ## 보드 문서 뷰어 + 폴더 구분 — 2026-11-12
 
 - [x] 연결 문서(폴더 안 포함)를 ‘위치 열기’ 대신 보드 뷰어에서 표시. `.md`는 **블로그**(SmartEditor 유사 칼럼, blog markup v1은 `renderHtml`로 렌더)·**Markdown**·**텍스트** 전환, 그 밖의 형식은 텍스트만. 파일 그리드에서 폴더를 앞에 두고 테두리·폴더 아이콘·`/`·“폴더 · 열기 ›”로 구분. [문서](docs/local-content-library.md#document-viewer-and-folder-distinction--2026-11-12).

@@ -1,4 +1,5 @@
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
+import { gifConvertInput } from "../../../shared/gif-convert";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
@@ -48,6 +49,10 @@ export const toolDefinitions = {
   reels_create_clip_upload_bundle: {
     description: "Create temporary ASCII upload copies: video, JPEG cover, exact UTF-8 description and receipt, all with paths/bytes/SHA-256. Current outbound wins; otherwise latest recorded export or unique registered output. Ambiguity requires explicit videoPath/coverPath. Use get_content revision. No originals, outbound files, or dashboard state are changed; no upload. Remove the temporary folder after use; OS may also clear it.",
     input: clipUploadInput, readOnly: false,
+  },
+  reels_convert_gif: {
+    description: "Convert a video file into a silent, endlessly looping GIF for blog motion clips. Default: whole length, width 480, 15 fps, bayer dither; start/end select a range (max 60 s). Removes audio and all metadata (including location), applies display rotation and tone-maps HDR/HLG to SDR. VideoToolbox (GPU) decode/rotate/tone-map/scale with CPU fallback; palette and GIF encoding on CPU. Returns outputPath, bytes, width, height, fps, frames, duration, elapsedMs, accel and warnings. Over 20 MB warns (Naver limit unverified); maxBytes lowers fps then width automatically. Source is never changed; existing outputs need overwrite. Not registered to any project.",
+    input: gifConvertInput, readOnly: false,
   },
   reels_set_project_outbound: {
     description: "Bind one persistent iCloud outbound directory to a project using get_content's revision. Repeated deliveries reuse this directory. Existing linked files can be adopted; unrelated files are not managed. A different directory is rejected once bound.",

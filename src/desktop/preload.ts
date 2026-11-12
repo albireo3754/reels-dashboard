@@ -67,6 +67,7 @@ const bridge: DashboardBridge = {
     thumbnail: (id, file) => invoke("contentMedia:thumbnail", id, file),
     text: (id, file) => invoke("contentMedia:text", id, file),
     open: (id, file, options) => invoke("contentMedia:open", id, file, options),
+    gif: (id, file) => invoke("contentMedia:gif", id, file),
   },
   coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
   terminalSetting: {

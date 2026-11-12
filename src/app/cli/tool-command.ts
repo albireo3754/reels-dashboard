@@ -31,6 +31,7 @@ export const cliOptions = {
   reels_get_render_job: { wait: true },
   reels_update_project: { sample: { patch: `'{"cover":{"time":7.25}}'` } },
   reels_photos_search: { sample: { text: "cafe" } },
+  reels_convert_gif: { sample: { outputPath: "/abs/clip.gif" } },
 } satisfies Partial<Record<ToolName, ToolCliOption>>;
 export const toolCliOption = (name: ToolName): ToolCliOption =>
   (cliOptions as Partial<Record<ToolName, ToolCliOption>>)[name] ?? {};

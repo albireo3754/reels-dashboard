@@ -590,10 +590,61 @@ function MediaPlayer({
             : "원본 파일을 그대로 재생해요."}
         </small>
       )}
+      {item.kind === "video" && bridge.mode === "desktop" && bridge.contentMedia?.gif && (
+        <GifMaker key={item.path} projectId={projectId} file={item.path} bridge={bridge} />
+      )}
       {doc?.truncated && (
         <small>문서가 길어 앞부분만 표시했어요. 전체는 ‘위치 열기’로 확인해주세요.</small>
       )}
     </>
+  );
+}
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+/** Blog motion clip: the whole video as a silent, looping GIF with default settings. */
+function GifMaker({
+  projectId,
+  file,
+  bridge,
+}: {
+  projectId: string;
+  file: string;
+  bridge: DashboardBridge;
+}) {
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "busy" }
+    | { kind: "done"; result: import("../../../shared/gif-convert").GifConvertResult }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const make = async () => {
+    setState({ kind: "busy" });
+    try {
+      const result = await bridge.contentMedia!.gif!(projectId, file);
+      setState(result ? { kind: "done", result } : { kind: "idle" });
+    } catch (e) {
+      setState({ kind: "error", message: errorText(e) });
+    }
+  };
+  return (
+    <div className="board-gif">
+      <button onClick={make} disabled={state.kind === "busy"}>
+        {state.kind === "busy" ? "GIF 만드는 중…" : "무음 GIF 만들기"}
+      </button>
+      {state.kind === "idle" && (
+        <small>소리를 뺀 무한 반복 GIF로 전체 길이를 저장해요. 원본은 그대로예요.</small>
+      )}
+      {state.kind === "done" && (
+        <p role="status">
+          GIF 저장: {state.result.outputPath.split("/").at(-1)} · {state.result.durationSeconds}초 ·{" "}
+          {state.result.width}×{state.result.height} · {state.result.fps}fps ·{" "}
+          {megabytes(state.result.bytes)} · {(state.result.elapsedMs / 1000).toFixed(1)}초 걸림
+          {state.result.warnings.map((w) => (
+            <small key={w}>{w}</small>
+          ))}
+        </p>
+      )}
+      {state.kind === "error" && <p role="alert">{state.message}</p>}
+    </div>
   );
 }
 const extensionLabel = (file: string) =>

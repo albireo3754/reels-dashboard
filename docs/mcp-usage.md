@@ -372,3 +372,14 @@ web/desktop/editor builds and diff checks passed. `verify:spec` still fails on t
 pre-existing Swift AppCommandRouterTests baseline hash mismatch; that file is
 unchanged from HEAD. No installed app restart/replacement, real iCloud mutation,
 packaging or Naver upload was performed.
+
+## Silent looping GIF — 2026-11-12
+
+`reels_convert_gif {sourcePath, outputPath, start?, end?, width?, fps?, dither?, maxBytes?, overwrite?}`
+(CLI `reels convert-gif`) turns a video into a silent, endlessly looping GIF for blog motion clips.
+Defaults: whole length, width 480, 15 fps, `bayer` dither; audio and all metadata removed, display
+rotation applied, HDR/HLG tone-mapped to SDR on VideoToolbox (CPU fallback). It returns
+`outputPath, bytes, width, height, fps, frames, durationSeconds, elapsedMs, accel, attempts, warnings`.
+Over 20 MB it warns (Naver's limit is unverified); `maxBytes` lowers fps, then width. The source is
+never changed, an existing output needs `overwrite: true`, and the GIF is not registered to a project.
+The board media viewer has the same action as **무음 GIF 만들기**. See [GIF conversion](gif-convert.md).

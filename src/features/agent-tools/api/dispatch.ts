@@ -34,6 +34,7 @@ export interface AgentEditorPort extends EditorBridge {
 export interface AgentPorts {
   coverPreferences?: import("../../../shared/clip-upload").CoverPreferencesBridge;
   clipUpload?: import("../../../shared/clip-upload").ClipUploadBridge;
+  gif?: import("../../../shared/gif-convert").GifConvertBridge;
   icloud?: import("../../../shared/icloud-delivery").ICloudBridge;
   forms?: import("../../../shared/workflow").WorkflowBridge;
   inputForms?: {open(input:unknown):Promise<unknown>};
@@ -107,6 +108,10 @@ export function createAgentDispatch(ports: AgentPorts) {
         session.assertWritable();
         if (!ports.clipUpload) throw new Error("UNSUPPORTED");
         return ports.clipUpload.create(input);
+      case "reels_convert_gif":
+        session.assertWritable();
+        if (!ports.gif) throw new Error("UNSUPPORTED");
+        return ports.gif.convert(input);
       case "reels_set_project_outbound":
         session.assertWritable();
         if (!ports.icloud) throw new Error("UNSUPPORTED");

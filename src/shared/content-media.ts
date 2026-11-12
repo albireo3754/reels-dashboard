@@ -43,6 +43,14 @@ export interface ContentMediaBridge {
     file: string,
     options?: ContentMediaOpenOptions,
   ): Promise<OpenedContentMedia>;
+  /**
+   * Desktop only: asks where to save, then converts a linked video into a silent,
+   * looping GIF with the default settings. null when the save panel is cancelled.
+   */
+  gif?(
+    projectId: string,
+    file: string,
+  ): Promise<import("./gif-convert").GifConvertResult | null>;
 }
 export interface ContentMediaOpenOptions {
   copy?: boolean;

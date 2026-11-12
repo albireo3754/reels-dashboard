@@ -48,6 +48,7 @@ import { APP_NAME, DEV_BUILD_ARGUMENT, appDisplayName } from "./build-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
+import { GifConverter } from "../features/gif-convert";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
@@ -272,6 +273,17 @@ async function awaitReady() {
     if (image.isEmpty()) throw new Error("UPLOAD_COVER_INVALID: 표지 이미지를 읽지 못했어요.");
     return image.toJPEG(95);
   });
+  const gifConverter = new GifConverter(
+    app.isPackaged
+      ? path.join(process.resourcesPath, "editor-runtime")
+      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    logs,
+  );
+  const convertGif = async (input: unknown) => {
+    activeOperations++;
+    try { return await gifConverter.convert(input); }
+    finally { activeOperations--; }
+  };
   const createClipBundle = async (input: unknown) => {
     agentSession.assertWritable();
     activeOperations++;
@@ -842,6 +854,21 @@ async function awaitReady() {
       ? demo.contentMedia!.open(id, file, { copy })
       : boardMedia.open(id, file, { copy });
   });
+  handle("contentMedia:gif", async (id: string, file: string) => {
+    if (fixture) throw new Error("UNSUPPORTED: 데모 화면에서는 GIF를 만들 수 없어요.");
+    const checked = await contentLibrary.resolveMedia(id, file);
+    if (!checked.info.isFile()) throw new Error("GIF_SOURCE: 영상 파일을 선택해주세요.");
+    const parsed = path.parse(checked.path);
+    const chosen = await dialog.showSaveDialog(window, {
+      title: "무음 GIF 저장",
+      defaultPath: path.join(parsed.dir, `${parsed.name}.gif`),
+      filters: [{ name: "GIF 이미지", extensions: ["gif"] }],
+    });
+    if (chosen.canceled || !chosen.filePath) return null;
+    const outputPath = /\.gif$/i.test(chosen.filePath) ? chosen.filePath : `${chosen.filePath}.gif`;
+    // The save panel already confirmed replacing an existing file.
+    return convertGif({ sourcePath: checked.path, outputPath, overwrite: true });
+  });
   handle("revealResource", async (id: unknown, resource: unknown) => {
     if (typeof id !== "string" || typeof resource !== "string")
       throw new Error("Invalid resource request");
@@ -993,6 +1020,7 @@ async function awaitReady() {
     closeAgent = await connectAgent(root, {
       coverPreferences,
       clipUpload: { create: createClipBundle },
+      gif: { convert: convertGif },
       icloud: icloudDelivery,
       editor: editorService,
       session: agentSession,
