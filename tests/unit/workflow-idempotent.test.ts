@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { stringify } from "yaml";
@@ -397,6 +397,233 @@ test("a step is not skipped when the next step's inputs are missing", async () =
     assert.equal(run.stepId, "draft");
     assert.equal(run.status, "waiting");
     assert.ok(run.task);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+// --- Cross-review fixes (2026-11-13) ---
+
+/** Definition whose entry is the input step, so the form rule is tested directly. */
+async function inputFirst(f: Fixture, inputs: string[] = []) {
+  const d: any = sharedDefinition();
+  d.entry = "experience";
+  d.steps = d.steps.slice(1);
+  d.steps[0].inputs = inputs;
+  await writeFile(f.definitionFile, stringify(d));
+}
+const preview = (f: Fixture) =>
+  f.runtime
+    .validateDefinition({
+      workspace: f.workspace,
+      definitionFile: f.definitionFile,
+    })
+    .then((v) => v.skippable);
+
+test("a present but invalid form is not treated as missing", async () => {
+  const f = await fixture();
+  try {
+    await inputFirst(f);
+    await submitAnswers(f);
+    await f.put("experience-form.json", "{ not json");
+    assert.equal((await preview(f)).startsAt, "experience");
+    await assert.rejects(f.runtime.create(f.input));
+    await f.put("experience-form.json", { version: 1, title: "no questions" });
+    assert.equal((await preview(f)).startsAt, "experience");
+    // A dangling symlink is present, not missing.
+    await rm(path.join(f.workspace, "experience-form.json"));
+    await symlink(
+      path.join(f.workspace, "gone.json"),
+      path.join(f.workspace, "experience-form.json"),
+    );
+    assert.equal((await preview(f)).startsAt, "experience");
+    // Prepare's form output follows the same rule.
+    const g = await fixture();
+    try {
+      await writeMedia(g);
+      await submitAnswers(g);
+      await g.put("experience-form.json", "{ not json");
+      assert.equal((await preview(g)).startsAt, "prepare");
+      assert.equal((await g.runtime.create(g.input)).stepId, "prepare");
+    } finally {
+      await g.runtime.close();
+    }
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("an input step with a missing declared input is not skipped", async () => {
+  const f = await fixture();
+  try {
+    await inputFirst(f, ["missing.md"]);
+    await submitAnswers(f);
+    await f.put("experience-form.json", form());
+    assert.deepEqual(await preview(f), { skipped: [], startsAt: "experience" });
+    // Normal request: the missing input fails creation instead of recording a skip.
+    await assert.rejects(f.runtime.create(f.input), /missing\.md|ENOENT/);
+    assert.equal((await f.runtime.list()).length, 0);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a skipped input step tracks its form file and question images", async () => {
+  const f = await fixture();
+  try {
+    await inputFirst(f);
+    await f.put("media/s1.png", "png-bytes");
+    const withImage = form();
+    (withImage.questions[0] as any).images = [
+      { path: "media/s1.png", caption: "synthetic" },
+    ];
+    const created = await f.runtime.createForm({
+      workspace: f.workspace,
+      form: withImage,
+    });
+    await f.runtime.saveForm({
+      formId: created.formId,
+      expectedRevision: created.revision,
+      answers: [{ questionId: "q1", status: "answered", text: "a" }],
+      submit: true,
+    });
+    await f.put("experience-form.json", withImage);
+    // The next step (draft) needs the inventory before the input step can be skipped.
+    await writeMedia(f);
+    let run = await f.runtime.create(f.input);
+    assert.equal(run.stepId, "draft");
+    const evidence = run.history[0].evidence;
+    assert.ok(evidence["experience-form.json"]);
+    assert.ok(evidence["media/s1.png"]);
+    assert.ok(run.trackedFiles.includes("media/s1.png"));
+    // Draft is real work; then a changed question image is caught at review.
+    await f.put("article.md", "draft");
+    await f.put("evidence/story-media-plan.json", plan());
+    run = await submit(f, run, "done");
+    assert.equal(run.stepId, "check");
+    await f.put("media/s1.png", "changed-bytes");
+    for (const file of run.task!.step!.outputs) await f.put(file, "review");
+    await assert.rejects(submit(f, run, "pass"), /STALE_INPUT/);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("preview and run creation agree when the next step's inputs are missing", async () => {
+  const f = await fixture();
+  try {
+    const d: any = sharedDefinition();
+    d.steps[3].inputs = ["article.md", "missing.md"];
+    await writeFile(f.definitionFile, stringify(d));
+    await writeMedia(f);
+    await submitAnswers(f);
+    await f.put("article.md", "draft text");
+    await f.put("evidence/story-media-plan.json", plan());
+    const p = await preview(f);
+    const run = await f.runtime.create(f.input);
+    assert.equal(p.startsAt, "draft");
+    assert.equal(run.stepId, p.startsAt);
+    assert.deepEqual(
+      run.history.map((h) => h.stepId),
+      p.skipped.map((s) => s.stepId),
+    );
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a pending skip left by a stop is judged again on open, and one failing run does not block others", async () => {
+  const f = await fixture();
+  const db = path.join(f.root, "db");
+  await writeMedia(f);
+  await submitAnswers(f);
+  // Simulate a stop between the request and the advance.
+  (f.runtime as any).advanceAdopted = async () => {};
+  const stale = await f.runtime.create(f.input);
+  assert.ok(stale.task?.adopt);
+  // A second workspace whose pending skip cannot be recovered at all.
+  const brokenWs = path.join(f.root, "research", "broken");
+  await mkdir(brokenWs, { recursive: true });
+  await writeFile(path.join(brokenWs, "brief.md"), "b");
+  await mkdir(path.join(brokenWs, "evidence"));
+  await writeFile(
+    path.join(brokenWs, "evidence", "media-scenes.json"),
+    JSON.stringify({ ...scenes, scenes: [{ ...scenes.scenes[0], preview: "brief.md" }] }),
+  );
+  const d: any = sharedDefinition();
+  d.entry = "experience";
+  d.steps = d.steps.slice(1);
+  await mkdir(path.join(f.root, "workflows"), { recursive: true });
+  const brokenDef = path.join(f.root, "workflows", "input-first.yaml");
+  await writeFile(brokenDef, stringify(d));
+  const brokenForm = await f.runtime.createForm({
+    workspace: brokenWs,
+    form: form(),
+  });
+  const saved = await f.runtime.saveForm({
+    formId: brokenForm.formId,
+    expectedRevision: brokenForm.revision,
+    answers: [{ questionId: "q1", status: "answered", text: "a" }],
+    submit: true,
+  });
+  const broken = await f.runtime.create({
+    ...f.input,
+    workspace: brokenWs,
+    definitionFile: brokenDef,
+  });
+  assert.ok(broken.task?.adopt);
+  await f.runtime.close();
+  // While stopped: the inventory became invalid, and the other run's answers vanished.
+  await f.put("evidence/media-scenes.json", "{ broken");
+  for (const file of saved.exports) await rm(path.join(brokenWs, file));
+  const errors = console.error;
+  console.error = () => {};
+  let runtime: WorkflowRuntime;
+  try {
+    runtime = await WorkflowRuntime.open(db);
+  } finally {
+    console.error = errors;
+  }
+  try {
+    const run = await runtime.get({ runId: stale.runId });
+    assert.equal(run.stepId, "prepare");
+    assert.equal(run.history.length, 0);
+    assert.equal(run.task?.adopt, undefined);
+    assert.ok(run.task);
+    // The failing run is reachable and left for an explicit restart.
+    const other = await runtime.get({ runId: broken.runId });
+    assert.equal(other.history.length, 0);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("built-in (non-YAML) runs never report ALREADY_RECORDED", async () => {
+  const f = await fixture();
+  try {
+    let run = await f.runtime.create({
+      title: "Built-in",
+      workspace: f.workspace,
+      instructions: "Synthetic",
+      trackedFiles: ["brief.md"],
+    });
+    const first = run;
+    await f.put("notes.md", "prepared");
+    const body = {
+      runId: run.runId,
+      taskId: first.task!.taskId,
+      outcome: "done" as const,
+      summary: "synthetic",
+      evidence: ["notes.md"],
+    };
+    run = await f.runtime.submit(body);
+    assert.notEqual(run.task!.taskId, first.task!.taskId);
+    for (const evidence of [["notes.md"], []])
+      await assert.rejects(
+        f.runtime.submit({ ...body, evidence }),
+        (e: Error) =>
+          /STALE_TASK/.test(e.message) && !/ALREADY/.test(e.message),
+      );
   } finally {
     await f.runtime.close();
   }

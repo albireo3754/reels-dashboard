@@ -44,7 +44,7 @@ import {
 } from "../../shared/workflow";
 
 import { readDefinition } from "./definition";
-import { adoptInput, adoptTask, previewAdoption } from "./adopt";
+import { adoptStep, previewAdoption } from "./adopt";
 import {
   definitionStage,
   definitionEdges,
@@ -90,9 +90,15 @@ export class WorkflowRuntime {
     const runtime = new WorkflowRuntime(root);
     try {
       // Finish adoptions interrupted by a stop between the request and the advance.
+      // A failure stays with that run (restart it later); other runs still open.
       for (const run of await runtime.list())
         if (run.definition && run.status === "waiting" && run.task?.adopt)
-          await runtime.advanceAdopted(run.runId);
+          await runtime.advanceAdopted(run.runId).catch((error) =>
+            console.error(
+              `Workflow ${run.runId}: pending skip could not be finished; restart the run.`,
+              error,
+            ),
+          );
       return runtime;
     } catch (e) {
       await runtime.close();
@@ -504,42 +510,43 @@ export class WorkflowRuntime {
    * form. Review steps always run.
    */
   private async dslAdoption(run: WorkflowRun, step: DefinitionStep) {
-    if (
-      run.skipCompleted !== true ||
-      step.kind === "review" ||
-      step.on.done === "$complete" ||
-      run.history.some((h) => h.stepId === step.id)
-    )
-      return;
+    if (run.skipCompleted !== true) return;
     const definition = run.definition!.definition;
     // Judge the declared step: dslStep has already expanded `{attempt}`.
-    const declared = definition.steps.find((s) => s.id === step.id)!;
-    const leading = run.history.every((h) => h.outcome === "skipped");
-    const adopt =
-      step.kind === "input"
-        ? await adoptInput(run.workspace, declared, leading)
-        : leading
-          ? await adoptTask(run.workspace, definition, declared)
-          : undefined;
-    if (!adopt) return;
-    // Like a normal submission, the next step's inputs must exist before advancing.
-    const next = definition.steps.find((s) => s.id === step.on.done);
-    try {
-      if (next) await hashes(run.workspace, next.inputs);
-    } catch {
-      return;
-    }
-    return adopt;
+    return adoptStep(
+      run.workspace,
+      definition,
+      definition.steps.find((s) => s.id === step.id)!,
+      {
+        leading: run.history.every((h) => h.outcome === "skipped"),
+        visited: run.history.some((h) => h.stepId === step.id),
+      },
+    );
   }
-  /** Advance past adopted steps; called after any transition that may land on one. */
+  /**
+   * Advance past adopted steps; called after any transition that may land on one.
+   * Each pending adoption is judged again first. When the files changed since the
+   * request (e.g. a stop in between), the step is requested again, which issues a
+   * normal task or a fresh adoption.
+   */
   async advanceAdopted(runId: string) {
     for (let i = 0; i <= 50; i++) {
       const run = await this.get({ runId });
       if (run.status !== "waiting" || !run.task?.adopt) return;
-      await this.graph.invoke(
-        new Command({ resume: { adopted: true } }),
+      const fresh = await this.dslAdoption(run, this.dslStep(run));
+      if (JSON.stringify(fresh) === JSON.stringify(run.task.adopt)) {
+        await this.graph.invoke(
+          new Command({ resume: { adopted: true } }),
+          this.config(runId),
+        );
+        continue;
+      }
+      await this.graph.updateState(
         this.config(runId),
+        { run: { ...run, task: null, sequence: run.sequence + 1 } },
+        "dsl_work",
       );
+      await this.graph.invoke(null, this.config(runId));
     }
   }
   private async dslRequest(run: WorkflowRun) {
@@ -950,14 +957,13 @@ export class WorkflowRuntime {
     run: WorkflowRun,
     input: { taskId: string; outcome: string; evidence: string[] },
   ) {
+    // Only YAML records hold exactly the submitted evidence; built-in stages add
+    // derived files, so their repeats cannot be told apart and stay plain STALE_TASK.
+    if (!run.definition) return false;
     const record = run.history.find((r) => r.taskId === input.taskId);
     if (!record || record.outcome !== input.outcome) return false;
     if (input.evidence.some((file) => !(file in record.evidence))) return false;
-    // DSL records hold exactly the submitted evidence; legacy stages may add derived files.
-    if (
-      run.definition &&
-      new Set(input.evidence).size !== Object.keys(record.evidence).length
-    )
+    if (new Set(input.evidence).size !== Object.keys(record.evidence).length)
       return false;
     try {
       const current = await hashes(run.workspace, input.evidence);

@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -77,11 +77,33 @@ async function coveringAnswers(workspace: string, form?: ExperienceForm) {
   return form ? records.find((r) => answersCover(form, r)) : records[0];
 }
 
-async function readForm(workspace: string, file: string) {
+type FormState =
+  | { state: "missing" }
+  | { state: "invalid" }
+  | { state: "ok"; form: ExperienceForm; evidence: string[] };
+
+/**
+ * Only a form file that does not exist counts as absent. A file that exists but is
+ * unreadable, oversized, escapes the workspace or fails the schema is `invalid` and
+ * blocks skipping. A valid form contributes itself and its question images.
+ */
+async function readForm(workspace: string, file: string): Promise<FormState> {
   try {
-    return experienceFormSchema.parse(await readJson(workspace, file, 200000));
+    await lstat(path.join(workspace, file));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { state: "missing" };
+    return { state: "invalid" };
+  }
+  try {
+    const form = experienceFormSchema.parse(
+      await readJson(workspace, file, 200000),
+    );
+    const images = form.questions.flatMap((q) => q.images.map((i) => i.path));
+    for (const image of images) await resolveFile(workspace, image);
+    return { state: "ok", form, evidence: [file, ...new Set(images)] };
   } catch {
-    return undefined;
+    return { state: "invalid" };
   }
 }
 
@@ -90,20 +112,27 @@ async function readForm(workspace: string, file: string) {
  * current form file. Without a form file, only `allowWithoutForm` (the leading,
  * not-yet-worked part of a new run) accepts the latest submitted answers.
  */
-export async function adoptInput(
+async function adoptInput(
   workspace: string,
   step: DefinitionStep,
   allowWithoutForm: boolean,
 ): Promise<Adoption | undefined> {
-  const form = await readForm(workspace, step.formFile!);
-  if (!form && !allowWithoutForm) return;
+  const current = await readForm(workspace, step.formFile!);
+  if (current.state === "invalid") return;
+  if (current.state === "missing" && !allowWithoutForm) return;
+  const form = current.state === "ok" ? current.form : undefined;
   const record = await coveringAnswers(workspace, form);
   if (!record) return;
   return {
     reason: form
       ? `제출된 답변(${record.file})이 ${step.formFile}의 질문 ${form.questions.length}개를 모두 덮어 입력 단계를 넘어갔어요.`
       : `${step.formFile}이 없고 제출된 답변(${record.file})이 있어 입력 단계를 넘어갔어요.`,
-    evidence: record.exports,
+    evidence: [
+      ...new Set([
+        ...record.exports,
+        ...(current.state === "ok" ? current.evidence : []),
+      ]),
+    ],
   };
 }
 
@@ -116,13 +145,16 @@ async function adoptOutput(
 ): Promise<string[]> {
   const name = path.basename(file);
   if (file === formFile) {
-    if (await readForm(workspace, file)) return [file];
+    const current = await readForm(workspace, file);
+    if (current.state === "ok") return current.evidence;
+    if (current.state === "invalid")
+      throw new Error(`${file}: invalid form`);
     const answers = await coveringAnswers(workspace);
     if (answers) {
       notes.push(`${file} 대신 제출된 답변 ${answers.file}`);
       return answers.exports;
     }
-    throw new Error(`${file}: no valid form or submitted answers`);
+    throw new Error(`${file}: no form or submitted answers`);
   }
   if (name === "media-scenes.json") {
     const previews = await mediaSceneInputs(workspace, [file]);
@@ -141,25 +173,14 @@ async function adoptOutput(
   return [file];
 }
 
-/**
- * Task step: skip when every declared input and output already exists and the known
- * outputs validate. Per-attempt outputs and the step that would complete the run are
- * never adopted. Reviews are never adopted (callers do not pass them here).
- */
-export async function adoptTask(
+/** Task step: every declared output exists and the known outputs validate. */
+async function adoptTask(
   workspace: string,
   definition: WorkflowDefinition,
   step: DefinitionStep,
 ): Promise<Adoption | undefined> {
-  if (
-    step.kind !== "task" ||
-    step.on.done === "$complete" ||
-    step.outputs.some((file) => file.includes("{attempt}"))
-  )
-    return;
   const formFile = definition.steps.find((s) => s.kind === "input")?.formFile;
   try {
-    for (const file of step.inputs) await resolveFile(workspace, file);
     const evidence: string[] = [];
     const notes: string[] = [];
     for (const file of step.outputs)
@@ -175,6 +196,47 @@ export async function adoptTask(
   }
 }
 
+async function filesExist(workspace: string, files: string[]) {
+  try {
+    for (const file of files) await resolveFile(workspace, file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The single skip rule shared by the runtime and the dry-run preview.
+ * `step` is the declared step (`{attempt}` not expanded). `leading`: nothing in the
+ * run has been worked yet. `visited`: the run already has a record for this step.
+ * Never: reviews, `{attempt}` outputs, `done → $complete`, revisits, missing own or
+ * next-step inputs. Task steps only while leading.
+ */
+export async function adoptStep(
+  workspace: string,
+  definition: WorkflowDefinition,
+  step: DefinitionStep,
+  context: { leading: boolean; visited: boolean },
+): Promise<Adoption | undefined> {
+  if (
+    context.visited ||
+    step.kind === "review" ||
+    step.on.done === "$complete" ||
+    step.outputs.some((file) => file.includes("{attempt}")) ||
+    (step.kind === "task" && !context.leading)
+  )
+    return;
+  const next = definition.steps.find((s) => s.id === step.on.done);
+  if (
+    !(await filesExist(workspace, step.inputs)) ||
+    !(await filesExist(workspace, next?.inputs ?? []))
+  )
+    return;
+  return step.kind === "input"
+    ? adoptInput(workspace, step, context.leading)
+    : adoptTask(workspace, definition, step);
+}
+
 /**
  * Dry run for a new run: the leading steps that would be skipped from `entry`.
  * Later input steps can still be skipped mid-run once their form file exists.
@@ -185,11 +247,11 @@ export async function previewAdoption(
 ) {
   const skipped: ({ stepId: string } & Adoption)[] = [];
   let step = definition.steps.find((s) => s.id === definition.entry);
-  while (step && step.kind !== "review" && step.on.done !== "$complete") {
-    const adopt =
-      step.kind === "input"
-        ? await adoptInput(workspace, step, true)
-        : await adoptTask(workspace, definition, step);
+  while (step) {
+    const adopt = await adoptStep(workspace, definition, step, {
+      leading: true,
+      visited: skipped.some((s) => s.stepId === step!.id),
+    });
     if (!adopt) break;
     skipped.push({ stepId: step.id, ...adopt });
     const next = step.on.done;
