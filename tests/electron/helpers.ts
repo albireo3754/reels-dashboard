@@ -1,7 +1,7 @@
 import { _electron, type ElectronApplication } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export async function makeProfile(): Promise<string> {
   return mkdtemp(join(tmpdir(), "reels-electron-qa-"));
@@ -92,4 +92,13 @@ export async function pressWorkbenchKey(
 
 export async function cleanProfile(profile: string): Promise<void> {
   await rm(profile, { recursive: true, force: true });
+}
+
+export function editorRuntime(): string {
+  return process.env.REELS_ELECTRON_EXECUTABLE
+    ? resolve(
+        dirname(process.env.REELS_ELECTRON_EXECUTABLE),
+        "../Resources/editor-runtime",
+      )
+    : resolve("native/editor-engine/.build/runtime");
 }

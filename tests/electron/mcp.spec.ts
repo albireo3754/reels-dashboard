@@ -6,15 +6,10 @@ import { promisify } from "node:util";
 import { readFile, access } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
 
 const execute = promisify(execFile);
-const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-  ? path.resolve(
-      path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-      "../Resources/editor-runtime",
-    )
-  : path.resolve("native/editor-engine/.build/runtime");
+const runtime = editorRuntime();
 const digest = async (file: string) =>
   createHash("sha256")
     .update(await readFile(file))

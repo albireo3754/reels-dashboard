@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 const execute = promisify(execFile);
 test("desktop template UI saves adjustments and renders matching video and cover manifests", async () => {
   test.setTimeout(90_000);
@@ -11,12 +11,7 @@ test("desktop template UI saves adjustments and renders matching video and cover
   const app = await launchApp(profile, false);
   try {
     const page = await app.firstWindow();
-    const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-      ? path.resolve(
-          path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-          "../Resources/editor-runtime",
-        )
-      : path.resolve("native/editor-engine/.build/runtime");
+    const runtime = editorRuntime();
     const input = path.join(profile, "template-source.mp4");
     const output = path.join(profile, "template-output.mp4");
     await execute(path.join(runtime, "bin/ffmpeg"), [

@@ -1,12 +1,13 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createServer,type Server} from "node:http";
-import {mkdtemp,readdir,readFile,rm,stat} from "node:fs/promises";
+import {mkdtemp,readFile,rm} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {ThreadEvent} from "@openai/codex-sdk";
 import {markupFixture} from "../fixtures/markup-editor";
 import {makeCanonicalFixture} from "../fixtures/canonical-content";
+import {snapshot} from "../fixtures/fs-snapshot";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
 import {startWorkflowServer} from "../../src/app/workflow/server";
 import type {SdkFactory} from "../../src/app/workflow/codex-executor";
@@ -34,11 +35,6 @@ async function withWorkflowUrl<T>(url:string,run:()=>Promise<T>){
 const post=(base:string,body:unknown)=>fetch(base+"/api/blog/suggest",{method:"POST",headers:{"Content-Type":"application/json",Origin:base},body:JSON.stringify(body)});
 const texts=(list:unknown[])=>list.map(s=>(typeof s==="string"?s:(s as {text:string}).text).trim());
 /** Every file below root with size+mtime, to prove a suggestion never writes anything. */
-async function snapshot(root:string){
- const out:Record<string,string>={};
- async function walk(dir:string){for(const e of await readdir(dir,{withFileTypes:true})){const f=path.join(dir,e.name);if(e.isDirectory())await walk(f);else{const s=await stat(f);out[path.relative(root,f)]=s.size+":"+s.mtimeMs;}}}
- await walk(root);return out;
-}
 
 test("/api/blog/suggest uses the unsaved paragraph and splits before/after at the plain-text caret",async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),"blog-suggest-"));
