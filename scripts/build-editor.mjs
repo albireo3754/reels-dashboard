@@ -103,17 +103,17 @@ for (const item of new Set(copied.values())) {
 }
 
 const licenseIndex = [];
-function copyLicenses(root) {
+function copyLicenses(root, name) {
   const marker = path.join(root, 'build-source.json');
-  const label = existsSync(marker) ? `ffmpeg-${JSON.parse(readFileSync(marker, 'utf8')).ffmpegVersion}`
-    : path.basename(path.dirname(root)) + '-' + path.basename(root);
+  const label = name ?? (existsSync(marker) ? `ffmpeg-${JSON.parse(readFileSync(marker, 'utf8')).ffmpegVersion}`
+    : path.basename(path.dirname(root)) + '-' + path.basename(root));
   const output = path.join(runtime, 'licenses', label); mkdirSync(output, { recursive: true });
   let count = 0;
   function scan(directory, depth = 0) {
     if (depth > 3) return;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);
-      if (entry.isDirectory() && !['bin', 'lib', 'include', 'man'].includes(entry.name)) scan(file, depth + 1);
+      if (entry.isDirectory() && !['bin', 'lib', 'include', 'man', 'vendor-licenses'].includes(entry.name)) scan(file, depth + 1);
       else if (entry.isFile() && /^(LICENSE|COPYING|NOTICE|COPYRIGHT)/i.test(entry.name)) {
         const relative = path.relative(root, file);
         mkdirSync(path.dirname(path.join(output, relative)), { recursive: true });
@@ -128,7 +128,13 @@ function copyLicenses(root) {
   if (!count) throw new Error(`No license text found for linked dependency ${label}`);
   licenseIndex.push({ component: label, licenseFiles: count });
 }
-for (const root of roots) copyLicenses(root);
+for (const root of roots) {
+  copyLicenses(root);
+  // The private FFmpeg build vendors x264/x265/zimg into its own lib and keeps their licenses per component.
+  const vendored = path.join(root, 'vendor-licenses');
+  if (existsSync(vendored)) for (const entry of readdirSync(vendored, { withFileTypes: true }))
+    if (entry.isDirectory()) copyLicenses(path.join(vendored, entry.name), entry.name);
+}
 const pythonLicenses = JSON.parse(text(python, ['-c', `import json,sysconfig,importlib.metadata as m
 from pathlib import Path
 out=[]
