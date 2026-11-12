@@ -25,8 +25,8 @@ REELS_EDITOR_QA=1 npm run test:electron -- tests/electron/editor.spec.ts
 | 흐름 | 검증 기준 |
 | --- | --- |
 | 입력 | 번들 FFmpeg로 만든 세로 H.264 영상과 AAC 음성. 한글·공백 경로를 사용해요. |
-| 가져오기 | native probe 결과와 원본 정보, proxy 생성, custom media URL을 확인해요. |
-| 재생 | 실제 media protocol의 byte-range 206 응답, HEAD의 빈 body·길이, 잘못된 범위의 416, 외부 Origin 거부와 브라우저 video 구간 이동을 확인해요. |
+| 가져오기 | native probe 결과와 원본 정보, custom media URL을 확인해요. 2026-11-12부터 가져오기는 재생용 사본을 만들지 않아요(`playback.mp4` 없음). |
+| 재생 | 원본을 스트리밍하는 실제 media protocol의 byte-range 206 응답, HEAD의 빈 body·원본과 같은 길이, 잘못된 범위의 416, 외부 Origin 거부와 브라우저 video 구간 이동을 확인해요. `editor.playbackCopy`를 요청했을 때만 사본이 생기고 `/copy` URL이 로드되는지 확인해요. |
 | 편집 | 장소 안내 묶음, 본문 자막, 표지 훅·배경 시점을 설정해요. |
 | 미리보기 | 영상·표지 PNG를 생성하고 브라우저에서 디코딩해요. 합성 미리보기만 QA artifact로 보존해요. |
 | 내보내기 | 실제 render job 완료, FFprobe 영상 해상도·길이·음성 stream, 표지, 영상·표지 manifest를 확인해요. |
@@ -74,3 +74,31 @@ REELS_EDITOR_QA=1 npm run test:electron -- tests/electron/editor.spec.ts
 내보내기를 마친 프로젝트를 변경 없이 저장하면 `review`를 유지하고, 자막 등 편집 설정을 실제로 변경해 저장하면 `editing`으로 돌아가도록 수정했어요. 재패키징한 앱에서 변경한 첫 번째 실제 편집 테스트만 실행해 **1/1 통과, 7.4초**를 확인했어요.
 
 합성 영상의 실제 내보내기 후 변경 없는 저장·자막 변경 저장·앱 재실행 복원까지 통과했어요. 취소 테스트와 개인 Photos 가져오기는 다시 실행하지 않았어요. 이번 결과는 `artifacts/electron-packaged/editor-reedit-regression-results.json` 및 최신 `results.json`에 보존했어요.
+
+## 원본 직접 재생 — 2026-11-12
+
+개발 Electron 빌드(`npm run build`, 기본 background QA)에서 실행했어요.
+
+- `REELS_EDITOR_QA=1 REELS_PLAYBACK_SOURCE=<로컬 영상> npm run test:electron -- tests/electron/direct-playback.spec.ts tests/electron/editor.spec.ts tests/electron/content-board.spec.ts tests/electron/route-map.spec.ts tests/electron/execution-logs.spec.ts`: **6 통과**, 1 skip(실제 Photos opt-in), 26.8초.
+- 합성 편집 QA: 가져온 뒤 `playback.mp4`가 없고, 원본 스트림의 HEAD 길이가 원본 파일 크기와 같으며 Range·416·외부 Origin 거부·seek가 통과했어요. `editor.playbackCopy`를 호출했을 때만 사본이 생기고 `/copy` URL이 로드됐어요. 실행 로그에는 가져오기 때 `편집 영상 정보 확인`만 남고, 사본 요청 뒤 `편집 재생용 사본 준비`가 완료로 남았어요.
+- 보드 Electron QA: 원본 grant의 길이가 원본 크기와 같고 `board-media` 캐시가 비어 있으며 “원본 파일을 그대로 재생해요.”를 표시했어요.
+- opt-in 실제 원본(`direct-playback.spec.ts`, HEVC Main10 HLG 2160×3840 약 62Mbps, 20.78초, iCloud Drive에 내려받아진 파일): 사본 없이 재생됐어요(`copiesCreated: 0`, 원본 크기·mtime 불변).
+
+| 경로 | readyState | currentTime | videoWidth×Height | 디코드/드롭 프레임 | 첫 프레임 |
+| --- | --- | --- | --- | --- | --- |
+| 보드 `contentMedia.open` → `<video>` | 4 | 1.58초 | 2160×3840 | 92 / 0 | 330ms |
+| 편집기 UI `편집 원본 재생` | 4 | 1.57초 | 2160×3840 | 98 / 25 | 이미 로드됨 |
+
+편집기 상단은 “원본 HDR 그대로 재생”을 표시했어요. 숨김 background QA 창이라 화면 표시 품질(HDR 톤)은 눈으로 확인하지 않았고, 드롭 프레임은 숨김 창·동시 디코드 조건의 값이에요. 실제 dataless 파일로 사본을 만드는 경로는 iCloud 다운로드를 일으키므로 실행하지 않았어요. 판별은 실제 placeholder(`SF_DATALESS` 설정, blocks 0)와 내려받은 파일에서 각각 true/false로 확인했고 다운로드는 일어나지 않았어요. 폴백 UI는 웹 QA(`demoPlaybackError=1`)와 단위 테스트로 확인했어요. Electron에서의 폴백은 아래 통합 QA에서 확인했어요.
+
+### 원본 직접 재생 + GPU 사본 통합 — 2026-11-12
+
+`feat/direct-playback`과 `feat/gpu-proxy`를 합친 개발 Electron 빌드(기본 background QA)에서 실행했어요.
+
+- `REELS_EDITOR_QA=1 REELS_FALLBACK_EXPECT_GPU=1 REELS_PLAYBACK_SOURCE=<HLG 원본> REELS_FALLBACK_SOURCE=<디코드 불가 영상> npm run test:electron -- tests/electron/direct-playback.spec.ts tests/electron/editor.spec.ts tests/electron/content-board.spec.ts tests/electron/route-map.spec.ts tests/electron/execution-logs.spec.ts`: **7 통과**, 1 skip(실제 Photos opt-in), 46.5초.
+- 실제 HLG 원본은 위와 같이 사본 없이 재생됐어요(보드 2160×3840·readyState 4·드롭 0·첫 프레임 313ms, 편집기 2160×3840·드롭 0, `copiesCreated: 0`).
+- 폴백(`REELS_FALLBACK_SOURCE`)은 Chromium이 못 읽는 영상이 있어야 해서 저장소 밖 `/tmp`에 HLG 원본 앞 4초를 ProRes 422 Proxy(2160×3840, 10bit HLG 태그)로 만든 `.mov`를 썼어요. 보드 미디어 보기와 편집기 모두 원본 grant로 시작해 “원본을 바로 재생하지 못해…” 상태를 거쳐 사본으로 자동 전환했고, 두 사본 모두 608×1080으로 재생(readyState 4, currentTime 1.5초 이상)됐어요. 편집기 상단은 “원본 HDR · 재생용 SDR 사본”을 표시했어요.
+- 사본 실행 로그(`보관함 재생용 사본 준비`, `편집 재생용 사본 준비`) 두 건이 완료였고 `GPU proxy unavailable` 알림이 없었어요. 앱이 만든 사본도 VideoToolbox 경로를 탔다는 뜻이에요.
+- 클릭(또는 로컬 영상 열기)부터 사본 재생까지: 보드 3.2초, 편집기 3.3초(가져오기 포함). 같은 파일을 CLI로 직접 만들면 4.4초(user 0.5초, `accel: videotoolbox`, 608×1080 bt709 240프레임)였어요. 20.78초 4K60 HLG 원본 전체는 CLI 7.0초(user 1.3초, 1,247프레임)였어요. 기기 부하에 따라 벽시계 시간은 달라져요.
+- 오디오가 있는 ProRes에서는 처음에 폴백이 일어나지 않았어요. Chromium이 영상 트랙만 버리고 오류 없이 오디오를 재생해 `<video>`의 `error`가 오지 않았기 때문이에요(`videoWidth` 0, 디코드 프레임 0). 그래서 보드·촬영 지도·편집기가 `loadedmetadata`에서 `videoWidth`가 0이면 재생 실패로 처리하게 고쳤고, 고친 뒤 오디오가 있는 파일과 영상만 있는 파일 모두 사본으로 전환됐어요.
+- 숨김 창이라 HDR 원본과 SDR 사본의 화면 톤은 눈으로 비교하지 않았어요. 실제 dataless 파일 경로는 이번에도 실행하지 않았어요.

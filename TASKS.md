@@ -1,5 +1,26 @@
 # Reels Dashboard 진행 상태
 
+## 원본 직접 재생 + GPU 사본 통합 — 2026-11-12
+
+배경: `feat/direct-playback`(원본 직접 재생, 사본은 실패·dataless 때만)과 `feat/gpu-proxy`(사본 VideoToolbox 생성, CPU 자동 폴백)를 `feat/playback-direct-gpu`로 합쳤다. 문서 충돌 두 곳은 양쪽 내용을 모두 살렸다.
+
+- [x] 검증: `npm run typecheck`, `npm run check:architecture`, `npm test`(498개 중 494 통과·4 건너뜀), `npm run build`, `npm run build:editor` 후 `npm run test:editor-engine` 21개 통과, 웹 `editor`·`content-board`·`route-map` 23개 통과, Electron background QA 7개 통과·1개 opt-in skip, `npm run package:mac` 성공(`release/mac-arm64`, 설치·교체 안 함)과 패키지 앱으로 재생 spec 2개 통과.
+- [x] 실제 HEVC 10bit HLG 2160×3840 20초 원본이 보드·편집기에서 사본 없이 재생. Chromium이 못 읽는 ProRes HLG `.mov`는 보드·편집기 모두 사본으로 자동 전환되고 사본은 GPU 경로(`GPU proxy unavailable` 없음)로 만들어짐. 클릭부터 사본 재생까지 개발 빌드 약 3.2~3.3초(4초 클립).
+- [x] 오디오가 있고 영상 코덱만 못 읽는 파일은 `<video>` 오류 없이 오디오만 재생되어 폴백이 일어나지 않던 문제를 고침. 보드·촬영 지도·편집기가 `loadedmetadata`에서 `videoWidth`가 0이면 재생 실패로 처리.
+- [x] opt-in Electron 폴백 spec 추가(`REELS_FALLBACK_SOURCE`, GPU 경로 확인은 `REELS_FALLBACK_EXPECT_GPU=1`). 결과는 [Electron QA](docs/editor-electron-qa.md#원본-직접-재생--gpu-사본-통합--2026-11-12).
+- [ ] 실제 dataless 파일의 사본 경로 end-to-end, HDR 원본과 SDR 사본의 화면 톤 육안 비교, 실행 중 앱 반영은 하지 않음.
+
+## 원본 직접 재생 — 2026-11-12
+
+배경: 보드 재생·촬영 지도·편집기 가져오기가 모든 영상을 ffmpeg SDR 사본으로 바꾼 뒤 재생해 첫 재생이 느리고 HDR 원본을 그대로 볼 수 없었다. 사용자 결정으로 원본을 기본 재생하고 사본은 필요할 때만 만든다.
+
+- [x] `reels-media`가 원본을 Range로 스트리밍(보드 `content/{token}` grant, 편집기 `video/{id}`). origin 검사·토큰 grant·등록 자료 제한은 유지. `.mov`는 `video/quicktime`.
+- [x] 사본은 (a) `<video>` 오류 시 UI가 자동 요청(“재생용 사본을 준비하고 있어요” 표시, 보드 `open(..., {copy: true})`, 편집기 `editor.playbackCopy(id)` → `video/{id}/copy`) (b) iCloud dataless 원본(`stat -f %f`의 `SF_DATALESS`, 플래그를 못 읽을 때만 `blocks === 0 && size > 0`)일 때만. 판별 실패는 원본 재생. 편집기는 dataless 원본의 첫 요청을 503으로 거절해 (a)로 넘김.
+- [x] 편집기 가져오기에서 `proxy` 호출 제거. 기존 기록의 `proxyPath`/`playback.mp4`는 그대로 읽고 폴백 때 재사용. 표지·렌더·미리보기 프레임 경로와 Python 엔진은 변경 없음.
+- [x] 검증: `npm run typecheck`, `npm run check:architecture`, `npm test`(494개 중 489 통과·4 건너뜀·1 실패: `agent.test.ts`의 abort 타이밍 테스트로 단독 3회 재실행 모두 통과), 웹 161개 통과(`canonical-sdk.spec.ts`는 공유 node_modules의 OpenTelemetry 로드 오류로 HEAD에서도 수집 불가라 제외), Electron background QA 6개 통과·1개 opt-in skip. 실제 HEVC 10bit HLG 2160×3840 20초 원본이 보드·편집기에서 사본 없이 재생(readyState 4, 2160×3840 디코드, currentTime 1.5초 이상). 결과는 [Electron QA](docs/editor-electron-qa.md#원본-직접-재생--2026-11-12).
+- [ ] 실제 dataless 파일의 사본 경로 end-to-end(다운로드 유발)는 실행하지 않음. 판별은 실제 iCloud placeholder 메타데이터로만 확인. 실행 중 앱 반영·패키징은 하지 않음.
+- 정책: [원본 직접 재생](docs/editor-workflow.md#원본-직접-재생--2026-11-12).
+
 ## 프로젝트의 채널별 게시 상태 — 2026-11-12
 
 배경: 게시 완료가 프로젝트당 `stage` 하나라 인스타그램·네이버클립·블로그 중 일부만 올린 프로젝트를 표현할 수 없었다. 사용자 결정으로 프로젝트는 하나로 두고 그 안에서 채널별로 본다.
@@ -42,6 +63,13 @@
 - [x] Dolby Vision 8.4는 번들 네이티브 렌더러의 Metal 합성·하드웨어 HEVC Main10·동적 메타데이터 재생성으로 교체. 일반 영상·프록시·카드뉴스도 VideoToolbox를 강제하고 CPU 자동 전환 제거. 지원하지 않는 프로필·하드웨어는 명시적 오류. 원본 비트레이트를 상한 안에서 적용하고 동일 시간 레이어는 한 번에 합성.
 - [x] 단위 전체 389개, 엔진 소스/번들 각 13개, 실제 Dolby 입력 포함 하드웨어 5개, 개발/패키지 Electron 각 4개, 타입/FSD/공개 소스 검사 통과. 실제 4K60 26.77초 입력은 33.13초에 렌더링, 1,606프레임·표시 시각·오디오 바이트·Dolby Vision/HLG/10비트 확인. [구현·검증 범위](docs/editor-engine.md#hardware-encoding-policy--2026-11-11).
 - [ ] 실행 중 앱 반영: Mac 잠금 해제 대기. 검증 패키지는 `release/hardware-encoding-20261111/mac-arm64/Reels Dashboard.app`, 설치 대기 사본은 기존 설치 폴더의 `Reels Dashboard.hardware-update.app`. 기존 앱·콘텐츠 출력은 유지.
+
+## 재생용 사본 GPU 가속 — 2026-11-12
+
+- [x] `proxy`가 VideoToolbox 디코딩(`videotoolbox_vld`)→`transpose_vt`/`scale_vt`(HDR은 BT.709 변환 포함)→`h264_videotoolbox -allow_sw 0`로 프레임을 GPU 메모리에 둔 채 사본을 만든다. 하드웨어 프레임은 자동 회전되지 않아 display matrix를 `transpose_vt`로 적용.
+- [x] GPU 경로 실패·출력 크기/색 태그 불일치·좌우 반전 matrix는 기존 CPU 디코딩+zscale/tonemap 경로로 자동 폴백(인코더는 계속 VideoToolbox). 결과 JSON에 `accel: videotoolbox|cpu` 추가.
+- [x] 실제 4K60 HLG/Dolby 8.4 20.78초 샘플: 102.3초→6.4초(CPU user 242초→1.3초), 608×1080 bt709·1,247프레임 동일. 엔진 소스/번들 각 21개 통과. [구현·측정](docs/editor-engine.md#gpu-playback-proxy--2026-11-12).
+- [ ] 실행 중 앱 반영은 별도. TypeScript 호출부는 결과의 `accel`을 아직 사용하지 않음.
 
 ## 프로젝트별 단일 outbound — 2026-11-11 후속 정정
 

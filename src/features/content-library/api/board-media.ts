@@ -7,9 +7,18 @@ import { mkdir, stat, rename, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { type ChildProcess } from "node:child_process";
 import path from "node:path";
-import { mediaKind } from "../../../shared/content-media";
+import {
+  mediaKind,
+  type ContentMediaOpenOptions,
+  type OpenedContentMedia,
+} from "../../../shared/content-media";
 import { ContentLibrary } from "./library";
 import { parseRange } from "../../../shared/lib/http-range";
+import {
+  isDatalessFile,
+  videoContentType,
+  type PlaybackMode,
+} from "../../../shared/lib/media-playback";
 
 export class BoardMedia {
   private thumbnails = new Map<string, Promise<string>>();
@@ -27,6 +36,7 @@ export class BoardMedia {
     private runtime: string,
     private logs: ExecutionLogs,
     private thumbnailer: (file: string, width: number) => Promise<string>,
+    private dataless: (file: string) => Promise<boolean> = isDatalessFile,
   ) {}
   async thumbnail(projectId: string, file: string) {
     const checked = await this.library.resolveMedia(projectId, file);
@@ -49,7 +59,11 @@ export class BoardMedia {
     }
     return this.thumbnails.get(key)!;
   }
-  async open(projectId: string, source: string) {
+  async open(
+    projectId: string,
+    source: string,
+    options: ContentMediaOpenOptions = {},
+  ): Promise<OpenedContentMedia> {
     const checked = await this.library.resolveMedia(projectId, source);
     if (checked.info.isDirectory())
       throw new Error("재생할 파일을 선택해주세요.");
@@ -58,22 +72,16 @@ export class BoardMedia {
       return { kind, url: await this.thumbnailer(source, 1600) };
     if (kind !== "video" && kind !== "audio")
       throw new Error("이 자료는 위치 열기로 확인해주세요.");
-    let file = source;
+    let file = checked.path;
+    let playback: PlaybackMode | undefined;
     if (kind === "video") {
-      // Only the selected video gets a playback proxy; originals and project state remain untouched.
-      const hash = sha256Hex(`${source}:${checked.info.size}:${checked.info.mtimeMs}`);
-      await mkdir(this.cache, { recursive: true, mode: 0o700 });
-      file = path.join(this.cache, `${hash}.mp4`);
-      if (!(await stat(file).catch(() => null))?.size) {
-        if (!this.pending.has(file)) {
-          const output = file;
-          const work = this.queue.then(() => this.proxy(source, output, projectId));
-          this.pending.set(file, work);
-          this.queue = work.catch(() => {});
-          void work.finally(() => this.pending.delete(output)).catch(() => {});
-        }
-        await this.pending.get(file);
-      }
+      // Originals stream as they are. A cached copy is made only after the renderer
+      // could not play the original, or for an iCloud file that is not downloaded.
+      playback =
+        options.copy === true || (await this.dataless(checked.path))
+          ? "copy"
+          : "original";
+      if (playback === "copy") file = await this.copy(projectId, source, checked.info);
     }
     await this.library.resolveMedia(projectId, source);
     const token = randomUUID();
@@ -81,12 +89,37 @@ export class BoardMedia {
       this.grants.delete(this.grants.keys().next().value!);
     const type =
       kind === "video"
-        ? "video/mp4"
+        ? playback === "copy"
+          ? "video/mp4"
+          : videoContentType(file)
         : { ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4" }[
             path.extname(file).toLowerCase()
           ]!;
     this.grants.set(token, { projectId, source, file, type });
-    return { kind, url: `reels-media://content/${token}` };
+    return {
+      kind,
+      url: `reels-media://content/${token}`,
+      ...(playback ? { playback } : {}),
+    };
+  }
+  private async copy(
+    projectId: string,
+    source: string,
+    info: { size: number; mtimeMs: number },
+  ) {
+    const hash = sha256Hex(`${source}:${info.size}:${info.mtimeMs}`);
+    await mkdir(this.cache, { recursive: true, mode: 0o700 });
+    const file = path.join(this.cache, `${hash}.mp4`);
+    if (!(await stat(file).catch(() => null))?.size) {
+      if (!this.pending.has(file)) {
+        const work = this.queue.then(() => this.proxy(source, file, projectId));
+        this.pending.set(file, work);
+        this.queue = work.catch(() => {});
+        void work.finally(() => this.pending.delete(file)).catch(() => {});
+      }
+      await this.pending.get(file);
+    }
+    return file;
   }
   private async proxy(source: string, output: string, projectId: string) {
     if (this.closing) throw new Error("앱이 종료 중이에요.");
@@ -94,7 +127,7 @@ export class BoardMedia {
     try {
       await new Promise<void>((resolve, reject) => {
         const child = loggedSpawn(
-          this.logs, { source: "library", label: "보관함 재생 영상 준비", projectId },
+          this.logs, { source: "library", label: "보관함 재생용 사본 준비", projectId },
           path.join(this.runtime, "reels-editor"),
           ["proxy", source, temporary],
           { detached: true, stdio: ["ignore", "pipe", "pipe"] },
@@ -115,7 +148,7 @@ export class BoardMedia {
           finish();
           reject(
             new Error(
-              "재생용 영상을 준비하지 못했어요. 편집 엔진을 확인해주세요.",
+              "재생용 사본을 준비하지 못했어요. 편집 엔진을 확인해주세요.",
             ),
           );
         });
@@ -125,7 +158,7 @@ export class BoardMedia {
             ? resolve()
             : reject(
                 new Error(
-                  "재생용 영상 준비에 실패했어요. 원본을 확인한 뒤 다시 시도해주세요.",
+                  "재생용 사본 준비에 실패했어요. 원본을 확인한 뒤 다시 시도해주세요.",
                 ),
               );
         });

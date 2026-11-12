@@ -26,10 +26,25 @@ export interface ContentMediaBridge {
     offset?: number,
   ): Promise<ContentMediaPage>;
   thumbnail(projectId: string, file: string): Promise<string>;
+  /**
+   * Videos stream the original file by default. `copy` asks for a playback copy
+   * after the renderer could not play the original; the main process also picks a
+   * copy itself for an iCloud file that is not downloaded.
+   */
   open(
     projectId: string,
     file: string,
-  ): Promise<{ url: string; kind: MediaKind }>;
+    options?: ContentMediaOpenOptions,
+  ): Promise<OpenedContentMedia>;
+}
+export interface ContentMediaOpenOptions {
+  copy?: boolean;
+}
+export interface OpenedContentMedia {
+  url: string;
+  kind: MediaKind;
+  /** Videos only: whether the URL streams the original or a playback copy. */
+  playback?: "original" | "copy";
 }
 export const resourceLabels = {
   footage: "촬영본",

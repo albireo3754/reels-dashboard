@@ -46,6 +46,7 @@ export interface EditorSource {
   height: number;
   hdr: boolean;
   hasAudio: boolean;
+  /** Streams the original source file as is (HDR included); no copy is made on import. */
   videoURL: string;
 }
 export interface EditorProject {
@@ -94,6 +95,12 @@ export interface EditorBridge {
   job(id: string): Promise<RenderJob>;
   cancel(id: string): Promise<void>;
   reveal(id: string): Promise<void>;
+  /**
+   * Makes (or reuses) an SDR playback copy after the renderer could not play the
+   * original at `source.videoURL`, and returns the copy's URL. Imports never create
+   * one in advance.
+   */
+  playbackCopy?(id: string): Promise<string>;
 }
 export function defaultEditSettings(duration: number): EditSettings {
   return {

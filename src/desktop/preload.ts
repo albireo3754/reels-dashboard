@@ -65,7 +65,7 @@ const bridge: DashboardBridge = {
     list: (id, folder, offset) =>
       invoke("contentMedia:list", id, folder, offset),
     thumbnail: (id, file) => invoke("contentMedia:thumbnail", id, file),
-    open: (id, file) => invoke("contentMedia:open", id, file),
+    open: (id, file, options) => invoke("contentMedia:open", id, file, options),
   },
   coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
   clipUpload: { create: input => invoke("clip-upload:create", input) },
@@ -90,6 +90,7 @@ const bridge: DashboardBridge = {
     job: (id) => invoke("editor:job", id),
     cancel: (id) => invoke("editor:cancel", id),
     reveal: (id) => invoke("editor:reveal", id),
+    playbackCopy: (id) => invoke("editor:playbackCopy", id),
   },
   agent: {
     reportContext: (context) => invoke("agent:context", context),

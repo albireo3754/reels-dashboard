@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import hashlib
 import io
@@ -8,10 +9,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageStat
 
 from check_reels_architecture import audit
+import editor_cli
 from editor_cli import video_arguments, cover_arguments
 from reels_editor.shared.timing import enable_at
 
@@ -48,6 +51,83 @@ class TimingTests(unittest.TestCase):
         for item in inventory['files']:
             if item['path'] not in modified:
                 self.assertEqual(hashlib.sha256((ROOT / item['path']).read_bytes()).hexdigest(), item['sourceSha256'], item['path'])
+
+
+HLG_INFO = dict(width=2160, height=3840, hdr=True)
+SDR_INFO = dict(width=720, height=1280, hdr=False)
+
+
+class ProxyPlanTests(unittest.TestCase):
+    def test_proxy_size_matches_cpu_scale_box(self):
+        self.assertEqual(editor_cli.proxy_size(2160, 3840), (608, 1080))
+        self.assertEqual(editor_cli.proxy_size(3840, 2160), (1080, 608))
+        self.assertEqual(editor_cli.proxy_size(720, 1280), (608, 1080))
+        self.assertEqual(editor_cli.proxy_size(1080, 1080), (1080, 1080))
+        self.assertEqual(editor_cli.proxy_size(1001, 333), (1080, 358))
+
+    def test_gpu_command_keeps_frames_on_videotoolbox(self):
+        command, size = editor_cli.gpu_proxy_command(Path('in.mov'), Path('out.mp4'), HLG_INFO, {})
+        self.assertEqual(size, (608, 1080))
+        self.assertEqual(command[command.index('-hwaccel') + 1], 'videotoolbox')
+        self.assertEqual(command[command.index('-hwaccel_output_format') + 1], 'videotoolbox_vld')
+        self.assertEqual(command[command.index('-vf') + 1],
+                         'scale_vt=w=608:h=1080:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709')
+        self.assertEqual(command[command.index('-c:v') + 1], 'h264_videotoolbox')
+        self.assertEqual(command[command.index('-allow_sw') + 1], '0')
+        # Either option would insert a CPU scaler that cannot accept hardware frames.
+        self.assertNotIn('-pix_fmt', command)
+        self.assertNotIn('-colorspace', command)
+        sdr, _ = editor_cli.gpu_proxy_command(Path('in.mov'), Path('out.mp4'), SDR_INFO, {})
+        self.assertEqual(sdr[sdr.index('-vf') + 1], 'scale_vt=w=608:h=1080')
+
+    def test_gpu_rotation_follows_display_matrix_and_rejects_mirrors(self):
+        def stream(rotation, matrix):
+            return {'side_data_list': [{'rotation': rotation, 'displaymatrix': matrix}]}
+        cclock = '\n00000000:            0      -65536           0\n00000001:        65536           0           0\n00000002:            0           0  1073741824\n'
+        mirrored = '\n00000000:            0       65536           0\n00000001:        65536           0           0\n00000002:            0           0  1073741824\n'
+        info = dict(width=1280, height=720, hdr=False)
+        for rotation, direction in ((90, 'cclock'), (-90, 'clock'), (180, 'reversal')):
+            command, size = editor_cli.gpu_proxy_command(Path('a'), Path('b'), info, stream(rotation, cclock))
+            self.assertEqual(command[command.index('-vf') + 1], f'transpose_vt=dir={direction},scale_vt=w=1080:h=608')
+            self.assertIn('-noautorotate', command)
+        self.assertIsNone(editor_cli.gpu_proxy_command(Path('a'), Path('b'), info, stream(-90, mirrored)))
+        self.assertIsNone(editor_cli.gpu_proxy_command(Path('a'), Path('b'), info, stream(45, cclock)))
+
+    def run_proxy(self, gpu_returncode=0, output_size=(608, 1080), transfer='bt709'):
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            gpu = '-hwaccel' in command
+            return subprocess.CompletedProcess(command, gpu_returncode if gpu else 0, '', 'boom' if gpu else '')
+        def probe_video(path):
+            if Path(path).name == 'out.mp4':
+                return {'color_transfer': transfer}, output_size, 1.0
+            return {}, (2160, 3840), 1.0
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(editor_cli, 'probe', return_value=dict(HLG_INFO)), \
+                mock.patch.object(editor_cli, 'probe_video', side_effect=probe_video), \
+                mock.patch.object(editor_cli.subprocess, 'run', side_effect=run), \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            result = editor_cli.proxy(Path(folder) / 'in.mov', Path(folder) / 'out.mp4')
+        return result, calls, stderr.getvalue()
+
+    def test_gpu_success_reports_videotoolbox_without_cpu_run(self):
+        result, calls, _ = self.run_proxy()
+        self.assertEqual(result['accel'], 'videotoolbox')
+        self.assertTrue(result['hdrToSDR'])
+        self.assertTrue(result['outputPath'].endswith('out.mp4'))
+        self.assertEqual(len(calls), 1)
+
+    def test_gpu_failure_or_wrong_output_falls_back_to_cpu_tonemap(self):
+        for kwargs in (dict(gpu_returncode=1), dict(output_size=(1080, 608)), dict(transfer='arib-std-b67')):
+            result, calls, stderr = self.run_proxy(**kwargs)
+            self.assertEqual(result['accel'], 'cpu', kwargs)
+            self.assertEqual(len(calls), 2)
+            self.assertIn('-hwaccel', calls[0])
+            self.assertNotIn('-hwaccel', calls[1])
+            self.assertIn('tonemap=tonemap=hable', calls[1][calls[1].index('-vf') + 1])
+            self.assertEqual(calls[1][calls[1].index('-allow_sw') + 1], '0')
+            self.assertIn('GPU proxy unavailable', stderr)
 
 
 class EngineTests(unittest.TestCase):
@@ -144,9 +224,46 @@ class EngineTests(unittest.TestCase):
         output = self.root / 'proxy.mp4'
         result = json.loads(self.call('proxy', self.source, output).stdout)
         self.assertEqual(result['outputPath'], str(output))
+        self.assertEqual(result['accel'], 'videotoolbox')
+        self.assertFalse(result['hdrToSDR'])
         proxy = json.loads(self.call('probe', output).stdout)
-        self.assertEqual(proxy['height'], 1080)
+        self.assertEqual((proxy['width'], proxy['height']), (608, 1080))
         self.assertTrue(proxy['hasAudio'])
+
+    def frame(self, video, cpu_scale=False):
+        image = self.root / f'{Path(video).stem}-{int(cpu_scale)}.png'
+        scale = ['-vf', 'scale=1080:1080:force_original_aspect_ratio=decrease:force_divisible_by=2'] if cpu_scale else []
+        subprocess.run([self.ffmpeg, '-v', 'error', '-y', '-i', str(video), *scale, '-frames:v', '1', str(image)], check=True)
+        with Image.open(image) as loaded:
+            return loaded.convert('RGB')
+
+    def test_rotated_source_uses_gpu_with_cpu_orientation(self):
+        pattern = self.root / 'pattern.mp4'
+        rotated = self.root / 'rotated.mp4'
+        subprocess.run([self.ffmpeg, '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=720x1280:r=30:d=0.5',
+                        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(pattern)], check=True)
+        subprocess.run([self.ffmpeg, '-v', 'error', '-y', '-display_rotation', '90', '-i', str(pattern),
+                        '-c', 'copy', str(rotated)], check=True)
+        output = self.root / 'rotated-proxy.mp4'
+        self.assertEqual(json.loads(self.call('proxy', rotated, output).stdout)['accel'], 'videotoolbox')
+        metadata = json.loads(self.call('probe', output).stdout)
+        self.assertEqual((metadata['width'], metadata['height']), (1080, 608))
+        expected, actual = self.frame(rotated, cpu_scale=True), self.frame(output)
+        self.assertEqual(expected.size, actual.size)
+        self.assertLess(max(ImageStat.Stat(ImageChops.difference(expected, actual)).mean), 8)
+
+    def test_unsupported_hardware_decoder_falls_back_to_cpu(self):
+        source = self.root / 'ffv1.mkv'
+        subprocess.run([self.ffmpeg, '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=720x1280:r=30:d=0.5',
+                        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.5', '-c:v', 'ffv1', '-c:a', 'aac',
+                        '-shortest', str(source)], check=True)
+        output = self.root / 'ffv1-proxy.mp4'
+        result = self.call('proxy', source, output)
+        self.assertEqual(json.loads(result.stdout)['accel'], 'cpu')
+        self.assertIn('GPU proxy unavailable', result.stderr)
+        metadata = json.loads(self.call('probe', output).stdout)
+        self.assertEqual((metadata['width'], metadata['height']), (608, 1080))
+        self.assertTrue(metadata['hasAudio'])
 
     def test_default_and_manual_positions_are_distinct(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -262,7 +379,26 @@ class EngineTests(unittest.TestCase):
         proxy = self.root / 'hdr-proxy.mp4'
         response = json.loads(self.call('proxy', source, proxy).stdout)
         self.assertTrue(response['hdrToSDR'])
-        self.assertFalse(json.loads(self.call('probe', proxy).stdout)['hdr'])
+        self.assertEqual(response['accel'], 'videotoolbox')
+        proxy_metadata = json.loads(self.call('probe', proxy).stdout)
+        self.assertFalse(proxy_metadata['hdr'])
+        self.assertEqual((proxy_metadata['colorTransfer'], proxy_metadata['colorPrimaries'], proxy_metadata['colorSpace']),
+                         ('bt709', 'bt709', 'bt709'))
+        # Same HLG signal in a codec VideoToolbox cannot decode exercises the CPU zscale/tonemap fallback.
+        fallback_source = self.root / 'hdr-ffv1.mkv'
+        subprocess.run([self.ffmpeg, '-v', 'error', '-y', '-i', str(source), '-c:v', 'ffv1', '-pix_fmt', 'yuv420p10le',
+                        '-color_primaries', 'bt2020', '-color_trc', 'arib-std-b67', '-colorspace', 'bt2020nc',
+                        str(fallback_source)], check=True)
+        fallback = self.root / 'hdr-ffv1-proxy.mp4'
+        fallback_response = json.loads(self.call('proxy', fallback_source, fallback).stdout)
+        self.assertEqual((fallback_response['accel'], fallback_response['hdrToSDR']), ('cpu', True))
+        fallback_metadata = json.loads(self.call('probe', fallback).stdout)
+        self.assertEqual(fallback_metadata['colorTransfer'], 'bt709')
+        # Both routes keep a mid-grey HLG frame near mid-grey instead of clipping or crushing it.
+        for video in (proxy, fallback):
+            luma = ImageStat.Stat(self.frame(video).convert('L')).mean[0]
+            self.assertGreater(luma, 40, video.name)
+            self.assertLess(luma, 220, video.name)
         request = copy.deepcopy(self.request)
         request['sourcePath'] = str(source)
         request['captions']['items'] = []

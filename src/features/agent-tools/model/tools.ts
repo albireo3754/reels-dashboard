@@ -208,7 +208,7 @@ export const toolDefinitions = {
   },
   reels_import_video: {
     description:
-      "Import an explicitly selected local video without changing its source. Optionally reuse settings from a revision-checked project; creates a new project, not an overwrite. Proxy generation may take time.",
+      "Import an explicitly selected local video without changing its source. Optionally reuse settings from a revision-checked project; creates a new project, not an overwrite. The original plays directly; no playback copy is made on import.",
     input: z.strictObject({
       sourcePath: absolutePath,
       reuse: z

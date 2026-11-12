@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DashboardBridge, Project } from "../../../shared/contracts";
 import { ROUTE_MAP_FILENAME, type LocalRouteMap } from "../../../shared/route-map";
 import { Button, Dialog, Notice, StatusText } from "../../../shared/ui/primitives";
+import { playbackCopyStatus, useContentPlayback } from "../../../shared/ui/useContentPlayback";
 import { RouteMapView } from "./RouteMapView";
 
 export function ContentRouteMap({ project, bridge }: { project: Project; bridge: DashboardBridge }) {
@@ -34,20 +35,13 @@ function RouteDialog({ project, bridge, close }: { project: Project; bridge: Das
   </Dialog>;
 }
 function RouteMedia({ bridge, projectId, file, name }: { bridge: DashboardBridge; projectId: string; file?: string; name: string }) {
-  const [media, setMedia] = useState<{ url: string; kind: string }>();
-  const [error, setError] = useState("");
   const [requested, setRequested] = useState(false);
-  useEffect(() => {
-    if (!requested || !file || !bridge.contentMedia) return;
-    let live = true;
-    bridge.contentMedia.open(projectId, file).then(value => { if (live) setMedia(value); }).catch(e => { if (live) setError(errorMessage(e, "원본을 열지 못했어요.")); });
-    return () => { live = false; };
-  }, [bridge, projectId, file, requested]);
+  const { media, error, preparingCopy, playbackFailed } = useContentPlayback(bridge.contentMedia, projectId, file, requested);
   if (!file) return <p className="route-map-small">이 촬영분의 원본은 아직 연결되지 않았어요. Photos에서 촬영일과 파일명으로 확인할 수 있어요.</p>;
   return <div className="route-map-media">
     {!requested && <Button variant="secondary" onClick={() => setRequested(true)}>선택한 촬영분 열기</Button>}
-    {requested && !media && !error && <StatusText live busy>재생용 자료를 준비하고 있어요.</StatusText>}
+    {requested && !media && !error && <StatusText live busy>{preparingCopy ? playbackCopyStatus : "원본을 열고 있어요."}</StatusText>}
     {error && <Notice tone="danger">{error}</Notice>}
-    {media && (media.kind === "video" ? <video controls preload="metadata" src={media.url} aria-label={`${name} 재생`} onError={() => setError("영상을 재생하지 못했어요.")} /> : <img src={media.url} alt={name} onError={() => setError("사진을 열지 못했어요.")} />)}
+    {media && (media.kind === "video" ? <video key={media.url} controls preload="metadata" src={media.url} aria-label={`${name} 재생`} onError={() => playbackFailed("영상을 재생하지 못했어요.")} onLoadedMetadata={(e) => { if (!e.currentTarget.videoWidth) playbackFailed("영상을 재생하지 못했어요."); }} /> : <img src={media.url} alt={name} onError={() => playbackFailed("사진을 열지 못했어요.")} />)}
   </div>;
 }
