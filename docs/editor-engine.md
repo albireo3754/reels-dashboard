@@ -11,6 +11,9 @@ SDR reel exports, playback proxies and card-news videos use
 `h264_videotoolbox -allow_sw 0`; non-Dolby HDR uses HEVC Main10 VideoToolbox with
 software encoding disabled. CPU decoding, image preparation and some FFmpeg
 filters can still consume CPU; this is an encoder policy, not a zero-CPU claim.
+Playback proxies additionally decode and scale on the GPU when possible; see
+[GPU playback proxy](#gpu-playback-proxy--2026-11-12). Its CPU fallback changes only
+decoding/filters — the encoder stays `h264_videotoolbox -allow_sw 0`.
 
 The old Dolby Vision CPU branch had a concrete reason: a plain FFmpeg
 `hevc_videotoolbox` conversion retained HLG/10-bit but lost Dolby Vision signaling
@@ -95,12 +98,37 @@ reels-editor render REQUEST_JSON OUTPUT_VIDEO
 The request is `{sourcePath, place, captions, cover}` using `src/shared/editor.ts`. Caption item IDs are UI metadata; the renderer receives only start/end/text. Cover hook newlines become the existing CLI's two-line separator. Source and output must differ. The host owns user file grants, output selection, and project persistence.
 
 - `probe` returns one JSON object with duration, display width/height, HDR/audio flags, and color metadata.
-- `proxy` returns `{outputPath, hdrToSDR}`. It creates H.264/AAC playback media with a maximum dimension of 1080 pixels. HDR proxies explicitly linearize and tone-map to BT.709 SDR through zscale/tonemap. This conversion applies **only to the playback proxy**, never to the source or exported edit. Since 2026-11-12 the app does not call `proxy` on import or for every board video: originals play directly, and the host calls `proxy` only as a fallback after the renderer cannot play the original or for an iCloud file that is not downloaded ([policy](editor-workflow.md#원본-직접-재생--2026-11-12)). The command contract is unchanged.
+- `proxy` returns `{outputPath, hdrToSDR, accel}`. It creates H.264/AAC playback media with a maximum dimension of 1080 pixels. HDR (HLG/PQ) proxies are converted to BT.709 SDR. `accel` is `"videotoolbox"` when decoding, rotation, scaling and HDR conversion ran on VideoToolbox frames, or `"cpu"` after the automatic fallback to software decoding with zscale/tonemap (hable). This conversion applies **only to the playback proxy**, never to the source or exported edit. See [GPU playback proxy](#gpu-playback-proxy--2026-11-12). Since 2026-11-12 the app does not call `proxy` on import or for every board video: originals play directly, and the host calls `proxy` only as a fallback after the renderer cannot play the original or for an iCloud file that is not downloaded ([policy](editor-workflow.md#원본-직접-재생--2026-11-12)). The host only reads `outputPath`; `accel` and the `Editor notice: GPU proxy unavailable` stderr line are diagnostic.
 - `preview` and `cover` return `{outputPath, manifestPath}`. Preview uses the requested time; cover uses `cover.time`.
 - `render` emits newline-delimited `{type:"progress", percent, outTimeSeconds}` events and then `{type:"result", outputPath, manifestPath}`. Diagnostic output goes to stderr. A successful FFmpeg exit is required before final completion.
 - The host starts the executable in its own process group and cancels that group, so Python and FFmpeg receive termination together. The engine never creates a detached encoder process.
 
 Every output manifest retains the original resolved placement/style evidence. Project settings remain the reusable editing input; temporary caption-file paths in the engine manifest are not portable project references.
+
+## GPU playback proxy — 2026-11-12
+
+`proxy` first runs a VideoToolbox-only FFmpeg graph:
+
+```text
+-hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -noautorotate -i SOURCE
+-vf [transpose_vt=dir=…,]scale_vt=w=W:h=H[:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709]
+-c:v h264_videotoolbox -allow_sw 0 -profile:v high -b:v 6M
+```
+
+- Frames stay `videotoolbox_vld` from the decoder through `transpose_vt`/`scale_vt` to the encoder (FFmpeg logs `Using input frames context (format videotoolbox_vld) with h264_videotoolbox encoder`). The graph therefore must not contain a software `-pix_fmt` or an output `-colorspace`: either makes FFmpeg insert a CPU scaler that rejects hardware frames (`Function not implemented`).
+- HDR sources get the BT.709 conversion inside `scale_vt` (VideoToolbox pixel transfer), which also tags the output BT.709. SDR sources are only scaled, like the CPU route. Output size is computed in Python to match the CPU route's `scale=1080:1080:force_original_aspect_ratio=decrease:force_divisible_by=2`.
+- FFmpeg does not autorotate hardware frames (a rotated source came out squashed and unrotated), so the GPU route disables autorotation and applies the display matrix with `transpose_vt` (ffprobe rotation 90 → `cclock`, −90 → `clock`, 180 → `reversal`). Mirrored or non-right-angle matrices use the CPU route.
+- Fallback: a non-zero FFmpeg exit (e.g. a codec VideoToolbox cannot decode, such as FFV1), an unreadable output, a size different from the expected display size, or an HDR output not tagged `bt709` removes the partial file, prints one `Editor notice: GPU proxy unavailable (…)` line to stderr and reruns the previous CPU graph (software decode, zscale/tonemap hable for HDR). Both routes keep `h264_videotoolbox -allow_sw 0`; an encoder failure on the CPU route remains an error.
+- The two routes do not produce identical pixels. VideoToolbox's HDR→SDR conversion is a little darker and more contrasty than hable. On the real sample below, mean luma (signalstats YAVG over all frames) was 114.6 for GPU versus 132.0 for CPU; a visual check of the same frame showed neither clipped highlights nor crushed shadows.
+
+Real-input measurement (Apple Silicon, bundled FFmpeg 8.1, 2026-11-12): HEVC Main10 HLG Dolby Vision 8.4, 2160×3840, 60 fps, 62 Mbit/s, 20.78 s.
+
+| route | wall time | output |
+| --- | --- | --- |
+| previous CPU decode + zscale/tonemap | 102.3 s (user 242.0 s); 419.2 s (user 259.7 s) under heavy load from other jobs | 608×1080 H.264 yuv420p, bt709/bt709/bt709, 1,247 frames, AAC |
+| GPU (`accel: videotoolbox`), source CLI and packaged `reels-editor` | 6.4 s (user 1.3 s); packaged 13.8 s (user 1.6 s) under the same heavy load | 608×1080 H.264 yuv420p, bt709/bt709/bt709, 1,247 frames, AAC |
+
+Both outputs are H.264 High, about 6.3 Mbit/s, and decode without errors. CPU user time fell about 160×, so the gain does not depend on how busy the machine is; wall time still varies with load. This is one machine/input measurement. Synthetic checks in `test_editor.py` cover SDR H.264 (GPU), a 90°-rotated source (GPU orientation matches CPU autorotate within mean absolute difference < 8), FFV1 SDR and HLG sources (CPU fallback), and HLG HEVC (GPU, BT.709 tags, mid-grey stays mid-grey). Mocked unit tests cover command shape, rotation mapping and each fallback trigger.
 
 ## Build
 
