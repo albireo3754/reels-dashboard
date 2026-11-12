@@ -7,6 +7,7 @@ export const asStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 const iconPaths: Record<string, string> = {
+  calendar: "M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4 M8 14h2 M14 14h2 M8 18h2",
   dashboard: "M3 3h7v7H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 14h7v7H3z",
   library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
   transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",

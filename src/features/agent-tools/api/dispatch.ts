@@ -32,6 +32,7 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  planning?: import("../../../shared/planning").PlanningBridge;
   coverPreferences?: import("../../../shared/clip-upload").CoverPreferencesBridge;
   clipUpload?: import("../../../shared/clip-upload").ClipUploadBridge;
   gif?: import("../../../shared/gif-convert").GifConvertBridge;
@@ -98,6 +99,12 @@ export function createAgentDispatch(ports: AgentPorts) {
     const formTool = inputFormTools.find(tool=>tool[1]===name);
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
+      case "reels_get_planning":
+        if (!ports.planning) throw new Error("UNSUPPORTED");
+        return ports.planning.get();
+      case "reels_sync_planning":
+        if (!ports.planning) throw new Error("UNSUPPORTED");
+        return ports.planning.update(input);
       case "reels_get_cover_preferences":
         if (!ports.coverPreferences) throw new Error("UNSUPPORTED");
         return ports.coverPreferences.get();

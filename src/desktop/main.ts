@@ -1,4 +1,5 @@
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
+import { PlanningStore } from "../shared/lib/planning-store";
 import {InputFormWindows} from "./input-form-window";
 import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
@@ -268,6 +269,7 @@ async function awaitReady() {
     path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
   );
   const coverPreferences = new CoverPreferencesStore(root);
+  const planning = new PlanningStore(root);
   const clipUpload = new ClipUpload(contentLibrary, async bytes => {
     const image = nativeImage.createFromBuffer(Buffer.from(bytes));
     if (image.isEmpty()) throw new Error("UPLOAD_COVER_INVALID: 표지 이미지를 읽지 못했어요.");
@@ -729,6 +731,8 @@ async function awaitReady() {
     app.quit();
   });
   handle("cover-preferences:get", () => coverPreferences.get());
+  handle("planning:get", () => planning.get());
+  handle("planning:update", (input: unknown) => planning.update(input));
   handle("cover-preferences:set", (input: unknown) => coverPreferences.set(input));
   handle("clip-upload:create", createClipBundle);
   handle("icloud:status", (value: unknown) => icloudDelivery.status(icloudStatusInput.parse(value).paths));
@@ -1019,6 +1023,7 @@ async function awaitReady() {
   if (!fixture)
     closeAgent = await connectAgent(root, {
       coverPreferences,
+      planning,
       clipUpload: { create: createClipBundle },
       gif: { convert: convertGif },
       icloud: icloudDelivery,

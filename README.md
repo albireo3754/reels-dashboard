@@ -22,6 +22,8 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 
 ## Features
 
+- A private **캘린더** tab shows this/next week's posting goal, completed publications, imported Google Calendar events and Linear issue links. Providers own edits; connector sessions import bounded snapshots (no app OAuth or automatic sync). See [calendar integration](docs/publication-calendar.md).
+
 - Production projects group saved video/card-news edits, linked resources and output versions on one card. Merge existing cards with a pre-merge backup; future exports follow the owning project. See [project model and schema](docs/production-projects.md).
 
 - Photo/video-based card-news Reels: adjustable reading-time recommendations, card order and music controls, matching previews, saved drafts and vertical MP4 export. See [card-news workflow and evidence](docs/card-news.md).

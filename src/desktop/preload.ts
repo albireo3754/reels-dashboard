@@ -15,6 +15,7 @@ const subscribe = (name: string, callback: (value: any) => void) => {
 };
 const workbench = createWorkbenchBridge(ipcRenderer);
 const bridge: DashboardBridge = {
+  planning: { get: () => invoke("planning:get"), update: input => invoke("planning:update", input) },
   executionLogs: { list: () => invoke("executionLogs:list") },
   workflow: {
     request: (action, input) => invoke("workflow:request", action, input),
@@ -69,12 +70,12 @@ const bridge: DashboardBridge = {
     open: (id, file, options) => invoke("contentMedia:open", id, file, options),
     gif: (id, file) => invoke("contentMedia:gif", id, file),
   },
-  coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
   terminalSetting: {
     get: () => invoke("terminal-setting:get"),
     set: (enabled) => invoke("terminal-setting:set", enabled),
     relaunch: () => invoke("terminal-setting:relaunch"),
   },
+  coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
   clipUpload: { create: input => invoke("clip-upload:create", input) },
   icloud: {
     configure: input => invoke("icloud:configure", input),

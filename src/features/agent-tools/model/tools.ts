@@ -1,5 +1,6 @@
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import { gifConvertInput } from "../../../shared/gif-convert";
+import { planningUpdateSchema } from "../../../shared/planning";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
@@ -38,6 +39,14 @@ const nativeID = z
   .refine((v) => !v.includes("\0"));
 const formDefinitions = Object.fromEntries(inputFormTools.map(([_action,name,input,description,readOnly])=>[name,{input,description,readOnly}])) as Record<typeof inputFormTools[number][1], {input:typeof inputFormTools[number][2];description:string;readOnly:boolean}>;
 export const toolDefinitions = {
+  reels_get_planning: {
+    description: "Read the private calendar/Linear import snapshot and revision. This does not query providers. No credentials or private planning data enter shared snapshots.",
+    input: z.strictObject({}), readOnly: true,
+  },
+  reels_sync_planning: {
+    description: "Import confirmed Google Calendar events or Linear issues after querying connected providers. Use get_planning.updatedAt. Each supplied provider replaces its complete bounded snapshot; omitted provider is preserved. Report source syncedAt and window honestly. Does not create/update external events, issues or social posts.",
+    input: planningUpdateSchema, readOnly: false,
+  },
   reels_get_cover_preferences: {
     description: "Read this app profile's local cover signature. Defaults to the public placeholder; never shared in dashboard snapshots.",
     input: z.strictObject({}), readOnly: true,

@@ -73,6 +73,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly planning?: import("./planning").PlanningBridge;
   readonly coverPreferences?: import("./clip-upload").CoverPreferencesBridge;
   readonly clipUpload?: import("./clip-upload").ClipUploadBridge;
   readonly icloud?: import("./icloud-delivery").ICloudBridge;

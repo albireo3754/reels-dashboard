@@ -1,4 +1,5 @@
 import { CoverPreferencesPanel } from "./ClipUploadControls";
+import { PublicationCalendar } from "../features/publication-calendar";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
 import {
@@ -606,6 +607,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   );
   const navigationTabs: Tab[] = [
     "dashboard",
+    ...(!readOnly ? (["calendar"] as const) : []),
     "library",
     "editor",
     "cards",
@@ -1343,6 +1345,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             setDrawerMode("open");
           } : undefined}
         /></div>
+        {tab === "calendar" && <PublicationCalendar api={bridge.planning} projects={dashboard.projects} />}
         {tab === "logs" && bridge.executionLogs && <ExecutionLogsPanel bridge={bridge.executionLogs} />}
         {(workflowVisited || tab === "workflow") && <div hidden={tab !== "workflow"}><WorkflowPanel openRunRequest={notificationRun} /></div>}
         {tab === "transfers" &&

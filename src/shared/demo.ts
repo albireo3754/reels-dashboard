@@ -5,6 +5,7 @@ import {
   demoUndecodableVideo,
   demoVideo,
 } from "./editor-demo";
+import { emptyPlanning, planningSchema, planningUpdateSchema } from "./planning";
 import type {
   Arguments,
   Asset,
@@ -314,6 +315,18 @@ export function createDemoBridge(
   }
   return {
     mode: "demo",
+    planning: {
+      async get() { return planningSchema.parse(JSON.parse(storage?.getItem("reels-planning-demo-v1") ?? JSON.stringify(emptyPlanning()))); },
+      async update(value) {
+        const input = planningUpdateSchema.parse(value);
+        const current = await this.get();
+        if (current.updatedAt !== input.expectedUpdatedAt) throw new Error("STALE_PLANNING");
+        const { expectedUpdatedAt: _, ...changes } = input;
+        const next = planningSchema.parse({ ...current, ...changes, updatedAt: new Date().toISOString() });
+        storage?.setItem("reels-planning-demo-v1", JSON.stringify(next));
+        return next;
+      },
+    },
     // Demo has no iCloud: a delivered outbound counts as fully uploaded so the
     // board can show readiness; delivery itself stays desktop-only.
     icloud: {

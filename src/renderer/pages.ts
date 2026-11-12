@@ -1,6 +1,7 @@
 
 export type Tab =
   | "dashboard"
+  | "calendar"
   | "library"
   | "editor"
   | "cards"
@@ -18,6 +19,7 @@ type Page = {
 
 /** Navigation label and page heading copy for each workspace screen. */
 export const pages: Record<Tab, Page> = {
+  calendar: { label: "캘린더", title: "이번 주와 다음 주 게시 일정", description: "Google Calendar 일정과 Linear 할 일로 주간 목표를 확인해요." },
   dashboard: {
     label: "대시보드",
     title: "작업의 흐름을 한눈에",
