@@ -236,6 +236,14 @@
 .dev-compose-spacer {
   flex: 1 1 auto;
 }
+.dev-compose-permission {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
 .dev-prompt {
   max-height: 160px;
   margin: 0;

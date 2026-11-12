@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { workPrompt } from '../../../shared/workbench';
+import { saveAgentPermission, savedAgentPermission, workPrompt, type AgentPermission } from '../../../shared/workbench';
 import { Button, Dialog, Notice, StatusText } from '../../../shared/ui/primitives';
 import { blogTerminalTask } from '../model/terminal-context';
 
@@ -9,7 +9,7 @@ import { blogTerminalTask } from '../model/terminal-context';
  */
 export function BlogTerminal({ context, onStart }: {
   context: string;
-  onStart: (task: string) => Promise<void>;
+  onStart: (task: string, permission: AgentPermission) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const formId = useId();
@@ -20,6 +20,7 @@ export function BlogTerminal({ context, onStart }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [permission, setPermission] = useState<AgentPermission>(savedAgentPermission);
   const task = blogTerminalTask(context, request);
   const valid = !!request.trim() && task.length <= 16000;
   useEffect(() => { setNotice(''); }, [context, request]);
@@ -49,7 +50,7 @@ export function BlogTerminal({ context, onStart }: {
         event.preventDefault();
         if (pending.current || !valid) return;
         pending.current = true; setBusy(true); setError(''); setNotice('');
-        try { await onStart(task); setOpen(false); setRequest(''); }
+        try { await onStart(task, permission); setOpen(false); setRequest(''); }
         catch (error) { setError(String(error)); }
         finally { pending.current = false; setBusy(false); }
       }}>
@@ -62,6 +63,13 @@ export function BlogTerminal({ context, onStart }: {
           event.preventDefault();
           if (!event.repeat && !pending.current && valid) event.currentTarget.form?.requestSubmit();
         }} placeholder="이 화면에서 바꾸고 싶은 내용을 적어주세요." />
+        <label className="blog-terminal-permission">
+          <input type="checkbox" checked={permission === 'bypass'} disabled={busy} onChange={event => {
+            const next: AgentPermission = event.target.checked ? 'bypass' : 'ask';
+            setPermission(next); saveAgentPermission(next);
+          }} />
+          승인 없이 실행 (YOLO) <span className="ui-meta">샌드박스와 승인 요청 없이 Codex가 바로 수정·실행해요</span>
+        </label>
         <details><summary>전달할 맥락과 요청</summary><pre>{workPrompt('implement', task)}</pre></details>
         {task.length > 16000 && <Notice tone="danger">맥락과 요청은 16,000자 이하여야 해요.</Notice>}
         {error && <Notice tone="danger">{error}</Notice>}

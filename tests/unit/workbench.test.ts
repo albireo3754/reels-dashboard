@@ -92,6 +92,42 @@ test("agent launch quotes untrusted task text as one argument and retains approv
   assert.throws(() => terminalCommand({ kind: "invalid" } as never));
 });
 
+test("bypass is an explicit per-start choice that never widens read-only phases", () => {
+  for (const phase of ["implement", "fix"] as const) {
+    assert.equal(
+      terminalCommand({ kind: "codex", phase, permission: "bypass" }),
+      "exec 'codex' '--dangerously-bypass-approvals-and-sandbox'",
+    );
+    assert.equal(
+      terminalCommand({ kind: "claude", phase, permission: "bypass" }),
+      "exec 'claude' '--dangerously-skip-permissions'",
+    );
+  }
+  assert.match(
+    terminalCommand({ kind: "codex", permission: "bypass", task: "고쳐줘" })!,
+    /^exec 'codex' '--dangerously-bypass-approvals-and-sandbox' '.*고쳐줘.*'$/s,
+  );
+  for (const phase of ["design", "review"] as const) {
+    assert.equal(
+      terminalCommand({ kind: "codex", phase, permission: "bypass" }),
+      "exec 'codex' '--sandbox' 'read-only' '--ask-for-approval' 'on-request'",
+    );
+    assert.equal(
+      terminalCommand({ kind: "claude", phase, permission: "bypass" }),
+      "exec 'claude' '--permission-mode' 'plan'",
+    );
+  }
+  // Omitted and "ask" keep the sandboxed default; unknown values are rejected.
+  assert.equal(
+    terminalCommand({ kind: "codex", permission: "ask" }),
+    terminalCommand({ kind: "codex" }),
+  );
+  assert.doesNotMatch(terminalCommand({ kind: "codex" })!, /dangerously/);
+  assert.throws(() =>
+    terminalCommand({ kind: "codex", permission: "yolo" } as never),
+  );
+});
+
 test("host advertises Codex and Claude Code with Codex as the default and rejects unknown kinds before launch", async () => {
   const manager = new Workbench("/does-not-exist", () => {}, undefined, DIRECT);
   assert.deepEqual(manager.state().providers, [
@@ -99,7 +135,7 @@ test("host advertises Codex and Claude Code with Codex as the default and reject
     { id: "claude", label: "Claude Code" },
   ]);
   assert.equal(manager.state().defaultProvider, "codex");
-  // Claude Code launches with an explicit permission mode and never bypasses permissions.
+  // Claude Code launches with an explicit permission mode and does not bypass unless asked.
   const claude = (input: Parameters<typeof terminalCommand>[0]) =>
     terminalCommand(input)!;
   assert.equal(claude({ kind: "claude" }), "exec 'claude' '--permission-mode' 'manual'");

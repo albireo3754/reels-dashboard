@@ -1,4 +1,5 @@
 import type {
+  AgentPermission,
   AgentProvider,
   AgentProviderOption,
   WorkPhase,
@@ -6,8 +7,13 @@ import type {
 
 interface ProviderAdapter extends AgentProviderOption {
   enabled: boolean;
-  args(phase: WorkPhase): string[];
+  args(phase: WorkPhase, permission?: AgentPermission): string[];
 }
+
+const readOnly = (phase: WorkPhase) => phase === "review" || phase === "design";
+// Bypass is a per-start opt-in and never widens the read-only phases.
+const bypasses = (phase: WorkPhase, permission?: AgentPermission) =>
+  permission === "bypass" && !readOnly(phase);
 
 // Enabling another provider is a host policy change, not a renderer preference.
 const providers: Record<AgentProvider, ProviderAdapter> = {
@@ -15,27 +21,27 @@ const providers: Record<AgentProvider, ProviderAdapter> = {
     id: "codex",
     label: "Codex",
     enabled: true,
-    args: (phase) => [
-      "codex",
-      "--sandbox",
-      phase === "review" || phase === "design"
-        ? "read-only"
-        : "workspace-write",
-      "--ask-for-approval",
-      "on-request",
-    ],
+    args: (phase, permission) =>
+      bypasses(phase, permission)
+        ? ["codex", "--dangerously-bypass-approvals-and-sandbox"]
+        : [
+            "codex",
+            "--sandbox",
+            readOnly(phase) ? "read-only" : "workspace-write",
+            "--ask-for-approval",
+            "on-request",
+          ],
   },
   claude: {
     id: "claude",
     label: "Claude Code",
     enabled: true,
-    // Never bypassPermissions or --dangerously-skip-permissions. "manual" is a
-    // valid choice of the installed CLI and keeps a user-level bypass default out.
-    args: (phase) => [
-      "claude",
-      "--permission-mode",
-      phase === "review" || phase === "design" ? "plan" : "manual",
-    ],
+    // "manual" is a valid choice of the installed CLI and keeps a user-level bypass
+    // default out; bypass happens only when this start request asks for it.
+    args: (phase, permission) =>
+      bypasses(phase, permission)
+        ? ["claude", "--dangerously-skip-permissions"]
+        : ["claude", "--permission-mode", readOnly(phase) ? "plan" : "manual"],
   },
 };
 

@@ -63,6 +63,7 @@ const startSchema = z
       .max(16000)
       .refine((v) => !/[\x00-\x08\x0b-\x1f\x7f]/.test(v))
       .optional(),
+    permission: z.enum(["ask", "bypass"]).optional(),
   })
   .strict();
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -76,7 +77,10 @@ export function terminalCommand(input: StartTerminal): string | null {
   const prompt = value.task?.trim()
     ? workPrompt(value.phase ?? "implement", value.task)
     : "";
-  const args = agentProvider(value.kind).args(value.phase ?? "implement");
+  const args = agentProvider(value.kind).args(
+    value.phase ?? "implement",
+    value.permission,
+  );
   return `exec ${[...args, ...(prompt ? [prompt] : [])].map(quote).join(" ")}`;
 }
 

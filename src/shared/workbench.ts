@@ -7,10 +7,32 @@ export interface AgentProviderOption {
 }
 export type WorkPhase = "design" | "implement" | "review" | "fix";
 export type TerminalKind = AgentProvider | "shell" | "preview" | "checks";
+/** ask: sandboxed, approvals on request. bypass: no sandbox and no approval prompts (YOLO). */
+export type AgentPermission = "ask" | "bypass";
 export interface StartTerminal {
   kind: TerminalKind;
   phase?: WorkPhase;
   task?: string;
+  /** Agent kinds only. Applies to implement/fix; design and review always stay read-only. */
+  permission?: AgentPermission;
+}
+const PERMISSION_KEY = "reels.workbench.agentPermission";
+/** The last choice of this browser profile; "ask" until the user opts in. */
+export function savedAgentPermission(): AgentPermission {
+  try {
+    return globalThis.localStorage?.getItem(PERMISSION_KEY) === "bypass"
+      ? "bypass"
+      : "ask";
+  } catch {
+    return "ask";
+  }
+}
+export function saveAgentPermission(value: AgentPermission): void {
+  try {
+    globalThis.localStorage?.setItem(PERMISSION_KEY, value);
+  } catch {
+    // Storage can be unavailable; the choice then lasts for this view only.
+  }
 }
 /** direct: node-pty owns the process. herdr: a herdr workspace owns it and the app only attaches. */
 export type TerminalBackendId = "direct" | "herdr";

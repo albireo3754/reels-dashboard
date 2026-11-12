@@ -1324,8 +1324,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         </div>
         <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}
           onOpenTerminal={bridge.workbench ? () => setDrawerMode("open") : undefined}
-          onStartTerminal={bridge.workbench ? async task => {
-            const session = await bridge.workbench!.start({kind: "codex", phase: "implement", task});
+          onStartTerminal={bridge.workbench ? async (task, permission) => {
+            const session = await bridge.workbench!.start({kind: "codex", phase: "implement", task, permission});
             setRequestedTerminal(session.id);
             setDrawerMode("open");
           } : undefined}

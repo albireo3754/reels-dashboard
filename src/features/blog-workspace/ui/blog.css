@@ -490,6 +490,14 @@
   padding: var(--space-2);
   white-space: pre-wrap;
 }
+.blog-terminal-permission {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
 .blog-terminal-dialog details {
   margin-top: var(--space-3);
 }

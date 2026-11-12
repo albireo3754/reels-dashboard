@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   phaseLabels,
+  saveAgentPermission,
+  savedAgentPermission,
   workPrompt,
+  type AgentPermission,
   type AgentProvider,
   type WorkPhase,
   type WorkbenchBridge,
@@ -97,6 +100,7 @@ export function DevWorkspace({
   const [selected, setSelected] = useState("");
   const [provider, setProvider] = useState<AgentProvider | null>(null);
   const [phase, setPhase] = useState<WorkPhase>("implement");
+  const [permission, setPermission] = useState<AgentPermission>(savedAgentPermission);
   const [task, setTask] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -199,7 +203,7 @@ export function DevWorkspace({
       setTerminalTakesFocus(true);
       const session = await api.start({
         kind,
-        ...(kind === "codex" || kind === "claude" ? { phase, task } : {}),
+        ...(kind === "codex" || kind === "claude" ? { phase, task, permission } : {}),
       });
       acceptState(await api.state());
       setSelected(session.id);
@@ -592,6 +596,23 @@ export function DevWorkspace({
                 size="small"
               />
               <span className="dev-compose-spacer" />
+              <label
+                className="dev-compose-permission"
+                title="구현·수정 단계에서 샌드박스와 승인 요청 없이 실행해요. 설계·리뷰는 항상 읽기 전용이에요."
+              >
+                <input
+                  type="checkbox"
+                  data-testid="dev-permission-bypass"
+                  checked={permission === "bypass"}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const next: AgentPermission = e.target.checked ? "bypass" : "ask";
+                    setPermission(next);
+                    saveAgentPermission(next);
+                  }}
+                />
+                승인 없이 (YOLO)
+              </label>
               <select
                 aria-label="코딩 도구"
                 className="ui-inline"

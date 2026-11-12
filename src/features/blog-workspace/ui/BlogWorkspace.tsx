@@ -137,7 +137,7 @@ function WorkspaceTabs({mode,editors,closing,onSelect,onClose}:{mode:string;edit
 
 export function BlogWorkspace({api,media,projects,onStartTerminal}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[];
   /** @deprecated 터미널 패널은 상단 툴바의 터미널 버튼·⌘N으로 연다. 호환을 위해 받기만 한다. */
-  onOpenTerminal?:()=>void;onStartTerminal?:(task:string)=>Promise<void>}) {
+  onOpenTerminal?:()=>void;onStartTerminal?:(task:string,permission:import('../../../shared/workbench').AgentPermission)=>Promise<void>}) {
   const [mode,setMode]=useState<string>('projects');
   const [editors,setEditors]=useState<CanonicalEditorTab[]>([]);
   const [closingEditor,setClosingEditor]=useState('');
