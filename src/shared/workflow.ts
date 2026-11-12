@@ -35,6 +35,8 @@ export const createWorkflowInput = z.strictObject({
   inputFormId: z.string().uuid().optional(),
   collectExperience: z.boolean().default(false),
   maxRevisions: z.number().int().min(1).max(5).default(2),
+  /** YAML runs: skip steps whose outputs already exist and validate (reviews never skip). */
+  skipCompleted: z.boolean().default(true),
 });
 export const submitWorkflowInput = z.strictObject({
   runId: z.string().uuid(),
@@ -78,7 +80,7 @@ export type WorkflowAction = z.infer<typeof workflowAction>;
  * handler code is reported as stale instead of being reused. Dev and installed
  * builds of the same protocol share one server and data dir by design.
  */
-export const WORKFLOW_PROTOCOL_VERSION = 4;
+export const WORKFLOW_PROTOCOL_VERSION = 5;
 /** Shown when the server answering the workflow URL predates this app's actions. */
 export const STALE_WORKFLOW_SERVER_MESSAGE =
   "실행 중인 워크플로 서버가 이전 버전이에요. 따로 실행한 서버(npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
@@ -197,7 +199,8 @@ export interface WorkflowRecord {
   stepId?: string;
   stage: WorkflowStage;
   taskId: string;
-  outcome: z.infer<typeof submitWorkflowInput>["outcome"];
+  /** `skipped`: existing outputs were adopted instead of running the step. */
+  outcome: z.infer<typeof submitWorkflowInput>["outcome"] | "skipped";
   summary: string;
   evidence: Record<string, string>;
   at: string;
@@ -209,6 +212,8 @@ export interface WorkflowTask {
   stage: WorkflowStage;
   instruction: string;
   inputHashes: Record<string, string>;
+  /** Existing outputs found for this step; the runtime advances past it without a worker. */
+  adopt?: { reason: string; evidence: string[] };
 }
 export interface WorkflowRun {
   blockedReason?: string;
@@ -218,6 +223,7 @@ export interface WorkflowRun {
   projectId?: string;
   followups?: import("./followups").Followups;
   collectExperience?: boolean;
+  skipCompleted?: boolean;
   inputFormId?: string;
   experience?: import("./input-forms").InputFormRecord;
   runId: string;

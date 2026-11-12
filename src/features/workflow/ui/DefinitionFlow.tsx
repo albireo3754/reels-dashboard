@@ -30,11 +30,12 @@ export function DefinitionFlow({ run }: { run: WorkflowRun }) {
         : run.status === "cancelled"
           ? "취소"
           : "현재";
-    return run.history.some(
-      (h) => h.stepId === id && ["done", "pass"].includes(h.outcome),
-    )
+    const records = run.history.filter((h) => h.stepId === id);
+    return records.some((h) => ["done", "pass"].includes(h.outcome))
       ? "완료 이력"
-      : "대기";
+      : records.some((h) => h.outcome === "skipped")
+        ? "건너뜀 · 기존 산출물"
+        : "대기";
   };
   const handoff = JSON.stringify(
     {

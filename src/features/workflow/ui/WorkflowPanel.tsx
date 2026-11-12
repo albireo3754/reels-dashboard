@@ -255,7 +255,12 @@ function ConnectedWorkflowPanel({
                 maxRevisions: Number(form.get("maxRevisions")),
                 collectExperience:
                   !definitionFile && form.get("experience") === "on",
-                ...(definitionFile ? { definitionFile } : {}),
+                ...(definitionFile
+                  ? {
+                      definitionFile,
+                      skipCompleted: form.get("skipCompleted") === "on",
+                    }
+                  : {}),
                 ...(form.get("projectId")
                   ? { projectId: form.get("projectId") }
                   : {}),
@@ -278,7 +283,8 @@ function ConnectedWorkflowPanel({
             />
           </label>
           <label>
-            워크플로 YAML (선택 · 작업 폴더 기준 상대 경로)
+            워크플로 YAML (선택 · 작업 폴더 기준 상대 경로, 또는 상위 폴더
+            workflows/ 아래 공통 정의의 절대 경로)
             <input
               name="definitionFile"
               value={definitionFile}
@@ -312,6 +318,13 @@ function ConnectedWorkflowPanel({
               defaultValue="2"
             />
           </label>
+          {definitionFile && (
+            <label className="experience-toggle">
+              <input type="checkbox" name="skipCompleted" defaultChecked />
+              이미 끝난 단계(산출물이 있고 유효함)는 넘어가기 · 검토 단계는
+              항상 실행
+            </label>
+          )}
           <label className="experience-toggle">
             <input
               type="checkbox"
@@ -574,6 +587,7 @@ const outcomeLabels = {
   revise: "수정 필요",
   blocked: "근거 부족 · 보류",
   cancel: "작업 취소",
+  skipped: "기존 산출물 채택 · 건너뜀",
 };
 interface ResultDraft {
   summary: string;

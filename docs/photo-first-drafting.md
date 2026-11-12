@@ -49,6 +49,10 @@ Before group prose review, the composition owner checks that the selected scenes
 
 Layout preserves plan choices, order and groups. Associate output media with `sceneId`; document any changed selection/grouping by scene ID and reason in the existing layout report. No second layout submission gate is added. Face/plate handling and scene usefulness are separate decisions, not a universal omission or blur rule. Layout checks actual images at the affected viewport sizes.
 
+## Shared YAML definition — 2026-11-13
+
+YAML runs use one shared definition (for the blog: `workflows/blog.yaml` beside the research folders, see [shared definitions](workflow-dsl.md#shared-definitions--2026-11-13)) that carries this prepare → `media-scenes.json` → experience → draft + `story-media-plan.json` order, instead of a per-article definition that can drop it. With [idempotent steps](workflow-dsl.md#idempotent-steps--2026-11-13), a new run on an article that already has a valid inventory, submitted answers and a covering plan starts at the first review. The skip check validates the inventory/preview files and plan coverage with the same schemas; it does not re-check that the plan matches the current prose. DSL draft submissions themselves are not yet validated by the plan checker described above (that gate applies to the built-in stages); the review step must open the plan.
+
 ## Scope and limits
 
 The manifest opts the run into structural checks, independent of `collectExperience`. Existing runs without one and text-only work retain their behavior; no live run is rewound. A workflow that omits the inventory entirely is not detected by the machine validator. The preparation/composition procedure must catch that omission for photo-based full work. Do not claim this validates complete photo-library coverage, actual image inspection, good editorial decisions, or automatic selection of a particular scene. Simple edits do not require redoing the full inventory.

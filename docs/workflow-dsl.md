@@ -14,7 +14,7 @@ npm run --silent workflow -- create /absolute/path/to/run-input.json
 npm run --silent workflow -- context <run-id>
 ```
 
-Definition input: `{"workspace":"/absolute/path/to/content","definitionFile":"workflow.yaml"}`.
+Definition input: `{"workspace":"/absolute/path/to/content","definitionFile":"workflow.yaml"}`. The result also carries `skippable: {skipped, startsAt}`, a dry run of the leading steps a new run would skip (see [Idempotent steps](#idempotent-steps--2026-11-13)).
 
 Run input:
 
@@ -30,7 +30,7 @@ Run input:
 }
 ```
 
-`projectId` is a stored association, not a lookup that creates/merges a Dashboard card. The current session can discover that card with the Desktop MCP. The new-workflow UI accepts the same fields. Open `http://127.0.0.1:4318/?workflow=1&run=<run-id>` to see topology, current state, per-step contracts, original YAML and copyable resume context. Polling refreshes state after another session submits a result.
+`skipCompleted` (default `true`) enables [idempotent steps](#idempotent-steps--2026-11-13); pass `false` to work every step from the entry. `projectId` is a stored association, not a lookup that creates/merges a Dashboard card. The current session can discover that card with the Desktop MCP. The new-workflow UI accepts the same fields. Open `http://127.0.0.1:4318/?workflow=1&run=<run-id>` to see topology, current state, per-step contracts, original YAML and copyable resume context. Polling refreshes state after another session submits a result.
 
 `reels_workflow_context {runId}` / CLI `context` returns the pending task, expanded output paths, input hashes, definition hash, project ID and latest result. It does not restart or create a chat. A different Codex session can read the same task and submit its result; the first accepted submission advances the checkpoint and other submissions become stale. This is durable workflow handoff, not an exclusive lock on external work. Do not have two sessions perform the same external mutation concurrently.
 
@@ -71,6 +71,28 @@ steps:
 - Every accepted result retains step ID, outcome, summary and evidence hashes. Source/artifact files remain owned by the content workspace; the service stores hashes, not versioned copies of all artifact bytes. Reviews use fresh reports and cannot overwrite tracked inputs. For changed input, `restart` issues a new task/hash snapshot; it never edits the stored definition.
 - The YAML text, SHA-256 and parsed definition are stored in the checkpoint at create. Resume continues that snapshot even when the YAML on disk changes. New definitions require a new run. Existing non-DSL runs are not converted.
 
+## Shared definitions — 2026-11-13
+
+Prefer one shared definition per kind of work over a hand-written `workflow.yaml` per piece. `definitionFile` accepts either a workspace-relative path or a **normalized absolute path** to a `.yaml`/`.yml` file whose real path sits directly inside a `workflows/` folder of a proper ancestor of the workspace. Example: workspace `<root>/research/<slug>` may use `<root>/workflows/blog.yaml`.
+
+- The real path (symlinks resolved) must satisfy the rule, so a link inside `workflows/` that points elsewhere is rejected. Nested folders (`workflows/a/x.yaml`), a filesystem-root `/workflows/`, sibling trees, a `workflows/` inside the workspace itself, `..`/`.` segments and non-YAML files are rejected with `SHARED_DEFINITION` or a schema error. No configuration or environment variable widens this.
+- Step `inputs`/`outputs`/`formFile` stay workspace-relative, so one definition serves every workspace under that root.
+- The run stores the absolute path, the YAML text, its SHA-256 and the parsed definition exactly as for workspace definitions. Editing the shared file never changes existing runs; Dashboard renders the stored snapshot.
+
+## Idempotent steps — 2026-11-13
+
+When a run created with `skipCompleted: true` (the default) reaches a step **for the first time**, the runtime checks whether that step's results already exist. If so, it records the step with outcome `skipped`, the reason and the evidence file hashes, adds the evidence to the tracked files, and moves on without issuing work. Dashboard labels it 「기존 산출물 채택 · 건너뜀」.
+
+| Step | Skipped when | Only while |
+|------|--------------|------------|
+| `task` | Every declared input exists and every output exists and validates: `media-scenes.json` parses and its previews exist; `story-media-plan.json` parses and covers the scenes of its `inventory`; the input step's `formFile` is a valid form **or** submitted answers exist (recorded in the reason); other outputs exist and are non-empty. | Nothing in this run has been worked yet (all earlier records are `skipped`). After real work, later task steps always run, so a revised draft never skips a now-stale layout. |
+| `input` | One submitted answers export in the workspace root (`experience-answers-*.json` written by the shared form service) answers every question of the current `formFile` with the same prompt (`unknown`/`omit` count). Without a form file, only a leading step accepts the newest submitted answers. | Any first visit. A form with a new, unanswered question opens the form as before. |
+| `review` | Never. Reviews always run, even when report files exist. | — |
+
+Never skipped either: steps with `{attempt}` outputs, and a step whose `done` would complete the run. A revisited step (after a review `revise`) always runs, and a step is not skipped when the next step's declared inputs are missing. An adopted step's declared inputs are tracked like those of a worked step, so later reviews detect changes to them. Skipped records count toward `maxTransitions`. If the server stops between finding and recording a skip, the next start records it. Skipping is a precondition check, not a quality judgment: the following review is still expected to read the adopted artifacts. `validate-definition` previews the leading skips; a later input step can still be skipped once its form file exists.
+
+Submitting the same result twice cannot corrupt state. The first accepted submission advances the run; a repeat with the already recorded `taskId`, the same outcome and the same evidence files with unchanged hashes changes nothing and fails with `STALE_TASK: ALREADY_RECORDED …`, so the caller knows its result is already in history. Any other late submission fails with plain `STALE_TASK`. A silent success is deliberately not returned, because another session submitting the same task must not believe its own work was accepted. Re-submitting a form is already rejected by the form service (`STALE_FORM`).
+
 ## User input
 
 `kind: input` uses the existing shared experience form, not a second input UI. A prior task must produce a valid form JSON (see [experience intake](experience-intake.md)):
@@ -89,7 +111,7 @@ V1 supports one input step per run. Revision paths cannot return to that step. T
 
 ## Boundaries and connection
 
-This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **4**; rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
+This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **5** (shared definitions, `skipCompleted`, `skipped` records); rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
 
 Desktop editing/Photos/render tools still require the running app and its `reels_dashboard` MCP or equivalent CLI. The YAML runner does not add unsupported multi-clip editing. DSL tasks are deliberately session-executed: the existing read-only SDK cannot invoke their MCP/skills contract and is disabled for them. Final public publishing remains manual.
 
@@ -110,3 +132,10 @@ After explicit user authorization, the new package passed the three background E
 The live Photos inspection exposed degraded 64px fast-format thumbnails. `EvidenceInspectionService` now requests high-quality previews, using the existing provider's requested 1024px bound and degraded-result filtering. The signed helper was rebuilt and applied to the installed/prepared package. The existing timeout/cancellation test passed; actual Photos photo/video previews returned 1024px with readable signage/menu OCR. Search remains separate and originals are unchanged. No claim is made that a Photos video preview is a full video/audio review.
 
 Native UI observation through computer use timed out; live MCP state and the packaged isolated UI checks were verified. The shared form-open API reported its desktop window opened.
+
+## Verification — 2026-11-13 (shared definitions, idempotent steps)
+
+- `tests/unit/workflow-idempotent.test.ts` (synthetic fixtures): shared-definition load/snapshot; rejection of other trees, nested folders, symlink escapes, a workspace-internal `workflows/`, non-normalized and non-YAML paths; leading skip with recorded evidence and a review that still runs; invalid plan/preview stopping the skip; `skipCompleted:false`; mid-run input skip only when answers cover the current form; repeated identical submission reported as `ALREADY_RECORDED` without changing the run; `{attempt}` task outputs never skipped (preview matches); no skip when the next step's inputs are missing.
+- Workflow unit tests 54/54. Full unit suite 538 passed, 7 skipped, 1 failed: `face-mosaic.test.ts`, which fails identically on `main` without this change. Typecheck, architecture check, public audit, `build`, 7 workflow UI scenarios and 3 background Electron workflow scenarios passed.
+- Dry run on a real private blog workspace with a temporary data root (the workspace was only read; file hashes were identical before and after). With the shared blog definition, a run started at the first review when the inventory, submitted answers and plan already existed. After the content session added a form with two new questions, `prepare` was skipped and the run waited at `experience` with only those questions open.
+- A fixed review output (for example `reviews/plan.md`) cannot be rewritten on the second review after a `revise`: the first review tracks it, so rewriting it is `STALE_INPUT`, and resubmitting it unchanged violates the fresh-report rule. Use `{attempt}` for every review output.

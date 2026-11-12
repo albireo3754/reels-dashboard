@@ -266,7 +266,8 @@ test("declared transition/revision budgets stop loops and a completed one-step r
       path.join(f.root, "workflow.yaml"),
       stringify({ ...definition(), maxTransitions: 2 }),
     );
-    run = await runtime.create(f.input);
+    // draft.md from the first run exists; work every step to exercise the budget.
+    run = await runtime.create({ ...f.input, skipCompleted: false });
     run = await submit(runtime, run, "done");
     run = await submit(runtime, run, "revise");
     assert.equal(run.status, "blocked");

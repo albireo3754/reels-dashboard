@@ -80,6 +80,10 @@ The engine validates task IDs, outcome/stage compatibility, evidence existence a
 
 If layout work changes previously approved source/prose files, the graph returns to text review. Layout-only outputs are tracked for visual review without turning every render update into a new text review.
 
+## YAML definitions and idempotent steps — 2026-11-13
+
+YAML runs are documented in [workflow-dsl.md](workflow-dsl.md). Since protocol 5, `definitionFile` may name a shared definition in a `workflows/` folder of a workspace ancestor, and `create` accepts `skipCompleted` (default `true`): leading steps whose outputs already validate, and input steps whose form is already answered, are recorded as `skipped` and passed. Reviews never skip. A repeated identical submission changes nothing and reports `STALE_TASK: ALREADY_RECORDED`. Built-in (non-YAML) runs keep their behavior.
+
 ## MCP
 
 Run `npm run start:workflow-mcp` as an independent stdio server while the HTTP server is running. It does not require the Electron MCP socket. It provides:

@@ -44,6 +44,7 @@ import {
 } from "../../shared/workflow";
 
 import { readDefinition } from "./definition";
+import { adoptInput, adoptTask, previewAdoption } from "./adopt";
 import {
   definitionStage,
   definitionEdges,
@@ -88,7 +89,10 @@ export class WorkflowRuntime {
     await mkdir(root, { recursive: true, mode: 0o700 });
     const runtime = new WorkflowRuntime(root);
     try {
-      await runtime.list();
+      // Finish adoptions interrupted by a stop between the request and the advance.
+      for (const run of await runtime.list())
+        if (run.definition && run.status === "waiting" && run.task?.adopt)
+          await runtime.advanceAdopted(run.runId);
       return runtime;
     } catch (e) {
       await runtime.close();
@@ -316,7 +320,18 @@ export class WorkflowRuntime {
         workspace: run.workspace,
         instructions: run.instructions,
       });
-      const result = submitWorkflowInput.parse(response);
+      // Adopted steps resume with a marker; the recorded result comes from the request node.
+      const adopted =
+        !!run.task?.adopt && (response as { adopted?: unknown })?.adopted === true;
+      const result = adopted
+        ? {
+            runId: run.runId,
+            taskId: run.task!.taskId,
+            outcome: "done" as const,
+            summary: run.task!.adopt!.reason,
+            evidence: run.task!.adopt!.evidence,
+          }
+        : submitWorkflowInput.parse(response);
       const step = this.dslStep(run);
       const evidence = await hashes(run.workspace, result.evidence);
       let status: WorkflowRun["status"] = "waiting";
@@ -361,13 +376,19 @@ export class WorkflowRuntime {
               stepId: step.id,
               stage: run.stage,
               taskId: result.taskId,
-              outcome: result.outcome,
+              outcome: adopted ? ("skipped" as const) : result.outcome,
               summary: result.summary,
               evidence,
               at: new Date().toISOString(),
             },
           ],
-          trackedFiles: [...new Set([...run.trackedFiles, ...result.evidence])],
+          trackedFiles: [
+            ...new Set([
+              ...run.trackedFiles,
+              ...(adopted ? step.inputs : []),
+              ...result.evidence,
+            ]),
+          ],
           task: null,
           sequence: run.sequence + 1,
         },
@@ -476,8 +497,68 @@ export class WorkflowRuntime {
       return form;
     }
   }
+  /**
+   * Idempotent steps: a step visited for the first time is skipped when its outputs
+   * already exist and validate. Task steps only while nothing in this run has been
+   * worked yet (the leading part), input steps whenever submitted answers cover the
+   * form. Review steps always run.
+   */
+  private async dslAdoption(run: WorkflowRun, step: DefinitionStep) {
+    if (
+      run.skipCompleted !== true ||
+      step.kind === "review" ||
+      step.on.done === "$complete" ||
+      run.history.some((h) => h.stepId === step.id)
+    )
+      return;
+    const definition = run.definition!.definition;
+    // Judge the declared step: dslStep has already expanded `{attempt}`.
+    const declared = definition.steps.find((s) => s.id === step.id)!;
+    const leading = run.history.every((h) => h.outcome === "skipped");
+    const adopt =
+      step.kind === "input"
+        ? await adoptInput(run.workspace, declared, leading)
+        : leading
+          ? await adoptTask(run.workspace, definition, declared)
+          : undefined;
+    if (!adopt) return;
+    // Like a normal submission, the next step's inputs must exist before advancing.
+    const next = definition.steps.find((s) => s.id === step.on.done);
+    try {
+      if (next) await hashes(run.workspace, next.inputs);
+    } catch {
+      return;
+    }
+    return adopt;
+  }
+  /** Advance past adopted steps; called after any transition that may land on one. */
+  async advanceAdopted(runId: string) {
+    for (let i = 0; i <= 50; i++) {
+      const run = await this.get({ runId });
+      if (run.status !== "waiting" || !run.task?.adopt) return;
+      await this.graph.invoke(
+        new Command({ resume: { adopted: true } }),
+        this.config(runId),
+      );
+    }
+  }
   private async dslRequest(run: WorkflowRun) {
     const step = this.dslStep(run);
+    const adopt = await this.dslAdoption(run, step);
+    if (adopt)
+      return {
+        run: {
+          ...run,
+          task: {
+            taskId: `${run.runId}:${run.sequence}`,
+            stage: run.stage,
+            step,
+            instruction: step.instruction,
+            inputHashes: await hashes(run.workspace, run.trackedFiles),
+            adopt,
+          },
+        },
+      };
     const form = await this.checkDslInputs(run, step);
     let trackedFiles = [...new Set([...run.trackedFiles, ...step.inputs])];
     if (form) {
@@ -556,7 +637,14 @@ export class WorkflowRuntime {
   }
   async validateDefinition(raw: unknown) {
     const snapshot = await readDefinition(raw);
-    return { ...snapshot, edges: definitionEdges(snapshot.definition) };
+    return {
+      ...snapshot,
+      edges: definitionEdges(snapshot.definition),
+      skippable: await previewAdoption(
+        await realpath((raw as { workspace: string }).workspace),
+        snapshot.definition,
+      ),
+    };
   }
   async context(raw: unknown) {
     const run = await this.get(raw);
@@ -649,6 +737,7 @@ export class WorkflowRuntime {
       const runId = randomUUID();
       const run: WorkflowRun = {
         ...input,
+        skipCompleted: definition ? input.skipCompleted : undefined,
         definition,
         stepId: definition?.definition.entry,
         workspace,
@@ -693,6 +782,7 @@ export class WorkflowRuntime {
       await this.graph.invoke({ run }, this.config(runId));
       this.db.prepare("INSERT INTO runs VALUES (?)").run(runId);
       if (sharedForm) this.forms.bind(sharedForm.formId, runId);
+      if (definition) await this.advanceAdopted(runId);
       return this.get({ runId });
     });
   }
@@ -701,8 +791,14 @@ export class WorkflowRuntime {
       const input = submitWorkflowInput.parse(raw);
       const run = await this.get({ runId: input.runId });
       this.assertNotExecuting(run.runId, executorJobId);
-      if (run.status !== "waiting" || run.task?.taskId !== input.taskId)
+      if (run.status !== "waiting" || run.task?.taskId !== input.taskId) {
+        // A repeated identical submission changes nothing; say so instead of a bare stale error.
+        if (await this.alreadyRecorded(run, input))
+          throw new Error(
+            "STALE_TASK: ALREADY_RECORDED — this exact result was already accepted; the run did not change. Read context for the current task.",
+          );
         throw new Error("STALE_TASK: refresh the run before submitting");
+      }
       if (
         run.stage === "experience" &&
         input.outcome !== "cancel" &&
@@ -717,6 +813,7 @@ export class WorkflowRuntime {
           new Command({ resume: input }),
           this.config(run.runId),
         );
+        await this.advanceAdopted(run.runId);
         return this.get({ runId: run.runId });
       }
       const review = isReviewStage(run.stage);
@@ -845,8 +942,31 @@ export class WorkflowRuntime {
         run.definition ? "dsl_work" : run.stage,
       );
       await this.graph.invoke(null, this.config(runId));
+      if (run.definition) await this.advanceAdopted(runId);
       return this.get({ runId });
     });
+  }
+  private async alreadyRecorded(
+    run: WorkflowRun,
+    input: { taskId: string; outcome: string; evidence: string[] },
+  ) {
+    const record = run.history.find((r) => r.taskId === input.taskId);
+    if (!record || record.outcome !== input.outcome) return false;
+    if (input.evidence.some((file) => !(file in record.evidence))) return false;
+    // DSL records hold exactly the submitted evidence; legacy stages may add derived files.
+    if (
+      run.definition &&
+      new Set(input.evidence).size !== Object.keys(record.evidence).length
+    )
+      return false;
+    try {
+      const current = await hashes(run.workspace, input.evidence);
+      return input.evidence.every(
+        (file) => current[file] === record.evidence[file],
+      );
+    } catch {
+      return false;
+    }
   }
   private async readFollowupManifest(run: WorkflowRun, evidence: string[]) {
     const candidates = evidence.filter(
@@ -1033,6 +1153,7 @@ export class WorkflowRuntime {
           }),
           this.config(run.runId),
         );
+        if (run.definition) await this.advanceAdopted(run.runId);
       }
     }
     return this.forms.get(id);

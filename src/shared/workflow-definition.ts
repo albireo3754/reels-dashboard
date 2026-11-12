@@ -15,9 +15,28 @@ const relativeFile = z
         .every((part) => part !== ".." && part !== "." && part !== ""),
     "Use a normalized workspace-relative file path",
   );
+/**
+ * Shared definition: a normalized absolute YAML path. The runtime only reads it when
+ * its real path sits directly in `<ancestor of workspace>/workflows/`.
+ */
+const sharedDefinitionFile = z
+  .string()
+  .min(2)
+  .max(1000)
+  .refine(
+    (s) =>
+      s.startsWith("/") &&
+      /\.ya?ml$/.test(s) &&
+      !s.includes("\\") &&
+      s
+        .slice(1)
+        .split("/")
+        .every((part) => part !== ".." && part !== "." && part !== ""),
+    "Use a workspace-relative path or a normalized absolute YAML path",
+  );
 export const definitionLocationInput = z.strictObject({
   workspace: z.string().min(1),
-  definitionFile: relativeFile,
+  definitionFile: z.union([relativeFile, sharedDefinitionFile]),
 });
 const stepSchema = z.strictObject({
   id,
