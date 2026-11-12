@@ -30,6 +30,8 @@ Run input:
 }
 ```
 
+`trackedFiles` must already exist: the caller creates `brief.md` in the workspace before `create`.
+
 Use `"builtinDefinition": "blog"` instead of `definitionFile` for the app-owned blog flow, and add `"guideFile"` for a local guide. `skipCompleted` (default `true`) enables [idempotent steps](#idempotent-steps--2026-11-13); pass `false` to work every step from the entry. `projectId` is a stored association, not a lookup that creates/merges a Dashboard card. The current session can discover that card with the Desktop MCP. The new-workflow UI accepts the same fields. Open `http://127.0.0.1:4318/?workflow=1&run=<run-id>` to see topology, current state, per-step contracts, original YAML and copyable resume context. Polling refreshes state after another session submits a result.
 
 `reels_workflow_context {runId}` / CLI `context` returns the pending task, expanded output paths, input hashes, definition hash, project ID and latest result. It does not restart or create a chat. A different Codex session can read the same task and submit its result; the first accepted submission advances the checkpoint and other submissions become stale. This is durable workflow handoff, not an exclusive lock on external work. Do not have two sessions perform the same external mutation concurrently.
@@ -149,7 +151,7 @@ V1 supports one input step per run. Revision paths cannot return to that step. T
 
 ## Boundaries and connection
 
-This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **7** (5: shared definitions, `skipCompleted`, `skipped` records; 6: cross-review fixes to the skip rules; 7: `builtinDefinition` and `guideFile`); rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
+This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **8** (5: shared definitions, `skipCompleted`, `skipped` records; 6: cross-review fixes to the skip rules; 7: `builtinDefinition` and `guideFile`; 8: photo-plan check on YAML submissions with tracked scene previews, and skips only with readable evidence); rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
 
 Desktop editing/Photos/render tools still require the running app and its `reels_dashboard` MCP or equivalent CLI. The YAML runner does not add unsupported multi-clip editing. DSL tasks are deliberately session-executed: the existing read-only SDK cannot invoke their MCP/skills contract and is disabled for them. Final public publishing remains manual.
 
@@ -190,3 +192,9 @@ A second Codex review (`8ae4403..b2c6cb7`) led to two more changes: the own/next
 - Workflow unit tests 68/68. Full unit suite 560: 552 passed, 7 skipped, 1 failed (`face-mosaic.test.ts`, the known failure on `main`). Typecheck, architecture check and public-source audit passed.
 - Browser e2e (`test:workflow-ui`) could not run: Playwright fails to load every spec with `TypeError: (0 , api_1.createContextKey) is not a function` from the OpenTelemetry exporter imported through `src/app/workflow/server.ts`. The same happens on an unchanged copy of `main`, so it is an environment/dependency issue, not this change. A new scenario was added to `tests/workflow/definition.spec.ts`; the same flow (select `blog`, give a guide, see the guided first request and the 「로컬 가이드」 contract row) was checked by hand in a headless browser against an isolated server.
 - Dry run on a real private blog workspace with a temporary data root: the built-in definition and the earlier shared YAML definition gave the same skip result (three leading steps adopted, start at `image_review`), and the guide attached to six steps. Workspace files were only read.
+
+## Verification — 2026-11-13 (YAML photo-plan check, readable skip evidence)
+
+- `tests/unit/workflow-builtin-guide.test.ts` (synthetic fixtures, built-in `blog`): a draft plan that misses a scene is rejected with `MEDIA_PLAN_COVERAGE` and the task stays pending; a covering plan is accepted after a worked `prepare` (scene previews are in the draft task's input hashes); the same holds when `prepare` and `experience` were skipped. Before tracking the previews, the worked-`prepare` case failed with `STALE_INPUT: scene previews … were not tracked`.
+- `tests/unit/workflow-idempotent.test.ts`: a scene preview without read permission keeps `prepare` from being skipped, and an unreadable submitted export opens the input step instead of skipping it. Each half fails on the previous code with `EACCES` at run creation.
+- Workflow unit tests 74/74. Full unit suite 566: 557 passed, 7 skipped, 2 failed: `face-mosaic.test.ts` (the known failure on `main`) and `agent.test.ts` "callAgent separates unsent, uncertain and app-reported failures", which passes on its own (9/9) and does not use the workflow runtime. Typecheck, architecture check and public-source audit passed. Browser e2e (`test:workflow-ui`) was not run (same loader failure as above).
