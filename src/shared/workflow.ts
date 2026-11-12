@@ -2,6 +2,7 @@ import { inputFormActions } from "./input-forms";
 import { z } from "zod";
 import {
   builtinDefinitionName,
+  definitionPath,
   type DefinitionSnapshot,
   type DefinitionStep,
 } from "./workflow-definition";
@@ -35,7 +36,7 @@ export const createWorkflowInput = z.strictObject({
   /** App-owned definition by name, instead of definitionFile. */
   builtinDefinition: builtinDefinitionName.optional(),
   /** Local guide file adding documents/instructions/skills per step (YAML runs). */
-  guideFile: z.string().min(1).optional(),
+  guideFile: definitionPath.optional(),
   projectId: z.string().trim().min(1).max(200).optional(),
   title: z.string().trim().min(1).max(200),
   workspace: z.string().min(1),

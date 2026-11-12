@@ -15,6 +15,7 @@ import { stringify } from "yaml";
 import { WorkflowRuntime } from "../../src/app/workflow/runtime";
 import { builtinDefinition } from "../../src/app/workflow/definition";
 import type { WorkflowRun } from "../../src/shared/workflow";
+import { guidedStep } from "../../src/shared/workflow-guide";
 
 // Synthetic fixtures only: <root>/workflows/guides.yaml, <root>/notes/*.md and a
 // workspace at <root>/research/post. No real content, paths or skill names.
@@ -454,6 +455,43 @@ test("built-in definition with a guide skips completed leading steps and guides 
     const context = await f.runtime.context({ runId: run.runId });
     assert.equal(context.definition!.file, "builtin:blog");
     assert.equal(context.guide!.file, f.guideFile);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a step ID that names an Object.prototype member is not treated as guided", () => {
+  const step = {
+    ...builtinDefinition("blog").definition.steps[0],
+    id: "constructor",
+  };
+  const snapshot = {
+    file: "g.yaml",
+    sha256: "",
+    source: "",
+    base: "/",
+    steps: {},
+  };
+  assert.equal(guidedStep(step, snapshot), step);
+});
+
+test("create rejects the guide paths that validate-definition rejects", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(f.guideFile, defaultGuide);
+    for (const guideFile of [
+      `${f.root}/workflows/../workflows/guides.yaml`,
+      `${f.root}//workflows/guides.yaml`,
+    ]) {
+      await assert.rejects(
+        f.runtime.validateDefinition({
+          workspace: f.workspace,
+          builtinDefinition: "blog",
+          guideFile,
+        }),
+      );
+      await assert.rejects(f.runtime.create({ ...f.input, guideFile }));
+    }
   } finally {
     await f.runtime.close();
   }

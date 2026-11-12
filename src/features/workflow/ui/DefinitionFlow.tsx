@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { WorkflowRun } from "../../../shared/workflow";
 import { definitionEdges } from "../../../shared/workflow-definition";
+import { guideStepFor } from "../../../shared/workflow-guide";
 
 const outcomeNames: Record<string, string> = {
   done: "완료",
@@ -18,6 +19,7 @@ export function DefinitionFlow({ run }: { run: WorkflowRun }) {
   const detail =
     steps.find((s) => s.id === selected) ??
     steps.find((s) => s.id === run.stepId)!;
+  const localGuide = guideStepFor(run.guide, detail.id);
   const positions = new Map([
     ...steps.map((s, i) => [s.id, i] as const),
     ["$complete", steps.length],
@@ -173,17 +175,15 @@ export function DefinitionFlow({ run }: { run: WorkflowRun }) {
               </div>
             ))}
           </dd>
-          {run.guide?.steps[detail.id] && (
+          {localGuide && (
             <>
               <dt>로컬 가이드</dt>
               <dd>
-                {run.guide.steps[detail.id].instruction && (
-                  <p>{run.guide.steps[detail.id].instruction}</p>
-                )}
+                {localGuide.instruction && <p>{localGuide.instruction}</p>}
                 {[
-                  ...run.guide.steps[detail.id].docs.map((d) => d.file),
-                  ...run.guide.steps[detail.id].skills,
-                  ...run.guide.steps[detail.id].tools.map((t) => t.name),
+                  ...localGuide.docs.map((d) => d.file),
+                  ...localGuide.skills,
+                  ...localGuide.tools.map((t) => t.name),
                 ].join(" · ") || "추가 지시만"}
               </dd>
             </>

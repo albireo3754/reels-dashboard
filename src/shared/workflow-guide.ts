@@ -45,12 +45,19 @@ export interface GuideSnapshot {
   >;
 }
 
+/** A step's own guide entry. Step IDs such as `constructor` must not hit Object.prototype. */
+export const guideStepFor = (
+  guide: GuideSnapshot | undefined,
+  stepId: string,
+) =>
+  guide && Object.hasOwn(guide.steps, stepId) ? guide.steps[stepId] : undefined;
+
 /** The step a session receives: built-in contract first, then the local guide. */
 export function guidedStep(
   step: DefinitionStep,
   guide: GuideSnapshot | undefined,
 ): DefinitionStep {
-  const local = guide?.steps[step.id];
+  const local = guideStepFor(guide, step.id);
   if (!local) return step;
   const lines = [`로컬 가이드 (${guide!.file}):`];
   if (local.instruction) lines.push(local.instruction);
