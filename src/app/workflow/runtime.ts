@@ -658,6 +658,18 @@ export class WorkflowRuntime {
       );
     // Same photo-plan rule as the built-in draft stage and as skipping (adopt.ts):
     // a step that declares story-media-plan.json must cover every tracked scene.
+    if (planStep(step)) {
+      // A task issued before previews were tracked (older server) cannot pass the
+      // plan check; say how to recover instead of a bare stale-input error.
+      const previews = await this.planPreviews(run, step, [
+        ...run.trackedFiles,
+        ...step.inputs,
+      ]);
+      if (previews.some((file) => !(file in run.task!.inputHashes)))
+        throw new Error(
+          "STALE_TASK: this task was issued before scene previews were tracked; restart the run to reissue it, then submit again",
+        );
+    }
     if (planStep(step))
       await validateStoryMediaSubmission(
         run.workspace,
@@ -672,7 +684,10 @@ export class WorkflowRuntime {
       const tracked = [...run.trackedFiles, ...input.evidence];
       await this.checkDslInputs(run, next, tracked);
       // Fail here, not in the next request, when its scene previews are unusable.
-      await this.planPreviews(run, next, [...tracked, ...next.inputs]);
+      await hashes(
+        run.workspace,
+        await this.planPreviews(run, next, [...tracked, ...next.inputs]),
+      );
     }
   }
   async validateDefinition(raw: unknown) {

@@ -8,6 +8,7 @@ import {
   symlink,
   readFile,
   realpath,
+  chmod,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -619,6 +620,62 @@ test("a built-in blog run that skipped prepare also accepts a covering draft pla
     const next = await submitDraft(f, run);
     assert.equal(next.stepId, "image_review");
   } finally {
+    await f.runtime.close();
+  }
+});
+
+test("a step leading into a photo-plan step is not recorded when a scene preview cannot be read", async (t) => {
+  if (process.getuid?.() === 0) return t.skip("root reads any file");
+  const f = await fixture();
+  const preview = path.join(f.workspace, "media", "s1.png");
+  try {
+    const step = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      title: id,
+      kind: "task",
+      instruction: "Synthetic step.",
+      completion: ["done"],
+      ...extra,
+    });
+    const definitionFile = path.join(f.root, "workflows", "plan.yaml");
+    await writeFile(
+      definitionFile,
+      stringify({
+        version: 1,
+        id: "plan-flow",
+        title: "Plan flow",
+        entry: "scenes",
+        steps: [
+          step("scenes", {
+            inputs: ["brief.md"],
+            outputs: ["evidence/media-scenes.json"],
+            on: { done: "plan" },
+          }),
+          step("plan", {
+            inputs: ["evidence/media-scenes.json"],
+            outputs: ["evidence/story-media-plan.json"],
+            on: { done: "$complete" },
+          }),
+        ],
+      }),
+    );
+    const { builtinDefinition: _omit, ...plain } = f.input;
+    const run = await f.runtime.create({ ...plain, definitionFile });
+    assert.equal(run.stepId, "scenes");
+    await f.put("media/s1.png", "png-1");
+    await f.put("media/s2.png", "png-2");
+    await f.put("evidence/media-scenes.json", twoScenes);
+    await chmod(preview, 0o000);
+    await assert.rejects(submitDraft(f, run));
+    const after = await f.runtime.get({ runId: run.runId });
+    assert.equal(after.stepId, "scenes");
+    assert.equal(after.task!.taskId, run.task!.taskId);
+    await chmod(preview, 0o644);
+    const next = await submitDraft(f, run);
+    assert.equal(next.stepId, "plan");
+    assert.ok(next.task!.inputHashes["media/s1.png"]);
+  } finally {
+    await chmod(preview, 0o644).catch(() => {});
     await f.runtime.close();
   }
 });
