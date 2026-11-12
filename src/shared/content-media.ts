@@ -19,6 +19,11 @@ export interface ContentMediaPage {
   total: number;
   nextOffset: number | null;
 }
+export interface ContentDocumentText {
+  text: string;
+  /** The file is longer than the preview cap; `text` holds only the beginning. */
+  truncated: boolean;
+}
 export interface ContentMediaBridge {
   list(
     projectId: string,
@@ -26,6 +31,8 @@ export interface ContentMediaBridge {
     offset?: number,
   ): Promise<ContentMediaPage>;
   thumbnail(projectId: string, file: string): Promise<string>;
+  /** Text of a linked document (or one inside a linked folder), capped in size. */
+  text(projectId: string, file: string): Promise<ContentDocumentText>;
   /**
    * Videos stream the original file by default. `copy` asks for a playback copy
    * after the renderer could not play the original; the main process also picks a

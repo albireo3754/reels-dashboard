@@ -342,7 +342,7 @@ export function createDemoBridge(
     contentMedia: {
       async list(id, folder, offset = 0) {
         const project = loadDashboard().projects.find((p) => p.id === id);
-        const items = folder
+        const items = folder === "/demo/footage"
           ? [
               {
                 path: "/demo/footage/scene.mp4",
@@ -351,7 +351,30 @@ export function createDemoBridge(
                 kind: "video" as const,
                 available: true,
               },
+              {
+                path: "/demo/footage/대본.md",
+                label: "대본.md",
+                role: "footage" as const,
+                kind: "document" as const,
+                available: true,
+              },
+              {
+                path: "/demo/footage/블로그 원고.md",
+                label: "블로그 원고.md",
+                role: "footage" as const,
+                kind: "document" as const,
+                available: true,
+              },
+              {
+                path: "/demo/footage/추가 촬영",
+                label: "추가 촬영",
+                role: "footage" as const,
+                kind: "folder" as const,
+                available: true,
+              },
             ]
+          : folder
+          ? []
           : (project?.resources ?? []).map((r) => ({
               ...r,
               kind:
@@ -377,6 +400,19 @@ export function createDemoBridge(
             '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="500"><rect width="360" height="500" fill="#6b8070"/><circle cx="270" cy="100" r="45" fill="#f0dfa9"/><path d="M0 350 L180 180 L360 400 V500 H0" fill="#9eb495"/><text x="30" y="440" fill="white" font-size="24">산책 · 예시 미디어</text></svg>',
           )
         );
+      },
+      async text(_id, file) {
+        const name = file.split("/").at(-1);
+        if (file.endsWith("블로그 원고.md")) return { text: demoBlogMarkup, truncated: false };
+        if (file.endsWith(".md"))
+          return {
+            text: `---\ntitle: ${name}\n---\n# 예시 대본\n\n- **첫 장면** 공원 입구\n- 둘째 장면 산책로\n\n${name}의 본문이 여기에 표시돼요.`,
+            truncated: false,
+          };
+        return {
+          text: `# 예시 문서\n\n${name}의 본문이 여기에 표시돼요.`,
+          truncated: false,
+        };
       },
       async open(_id, file, options) {
         if (file.endsWith(".png"))
@@ -492,3 +528,19 @@ export function createDemoBridge(
     },
   };
 }
+
+const demoBlogMarkup = `---
+markup: 1
+title: 도쿄 오후 산책 기록
+---
+<Bundle id="B01" name="도입">
+<Photo file="scene.jpg" alt="공원 산책로"/>
+
+¶ P1
+오후에 공원을 천천히 걸었어요
+⟦벚꽃이 한가득⟧¹ 피어 있었어요
+  ¹ 적갈 굵게 · 첫인상
+
+<Heading>걷기 좋은 길</Heading>
+</Bundle>
+`;

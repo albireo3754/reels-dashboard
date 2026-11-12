@@ -12,7 +12,7 @@ import {
   type MergeProjectsInput,
   type LinkEditInput,
 } from "../../../shared/production-project";
-import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   allChannelsPublished,
@@ -53,6 +53,7 @@ export const mediaExtensions = [...media];
 /** The path is registered, but the app does not handle this file type. */
 export class UnsupportedMedia extends Error {}
 const documents = new Set([".md", ".txt", ".json", ".srt", ".vtt", ".html"]);
+export const documentPreviewBytes = 256 * 1024;
 
 export class ContentLibrary {
   constructor(
@@ -264,7 +265,7 @@ export class ContentLibrary {
     return this.get(input.projectId);
   }
 
-  async listFolder(directory: string, offset = 0, limit = 100) {
+  async listFolder(directory: string, offset = 0, limit = 100, withDocuments = false) {
     localPathSchema.parse(directory);
     const resolved = await realpath(directory);
     if (!(await stat(resolved)).isDirectory())
@@ -274,7 +275,9 @@ export class ContentLibrary {
         (e) =>
           !e.name.startsWith(".") &&
           (e.isDirectory() ||
-            (e.isFile() && media.has(path.extname(e.name).toLowerCase()))),
+            (e.isFile() &&
+              (media.has(path.extname(e.name).toLowerCase()) ||
+                (withDocuments && documents.has(path.extname(e.name).toLowerCase()))))),
       )
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
     const page = await Promise.all(
@@ -370,6 +373,24 @@ export class ContentLibrary {
     return result;
   }
 
+  /** Preview text of a linked document. Reads at most `documentPreviewBytes`; never renders or executes it. */
+  async documentText(projectId: string, candidate: string) {
+    const result = await this.resolveLinkedFile(projectId, candidate);
+    if (!result.info.isFile() || !documents.has(path.extname(result.path).toLowerCase()))
+      throw new UnsupportedMedia("본문을 볼 수 없는 자료예요.");
+    const handle = await open(result.path, "r");
+    try {
+      const buffer = Buffer.alloc(Math.min(result.info.size, documentPreviewBytes));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      const truncated = result.info.size > bytesRead;
+      // A cut in the middle of a multi-byte character leaves one replacement character at the end.
+      const text = new TextDecoder().decode(buffer.subarray(0, bytesRead));
+      return { text: truncated ? text.replace(/\uFFFD$/, "") : text, truncated };
+    } finally {
+      await handle.close();
+    }
+  }
+
   async resolveDeliverySource(projectId: string, candidate: string) {
     const result = await this.resolveLinkedFile(projectId, candidate);
     if (!result.info.isFile()) throw new Error("전달할 파일을 선택해주세요.");
@@ -387,7 +408,7 @@ export class ContentLibrary {
     if (folder !== undefined) {
       const checked = await this.resolveMedia(projectId, folder);
       if (!checked.info.isDirectory()) throw new Error("폴더를 선택해주세요.");
-      const page = await this.listFolder(checked.path, offset, limit);
+      const page = await this.listFolder(checked.path, offset, limit, true);
       return {
         items: page.entries.map((e) => ({
           path: e.path,

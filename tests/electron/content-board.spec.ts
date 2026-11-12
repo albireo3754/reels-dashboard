@@ -41,6 +41,12 @@ test("packaged board previews actual images, plays/seek videos, browses folders 
     "1",
     cover,
   ]);
+  // Blog markup inside the linked folder; its photo is the linked cover one level up.
+  await writeFile(
+    path.join(footage, "블로그 원고.md"),
+    '---\nmarkup: 1\ntitle: 합성 블로그\n---\n<Bundle id="B01" name="도입">\n<Photo file="../표지.png" alt="표지 사진"/>\n\n¶ P1\n첫 문단이에요\n</Bundle>\n',
+  );
+  await writeFile(path.join(footage, "메모.txt"), "# 제목 아님\n그냥 텍스트");
   const original = createHash("sha256")
     .update(await readFile(video))
     .digest("hex");
@@ -127,6 +133,23 @@ test("packaged board previews actual images, plays/seek videos, browses folders 
       .getByRole("button", { name: "산책 영상.mov 보기", exact: true })
       .click();
     await expect(dialog.getByLabel("산책 영상.mov 재생")).toBeVisible();
+    await dialog
+      .getByRole("button", { name: "블로그 원고.md 보기", exact: true })
+      .click();
+    const blog = dialog.getByLabel("블로그 원고.md 블로그 미리보기");
+    await expect(blog.getByRole("heading", { name: "합성 블로그" })).toBeVisible();
+    await expect(blog.getByText("첫 문단이에요")).toBeVisible();
+    const photo = blog.getByRole("img", { name: "표지 사진" });
+    await expect(photo).toHaveAttribute("src", /^data:image/);
+    await expect
+      .poll(() => photo.evaluate((n) => (n as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await dialog.screenshot({ path: info.outputPath("content-blog-view.png") });
+    await dialog.getByRole("button", { name: "Markdown", exact: true }).click();
+    await expect(dialog.getByLabel("블로그 원고.md 본문")).toContainText("첫 문단이에요");
+    await dialog.getByRole("button", { name: "메모.txt 보기", exact: true }).click();
+    await expect(dialog.getByRole("group", { name: "문서 보기 방식" })).toHaveCount(0);
+    await expect(dialog.getByLabel("메모.txt 본문")).toContainText("# 제목 아님");
     await dialog.screenshot({ path: info.outputPath("content-viewer.png") });
     await page
       .getByRole("button", { name: "미디어 닫기", exact: true })

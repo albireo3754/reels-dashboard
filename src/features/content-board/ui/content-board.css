@@ -1,3 +1,12 @@
+/* Blog markup names the SmartEditor fonts; map them to local fonts (also used inside the blog preview's shadow root). */
+@font-face {
+  font-family: se-nanumbareunhipi;
+  src: local("NanumBarunpen"), local("NanumBarunPen"), local("AppleSDGothicNeo-Regular");
+}
+@font-face {
+  font-family: se-nanumgothic;
+  src: local("NanumGothic"), local("AppleSDGothicNeo-Regular");
+}
 /*
  * 보드 카드의 미디어 영역(포스터·썸네일 줄·진행 막대)과 미디어 탐색 다이얼로그.
  * 색은 중립 회색 + 강조색 하나. 그림자는 다이얼로그 기본값만 쓴다.
@@ -158,12 +167,12 @@
   background: var(--terminal-bg);
   color: var(--terminal-fg);
 }
-.board-player-stage p {
+.board-player-stage > p {
   padding: var(--space-6);
   text-align: center;
   font-size: var(--text-base);
 }
-.board-player-stage p button {
+.board-player-stage > p button {
   margin: var(--space-3) auto 0;
   color: var(--terminal-fg);
 }
@@ -174,6 +183,110 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+.board-player-stage.document {
+  align-items: stretch;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.board-document {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.board-document-modes {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+.board-document-modes button[aria-pressed="true"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+.board-document-text,
+.board-document-markdown,
+.board-document-se {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  text-align: left;
+  user-select: text;
+}
+.board-document-text {
+  padding: var(--space-5);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.board-document-markdown {
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--text-base);
+}
+.board-document-frontmatter {
+  margin-bottom: var(--space-4);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+}
+.board-document-frontmatter pre {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.board-document-blog {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+}
+.board-document-post {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+}
+/* Approximates the SmartEditor post column for plain Markdown. */
+.board-document-se {
+  padding: 36px max(20px, calc((100% - 693px) / 2)) 72px;
+  background: #fff;
+  color: #333;
+  color-scheme: light;
+  font-family: "NanumGothic", "Apple SD Gothic Neo", sans-serif;
+  font-size: 16px;
+  line-height: 1.8;
+  text-align: center;
+}
+.board-document-se .report-markdown {
+  line-height: 1.8;
+}
+.board-document-se :is(ul, ol, pre, table, blockquote) {
+  text-align: left;
+}
+.board-document-se a {
+  color: #0068c3;
+}
+.board-document-notice,
+.board-document-empty {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--text-sm);
+}
+.board-document-notice {
+  flex: none;
+  margin: 0;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-subtle);
 }
 .board-player-stage audio {
   max-width: 95%;
@@ -247,6 +360,30 @@
 }
 .board-file-grid button.selected {
   background: var(--color-selected);
+}
+.board-file-grid button.folder {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+.board-file-grid button.folder.selected {
+  background: var(--color-selected);
+}
+.board-file-grid button.folder strong span {
+  margin-left: 1px;
+  color: var(--color-text-subtle);
+}
+.board-thumbnail-placeholder.folder {
+  color: var(--color-primary);
+  background: transparent;
+}
+.board-thumbnail-placeholder.document {
+  gap: 2px;
+  align-content: center;
+}
+.board-thumbnail-placeholder.document b {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
 }
 .board-file-grid img,
 .board-file-grid .board-thumbnail-placeholder {

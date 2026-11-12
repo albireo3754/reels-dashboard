@@ -829,6 +829,9 @@ async function awaitReady() {
       ? demo.contentMedia!.thumbnail(id, file)
       : boardMedia.thumbnail(id, file),
   );
+  handle("contentMedia:text", (id: string, file: string) =>
+    fixture ? demo.contentMedia!.text(id, file) : contentLibrary.documentText(id, file),
+  );
   handle("contentMedia:open", (id: string, file: string, options?: unknown) => {
     // Only an explicit boolean asks for a playback copy; anything else streams the original.
     const copy =

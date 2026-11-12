@@ -1,5 +1,11 @@
 # Reels Dashboard 진행 상태
 
+## 보드 문서 뷰어 + 폴더 구분 — 2026-11-12
+
+- [x] 연결 문서(폴더 안 포함)를 ‘위치 열기’ 대신 보드 뷰어에서 표시. `.md`는 **블로그**(SmartEditor 유사 칼럼, blog markup v1은 `renderHtml`로 렌더)·**Markdown**·**텍스트** 전환, 그 밖의 형식은 텍스트만. 파일 그리드에서 폴더를 앞에 두고 테두리·폴더 아이콘·`/`·“폴더 · 열기 ›”로 구분. [문서](docs/local-content-library.md#document-viewer-and-folder-distinction--2026-11-12).
+- [x] 검증: typecheck, check:architecture, `npm test` 512개(508 통과·4 건너뜀), `npm run build`, 웹 `content-board` 4개, Electron background QA `content-board` 1개(실제 파일: 폴더 안 블로그 마크업과 연결된 표지 사진, `.txt`) 통과.
+- 제한: 블로그 뷰는 콘텐츠 레이아웃 셸·웹폰트를 불러오지 않는 근사치. 영상은 블로그 뷰에서 재생하지 않음. 사진은 연결 자료 안에 있을 때만 썸네일로 표시. 설치 앱 반영은 하지 않음.
+
 ## 원본 직접 재생 + GPU 사본 통합 — 2026-11-12
 
 배경: `feat/direct-playback`(원본 직접 재생, 사본은 실패·dataless 때만)과 `feat/gpu-proxy`(사본 VideoToolbox 생성, CPU 자동 폴백)를 `feat/playback-direct-gpu`로 합쳤다. 문서 충돌 두 곳은 양쪽 내용을 모두 살렸다.

@@ -6,6 +6,7 @@ import {
   type Project,
 } from "../../../shared/contracts";
 import type {
+  ContentDocumentText,
   ContentMediaItem,
   ContentMediaPage,
 } from "../../../shared/content-media";
@@ -15,6 +16,7 @@ import {
   playbackCopyStatus,
   useContentPlayback,
 } from "../../../shared/ui/useContentPlayback";
+import { DocumentViewer } from "./DocumentViewer";
 import "./content-board.css";
 const labels = {
   video: "영상",
@@ -229,9 +231,21 @@ function Thumbnail({
       live = false;
     };
   }, [bridge, projectId, item.path, item.available, item.kind]);
-  return url ? (
-    <img src={url} alt={`${item.label} 썸네일`} loading="lazy" />
-  ) : (
+  if (url) return <img src={url} alt={`${item.label} 썸네일`} loading="lazy" />;
+  if (item.available && item.kind === "folder")
+    return (
+      <span className="board-thumbnail-placeholder folder" aria-hidden="true">
+        <FolderIcon />
+      </span>
+    );
+  if (item.available && item.kind === "document")
+    return (
+      <span className="board-thumbnail-placeholder document" aria-hidden="true">
+        <DocumentIcon />
+        <b>{extensionLabel(item.path)}</b>
+      </span>
+    );
+  return (
     <span className="board-thumbnail-placeholder">
       {item.available ? labels[item.kind] : "파일 없음"}
     </span>
@@ -353,7 +367,7 @@ function MediaExplorer({
             />
           ) : (
             <div className="board-player-empty">
-              <p>목록에서 영상이나 사진을 선택해주세요.</p>
+              <p>목록에서 영상·사진·문서를 선택해주세요.</p>
             </div>
           )}
         </section>
@@ -405,15 +419,20 @@ function MediaExplorer({
           )}
           {loading && <p role="status">자료를 불러오고 있어요.</p>}
           {page && page.items.length === 0 && (
-            <p>이 폴더에는 표시할 미디어가 없어요.</p>
+            <p>이 폴더에는 표시할 자료가 없어요.</p>
           )}
           <div className="board-file-grid">
             {page?.items
               .filter((i) => role === "all" || i.role === role)
+              // Folders lead the grid so the tree reads like a file browser.
+              .sort((a, b) => Number(b.kind === "folder") - Number(a.kind === "folder"))
               .map((item) => (
                 <button
                   key={item.path + item.role}
-                  className={selected?.path === item.path ? "selected" : ""}
+                  className={[
+                    item.kind === "folder" ? "folder" : "",
+                    selected?.path === item.path ? "selected" : "",
+                  ].join(" ").trim() || undefined}
                   aria-pressed={selected?.path === item.path}
                   disabled={!item.available || loading}
                   onClick={() =>
@@ -428,9 +447,14 @@ function MediaExplorer({
                     projectId={project.id}
                     bridge={bridge}
                   />
-                  <strong>{item.label}</strong>
+                  <strong>
+                    {item.label}
+                    {item.kind === "folder" && <span aria-hidden="true">/</span>}
+                  </strong>
                   <small>
-                    {resourceLabels[item.role]} · {labels[item.kind]}
+                    {item.kind === "folder"
+                      ? `${item.role === "folder" ? "" : `${resourceLabels[item.role]} · `}폴더 · 열기 ›`
+                      : `${resourceLabels[item.role]} · ${labels[item.kind]}`}
                     {!item.available ? " · 파일 없음" : ""}
                   </small>
                 </button>
@@ -461,8 +485,14 @@ function MediaPlayer({
   bridge: DashboardBridge;
 }) {
   const supported = ["image", "video", "audio"].includes(item.kind);
-  const { media, error, preparingCopy, playbackFailed, retry } =
-    useContentPlayback(bridge.contentMedia, projectId, item.path, supported);
+  const readable = item.kind === "document";
+  const {
+    media,
+    error: mediaError,
+    preparingCopy,
+    playbackFailed,
+    retry: retryMedia,
+  } = useContentPlayback(bridge.contentMedia, projectId, item.path, supported);
   const url = media?.url ?? "";
   const videoFailed = () =>
     playbackFailed(
@@ -470,16 +500,51 @@ function MediaPlayer({
         ? "재생용 사본도 재생하지 못했어요. 파일 상태를 확인해주세요."
         : "영상을 재생하지 못했어요. 파일 상태를 확인해주세요.",
     );
+  const [doc, setDoc] = useState<ContentDocumentText>();
+  const [docError, setDocError] = useState("");
+  const [docRetry, setDocRetry] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setDoc(undefined);
+    setDocError("");
+    if (readable)
+      void bridge
+        .contentMedia!.text(projectId, item.path)
+        .then((v) => {
+          if (live) setDoc(v);
+        })
+        .catch((e) => {
+          if (live) setDocError(errorText(e));
+        });
+    return () => {
+      live = false;
+    };
+  }, [bridge, projectId, item.path, readable, docRetry]);
+  const error = readable ? docError : mediaError;
+  const retry = readable ? () => setDocRetry((v) => v + 1) : retryMedia;
   return (
     <>
-      <div className="board-player-stage">
+      <div
+        className={`board-player-stage${readable && doc && !error ? " document" : ""}`}
+      >
         {error ? (
           <p role="alert">
             {error}
             <button onClick={retry}>다시 준비</button>
           </p>
+        ) : readable ? (
+          doc ? (
+            <DocumentViewer
+              item={item}
+              doc={doc}
+              projectId={projectId}
+              bridge={bridge}
+            />
+          ) : (
+            <p role="status">문서를 불러오고 있어요.</p>
+          )
         ) : !supported ? (
-          <p>문서·묶음 파일은 연결 자료의 ‘위치 열기’로 확인해주세요.</p>
+          <p>묶음 파일은 연결 자료의 ‘위치 열기’로 확인해주세요.</p>
         ) : !url ? (
           <p role="status">
             {item.kind !== "video"
@@ -525,6 +590,27 @@ function MediaPlayer({
             : "원본 파일을 그대로 재생해요."}
         </small>
       )}
+      {doc?.truncated && (
+        <small>문서가 길어 앞부분만 표시했어요. 전체는 ‘위치 열기’로 확인해주세요.</small>
+      )}
     </>
+  );
+}
+const extensionLabel = (file: string) =>
+  (file.split("/").at(-1)?.split(".").at(-1) ?? "").slice(0, 4).toUpperCase();
+function FolderIcon() {
+  return (
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+      <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.1l2 2.2h8.9A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" fill="currentColor" fillOpacity="0.14" />
+      <path d="M3 10h18" />
+    </svg>
+  );
+}
+function DocumentIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v4h4 M8.5 12h7 M8.5 15.5h7" />
+    </svg>
   );
 }

@@ -65,6 +65,7 @@ const bridge: DashboardBridge = {
     list: (id, folder, offset) =>
       invoke("contentMedia:list", id, folder, offset),
     thumbnail: (id, file) => invoke("contentMedia:thumbnail", id, file),
+    text: (id, file) => invoke("contentMedia:text", id, file),
     open: (id, file, options) => invoke("contentMedia:open", id, file, options),
   },
   coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
