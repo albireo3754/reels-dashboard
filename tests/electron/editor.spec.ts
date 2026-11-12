@@ -174,6 +174,10 @@ test.describe("real bundled editor runtime", () => {
     expect(source.source.height).toBe(1920);
     expect(source.source.hasAudio).toBe(true);
     expect(source.source.duration).toBeCloseTo(3, 1);
+    // Original-first playback: importing does not prepare a playback copy.
+    expect(
+      await exists(path.join(profile, "editor", source.id, "playback.mp4")),
+    ).toBe(false);
     const stream = await page.evaluate(async (url) => {
       const range = await fetch(url, { headers: { Range: "bytes=0-127" } });
       const bytes = (await range.arrayBuffer()).byteLength;
@@ -191,7 +195,7 @@ test.describe("real bundled editor runtime", () => {
         });
         video.addEventListener(
           "error",
-          () => reject(new Error("Proxy failed to load")),
+          () => reject(new Error("Original failed to load")),
           { once: true },
         );
       });
@@ -201,7 +205,7 @@ test.describe("real bundled editor runtime", () => {
         video.addEventListener("seeked", () => resolve(), { once: true });
         video.addEventListener(
           "error",
-          () => reject(new Error("Proxy failed to seek")),
+          () => reject(new Error("Original failed to seek")),
           { once: true },
         );
       });
@@ -226,6 +230,8 @@ test.describe("real bundled editor runtime", () => {
     }, source.source.videoURL);
     expect(stream.status).toBe(206);
     expect(stream.bytes).toBe(128);
+    // The stream is the untouched source file.
+    expect(stream.headLength).toBe((await stat(input)).size);
     expect(stream.contentRange).toMatch(/^bytes 0-127\/\d+$/);
     expect(stream.currentTime).toBeCloseTo(1.25, 2);
     expect(stream.duration).toBeCloseTo(3, 1);
@@ -241,6 +247,35 @@ test.describe("real bundled editor runtime", () => {
       return response.status;
     }, source.source.videoURL);
     expect(foreignOrigin).toBe(403);
+    // A playback copy is made only on request (the renderer's fallback path).
+    const copyURL = await page.evaluate(
+      (id) => window.reels!.editor.playbackCopy!(id),
+      source.id,
+    );
+    expect(copyURL).toBe(`${source.source.videoURL}/copy`);
+    expect(
+      await exists(path.join(profile, "editor", source.id, "playback.mp4")),
+    ).toBe(true);
+    const copied = await page.evaluate(async (url) => {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "auto";
+      await new Promise<void>((resolve, reject) => {
+        video.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        video.addEventListener(
+          "error",
+          () => reject(new Error("Playback copy failed to load")),
+          { once: true },
+        );
+        video.src = url;
+      });
+      const result = { duration: video.duration, width: video.videoWidth };
+      video.removeAttribute("src");
+      video.load();
+      return result;
+    }, copyURL);
+    expect(copied.duration).toBeCloseTo(3, 1);
+    expect(copied.width).toBeGreaterThan(0);
     let project = edited(source);
     project = await page.evaluate((p) => window.reels!.editor.save(p), project);
     const tamper = await page.evaluate(async (p) => {
@@ -541,7 +576,7 @@ test.describe("real bundled editor runtime", () => {
               });
               video.addEventListener(
                 "error",
-                () => reject(new Error("Private Photos proxy did not load")),
+                () => reject(new Error("Private Photos original did not load")),
                 { once: true },
               );
             });
@@ -556,7 +591,7 @@ test.describe("real bundled editor runtime", () => {
               video.addEventListener("seeked", () => resolve(), { once: true });
               video.addEventListener(
                 "error",
-                () => reject(new Error("Private Photos proxy did not seek")),
+                () => reject(new Error("Private Photos original did not seek")),
                 { once: true },
               );
             });
@@ -598,7 +633,7 @@ test.describe("real bundled editor runtime", () => {
         path.join(profile, "editor", projectID, "project.json"),
         "utf8",
       ),
-    ) as { sourcePath: string; proxyPath: string };
+    ) as { sourcePath: string; proxyPath?: string };
     const privateRoot = await realpath(
       path.join(profile, "native", "editor-sources"),
     );
@@ -606,7 +641,11 @@ test.describe("real bundled editor runtime", () => {
     expect(privateSource.startsWith(privateRoot + path.sep)).toBe(true);
     expect((await stat(privateSource)).size).toBeGreaterThan(0);
     expect((await stat(privateSource)).mode & 0o777).toBe(0o600);
-    expect(await exists(record.proxyPath)).toBe(true);
+    // The original is played directly; no playback copy was made on import.
+    expect(record.proxyPath).toBeUndefined();
+    expect(
+      await exists(path.join(profile, "editor", projectID, "playback.mp4")),
+    ).toBe(false);
     const identity = JSON.parse(
       await readFile(
         path.join(profile, "native", "helper-instance.json"),
@@ -641,7 +680,7 @@ test.describe("real bundled editor runtime", () => {
       body: JSON.stringify({
         authorized: true,
         onePrivateVideoCopy: true,
-        proxyDecoded: true,
+        originalDecoded: true,
         seekSucceeded: true,
         aspectConsistent: true,
         bundledNativeRoute: true,

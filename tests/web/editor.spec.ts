@@ -227,10 +227,26 @@ test('failed synthetic render does not claim completion or expose output paths',
   await expect(page.getByRole('button', { name: '결과 폴더 열기', exact: true })).toHaveCount(0);
 });
 
-test('HDR source metadata is distinguished from the SDR playback proxy', async ({ page }) => {
+test('HDR source plays the original directly without a playback copy', async ({ page }) => {
   await importVideo(page, 'demoHDR=1');
-  await expect(page.getByText('원본 HDR · 재생용 SDR 프록시', { exact: true })).toBeVisible();
+  await expect(page.getByText('원본 HDR 그대로 재생', { exact: true })).toBeVisible();
+  await expect(page.getByText(/재생용 SDR 사본/)).toHaveCount(0);
   await expect(page.getByText(/내보내기는 HDR 원본을 사용해요/)).toBeVisible();
+});
+
+test('an original the renderer cannot play falls back to a playback copy', async ({ page }) => {
+  // The player is replaced by the status while the copy is prepared, so import
+  // without waiting for the player first.
+  await openEditor(page, 'demoHDR=1&demoPlaybackError=1');
+  await page.getByRole('button', { name: '로컬 영상 열기', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '재생용 사본을 준비하고 있어요' })).toBeVisible();
+  const video = page.getByLabel('편집 원본 재생', { exact: true });
+  await expect.poll(() => video.evaluate((node) => (node as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
+  await expect(page.getByText('원본 HDR · 재생용 SDR 사본', { exact: true })).toBeVisible();
+  await video.evaluate((node) => (node as HTMLVideoElement).play());
+  await expect.poll(() => video.evaluate((node) => (node as HTMLVideoElement).currentTime)).toBeGreaterThan(0);
+  expect(await video.evaluate((node) => (node as HTMLVideoElement).error)).toBeNull();
+  await expect(page.getByText(/재생하지 못했어요/)).toHaveCount(0);
 });
 
 test('mobile editor retains named controls without horizontal overflow', async ({ page }, testInfo) => {

@@ -10,6 +10,11 @@ import type {
   ContentMediaPage,
 } from "../../../shared/content-media";
 import { resourceLabels } from "../../../shared/content-media";
+import {
+  openingVideoStatus,
+  playbackCopyStatus,
+  useContentPlayback,
+} from "../../../shared/ui/useContentPlayback";
 import "./content-board.css";
 const labels = {
   video: "영상",
@@ -455,42 +460,27 @@ function MediaPlayer({
   projectId: string;
   bridge: DashboardBridge;
 }) {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
   const supported = ["image", "video", "audio"].includes(item.kind);
-  useEffect(() => {
-    let live = true;
-    setUrl("");
-    setError("");
-    if (supported)
-      void bridge
-        .contentMedia!.open(projectId, item.path)
-        .then((v) => {
-          if (live) setUrl(v.url);
-        })
-        .catch((e) => {
-          if (live) setError(errorText(e));
-        });
-    return () => {
-      live = false;
-    };
-  }, [bridge, projectId, item.path, supported, retry]);
+  const { media, error, preparingCopy, playbackFailed, retry } =
+    useContentPlayback(bridge.contentMedia, projectId, item.path, supported);
+  const url = media?.url ?? "";
   return (
     <>
       <div className="board-player-stage">
         {error ? (
           <p role="alert">
             {error}
-            <button onClick={() => setRetry((v) => v + 1)}>다시 준비</button>
+            <button onClick={retry}>다시 준비</button>
           </p>
         ) : !supported ? (
           <p>문서·묶음 파일은 연결 자료의 ‘위치 열기’로 확인해주세요.</p>
         ) : !url ? (
           <p role="status">
-            {item.kind === "video"
-              ? "재생용 영상을 준비하고 있어요. 긴 영상은 시간이 걸릴 수 있어요."
-              : "미디어를 불러오고 있어요."}
+            {item.kind !== "video"
+              ? "미디어를 불러오고 있어요."
+              : preparingCopy
+                ? playbackCopyStatus
+                : openingVideoStatus}
           </p>
         ) : item.kind === "image" ? (
           <img src={url} alt={item.label} />
@@ -503,7 +493,11 @@ function MediaPlayer({
             preload="metadata"
             aria-label={`${item.label} 재생`}
             onError={() =>
-              setError("영상을 재생하지 못했어요. 파일 상태를 확인해주세요.")
+              playbackFailed(
+                media?.playback === "copy"
+                  ? "재생용 사본도 재생하지 못했어요. 파일 상태를 확인해주세요."
+                  : "영상을 재생하지 못했어요. 파일 상태를 확인해주세요.",
+              )
             }
           />
         ) : (
@@ -511,7 +505,7 @@ function MediaPlayer({
             src={url}
             controls
             aria-label={`${item.label} 재생`}
-            onError={() => setError("오디오를 재생하지 못했어요.")}
+            onError={() => playbackFailed("오디오를 재생하지 못했어요.")}
           />
         )}
       </div>
@@ -519,8 +513,12 @@ function MediaPlayer({
       <p>
         {resourceLabels[item.role]} · {labels[item.kind]}
       </p>
-      {item.kind === "video" && (
-        <small>재생용 사본을 사용해요. 원본은 그대로 유지돼요.</small>
+      {item.kind === "video" && media?.playback && (
+        <small>
+          {media.playback === "copy"
+            ? "재생용 사본으로 재생해요. 원본은 그대로 유지돼요."
+            : "원본 파일을 그대로 재생해요."}
+        </small>
       )}
     </>
   );

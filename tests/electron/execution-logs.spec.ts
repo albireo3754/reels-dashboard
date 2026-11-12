@@ -51,11 +51,26 @@ test("app media logs are visible, scoped, persistent and distinguish failed/inte
       window.reels!.editor.chooseVideo(),
     );
     expect(project).toBeTruthy();
-    const rows = await page.evaluate(() => window.reels!.executionLogs!.list());
+    let rows = await page.evaluate(() => window.reels!.executionLogs!.list());
     expect(
       rows.some(
         (r) =>
-          r.label === "편집용 재생 영상 준비" &&
+          r.label === "편집 영상 정보 확인" &&
+          r.status === "completed" &&
+          r.exitCode === 0,
+      ),
+    ).toBeTruthy();
+    // Import plays the original; a playback copy runs only when requested.
+    expect(rows.some((r) => r.label === "편집 재생용 사본 준비")).toBe(false);
+    await page.evaluate(
+      (id) => window.reels!.editor.playbackCopy!(id),
+      project!.id,
+    );
+    rows = await page.evaluate(() => window.reels!.executionLogs!.list());
+    expect(
+      rows.some(
+        (r) =>
+          r.label === "편집 재생용 사본 준비" &&
           r.status === "completed" &&
           r.exitCode === 0,
       ),

@@ -37,3 +37,16 @@ test("route opens authorized original playback and remains usable on mobile", as
   await dialog.getByRole("button", { name: "촬영 지도 닫기", exact: true }).click();
   await expect(page.locator("video")).toHaveCount(0);
 });
+
+test("route playback falls back to a copy when the original cannot be decoded", async ({ page }) => {
+  await page.goto("/?demo=1&demoPlaybackError=1");
+  await page.getByRole("button", { name: "촬영 지도 · 동선 보기", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "도쿄의 오후 산책 촬영 지도", exact: true });
+  await dialog.getByRole("button", { name: "선택한 촬영분 열기", exact: true }).click();
+  await expect(dialog.getByText(/재생용 사본을 준비하고 있어요/)).toBeVisible();
+  const video = dialog.getByLabel("walk.mp4 재생");
+  await expect.poll(() => video.evaluate(n => (n as HTMLVideoElement).readyState)).toBeGreaterThan(0);
+  await video.evaluate(n => (n as HTMLVideoElement).play());
+  await expect.poll(() => video.evaluate(n => (n as HTMLVideoElement).currentTime)).toBeGreaterThan(0);
+  await expect(dialog.getByText("영상을 재생하지 못했어요.")).toHaveCount(0);
+});

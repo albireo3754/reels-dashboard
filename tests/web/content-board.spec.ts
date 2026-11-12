@@ -27,6 +27,7 @@ test("board exposes progress and thumbnails, plays selected media and navigates 
   await expect
     .poll(() => video.evaluate((n) => (n as HTMLVideoElement).currentTime))
     .toBeGreaterThan(0);
+  await expect(dialog.getByText("원본 파일을 그대로 재생해요.")).toBeVisible();
   await dialog
     .getByRole("button", { name: "산책 표지 보기", exact: true })
     .click();
@@ -68,4 +69,33 @@ test("content board and viewer fit mobile, and shared web never requests local m
   await expect(
     page.getByRole("button", { name: /미디어 보기/ }).filter({ visible: true }),
   ).toHaveCount(0);
+});
+test("a video the renderer cannot play falls back to a playback copy", async ({
+  page,
+}) => {
+  await page.goto("/?demo=1&demoPlaybackError=1");
+  const card = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "도쿄의 오후 산책", exact: true }),
+  });
+  await card
+    .getByRole("button", { name: "산책 편집 시안 미리보기", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "도쿄의 오후 산책 자료와 진행사항",
+  });
+  await expect(
+    dialog.getByRole("status").filter({ hasText: "재생용 사본을 준비하고 있어요" }),
+  ).toBeVisible();
+  const video = dialog.getByLabel("산책 편집 시안 재생");
+  await expect
+    .poll(() => video.evaluate((n) => (n as HTMLVideoElement).readyState))
+    .toBeGreaterThan(0);
+  await video.evaluate((n) => (n as HTMLVideoElement).play());
+  await expect
+    .poll(() => video.evaluate((n) => (n as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(0);
+  await expect(
+    dialog.getByText("재생용 사본으로 재생해요. 원본은 그대로 유지돼요."),
+  ).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
 });
