@@ -68,6 +68,11 @@ const bridge: DashboardBridge = {
     open: (id, file, options) => invoke("contentMedia:open", id, file, options),
   },
   coverPreferences: { get: () => invoke("cover-preferences:get"), set: input => invoke("cover-preferences:set", input) },
+  terminalSetting: {
+    get: () => invoke("terminal-setting:get"),
+    set: (enabled) => invoke("terminal-setting:set", enabled),
+    relaunch: () => invoke("terminal-setting:relaunch"),
+  },
   clipUpload: { create: input => invoke("clip-upload:create", input) },
   icloud: {
     configure: input => invoke("icloud:configure", input),

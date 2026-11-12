@@ -58,6 +58,7 @@ import { ProjectCard } from "./ProjectCard";
 import { publicationsSchema } from "../shared/publications";
 import { ProjectDialog } from "./ProjectDialog";
 import { Empty, Icon, JSONDetails, asRecord, asStrings } from "./ui";
+import { TerminalSettingPanel } from "./TerminalSettingPanel";
 const UiInspector = lazy(() => import("../features/ui-inspector").then((m) => ({ default: m.UiInspector })));
 
 type Choice = "undecided" | "included" | "excluded";
@@ -1549,6 +1550,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               nativeNotice
             )}
             {!readOnly && <CoverPreferencesPanel bridge={bridge} />}
+            {!readOnly && <TerminalSettingPanel bridge={bridge} />}
             <Section divided className="settings-section">
               <SectionHeader
                 title="모바일에서 진행 현황 보기"

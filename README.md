@@ -52,7 +52,7 @@ Project photo/frame metadata analysis supports a replaceable image analyzer, sou
 
 ## Agent integration
 
-The desktop **터미널** is enabled explicitly with `REELS_DEV_MODE=1 npm start` after building. It connects this source checkout to Codex and shell PTY sessions, a local web preview, verification commands and the existing briefing site. It is absent from normal desktop startup and the shared web app. Codex is the default; the provider boundary reserves Claude Code for a later release. Design → implement → review → fix prompts support a user-directed improvement loop. See [architecture, usage and validation](docs/development-workspace.md).
+The desktop **터미널** is enabled explicitly with `REELS_DEV_MODE=1 npm start` after building, or in any build (including the packaged app) with **설정 → 터미널 사용**, which applies on the next launch. It connects this source checkout to Codex and shell PTY sessions, a local web preview, verification commands and the existing briefing site. It is absent from normal desktop startup and the shared web app. Codex is the default; the provider boundary reserves Claude Code for a later release. Design → implement → review → fix prompts support a user-directed improvement loop. See [architecture, usage and validation](docs/development-workspace.md).
 
 Owner-private [mobile production briefing](https://example.chatgpt.site) stores progress metadata in Sites D1. See [mobile briefing operation and current scope](docs/mobile-briefing.md).
 

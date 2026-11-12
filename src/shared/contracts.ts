@@ -99,6 +99,12 @@ export interface DashboardBridge {
   readonly routeMap?: import("./route-map").RouteMapBridge;
   readonly cardNews?: import("./card-news").CardNewsBridge;
   readonly workbench?: import("./workbench").WorkbenchBridge;
+  /** Settings toggle for the terminal workspace (desktop only; applies on restart). */
+  readonly terminalSetting?: {
+    get(): Promise<TerminalSetting>;
+    set(enabled: boolean): Promise<TerminalSetting>;
+    relaunch(): Promise<void>;
+  };
   readonly mobileBriefing?: {
     status(): Promise<import("./mobile-briefing").MobileBriefingStatus>;
     open(): Promise<void>;
@@ -207,4 +213,11 @@ declare global {
   interface Window {
     reels?: DashboardBridge;
   }
+}
+
+/** Saved terminal toggle, whether REELS_DEV_MODE=1 forces it on, and whether this run has it. */
+export interface TerminalSetting {
+  readonly enabled: boolean;
+  readonly forcedByEnvironment: boolean;
+  readonly active: boolean;
 }

@@ -34,6 +34,7 @@ import {
 import os from "node:os";
 import { syncSnapshot } from "./sync";
 import { Workbench, PREVIEW_URL } from "./workbench";
+import { TerminalSettingStore, resolveTerminalSetting } from "./terminal-setting";
 import { DEFAULT_KEYMAP, matchAction, type KeyAction } from "../shared/keymap";
 import { trustedIpcSender } from "./ipc-trust";
 import {
@@ -121,7 +122,6 @@ function forwardHostShortcuts(
   });
 }
 const fixture = process.env.REELS_DEMO === "1";
-const developmentMode = developmentModeEnabled(process.env);
 const grants = new Set<string>();
 const imageGrants = new Set<string>();
 const destinations = new Set<string>();
@@ -136,6 +136,10 @@ async function awaitReady() {
   const logs = new ExecutionLogs(root);
   const store = new LocalStore(root);
   await store.initialize();
+  const terminalSettings = new TerminalSettingStore(root);
+  // The settings toggle (or REELS_DEV_MODE=1) turns the terminal workspace on for this run.
+  const developmentMode =
+    developmentModeEnabled(process.env) || (await terminalSettings.get());
   const nativeRoot = app.isPackaged
     ? path.join(process.resourcesPath, "native")
     : path.join(app.getAppPath(), "native/photosindex/.build");
@@ -699,6 +703,19 @@ async function awaitReady() {
     return result;
   };
   handle("request", requestPhotos);
+  const terminalSetting = async () =>
+    resolveTerminalSetting(process.env, await terminalSettings.get(), developmentMode);
+  handle("terminal-setting:get", terminalSetting);
+  handle("terminal-setting:set", async (enabled: unknown) => {
+    await terminalSettings.set(enabled);
+    return terminalSetting();
+  });
+  handle("terminal-setting:relaunch", () => {
+    if (workBusy() || workflowHost.runningJobs() > 0)
+      throw new Error("진행 중인 작업이 끝난 뒤 다시 시작해주세요.");
+    app.relaunch();
+    app.quit();
+  });
   handle("cover-preferences:get", () => coverPreferences.get());
   handle("cover-preferences:set", (input: unknown) => coverPreferences.set(input));
   handle("clip-upload:create", createClipBundle);

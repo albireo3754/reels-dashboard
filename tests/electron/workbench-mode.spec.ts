@@ -159,3 +159,34 @@ test("PTY edits source in the selected temporary checkout", async () => {
     await cleanProfile(profile);
   }
 });
+
+test("the settings toggle enables the terminal without REELS_DEV_MODE after a restart", async () => {
+  const profile = await makeProfile();
+  let app;
+  try {
+    app = await launchApp(profile, true, { REELS_DEV_MODE: undefined });
+    let page = await app.firstWindow();
+    await expect(page.getByRole("button", { name: "터미널", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "설정", exact: true }).click();
+    const toggle = page.getByRole("checkbox", { name: "터미널 사용" });
+    await expect(toggle).not.toBeChecked();
+    await toggle.check();
+    await expect(toggle).toBeChecked();
+    await expect(page.getByRole("button", { name: "지금 다시 시작" })).toBeVisible();
+    expect(
+      JSON.parse(await readFile(join(profile, "terminal-settings.json"), "utf8")),
+    ).toEqual({ enabled: true });
+    await closeApp(app);
+
+    app = await launchApp(profile, true, { REELS_DEV_MODE: undefined });
+    page = await app.firstWindow();
+    await expect(page.getByRole("button", { name: "터미널", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => typeof window.reels!.workbench)).toBe("object");
+    await page.getByRole("button", { name: "설정", exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: "터미널 사용" })).toBeChecked();
+    await expect(page.getByRole("button", { name: "지금 다시 시작" })).toHaveCount(0);
+  } finally {
+    await closeApp(app);
+    await cleanProfile(profile);
+  }
+});
