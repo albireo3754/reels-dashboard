@@ -12,7 +12,7 @@ import {
   type MergeProjectsInput,
   type LinkEditInput,
 } from "../../../shared/production-project";
-import { lstat, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   allChannelsPublished,
@@ -32,6 +32,7 @@ import {
   type SetPublicationInput,
 } from "../../../shared/local-resources";
 import { LocalStore } from "../../../shared/lib/storage";
+import { scanOrphanEdits } from "./orphan-edits";
 import type { OutboundFile } from "../../../shared/icloud-delivery";
 
 const media = new Set([
@@ -60,6 +61,8 @@ export class ContentLibrary {
     private savedEdits: () => Promise<
       Array<EditRef & { title: string }>
     > = async () => [],
+    /** Naver Clip export root: footage in the same first-level shoot folder counts as a folder match. */
+    private clipRoot?: string,
   ) {}
 
   async listEdits() {
@@ -120,6 +123,26 @@ export class ContentLibrary {
     }, input.expectedUpdatedAt);
     this.changed(dashboard);
     return { dashboard, backupPath };
+  }
+
+  /**
+   * Read-only: cards the video editor created on its own and the projects that may own them.
+   * The project-tidy skill reviews this and merges with `merge()`; nothing merges here.
+   */
+  async scanOrphanEdits() {
+    const dashboard = await this.store.load();
+    const texts = new Map<string, string>();
+    for (const project of dashboard.projects) {
+      const parts: string[] = [];
+      for (const r of project.resources ?? []) {
+        if (r.role !== "document" || ![".md", ".txt", ".json"].includes(path.extname(r.path).toLowerCase())) continue;
+        try {
+          if ((await stat(r.path)).size <= 2 * 1024 * 1024) parts.push(await readFile(r.path, "utf8"));
+        } catch {}
+      }
+      if (parts.length) texts.set(project.id, parts.join("\n"));
+    }
+    return { updatedAt: dashboard.updatedAt, cards: scanOrphanEdits(dashboard, this.clipRoot, texts) };
   }
 
   private async resolve(resource: LocalResource): Promise<LocalResource> {

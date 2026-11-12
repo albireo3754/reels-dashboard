@@ -184,7 +184,7 @@ See [interface design](agent-interface.md) and [verification record](mcp-verific
 
 ## 제작 프로젝트 연결·병합 — 2026-10-31
 
-`reels_list_project_edits`에서 저장된 영상/카드뉴스 편집의 소유 프로젝트를 확인한다. `reels_link_project_edit`로 미연결 편집을 붙이고, 이미 독립 카드가 있으면 `reels_merge_projects`로 대표 카드에 합친다. 쓰기는 현재 dashboard revision을 사용하며 병합 전 전체 백업 경로를 반환한다. [스키마·동작](production-projects.md).
+`reels_list_project_edits`에서 저장된 영상/카드뉴스 편집의 소유 프로젝트를 확인한다. 편집기가 따로 만든 카드 후보는 `reels_scan_orphan_edits`(읽기 전용)로 찾는다. 정리 절차는 [reels-project-tidy 스킬](../skills/reels-project-tidy/SKILL.md)을 따른다. `reels_link_project_edit`로 미연결 편집을 붙이고, 이미 독립 카드가 있으면 `reels_merge_projects`로 대표 카드에 합친다. 쓰기는 현재 dashboard revision을 사용하며 병합 전 전체 백업 경로를 반환한다. [스키마·동작](production-projects.md).
 
 ## Photos location and OCR search — 2026-10-31
 

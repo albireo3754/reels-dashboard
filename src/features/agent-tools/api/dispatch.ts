@@ -57,6 +57,7 @@ export interface AgentPorts {
     merge?(input: MergeProjectsInput): Promise<unknown>;
     linkEdit?(input: LinkEditInput): Promise<unknown>;
     listEdits?(): Promise<unknown>;
+    scanOrphanEdits?(): Promise<unknown>;
     get(projectId: string): Promise<unknown>;
     upsert(content: ContentInput, expectedUpdatedAt: string): Promise<unknown>;
     setPublication?(
@@ -167,6 +168,9 @@ export function createAgentDispatch(ports: AgentPorts) {
         if (editor.busy) throw new Error("BUSY");
         if (!ports.content.linkEdit) throw new Error("UNSUPPORTED");
         return ports.content.linkEdit(input);
+      case "reels_scan_orphan_edits":
+        if (!ports.content.scanOrphanEdits) throw new Error("UNSUPPORTED");
+        return ports.content.scanOrphanEdits();
       case "reels_list_project_edits":
         if (!ports.content.listEdits) throw new Error("UNSUPPORTED");
         return ports.content.listEdits();

@@ -6,6 +6,7 @@ import {
   type BoardQuery,
 } from "../model/board-query";
 import { projectStageLabels as stageLabels } from "../../../shared/contracts";
+import { useState } from "react";
 import { Segmented } from "../../../shared/ui/primitives";
 import "./board-controls.css";
 
@@ -14,12 +15,17 @@ export function BoardToolbar({
   onChange,
   count,
   total,
+  onTidy,
 }: {
   query: BoardQuery;
   onChange: (value: BoardQuery) => void;
   count: number;
   total: number;
+  /** Development mode: start an agent terminal that runs the project-tidy skill. */
+  onTidy?: () => Promise<void>;
 }) {
+  const [tidying, setTidying] = useState(false);
+  const [tidyError, setTidyError] = useState("");
   const set = (patch: Partial<BoardQuery>) => onChange({ ...query, ...patch });
   const filtered = Boolean(
     query.search ||
@@ -153,6 +159,31 @@ export function BoardToolbar({
           >
             필터 초기화
           </button>
+        )}
+        {onTidy && (
+          <button
+            className="small"
+            disabled={tidying}
+            title="편집기가 따로 만든 카드를 전체 스캔해 원래 프로젝트에 합치도록 터미널 에이전트에게 맡겨요."
+            onClick={async () => {
+              setTidying(true);
+              setTidyError("");
+              try {
+                await onTidy();
+              } catch (error) {
+                setTidyError(`정리 터미널을 열지 못했어요: ${error instanceof Error ? error.message : String(error)}`);
+              } finally {
+                setTidying(false);
+              }
+            }}
+          >
+            {tidying ? "여는 중…" : "프로젝트 정리"}
+          </button>
+        )}
+        {tidyError && (
+          <span className="ui-meta" role="alert">
+            {tidyError}
+          </span>
         )}
         <Segmented
           label="보드 보기 방식"

@@ -222,6 +222,7 @@ async function awaitReady() {
       ...(await editorService.list()).map(p => ({ kind: "video" as const, id: p.id, title: p.name })),
       ...(await cardNews.list()).map(p => ({ kind: "card-news" as const, id: p.id, title: p.title })),
     ],
+    path.resolve(process.env.PHOTOSINDEX_EXPORT_ROOT ?? path.join(os.homedir(), "Library/Mobile Documents/com~apple~CloudDocs/Naver Clip")),
   );
   const routeLibrary = new RouteLibrary(contentLibrary);
   const blogs = new BlogLibrary(store, contentLibrary);

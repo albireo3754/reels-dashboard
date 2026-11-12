@@ -1,4 +1,5 @@
 export { ContentLibrary, mediaExtensions } from "./api/library";
+export { scanOrphanEdits, type OrphanEditCard } from "./api/orphan-edits";
 
 export { BoardMedia } from "./api/board-media";
 export {

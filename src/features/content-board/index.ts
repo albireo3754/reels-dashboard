@@ -6,3 +6,4 @@ export {
   selectBoardProjects,
 } from "./model/board-query";
 export type { BoardQuery } from "./model/board-query";
+export { projectTidyTask } from "./model/tidy-request";

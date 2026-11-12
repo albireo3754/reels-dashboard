@@ -36,8 +36,10 @@ import {
   defaultBoardQuery,
   parseBoardQuery,
   selectBoardProjects,
+  projectTidyTask,
   type BoardQuery,
 } from "../features/content-board";
+import { savedAgentPermission } from "../shared/workbench";
 import {
   DevWorkspace,
   workbenchShortcutTarget,
@@ -817,6 +819,13 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                 onChange={changeBoardQuery}
                 count={boardProjects.length}
                 total={totals.all}
+                onTidy={!readOnly && bridge.workbench ? async () => {
+                  const workbench = bridge.workbench!;
+                  const { defaultProvider } = await workbench.state();
+                  const session = await workbench.start({ kind: defaultProvider, phase: "implement", task: projectTidyTask, permission: savedAgentPermission() });
+                  setRequestedTerminal(session.id);
+                  setDrawerMode("open");
+                } : undefined}
               />
             )}
             {!dashboard.projects.length ? (

@@ -136,6 +136,11 @@ export const toolDefinitions = {
     input: linkEditSchema,
     readOnly: false,
   },
+  reels_scan_orphan_edits: {
+    description: "Read-only scan for dashboard cards the video editor created on its own (title still the footage file name, not published) with candidate owner projects: folderMatch (same folder or Naver Clip shoot folder) and documentMention (a linked document names the footage). suggestedTargetId only when exactly one candidate has both. Merging is a separate reels_merge_projects call.",
+    input: z.strictObject({}),
+    readOnly: true,
+  },
   reels_list_project_edits: {
     description: "List saved video/card-news edits and their owning dashboard project IDs.",
     input: z.strictObject({}),

@@ -91,6 +91,18 @@
 
 프로젝트 병합은 콘텐츠 조직 변경이다. 게시·업로드·원본 이동/삭제가 아니다. 예전 카드 ID로 upsert하면 대표 ID를 사용하라는 오류를 반환한다. 이름·파일명 유사성만으로 자동 병합하지 않는다.
 
+## 편집기 단독 카드 정리 — 2026-11-12
+
+영상 편집기는 프로젝트 맥락 없이 영상을 열면 파일명을 제목으로 한 카드를 만든다(`upsertExportedProject`). 앱은 이 카드를 자동으로 합치지 않는다. 정리는 수동으로 시작한다.
+
+- **버튼:** 개발 모드 대시보드 보드 도구줄의 **프로젝트 정리**. 기본 코딩 도구로 새 터미널 세션을 열고 [reels-project-tidy 스킬](../skills/reels-project-tidy/SKILL.md)을 실행하라는 요청(`projectTidyTask`)을 넣는다. 승인 없이 실행(YOLO) 여부는 마지막 선택(`savedAgentPermission`)을 따른다.
+- **스캔:** `reels_scan_orphan_edits`(CLI `reels scan-orphan-edits`, 읽기 전용). 대상 카드는 자기 ID의 video 편집 1개만 가지고, 제목이 첫 footage 파일명 그대로이며, 게시 전인 카드다. 후보 프로젝트마다 다음 두 신호를 표시한다. 두 신호를 모두 가진 후보가 정확히 하나일 때만 `suggestedTargetId`를 준다.
+  - `folderMatch`: footage가 그 프로젝트의 folder 자료 안이나 Naver Clip 아래 같은 촬영 폴더에 있다.
+  - `documentMention`: 연결된 `.md`·`.txt`·`.json` 문서(2 MiB 이하)에 footage 파일명이 나온다.
+- **병합:** 스킬이 카드별 근거를 병렬로 확인한 뒤 `reels_merge_projects`로 하나씩 합친다. 병합마다 위의 전체 백업이 남는다.
+
+같은 촬영 폴더의 원본으로 새 릴스를 만드는 경우가 있다. 그래서 촬영 위치만으로는 제안하지 않는다. 판정 함수는 `src/features/content-library/api/orphan-edits.ts`, 테스트는 `tests/unit/orphan-edits.test.ts`다.
+
 
 ## 검증 — 2026-10-31
 
