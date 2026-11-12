@@ -45,7 +45,7 @@
 | 층 | 무엇을 담나 | 지금 있는 것 |
 | --- | --- | --- |
 | 프로젝트(소재) | 한 번의 방문·촬영 단위. 제목·날짜·진행, 원본 자료(Photos·로컬 폴더), 이미지·영상 분석 결과, 장소·메뉴·촬영 맥락, 경험 질문 답변 | `Project`, `resources`, 미디어 분석·증거 루프 결과, 경험 질문 폼 |
-| 산출물(output) | 채널별 결과물. `kind`(reel-video · card-news · blog · naver-clip …)와 그 kind 전용 편집 데이터, 원본 중 고른 부분, 레퍼런스, 출력·게시 상태 | `production.edits`(video·card-news), `blog-projects.json`의 블로그 등록(현재 프로젝트와 분리) |
+| 산출물(output) | 채널별 결과물. `kind`(reel-video · card-news · blog · naver-clip …)와 그 kind 전용 편집 데이터, 원본 중 고른 부분, 레퍼런스, 출력·게시 상태 | `production.edits`(video·card-news), 콘텐츠 카드에 연결된 blog-markup 원고(2026-11-12부터 별도 등록 없음) |
 | 출력 이력 | 산출물에서 나온 파일과 게시 URL | `production.exports`(영상·카드뉴스만) |
 
 산출물마다 달라지는 것:

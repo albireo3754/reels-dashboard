@@ -4,7 +4,7 @@ import {Button,IconButton,Notice,Spacer,StatusText,Toolbar} from '../../../share
 import {DocumentIcon,RefreshIcon} from './icons';
 
 /**
- * 정본 블로그 프로젝트 목록. Notion 데이터베이스 행처럼 행 전체를 눌러 열고,
+ * 정본 블로그 프로젝트 목록: blog-markup 원고가 연결된 콘텐츠 카드(main 프로세스가 조회). Notion 데이터베이스 행처럼 행 전체를 눌러 열고,
  * 행 끝의 '프로젝트 열기'는 키보드·보조기술용 같은 동작이다(hover·포커스 때 보인다).
  */
 export function BlogProjects({api,onOpen,openIds=[]}:{api:BlogBridge;onOpen:(tab:CanonicalEditorTab)=>void;openIds?:string[]}){
@@ -12,9 +12,13 @@ export function BlogProjects({api,onOpen,openIds=[]}:{api:BlogBridge;onOpen:(tab
   const [loading,setLoading]=useState(true);
   const [opening,setOpening]=useState('');
   const [error,setError]=useState('');
+  const [issues,setIssues]=useState<Array<{id:string;title:string;reason:string}>>([]);
   const refresh=async()=>{
     setLoading(true);setError('');
-    try{setProjects(await api.canonicalProjects?.()??[]);}
+    try{
+      const [list,left]=await Promise.all([api.canonicalProjects?.()??[],api.canonicalIssues?.()??[]]);
+      setProjects(list);setIssues(left);
+    }
     catch(e){setError(String(e));}
     finally{setLoading(false);}
   };
@@ -32,7 +36,14 @@ export function BlogProjects({api,onOpen,openIds=[]}:{api:BlogBridge;onOpen:(tab
       <IconButton label="프로젝트 새로고침" disabled={loading||!!opening} onClick={()=>void refresh()}><RefreshIcon/></IconButton>
     </Toolbar>
     {error&&<Notice tone="danger">{error}</Notice>}
-    {!loading&&!error&&!projects.length&&<p className="ui-meta blog-empty">아직 연결된 블로그 프로젝트가 없어요.</p>}
+    {!error&&issues.length>0&&<Notice tone="warning">
+      <p>원고가 연결됐지만 목록에 넣지 못한 콘텐츠 {issues.length}개</p>
+      <ul className="blog-project-issues">{issues.map(issue=><li key={issue.id+issue.reason}><strong>{issue.title}</strong> — {issue.reason}</li>)}</ul>
+    </Notice>}
+    {!loading&&!error&&!projects.length&&<div className="ui-meta blog-empty">
+      <p>아직 연결된 블로그 프로젝트가 없어요.</p>
+      <p>콘텐츠 카드에 blog-markup 원고(<code>markup: 1</code>)를 문서로 연결하면 여기에 나타나요.</p>
+    </div>}
     {projects.length>0&&<ul className="ui-list blog-project-list" data-divided="">{projects.map(project=>{
       const isOpen=openIds.includes(project.id);
       return <li key={project.id}>

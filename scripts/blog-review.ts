@@ -1,12 +1,12 @@
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {readBlogProjects} from "../src/desktop/blog-projects";
+import {readBlogProjects,scanBlogProjects} from "../src/desktop/blog-projects";
 import {prepareExternalReview,importExternalReview,reviewStatus,type Selection} from "../src/app/blog-editor/external-review";
 
 /**
  * Bundle review loop for external executors (Claude Code workflow, Codex subagents).
- * Uses the same registered blog projects, input contract, validation and review file as the
+ * Uses the same blog projects (content cards with a blog-markup manuscript), input contract, validation and review file as the
  * desktop editor's Codex SDK review. Packets and results must live outside this repository.
  */
 const usage=`Usage:
@@ -27,7 +27,10 @@ async function project(id:string|undefined){
 async function main(){
   const [command,...args]=process.argv.slice(2);
   let out:unknown;
-  if(command==="projects")out=(await readBlogProjects(userData)).map(p=>({id:p.id,title:p.title,canon:p.config.canon,review:p.config.review??null}));
+  if(command==="projects"){
+    const {projects,issues}=await scanBlogProjects(userData);
+    out={projects:projects.map(p=>({id:p.id,title:p.title,canon:p.config.canon,layout:p.config.layout,review:p.config.review??null,mediaEvidence:p.config.mediaEvidence??null})),issues};
+  }
   else if(command==="status")out=await reviewStatus(await project(args[0]));
   else if(command==="prepare"){
     const [id,dir,...rest]=args;if(!dir)throw new Error(usage);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import {launchApp,makeProfile,closeApp,cleanProfile} from './helpers';
 import {openBlogEditor,editorIframe} from './blog-editor-helpers';
 import {markupFixture} from '../fixtures/markup-editor';
+import { writeBlogCards } from '../fixtures/blog-cards';
 
 test('real local video decodes, plays and seeks in the desktop markup editor',async({},info)=>{
  test.skip(!process.env.REELS_BLOG_VIDEO_SOURCE,'Explicit local video opt-in');
@@ -13,7 +14,7 @@ test('real local video decodes, plays and seeks in the desktop markup editor',as
   await symlink(source,path.join(config.media,'cheers.MOV'));
   const input=(await readFile(config.canon,'utf8')).replace('<Photo file="photo.png" alt="Example photo"/>','<Video file="cheers.MOV" alt="건배 영상" ratio="4:5" fit="cover" position="50% 60%" muted/>');
   await writeFile(config.canon,input);
-  await writeFile(path.join(profile,'blog-projects.json'),JSON.stringify({version:1,projects:[{id:'video-fixture',title:'Video fixture',config:{...config,assetFiles:[source]}}]}));
+  await writeBlogCards(profile, [{id:'video-fixture',title:'Video fixture',config}]);
   app=await launchApp(profile);const main=await app.firstWindow();await main.getByRole('button',{name:'블로그',exact:true}).click();
   const editor=await openBlogEditor(app,main,'video-fixture');const frame=editor.frameLocator('iframe[title="정본 본문 편집"]');const video=frame.locator('video');
   await expect(video).toBeVisible();await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>({ready:v.readyState,error:v.error?.message??null})),{timeout:20000}).toMatchObject({error:null});

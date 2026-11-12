@@ -28,11 +28,32 @@ Enter 전송 후속 검증(2026-11-11): 블로그·개발 패널 요청 입력�
 
 **블로그 → 프로젝트**가 기본 화면이다. 목록 행을 누르거나 행의 **프로젝트 열기**(hover·포커스 때 보임)로 해당 프로젝트의 원고·사진·검토 결과를 연다. 프로젝트마다 서버를 따로 띄우고 블로그 탭 위쪽 탭 줄에 에디터 탭으로 연다. 같은 프로젝트를 다시 열면 기존 탭으로 돌아간다([블로그 탭 내장](canonical-blog-editor.md#블로그-탭-내장--2026-11-11)). 기존 원고 가져오기와 비공개 배치는 **원고·배치**, 공통 레퍼런스는 **레퍼런스 추출·탐색**에서 사용한다.
 
-연결 목록은 기기 user-data의 `blog-projects.json`에 `{version:1, projects:[{id,title,config}]}`로 보관한다. `config`에는 기존 마크업 편집기의 절대 경로 설정(`format`, `canon`, `layers`, `layout`, `media`, 선택적 `review`, `requests`, `reviewGuidance`, `assetFiles`, [`mediaEvidence`](canonical-blog-editor.md#사진-고르기--2026-11-04))을 넣는다. 제작 대시보드의 같은 콘텐츠에는 같은 프로젝트 ID를 사용한다. 개인 경로·원고는 공개 저장소에 넣지 않는다. 프로젝트 등록 UI는 아직 없으며 목록 새로고침은 로컬 연결 설정을 다시 읽는다.
+~~연결 목록은 기기 user-data의 `blog-projects.json`에 보관한다.~~ 2026-11-12부터 목록은 [제작 대시보드 콘텐츠 테이블을 조회](#콘텐츠-테이블이-목록의-정본--2026-11-12)한다. 개인 경로·원고는 공개 저장소에 넣지 않는다.
 
 단일 `canonical-blog.json`을 자동으로 열지 않는다. 기존 연결을 프로젝트 항목으로 명시 등록하며 이전 설정은 보존한다. 중복 ID·원고와 상대 경로를 거부하고, 열린 프로젝트의 연결 경로가 바뀌면 그 탭이 열려 있는 동안 거부해 다른 원고로 조용히 바꾸지 않는다. 탭을 모두 닫은 뒤 다시 열면 새 연결로 연다(2026-11-11).
 
 검증: 관련 단위3개·타입·FSD·공개 소스 검사, 개발 Electron6개와 패키지 Electron7개 통과. 두 프로젝트 동시 열기·저장 격리·재시작 복원과 실제 원고/사진 읽기를 확인했다. 이전 앱을 `release/production-projects-before-blog-projects/`에 보존하고 `release/production-projects/mac-arm64/Reels Dashboard.app`을 교체·재실행했다. 실제 블로그 프로젝트 카드에서 기존 원고가 열리고 저장 완료 상태인 것을 확인했으며 원고 SHA-256은 동일하다.
+
+## 콘텐츠 테이블이 목록의 정본 — 2026-11-12
+
+**블로그 → 프로젝트** 목록은 별도 등록 파일 없이 제작 대시보드의 콘텐츠 카드(`dashboard.json`, MCP `reels_get_content`·`reels_upsert_content`)를 조회한다. 카드의 `document` 리소스 중 blog-markup 원고(frontmatter `markup: 1`인 `.md`)가 있으면 블로그 프로젝트다. ID·제목은 카드 값이다. 원고가 없는 카드는 목록에 없고, 카드에 원고를 문서로 연결하면 새로고침 후 나타난다. 이전 `blog-projects.json`은 읽지 않는다(구현 `src/desktop/blog-projects.ts`).
+
+편집기 경로는 원고 폴더 관례로 정한다. 관례 밖의 파일을 쓰는 원고만 frontmatter `editor:`에 원고 기준 상대 경로로 덮어쓴다(키: `layout`, `layers`, `requests`, `review`, `mediaEvidence`, `reviewGuidance`).
+
+| 항목 | 관례 |
+| --- | --- |
+| `layout` | `publishing/smarteditor-draft-layout.html` |
+| `layers` | `reviews/` |
+| `requests` | `<layers>/requests/` |
+| `review` | `<layers>/bundle-review.json`(없으면 첫 검토가 만든다) |
+| `mediaEvidence` | `<layers>/media-evidence.json` 포인터 `{"version":1,"results":"<results.json 상대 경로>"}`. `scripts/evidence-loop.ts connect`가 쓴다 |
+| `reviewGuidance` | 원고 폴더에서 위로 가장 가까운 `BLOG.md` |
+| `media` | frontmatter `media:`(필수) |
+| `assetFiles` | 원고가 참조하는 사진·콜라주·영상·포스터 중 심볼릭 링크의 실제 파일 |
+
+한 카드에 blog-markup 원고가 둘 이상이거나, 같은 원고가 두 카드에 연결됐거나, `media:`·`editor:` 값이 잘못된 카드는 목록에서 빠진다. 이유는 `node --import tsx scripts/blog-review.ts projects`의 `issues`로 확인한다. 열린 탭이 있는 동안 원고에 링크된 사진을 새로 넣어 `assetFiles`가 바뀌면 다른 연결 변경처럼 탭을 닫고 다시 열어야 한다.
+
+레이아웃 HTML이 없는 새 글은 다른 글의 레이아웃을 틀로 만든다: `node --import tsx scripts/blog-markup.ts render <article.markup.md> <publishing/smarteditor-draft-layout.html> --from <다른 글 레이아웃>`. 상대 `url(...)`(글꼴)은 새 위치 기준으로 고치고, `render`는 매번 `<title>`과 본문 앞 `<h1>`을 원고 제목으로 맞춘다.
 
 현재 정본을 직접 고치는 화면은 [정본 스마트 에디터](canonical-blog-editor.md)다. 아래의 앱 내 배치 초안은 자료 준비 도구이며 정본 편집기가 아니다.
 

@@ -1,16 +1,16 @@
 import {test,expect} from "@playwright/test";
-import {readFile,writeFile} from "node:fs/promises";
-import path from "node:path";
+import {readFile} from "node:fs/promises";
 import {launchApp,makeProfile,closeApp,cleanProfile} from "./helpers";
 import {closeEditorTab,openBlogEditor} from "./blog-editor-helpers";
 import {markupFixture} from "../fixtures/markup-editor";
 import {chooseEditorMenu} from "../web/canonical-editor-helpers";
+import { writeBlogCards } from "../fixtures/blog-cards";
 
 test("desktop sticker planning saves and reopens with clipboard handoff",async()=>{
   const profile=await makeProfile();let app;
   try{
     const config=await markupFixture(profile);
-    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+    await writeBlogCards(profile, [{id:"example",title:"Example project",config}]);
     app=await launchApp(profile);
     // Verify the native clipboard bridge without replacing the user's clipboard.
     await app.evaluate(({clipboard})=>{clipboard.writeText=async(text:string)=>{(globalThis as any).stickerCopiedText=text;};});

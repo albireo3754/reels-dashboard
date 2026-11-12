@@ -34,7 +34,7 @@ node --import tsx scripts/evidence-loop.ts connect /private/out "$USER_DATA" con
 | correct | `corrections/<id>/` | Re-analyzes only the named captures/images. `base/` is never rewritten. A changed correction needs a new `id`. |
 | merge | `effective/results.json` | Base order, corrected rows replaced by ID. Refuses unknown IDs, changed source/hash/time and unresolved rows. `analysisRun` and `provenance` record the origin. |
 | verify | `effective/metadata-table.md`, `semantic-checks.json`, `verification.json` | Input, result and table IDs must match in order. Every linked image must hash-match. Every capture must be represented and every check must pass. An empty check scope fails. |
-| connect | `mediaEvidence` in `blog-projects.json` | Explicit. Refuses a result that did not pass and keeps a dated backup. Reopen the app afterwards. |
+| connect | `<layers>/media-evidence.json` pointer of the blog project ([conventions](blog-workspace.md#콘텐츠-테이블이-목록의-정본--2026-11-12)) | Explicit. Refuses a result that did not pass, refuses a manuscript that sets `editor.mediaEvidence` itself, and keeps a dated backup of a replaced pointer. Reopen the project tab afterwards. |
 
 The loop is: run → read `verification.json` → add a correction or check to the spec → run again. The process exits 1 until verification passes. Judgement stays outside the code: choosing the inventory, writing context, deciding what a failed check means and writing the expected checks. `checks` are term matches over stored fields, so they catch contradictions and omissions, not visual misreadings; sample real images separately.
 

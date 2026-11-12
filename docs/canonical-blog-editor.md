@@ -60,7 +60,7 @@
 
 검증: 선택→색상→24px→굵게→배경만 제거→정본 저장/재열기, 서식 전후 표시, 1024px 검토 패널·Escape/포커스 복귀, 390px 묶음 접기/가로 넘침, 기존 정본 저장 충돌 보호 및 SDK 명시적 적용 회귀를 합성 콘텐츠로 확인했다. 실제 원고는 화면 검수만 한다.
 
-기존 미디어가 심볼릭 링크인 경우 서버 설정의 `assetFiles`에 실제 원본 파일 경로를 개별 등록할 수 있다. 등록된 블록 이름과 등록된 원본 대상이 모두 일치할 때만 제공하며, 다른 대상으로 바뀐 링크는 거절한다. 이번 실제 화면 검수에서 콜라주 사진 2장의 기존 원본 링크를 이 방식으로 연결했다. 원본 이동·복제·이미지 편집은 하지 않았다.
+기존 미디어가 심볼릭 링크인 경우 서버 설정의 `assetFiles`에 실제 원본 파일 경로를 개별 등록할 수 있다(2026-11-12부터 앱은 원고가 참조하는 파일에서 계산한다). 등록된 블록 이름과 등록된 원본 대상이 모두 일치할 때만 제공하며, 다른 대상으로 바뀐 링크는 거절한다. 이번 실제 화면 검수에서 콜라주 사진 2장의 기존 원본 링크를 이 방식으로 연결했다. 원본 이동·복제·이미지 편집은 하지 않았다.
 
 ## 외부 실행기 묶음 리뷰 — 2026-11-02
 
@@ -73,7 +73,7 @@ node --import tsx scripts/blog-review.ts prepare <project-id> <new-packet-dir> [
 node --import tsx scripts/blog-review.ts import <project-id> <packet.json> <result.json> --provider <name> [--run <id>]
 ```
 
-- 프로젝트는 `blog-projects.json`에 등록된 ID로 고른다. `REELS_DASHBOARD_USER_DATA`로 user-data 위치를 바꿀 수 있다. markup 형식이고 `review` 경로가 있는 프로젝트만 지원한다.
+- 프로젝트는 블로그 프로젝트 목록(원고가 연결된 콘텐츠 카드, [목록 정본](blog-workspace.md#콘텐츠-테이블이-목록의-정본--2026-11-12))의 ID로 고른다. `REELS_DASHBOARD_USER_DATA`로 user-data 위치를 바꿀 수 있다. `projects`는 목록과 함께 빠진 카드의 이유(`issues`)를 돌려준다.
 - `prepare`는 새 패킷 폴더에 `packet.json`(앱 요청과 같은 `markupReviewInput`과 묶음 해시), `source.md`, `guidance.md`, `bundles/<ID>.json`(앞뒤 묶음 원문, 허용 문단 ID, 기존 강조 구절, 해당 주석, 문단 ID enum을 넣은 결과 스키마)을 만들고, 빈 `out/` 폴더도 만든다. 기본값 `--changed`는 검토가 없거나 텍스트가 바뀐 묶음만 고른다. 공개 저장소 안의 경로는 거부한다. 같은 폴더를 두 번 쓰지 않는다.
 - `import`는 패킷과 원고가 같은지 확인하고, 앱과 같은 검증을 거쳐 `review` 파일에 저장한다. `requests/<id>.json`에 완료 영수증(`provider`, `runId` 포함)을 남기며, 이 영수증은 앱 worker가 다시 처리하지 않는다. 같은 패킷은 한 번만 가져온다. 검토 중 원고가 바뀌면 `stale`로 기록한다. 원고 파일은 수정하지 않는다.
 - 외부 실행기에는 화면 캡처가 없다. `visual.status`가 `unverified`가 아니면 가져오기를 거부하므로, 이 경로의 결과는 `passed`가 될 수 없다. 화면 판정은 기존 앱 검토(360/390/430px 캡처)로 따로 받는다.
@@ -249,7 +249,7 @@ node --import tsx scripts/blog-review.ts import <project-id> <packet.json> <resu
 3. 대체 텍스트를 다듬고(분석 설명의 첫 문장이 시작값) 위치를 고른 뒤 **이 위치에 넣기**를 누른다. 위치는 스티커와 같은 문단·사진 사이 자리이며 본문을 누르면 그 뒤가 선택된다.
 4. 본문에 `저장 전 사진`으로 표시되고 8초 동안 **빼기**로 취소할 수 있다. 유예가 끝나거나 ⌘S를 누르면 사진을 미디어 폴더에 복사하고 `<Photo>`를 원고에 쓴다. 저장 실패 시 배치는 화면에 남고 자동으로 다시 시도한다.
 
-프로젝트 연결(`blog-projects.json`의 `config`, 또는 `npm run blog:editor` 설정)에 완료된 `results.json`의 절대 경로를 `mediaEvidence`로 넣는다. 없으면 창이 연결 방법을 안내한다. 열린 프로젝트의 연결을 바꾸면 앱을 다시 열어야 한다.
+완료된 `results.json`을 프로젝트 `layers` 폴더의 `media-evidence.json` 포인터로 연결한다(`scripts/evidence-loop.ts connect`, [관례](blog-workspace.md#콘텐츠-테이블이-목록의-정본--2026-11-12)). 원고 frontmatter `editor.mediaEvidence`나 `npm run blog:editor` 설정의 `mediaEvidence`로 직접 지정할 수도 있다. 없으면 창이 연결 방법을 안내한다. 열린 프로젝트의 연결을 바꾸면 앱을 다시 열어야 한다.
 
 - 저장되는 파일 이름은 `<imageId>.<확장자>`다. 원고의 사진이 메타데이터 표의 행으로 바로 이어진다.
 - 복사 전에 결과의 SHA-256과 대조한다. 바뀐 파일은 거절하고, 대상 이름에 다른 내용의 파일이 있으면 덮어쓰지 않는다. 같은 내용이면 재사용한다.

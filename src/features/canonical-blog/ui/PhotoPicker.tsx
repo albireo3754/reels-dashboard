@@ -54,7 +54,7 @@ export function PhotoPicker({ revision, placements, anchors, target, disabled, o
       <button className="icon-button" aria-label="사진 고르기 닫기" title="사진 고르기 닫기" onClick={onClose}><CloseIcon /></button>
     </header>
     {error && <p className="ce-photo-note is-error" role="alert">{error}</p>}
-    {library && !library.connected && <p className="ce-photo-note">이 프로젝트에는 사진 분석 결과가 연결되지 않았어요. 프로젝트 연결의 <code>mediaEvidence</code>에 <code>results.json</code> 경로를 넣으면 여기서 고를 수 있어요.</p>}
+    {library && !library.connected && <p className="ce-photo-note">이 프로젝트에는 사진 분석 결과가 연결되지 않았어요. 검증된 <code>results.json</code>을 <code>reviews/media-evidence.json</code> 포인터(또는 원고 frontmatter <code>editor.mediaEvidence</code>)로 연결하면 여기서 고를 수 있어요.</p>}
     {library?.connected && <>
       <div className="ce-photo-filters">
         <input ref={search} type="search" aria-label="사진 검색" placeholder="장면·태그·간판 글자로 찾기" value={query} onChange={e => setQuery(e.target.value)} />

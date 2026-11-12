@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { markupFixture } from '../fixtures/markup-editor';
 import { cleanProfile, closeApp, launchApp, makeProfile } from './helpers';
 import { openBlogEditor, editorIframe } from './blog-editor-helpers';
+import { writeBlogCards } from '../fixtures/blog-cards';
 
 test('blog terminal passes current context, retains failed requests and selects the new session', async ({}, info) => {
   const profile = await makeProfile();
@@ -13,7 +14,7 @@ test('blog terminal passes current context, retains failed requests and selects 
     await mkdir(root);
     const config = await markupFixture(root);
     const original = await readFile(config.canon, 'utf8');
-    await writeFile(join(profile, 'blog-projects.json'), JSON.stringify({ version: 1, projects: [{ id: 'article-a', title: '합성 글', config }] }));
+    await writeBlogCards(profile, [{ id: 'article-a', title: '합성 글', config }]);
     app = await launchApp(profile, true, { REELS_DEV_MODE: '1' });
     const page = await app.firstWindow();
     await page.getByRole('button', { name: '블로그', exact: true }).click();

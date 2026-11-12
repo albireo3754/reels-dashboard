@@ -15,6 +15,8 @@ export type BlogDraft = z.infer<typeof blogDraft>;
 export interface CanonicalEditorTab {projectId:string;title:string;url:string}
 export interface BlogBridge {
   canonicalProjects?():Promise<Array<{id:string;title:string}>>;
+  /** Cards with a blog-markup manuscript that are left out of the list, and why. */
+  canonicalIssues?():Promise<Array<{id:string;title:string;reason:string}>>;
   openCanonical?(projectId:string):Promise<CanonicalEditorTab>;
   /** Asks before an editor tab closes; `close` false means the writer chose to keep editing. */
   closeCanonical?(projectId:string):Promise<{close:boolean;unsaved:boolean}>;

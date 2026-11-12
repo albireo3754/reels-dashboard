@@ -7,6 +7,7 @@ import { z } from "zod";
 import { analysisContext, type AnalysisFields } from "../shared/media-analysis";
 import type { ImageAnalyzer } from "./analysis-provider";
 import { analyzeEvidence, renderEvidenceMetadataTable, type EvidenceManifest } from "./media-evidence";
+import { EVIDENCE_POINTER, manuscriptOverrides, readBlogProjects } from "./blog-projects";
 
 const run = promisify(execFile);
 const absolutePath = z.string().min(1).refine(path.isAbsolute, "Absolute path required");
@@ -261,19 +262,24 @@ export async function runEvidenceLoop(specInput: unknown, outputDir: string, ana
   return { stage: "verified", ...await finish(manifest, spec, document, output) };
 }
 
-/** Connects a verified result to the editor's photo picker; refuses anything that did not pass. */
+/**
+ * Connects a verified result to the editor's photo picker; refuses anything that did not pass.
+ * The connection is the pointer file in the project's layers folder (see blog-projects.ts),
+ * not a field of a registry: a manuscript that names `editor.mediaEvidence` itself is refused.
+ */
 export async function connectEvidence(outputDir: string, userData: string, projectId: string) {
   const effective = path.join(path.resolve(outputDir), "effective");
   const verification = await readJson<{ pass: boolean }>(path.join(effective, "verification.json"));
   if (!verification.pass) throw new Error("Verification did not pass; not connecting");
-  const registry = path.join(userData, "blog-projects.json");
-  const value = await readJson<{ projects: { id: string; config: Record<string, unknown> }[] }>(registry);
-  const project = value.projects.find((item) => item.id === projectId);
+  const project = (await readBlogProjects(userData)).find((item) => item.id === projectId);
   if (!project) throw new Error(`Unknown blog project: ${projectId}`);
   const mediaEvidence = path.join(effective, "results.json");
   if (project.config.mediaEvidence === mediaEvidence) return { changed: false, mediaEvidence };
-  await copyFile(registry, `${registry}.before-evidence-${Date.now()}`);
-  project.config.mediaEvidence = mediaEvidence;
-  await writeJson(registry, value);
-  return { changed: true, mediaEvidence };
+  const pointer = path.join(project.config.layers, EVIDENCE_POINTER);
+  if ((await manuscriptOverrides(project.config.canon)).own.mediaEvidence)
+    throw new Error(`The manuscript sets editor.mediaEvidence; change it there: ${project.config.canon}`);
+  await mkdir(project.config.layers, { recursive: true });
+  await copyFile(pointer, `${pointer}.before-evidence-${Date.now()}`).catch((e) => { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; });
+  await writeJson(pointer, { version: 1, results: path.relative(project.config.layers, mediaEvidence).split(path.sep).join("/") });
+  return { changed: true, mediaEvidence, pointer };
 }

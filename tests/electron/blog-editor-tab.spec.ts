@@ -5,6 +5,7 @@ import { markupFixture } from "../fixtures/markup-editor";
 import { cleanProfile, closeApp, launchApp, makeProfile, pressWorkbenchKey } from "./helpers";
 import { closeEditorTab, editorIframe, openBlogEditor, windowCount } from "./blog-editor-helpers";
 import { chooseEditorMenu } from "../web/canonical-editor-helpers";
+import { writeBlogCards } from "../fixtures/blog-cards";
 
 const HELP_URL = "https://help.naver.com/service/5593/contents/15529?lang=ko";
 
@@ -15,7 +16,7 @@ async function writeProjects(profile: string, ids: string[]) {
     await mkdir(root);
     projects.push({ id, title: `${id} project`, config: await markupFixture(root) });
   }
-  await writeFile(path.join(profile, "blog-projects.json"), JSON.stringify({ version: 1, projects }));
+  await writeBlogCards(profile, projects);
   return projects;
 }
 
@@ -342,7 +343,7 @@ test("a changed connection opens with the new config once its tabs are closed (o
     await mkdir(moved);
     const config = await markupFixture(moved);
     await writeFile(config.canon, (await readFile(config.canon, "utf8")).replace("Second line", "New connection line"));
-    await writeFile(path.join(profile, "blog-projects.json"), JSON.stringify({ version: 1, projects: [{ ...project, config }] }));
+    await writeBlogCards(profile, [{ ...project, config }]);
 
     await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
     await main.getByRole("button", { name: "프로젝트 열기", exact: true }).click();

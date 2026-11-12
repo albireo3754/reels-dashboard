@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { assembleEvidence, connectEvidence, mergeEvidence, runEvidenceChecks, runEvidenceLoop, type EvidenceDocument } from "../../src/desktop/media-evidence-loop";
 import type { ImageAnalyzer } from "../../src/desktop/analysis-provider";
+import { readBlogProjects } from "../../src/desktop/blog-projects";
+import { markupFixture } from "../fixtures/markup-editor";
+import { writeBlogCards } from "../fixtures/blog-cards";
 
 const context = { venue: "Known", location: "", visit: "", menus: "", surroundings: "", notes: "", sources: [] };
 async function fixture(t: import("node:test").TestContext) {
@@ -113,18 +116,26 @@ test("checks need an in-scope match, and an empty scope never passes", () => {
   assert.equal(pass({ excludes: ["일반"] }), false);
   assert.equal(pass({ captureIds: ["MISSING"], excludes: ["간짜장"] }), false);
 });
-test("connect links only a verified result and backs up the registry", async (t) => {
+test("connect links only a verified result through the project's pointer file", async (t) => {
   const f = await fixture(t);
   const data = path.join(f.root, "data");await mkdir(data);
-  await writeFile(path.join(data, "blog-projects.json"), JSON.stringify({ version: 1, projects: [{ id: "p", title: "P", config: {} }] }));
+  await mkdir(path.join(f.root, "article"));
+  const config = await markupFixture(path.join(f.root, "article"));
+  await writeBlogCards(data, [{ id: "p", title: "P", config }]);
   await mkdir(path.join(f.out, "effective"), { recursive: true });
   await writeFile(path.join(f.out, "effective/verification.json"), '{"pass":false}');
   await assert.rejects(connectEvidence(f.out, data, "p"), /did not pass/);
   await writeFile(path.join(f.out, "effective/verification.json"), '{"pass":true}');
-  assert.equal((await connectEvidence(f.out, data, "p")).changed, true);
+  const connected = await connectEvidence(f.out, data, "p");
+  assert.equal(connected.changed, true);
+  assert.equal(connected.mediaEvidence, path.join(path.resolve(f.out), "effective/results.json"));
+  assert.equal((await readBlogProjects(data))[0].config.mediaEvidence, connected.mediaEvidence);
   assert.equal((await connectEvidence(f.out, data, "p")).changed, false);
-  assert.equal((await readdir(data)).length, 2);
+  assert.deepEqual(await readdir(config.layers), ["media-evidence.json"]);
   await assert.rejects(connectEvidence(f.out, data, "nope"), /Unknown blog project/);
+  // A manuscript that names its own evidence is changed there, not behind its back.
+  await writeBlogCards(data, [{ id: "p", title: "P", config: { ...config, mediaEvidence: path.join(f.root, "other.json") } }]);
+  await assert.rejects(connectEvidence(f.out, data, "p"), /editor\.mediaEvidence/);
 });
 test("frames are extracted with times, once, into the archive", async (t) => {
   const f = await fixture(t);

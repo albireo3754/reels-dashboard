@@ -10,10 +10,10 @@ Run from this repository:
     node --import tsx scripts/blog-markup.ts view /path/to/article.md
     node --import tsx scripts/blog-markup.ts hash /path/to/article.md /path/to/reviews.json
     node --import tsx scripts/blog-markup.ts merge /path/to/base.md /path/to/mine.md /path/to/current.md
-    node --import tsx scripts/blog-markup.ts render /path/to/article.md /path/to/layout.html
+    node --import tsx scripts/blog-markup.ts render /path/to/article.md /path/to/layout.html [--from /path/to/other-layout.html]
     node --import tsx scripts/blog-markup.ts convert-layers /path/to/conversion.json
 
-check exits 1 for validation errors. view includes only the notes file's “## 규칙” section and computed facts. hash evaluates text-oriented findings against textHash and other axes against fullHash. merge returns JSON with either normalized text or conflict details and does not write. render updates an existing layout shell and creates an exclusive .before-markup backup; media paths are resolved from Markdown and rebased to the HTML destination. The shell supplies component layout CSS and fonts; source style overrides use CSS variables. Native cards are placeholders, not real Naver components.
+check exits 1 for validation errors. view includes only the notes file's “## 규칙” section and computed facts. hash evaluates text-oriented findings against textHash and other axes against fullHash. merge returns JSON with either normalized text or conflict details and does not write. render updates an existing layout shell and creates an exclusive .before-markup backup; with `--from` it instead creates a missing layout from another article's layout (relative `url(...)` rebased to the new location, no backup). Either way it sets `<title>` and the first `<h1>` before the article to the frontmatter title; media paths are resolved from Markdown and rebased to the HTML destination. The shell supplies component layout CSS and fonts; source style overrides use CSS variables. Native cards are placeholders, not real Naver components.
 
 convert-layers is a one-time import command that writes the candidate to stdout. Its JSON manifest supplies source/grouping/bundles/emphasis paths relative to the manifest, plus media/notes, questionTopic, mapPlace/mapHref and style. It rejects missing emphasis, ambiguous anchors, duplicate paragraphs and gaps/overlaps. Manuscripts and manifests stay outside this code repository.
 

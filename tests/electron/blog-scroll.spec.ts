@@ -1,9 +1,9 @@
 import {test,expect,type ElectronApplication} from '@playwright/test';
 import {readFile,writeFile} from 'node:fs/promises';
-import path from 'node:path';
 import {markupFixture} from '../fixtures/markup-editor';
 import {launchApp,makeProfile,closeApp,cleanProfile} from './helpers';
 import {editorIframe,openBlogEditor} from './blog-editor-helpers';
+import { writeBlogCards } from '../fixtures/blog-cards';
 
 test('embedded manuscript has no scrollbar gutter, scrolls with the page and shrinks after editing',async({},info)=>{
   const root=await makeProfile();let app;
@@ -12,7 +12,7 @@ test('embedded manuscript has no scrollbar gutter, scrolls with the page and shr
     await writeFile(config.layout,'<style>html{overflow-y:scroll;scrollbar-gutter:stable}body{margin:0}main{font:16px/1.8 sans-serif}p{margin:20px 0}img{width:100px}</style>');
     const longText='Long manuscript line with enough words to wrap in the mobile body. '.repeat(80);
     await writeFile(config.canon,(await readFile(config.canon,'utf8')).replace('Second line',longText));
-    await writeFile(path.join(root,'blog-projects.json'),JSON.stringify({version:1,projects:[{id:'scroll',title:'Scroll test',config}]}));
+    await writeBlogCards(root, [{id:'scroll',title:'Scroll test',config}]);
     app=await launchApp(root);const electronApp:ElectronApplication=app,main=await app.firstWindow();
     await main.getByRole('button',{name:'블로그',exact:true}).click();
     const editor=await openBlogEditor(app,main,'scroll'),frame=editor.frameLocator('iframe');

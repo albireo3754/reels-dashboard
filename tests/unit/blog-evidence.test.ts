@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import { MarkupStore } from "../../src/app/blog-editor/markup-store";
 import { defaultAlt, insertPhotos, searchEvidence, type EvidenceImage } from "../../src/shared/blog-evidence";
 import { parse, serialize } from "../../src/shared/blog-markup";
 import { readBlogProjects } from "../../src/desktop/blog-projects";
+import { writeBlogCards } from "../fixtures/blog-cards";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 async function fixture(t: import("node:test").TestContext) {
@@ -125,12 +126,15 @@ test("default alt is the first sentence on one line", () => {
   assert.equal(defaultAlt("마침표 없는\n설명"), "마침표 없는 설명");
   assert.equal(defaultAlt("가".repeat(500)).length, 200);
 });
-test("project registry keeps the evidence connection", async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "evidence-registry-"));
+test("the layers folder's pointer is the evidence connection", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "evidence-pointer-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const config = { format: "markup", canon: "/a/b.md", layers: "/a", layout: "/a/l.html", media: "/a/m", mediaEvidence: "/a/results.json" };
-  await writeFile(path.join(root, "blog-projects.json"), JSON.stringify({ version: 1, projects: [{ id: "p", title: "P", config }] }));
-  assert.equal((await readBlogProjects(root))[0].config.mediaEvidence, "/a/results.json");
+  const config = await markupFixture(root);
+  await writeBlogCards(root, [{ id: "p", title: "P", config }]);
+  assert.equal((await readBlogProjects(root))[0].config.mediaEvidence, undefined);
+  await mkdir(config.layers, { recursive: true });
+  await writeFile(path.join(config.layers, "media-evidence.json"), JSON.stringify({ version: 1, results: "run/effective/results.json" }));
+  assert.equal((await readBlogProjects(root))[0].config.mediaEvidence, path.join(config.layers, "run/effective/results.json"));
 });
 test("thumbnails are small cached copies, and an unreadable image falls back to the original", async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), "evidence-thumb-"));

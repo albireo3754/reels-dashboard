@@ -3,7 +3,7 @@ import {clipboard,dialog,type BrowserWindow,type WebContents,type WebFrameMain} 
 import {startCanonicalEditor} from "../app/blog-editor/server";
 import type {EditorConfig} from "../app/blog-editor/store";
 import type {CanonicalEditorTab} from "../shared/blog";
-import {readBlogProjects} from "./blog-projects";
+import {readBlogProjects,scanBlogProjects} from "./blog-projects";
 
 /** The one external page an embedded editor may open (the sticker help link). */
 export const CANONICAL_EDITOR_HELP_URL="https://help.naver.com/service/5593/contents/15529?lang=ko";
@@ -41,6 +41,8 @@ export class DesktopCanonicalEditor{
   /** `background`: proceed without dialogs (background QA; see main.ts for the stubbed-dialog QA switch). */
   constructor(private root:string,private webRoot:string,private background:boolean){}
   async projects(){return (await readBlogProjects(this.root)).map(({id,title})=>({id,title}));}
+  /** Content cards that point at a manuscript but cannot be listed, with the reason. */
+  async issues(){return (await scanBlogProjects(this.root)).issues;}
   /**
    * Starts (or reuses) the project's server and returns what the renderer puts in its tab.
    * A changed connection is refused while the project has an embedded frame in `contents`;

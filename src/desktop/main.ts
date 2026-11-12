@@ -545,6 +545,7 @@ async function awaitReady() {
     if (workflowOpen?.sequence === sequence) workflowOpen = null;
   });
   handle("blog:canonicalProjects", () => canonicalEditor.projects());
+  handle("blog:canonicalIssues", () => canonicalEditor.issues());
   handle("blog:openCanonical", (projectId) =>
     canonicalEditor.open(String(projectId), liveWindow(window)?.webContents),
   );

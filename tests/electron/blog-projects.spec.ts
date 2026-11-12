@@ -4,6 +4,7 @@ import path from 'node:path';
 import {markupFixture} from '../fixtures/markup-editor';
 import {launchApp,makeProfile,closeApp,cleanProfile} from './helpers';
 import {closeEditorTab,editorIframe,openBlogEditor,windowCount} from './blog-editor-helpers';
+import { writeBlogCards } from '../fixtures/blog-cards';
 
 test('blog projects open isolated editors, reuse tabs and retain connections after restart',async({},testInfo)=>{
   const profile=await makeProfile();let app;
@@ -14,7 +15,7 @@ test('blog projects open isolated editors, reuse tabs and retain connections aft
       const config=await markupFixture(root);
       projects.push({id,title:`${id} project`,config});
     }
-    await writeFile(path.join(profile,'blog-projects.json'),JSON.stringify({version:1,projects}));
+    await writeBlogCards(profile, projects);
     const secondBefore=await readFile(projects[1].config.canon,'utf8');
     app=await launchApp(profile);
     let main=await app.firstWindow();
@@ -60,5 +61,11 @@ test('unconfigured blog shows an empty project list without opening a default ma
     await main.getByRole('button',{name:'블로그',exact:true}).click();
     await expect(main.getByText('아직 연결된 블로그 프로젝트가 없어요.',{exact:true})).toBeVisible();
     await expect(main.getByRole('button',{name:'프로젝트 열기',exact:true})).toHaveCount(0);
+    // A card whose manuscript cannot open is reported in the list, with its reason.
+    const manuscript=path.join(profile,'no-media.md');await writeFile(manuscript,'---\nmarkup: 1\ntitle: x\n---\n');
+    await writeFile(path.join(profile,'dashboard.json'),JSON.stringify({schemaVersion:1,updatedAt:new Date().toISOString(),projects:[{id:'broken',title:'Broken card',date:'2026-11-12',stage:'editing',nextAction:'',publicURL:'',shared:false,resources:[{role:'document',path:manuscript,label:'원고'}]}]}));
+    await main.getByRole('button',{name:'프로젝트 새로고침',exact:true}).click();
+    await expect(main.getByText('원고가 연결됐지만 목록에 넣지 못한 콘텐츠 1개')).toBeVisible();
+    await expect(main.getByText(/Broken card/)).toBeVisible();
   }finally{await closeApp(app);await cleanProfile(profile);}
 });

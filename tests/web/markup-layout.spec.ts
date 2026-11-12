@@ -13,7 +13,7 @@ test('linked layout CSS fits photos and collages without nested scroll or duplic
     const source=(await readFile(config.canon,'utf8')).replace('<Photo file="photo.png" alt="Example photo"/>','<Title>Old duplicate title</Title>\n<Photo file="photo.svg" alt="Large photo"/>\n<Collage layout="2x1" files="photo.svg · photo.svg" alts="Left · Right"/>\n<Collage layout="2x2" files="photo.svg · photo.svg · photo.svg · photo.svg" alts="Tall · Wide · Wide2 · Wide3" ratios="3:4 · 4:3 · 16:9 · 4:3"/>');
     await writeFile(config.canon,source);
     await writeFile(path.join(config.media,'photo.svg'),'<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600"><rect width="900" height="600" fill="#789987"/></svg>');
-    await writeFile(path.join(root,'layout.css'),'body{margin:0}*{box-sizing:border-box}article{word-break:keep-all}h1{font:700 24px/1.5 sans-serif;margin:0}figure{margin:28px 0}img{display:block;width:100%;height:auto}.photo-grid4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}');
+    await writeFile(path.join(path.dirname(config.layout),'layout.css'),'body{margin:0}*{box-sizing:border-box}article{word-break:keep-all}h1{font:700 24px/1.5 sans-serif;margin:0}figure{margin:28px 0}img{display:block;width:100%;height:auto}.photo-grid4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}');
     await writeFile(config.layout,'<!doctype html><html><head><link rel="stylesheet" href="layout.css"><style>article{color:rgb(48,48,46)}</style></head><body><main><article></article></main></body></html>');
     server=await startCanonicalEditor(config);
     await page.goto(server.url+'/?blogEditor=1');

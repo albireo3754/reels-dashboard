@@ -6,6 +6,7 @@ import path from "node:path";
 import {launchApp,makeProfile,closeApp,cleanProfile} from "./helpers";
 import {closeEditorTab,editorIframe,openBlogEditor,setEditorViewport} from "./blog-editor-helpers";
 import {markupFixture} from "../fixtures/markup-editor";
+import { writeBlogCards } from "../fixtures/blog-cards";
 
 async function openReview(page: Frame) {
   const toggle = page.getByRole("button", {name:"검토 보기",exact:true});
@@ -26,7 +27,7 @@ test("desktop opens markup editor, saves text, reopens and preserves source gram
   const profile=await makeProfile();let app;
   try{
     const config=await markupFixture(profile);
-    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+    await writeBlogCards(profile, [{id:"example",title:"Example project",config}]);
     app=await launchApp(profile);
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
@@ -84,7 +85,7 @@ test("real configured manuscript renders read-only with photos and no source wri
   const config=JSON.parse(await readFile(process.env.REELS_MARKUP_CONFIG!,"utf8"));
   const original=await readFile(config.canon,"utf8");
   try{
-    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+    await writeBlogCards(profile, [{id:"example",title:"Example project",config}],{manuscripts:"untouched"});
     app=await launchApp(profile);
     const main=await app.firstWindow();
     await main.getByRole("button",{name:"블로그",exact:true}).click();
@@ -134,7 +135,7 @@ test("markup review button runs engine and refreshes completed results without r
   const profile=await makeProfile();let app,server;
   try{
     const config={...await markupFixture(profile),review:path.join(profile,"reviews.json")};
-    await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+    await writeBlogCards(profile, [{id:"example",title:"Example project",config}]);
     server=await startWorkflowServer({root:path.join(profile,"workflow"),port:0,sdkEnv:{},sdkFactory:()=>({
       startThread:()=>({async runStreamed(prompt){
         const input=JSON.parse((typeof prompt==="string"?prompt:(prompt[0] as {text:string}).text).split("\nInput: ")[1].split("\nReturn resultJson")[0]);
@@ -182,7 +183,7 @@ test("independent proposals stay applicable after label recolor and sequential e
   ];
   await writeFile(config.review,JSON.stringify({reviews:[{bundleId:"B1",summary:"Independent suggestions",verdict:"needs-work",basedOn,findings}]}));
   await writeFile(config.canon,original.replace("적갈","초록"));
-  await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+  await writeBlogCards(profile, [{id:"example",title:"Example project",config}]);
   app=await launchApp(profile);const main=await app.firstWindow();
   await main.getByRole("button",{name:"블로그",exact:true}).click();
   const editor=await openBlogEditor(app,main,"example");
@@ -231,7 +232,7 @@ test("explicit live visual review consumes rendered evidence and never edits man
  const config=JSON.parse(await readFile(process.env.REELS_MARKUP_CONFIG!,"utf8"));
  const original=await readFile(config.canon,"utf8"),doc=parse(original),id=process.env.REELS_LIVE_VISUAL_BUNDLE!;
  try{
-  await writeFile(path.join(profile,"blog-projects.json"),JSON.stringify({version:1,projects:[{id:"example",title:"Example project",config}]}));
+  await writeBlogCards(profile, [{id:"example",title:"Example project",config}],{manuscripts:"untouched"});
   app=await launchApp(profile);
   const main=await app.firstWindow();await main.getByRole("button",{name:"블로그",exact:true}).click();
   const editor=await openBlogEditor(app,main,"example");
