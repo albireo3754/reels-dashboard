@@ -17,7 +17,7 @@ import {
   listFormsInput,
   type InputFormRecord,
 } from "../../shared/input-forms";
-import { resolveFile, hashes } from "./files";
+import { checkedImage, resolveFile, hashes } from "./files";
 
 /** One form and answer store. No graph stages, model execution or UI assumptions. The owner serializes writes. */
 export class InputFormService {
@@ -127,19 +127,8 @@ export class InputFormService {
       throw new Error("FORM_BOUND: already linked to a workflow");
     this.put({ ...r, workflowRunId: runId });
   }
-  async checkedImage(workspace: string, relative: string) {
-    const file = await resolveFile(workspace, relative);
-    const type = (
-      {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-      } as Record<string, string>
-    )[path.extname(file).toLowerCase()];
-    if (!type || (await stat(file)).size > 4000000)
-      throw new Error("Use a JPEG/PNG/WebP preview under 4 MB");
-    return { file, type };
+  checkedImage(workspace: string, relative: string) {
+    return checkedImage(workspace, relative);
   }
   async create(raw: unknown) {
     const input = createFormInput.parse(raw);

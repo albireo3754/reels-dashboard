@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { stringify } from "yaml";
@@ -626,5 +626,62 @@ test("built-in (non-YAML) runs never report ALREADY_RECORDED", async () => {
       );
   } finally {
     await f.runtime.close();
+  }
+});
+
+// --- Cross-review round 2 (2026-11-13) ---
+
+test("a step is not skipped when the next step's input exists but cannot be read", async () => {
+  const f = await fixture();
+  const locked = path.join(f.workspace, "locked.md");
+  try {
+    const d: any = sharedDefinition();
+    d.steps[3].inputs = ["article.md", "locked.md"];
+    await writeFile(f.definitionFile, stringify(d));
+    await writeMedia(f);
+    await submitAnswers(f);
+    await f.put("article.md", "draft text");
+    await f.put("evidence/story-media-plan.json", plan());
+    await f.put("locked.md", "unreadable");
+    await chmod(locked, 0o000);
+    const p = await preview(f);
+    assert.equal(p.startsAt, "draft");
+    const run = await f.runtime.create(f.input);
+    assert.equal(run.stepId, "draft");
+    assert.equal(run.status, "waiting");
+    assert.ok(run.task && !run.task.adopt);
+    assert.equal(run.history.find((h) => h.stepId === "draft"), undefined);
+  } finally {
+    await chmod(locked, 0o600).catch(() => {});
+    await f.runtime.close();
+  }
+});
+
+test("question images follow form registration rules (JPEG/PNG/WebP under 4 MB) before skipping", async () => {
+  for (const [image, bytes] of [
+    ["media/q.gif", "gif-bytes"],
+    ["media/q.png", Buffer.alloc(4_000_001)],
+  ] as const) {
+    const f = await fixture();
+    try {
+      await inputFirst(f);
+      await writeMedia(f);
+      await writeFile(path.join(f.workspace, image), bytes);
+      await submitAnswers(f);
+      const withImage = form();
+      (withImage.questions[0] as any).images = [
+        { path: image, caption: "synthetic" },
+      ];
+      await f.put("experience-form.json", withImage);
+      assert.deepEqual(await preview(f), {
+        skipped: [],
+        startsAt: "experience",
+      });
+      // The normal path rejects the same form instead of a skip being recorded.
+      await assert.rejects(f.runtime.create(f.input), /JPEG\/PNG\/WebP/);
+      assert.equal((await f.runtime.list()).length, 0);
+    } finally {
+      await f.runtime.close();
+    }
   }
 });

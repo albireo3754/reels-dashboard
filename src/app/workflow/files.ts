@@ -12,6 +12,21 @@ export async function resolveFile(workspace: string, relative: string) {
     throw new Error("Expected a file: " + relative);
   return resolved;
 }
+/** Question/preview image rule shared by form registration and step skipping. */
+export async function checkedImage(workspace: string, relative: string) {
+  const file = await resolveFile(workspace, relative);
+  const type = (
+    {
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".webp": "image/webp",
+    } as Record<string, string>
+  )[path.extname(file).toLowerCase()];
+  if (!type || (await stat(file)).size > 4000000)
+    throw new Error("Use a JPEG/PNG/WebP preview under 4 MB");
+  return { file, type };
+}
 export async function hashes(workspace: string, files: string[]) {
   const entries = await Promise.all(
     files.map(async (name) => {

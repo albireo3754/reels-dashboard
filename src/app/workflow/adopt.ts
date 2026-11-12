@@ -15,7 +15,7 @@ import type {
   DefinitionStep,
   WorkflowDefinition,
 } from "../../shared/workflow-definition";
-import { resolveFile } from "./files";
+import { checkedImage, hashes, resolveFile } from "./files";
 import { mediaSceneInputs } from "./story-media";
 
 /** Existing outputs that let a step be skipped, with the reason recorded in history. */
@@ -100,7 +100,7 @@ async function readForm(workspace: string, file: string): Promise<FormState> {
       await readJson(workspace, file, 200000),
     );
     const images = form.questions.flatMap((q) => q.images.map((i) => i.path));
-    for (const image of images) await resolveFile(workspace, image);
+    for (const image of images) await checkedImage(workspace, image);
     return { state: "ok", form, evidence: [file, ...new Set(images)] };
   } catch {
     return { state: "invalid" };
@@ -196,9 +196,10 @@ async function adoptTask(
   }
 }
 
+/** Exists inside the workspace and can actually be read (hashed), as a request will. */
 async function filesExist(workspace: string, files: string[]) {
   try {
-    for (const file of files) await resolveFile(workspace, file);
+    await hashes(workspace, files);
     return true;
   } catch {
     return false;
