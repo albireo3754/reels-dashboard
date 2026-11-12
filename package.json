@@ -123,6 +123,10 @@
       {
         "from": "native/editor-engine/.build/runtime",
         "to": "editor-runtime"
+      },
+      {
+        "from": "dist-cli/reels.mjs",
+        "to": "cli/reels.mjs"
       }
     ],
     "mac": {

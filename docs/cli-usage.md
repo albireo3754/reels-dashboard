@@ -11,6 +11,12 @@ node /absolute/path/to/reels-dashboard/dist-cli/reels.mjs status
 
 `dist-cli/reels.mjs` is a single self-contained file that runs from any directory with Node 22.12 or later. To get a `reels` command, run `npm link` once in the repository and check it with `command -v reels`, or call the file by its absolute path. The file is executable, so an alias or symlink also works.
 
+### Installed with the app
+
+The packaged app ships the bundle as `Contents/Resources/cli/reels.mjs`. Each time the packaged app starts (not the Dev build, not background QA), it writes `~/.local/bin/reels`, a small `sh` launcher that runs the bundle with the app's own executable under `ELECTRON_RUN_AS_NODE=1`. A separate Node install is not needed, and the command always matches the installed app version. If the app moves, the next launch rewrites the path.
+
+The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~/.local/bin/reels` only when that file is missing or carries the marker. A symlink, such as one from `npm link` to a checkout, or a script of your own is never replaced: remove it once to switch to the app's launcher. The result is logged as `[cli-install] installed|updated|unchanged|skipped`. `~/.local/bin` must be on `PATH`. Code: `src/desktop/cli-install.ts`.
+
 `REELS_USER_DATA` selects the app profile, as it does for the MCP server. Without it the CLI uses the normal application-support directory. A relative value needs the working folder: if that folder is gone, tools exit 2 and `reels status` reports `reason: "user_data_unresolved"`.
 
 ## Commands

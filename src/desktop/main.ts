@@ -42,6 +42,7 @@ import {
 } from "./development-mode";
 import { readMobileBriefingStatus } from "./mobile-briefing";
 import { installApplicationIdentity } from "./application-identity";
+import { installCli } from "./cli-install";
 import { APP_NAME, DEV_BUILD_ARGUMENT, appDisplayName } from "./build-identity";
 import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
@@ -949,6 +950,15 @@ async function awaitReady() {
     window.focus();
   };
   if (!backgroundQA) installApplicationIdentity(showWindow, displayName, !app.isPackaged);
+  if (app.isPackaged && !backgroundQA)
+    void installCli({
+      executable: process.execPath,
+      bundle: path.join(process.resourcesPath, "cli/reels.mjs"),
+      binDir: path.join(os.homedir(), ".local/bin"),
+    }).then(
+      (result) => console.info("[cli-install]", result.status, result.target, "reason" in result ? result.reason : ""),
+      (error: unknown) => console.warn("[cli-install] failed", error instanceof Error ? error.message : error),
+    );
   workflowNotifications.start();
   app.on("second-instance", showWindow);
   if (!fixture)
