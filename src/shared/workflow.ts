@@ -1,5 +1,6 @@
 import { inputFormActions } from "./input-forms";
 import { z } from "zod";
+import type { DefinitionSnapshot, DefinitionStep } from "./workflow-definition";
 
 export const workflowStages = [
   "prepare",
@@ -25,6 +26,8 @@ export const stageLabels: Record<WorkflowStage, string> = {
   visual_review: "화면 검토",
 };
 export const createWorkflowInput = z.strictObject({
+  definitionFile: z.string().min(1).optional(),
+  projectId: z.string().trim().min(1).max(200).optional(),
   title: z.string().trim().min(1).max(200),
   workspace: z.string().min(1),
   instructions: z.string().trim().min(1).max(20000),
@@ -57,6 +60,8 @@ export const workflowAction = z.enum([
   "stop",
   "job",
   "capabilities",
+  "validate-definition",
+  "context",
   "review-bundles",
   "review-markup",
   "suggest-inline",
@@ -73,7 +78,7 @@ export type WorkflowAction = z.infer<typeof workflowAction>;
  * handler code is reported as stale instead of being reused. Dev and installed
  * builds of the same protocol share one server and data dir by design.
  */
-export const WORKFLOW_PROTOCOL_VERSION = 3;
+export const WORKFLOW_PROTOCOL_VERSION = 4;
 /** Shown when the server answering the workflow URL predates this app's actions. */
 export const STALE_WORKFLOW_SERVER_MESSAGE =
   "실행 중인 워크플로 서버가 이전 버전이에요. 따로 실행한 서버(npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
@@ -96,6 +101,7 @@ export const readOnlyWorkflowActions: readonly WorkflowAction[] = [
   "get",
   "job",
   "capabilities",
+  "context",
 ];
 export const isReadOnlyWorkflowAction = (action: WorkflowAction) =>
   readOnlyWorkflowActions.includes(action);
@@ -104,6 +110,8 @@ export function workflowEndpoint(action: WorkflowAction, input: any = {}) {
   const base = "/api/workflows";
   if (action === "get")
     return `${base}/run?id=${encodeURIComponent(input.runId)}`;
+  if (action === "context")
+    return `${base}/context?id=${encodeURIComponent(input.runId)}`;
   if (action === "job")
     return `${base}/job?id=${encodeURIComponent(input.jobId)}`;
   return action === "list" ? base : `${base}/${action}`;
@@ -137,6 +145,7 @@ export const followupReopenStages: readonly WorkflowStage[] = [
   "visual_review",
 ];
 export const canReopenFollowups = (run: WorkflowRun) =>
+  !run.definition &&
   run.status === "waiting" &&
   followupReopenStages.includes(run.stage) &&
   run.experience?.status === "submitted";
@@ -144,7 +153,15 @@ export const currentFollowup = (run: WorkflowRun) =>
   run.followups?.tasks.find((t) => t.id === run.task?.followupId);
 /** A follow-up assigned to the production session; the SDK must not run it. */
 export const requiresSessionWork = (run: WorkflowRun) =>
-  run.stage === "followup" && currentFollowup(run)?.executor === "session";
+  !!run.definition ||
+  (run.stage === "followup" && currentFollowup(run)?.executor === "session");
+export const workflowStepLabel = (
+  run: WorkflowRun,
+  stepId = run.stepId,
+  stage = run.stage,
+) =>
+  run.definition?.definition.steps.find((s) => s.id === stepId)?.title ??
+  stageLabels[stage];
 /** Stages shown as progress; revise folds into draft, intake stages only when collecting experience. */
 export const visibleStages = (run: Pick<WorkflowRun, "collectExperience">) =>
   workflowStages.filter(
@@ -177,6 +194,7 @@ export interface SdkJob {
   result?: unknown;
 }
 export interface WorkflowRecord {
+  stepId?: string;
   stage: WorkflowStage;
   taskId: string;
   outcome: z.infer<typeof submitWorkflowInput>["outcome"];
@@ -185,6 +203,7 @@ export interface WorkflowRecord {
   at: string;
 }
 export interface WorkflowTask {
+  step?: DefinitionStep;
   followupId?: string;
   taskId: string;
   stage: WorkflowStage;
@@ -192,6 +211,11 @@ export interface WorkflowTask {
   inputHashes: Record<string, string>;
 }
 export interface WorkflowRun {
+  blockedReason?: string;
+  definition?: DefinitionSnapshot;
+  definitionFile?: string;
+  stepId?: string;
+  projectId?: string;
   followups?: import("./followups").Followups;
   collectExperience?: boolean;
   inputFormId?: string;

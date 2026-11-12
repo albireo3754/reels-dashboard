@@ -30,11 +30,12 @@ try {
     console.log(
       JSON.stringify(await workflowRequest(command, { jobId: arg }), null, 2),
     );
-  else if (command === "get" || command === "restart")
+  else if (command === "get" || command === "context" || command === "restart")
     console.log(
       JSON.stringify(await workflowRequest(command, { runId: arg }), null, 2),
     );
   else if (
+    command === "validate-definition" ||
     command === "create" ||
     command === "submit" ||
     command === "execute" ||
@@ -58,7 +59,7 @@ try {
     );
   } else
     throw new Error(
-      "Usage: workflow serve | list | capabilities | get <id> | restart <id> | job <id> | stop <id> | create/submit/execute/review-bundles <json-file|->",
+      "Usage: workflow serve | list | capabilities | get <id> | context <id> | restart <id> | job <id> | stop <id> | validate-definition/create/submit/execute/review-bundles <json-file|->",
     );
 } catch (e) {
   console.error(errorMessage(e));

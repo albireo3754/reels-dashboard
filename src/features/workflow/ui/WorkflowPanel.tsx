@@ -1,3 +1,4 @@
+import { DefinitionFlow } from "./DefinitionFlow";
 import { FormInbox } from "./FormInbox";
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExperienceForm } from "./ExperienceForm";
@@ -9,6 +10,7 @@ import {
   requiresSessionWork,
   runStatusLabels,
   stageLabels,
+  workflowStepLabel,
   visibleStages,
   type WorkflowAction,
   type WorkflowRun,
@@ -157,6 +159,7 @@ function ConnectedWorkflowPanel({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [definitionFile, setDefinitionFile] = useState("");
   const [openNotice, setOpenNotice] = useState("");
   const handledOpenRun = useRef<number | undefined>(undefined);
   const refresh = useCallback(async () => {
@@ -250,7 +253,12 @@ function ConnectedWorkflowPanel({
                   .map((s) => s.trim())
                   .filter(Boolean),
                 maxRevisions: Number(form.get("maxRevisions")),
-                collectExperience: form.get("experience") === "on",
+                collectExperience:
+                  !definitionFile && form.get("experience") === "on",
+                ...(definitionFile ? { definitionFile } : {}),
+                ...(form.get("projectId")
+                  ? { projectId: form.get("projectId") }
+                  : {}),
               });
               setSelected(created.runId);
               setCreating(false);
@@ -268,6 +276,19 @@ function ConnectedWorkflowPanel({
               required
               placeholder="/absolute/path/to/content"
             />
+          </label>
+          <label>
+            워크플로 YAML (선택 · 작업 폴더 기준 상대 경로)
+            <input
+              name="definitionFile"
+              value={definitionFile}
+              onChange={(e) => setDefinitionFile(e.target.value)}
+              placeholder="workflow.yaml"
+            />
+          </label>
+          <label>
+            연결할 프로젝트 ID (선택)
+            <input name="projectId" placeholder="Dashboard 프로젝트 ID" />
           </label>
           <label>
             작성·검토 기준
@@ -292,7 +313,12 @@ function ConnectedWorkflowPanel({
             />
           </label>
           <label className="experience-toggle">
-            <input type="checkbox" name="experience" defaultChecked />
+            <input
+              type="checkbox"
+              name="experience"
+              defaultChecked
+              disabled={!!definitionFile}
+            />
             자료 준비 후 내 경험을 한 폼으로 받기
           </label>
           <button disabled={busy}>워크플로 시작</button>
@@ -312,7 +338,7 @@ function ConnectedWorkflowPanel({
             >
               <strong>{r.title}</strong>
               <small>
-                {runStatusLabels[r.status]} · {stageLabels[r.stage]}
+                {runStatusLabels[r.status]} · {workflowStepLabel(r)}
               </small>
             </button>
           ))}
@@ -325,21 +351,25 @@ function ConnectedWorkflowPanel({
                 <h3>{run.title}</h3>
                 <span>{runStatusLabels[run.status]}</span>
               </div>
-              <ol className="workflow-stages" aria-label="제작 단계">
-                {visibleStages(run).map((stage) => (
-                  <li
-                    key={stage}
-                    aria-current={
-                      run.stage === stage ||
-                      (stage === "draft" && run.stage === "revise")
-                        ? "step"
-                        : undefined
-                    }
-                  >
-                    {stageLabels[stage]}
-                  </li>
-                ))}
-              </ol>
+              {run.definition ? (
+                <DefinitionFlow run={run} />
+              ) : (
+                <ol className="workflow-stages" aria-label="제작 단계">
+                  {visibleStages(run).map((stage) => (
+                    <li
+                      key={stage}
+                      aria-current={
+                        run.stage === stage ||
+                        (stage === "draft" && run.stage === "revise")
+                          ? "step"
+                          : undefined
+                      }
+                    >
+                      {stageLabels[stage]}
+                    </li>
+                  ))}
+                </ol>
+              )}
               <p>
                 수정 {run.revisions}회 / 한도 {run.maxRevisions}회 · 최종 발행은
                 수동입니다.
@@ -416,7 +446,7 @@ function ConnectedWorkflowPanel({
                     senderLabel: "작업 결과",
                     avatar: "작업",
                     at: item.at,
-                    title: stageLabels[item.stage],
+                    title: workflowStepLabel(run, item.stepId, item.stage),
                     body: item.summary,
                     status: outcomeLabels[item.outcome],
                     tone:
@@ -433,7 +463,7 @@ function ConnectedWorkflowPanel({
               )}
               {run.task && (
                 <article className="workflow-task">
-                  <h4>현재 요청 · {stageLabels[run.task.stage]}</h4>
+                  <h4>현재 요청 · {workflowStepLabel(run)}</h4>
                   {["requests", "followup"].includes(run.stage) ? (
                     <>
                       <p>
@@ -499,11 +529,14 @@ function ConnectedWorkflowPanel({
               />
               {run.status === "ready" && (
                 <p role="status">
-                  문안·화면 검토를 통과했어요. 이관·게시 완료를 뜻하지 않습니다.
+                  {run.definition
+                    ? "정의된 완료 지점에 도달했어요. 실제 결과는 단계별 근거에서 확인해주세요."
+                    : "문안·화면 검토를 통과했어요. 이관·게시 완료를 뜻하지 않습니다."}
                 </p>
               )}
               {run.status === "blocked" && (
                 <p role="status">
+                  {run.blockedReason && <span>{run.blockedReason} </span>}
                   미해결 항목을 확인해주세요. 재개해도 수정 횟수는 초기화되지
                   않습니다.
                 </p>
@@ -612,7 +645,7 @@ function TaskResult({
         />
       </label>
       <div className="workflow-composer-toolbar">
-        <span>현재 단계 · {stageLabels[run.stage]}</span>
+        <span>현재 단계 · {workflowStepLabel(run)}</span>
         <label>
           결과
           <select

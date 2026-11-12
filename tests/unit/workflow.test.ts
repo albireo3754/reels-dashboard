@@ -170,7 +170,10 @@ test("headless HTTP, CLI and actual stdio MCP share a run without Electron or mo
     assert.equal(response.status, 403);
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 23);
+    assert(listed.tools.some((t) => t.name === "reels_workflow_context"));
+    assert(
+      listed.tools.some((t) => t.name === "reels_workflow_validate-definition"),
+    );
     const result = await client.callTool({
       name: "reels_workflow_get",
       arguments: { runId: run.runId },

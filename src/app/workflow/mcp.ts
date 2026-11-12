@@ -1,3 +1,4 @@
+import { definitionLocationInput } from "../../shared/workflow-definition";
 import { mcpResult, mcpError } from "../../shared/mcp-result";
 import { inputFormTools } from "../../shared/input-form-tools";
 import { openFollowupsInput } from "../../shared/followups";
@@ -56,6 +57,16 @@ const handle = serveStdio(() => {
   }
   const tools = [
     [
+      "validate-definition",
+      definitionLocationInput,
+      "Validate a workspace YAML workflow without creating a run. Returns the normalized definition, hash and edges; does not execute tools.",
+    ],
+    [
+      "context",
+      workflowIdInput,
+      "Attach the current Codex session to a saved run by reading its pending task, skill/tool contracts, input hashes, outputs and exact submission IDs. Read-only; does not restart or spawn a session.",
+    ],
+    [
       "followups-open",
       openFollowupsInput,
       "Reconcile submitted answers and explicitly supplied additional instructions before continuing an existing draft/review. Preserves history; refuses stale tasks.",
@@ -99,7 +110,7 @@ const handle = serveStdio(() => {
     [
       "create",
       createWorkflowInput,
-      "Start a local blog editorial workflow. Existing source files and workspace instructions are required.",
+      "Start a saved workflow; optionally load definitionFile (workspace-relative YAML) and projectId. DSL runs are executed by the current session through declared skills/tools. Existing source files and workspace instructions are required.",
     ],
     [
       "submit",
@@ -119,7 +130,9 @@ const handle = serveStdio(() => {
         description,
         inputSchema,
         annotations: {
-          readOnlyHint: isReadOnlyWorkflowAction(action),
+          readOnlyHint:
+            action === "validate-definition" ||
+            isReadOnlyWorkflowAction(action),
           destructiveHint: false,
           openWorldHint: false,
         },

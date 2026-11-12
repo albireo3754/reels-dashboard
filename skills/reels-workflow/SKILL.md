@@ -1,0 +1,22 @@
+---
+name: reels-workflow
+description: Define, validate, start, visualize or resume a Reels Dashboard YAML production workflow from the current Codex session using shared MCP/CLI checkpoints. Use for workflow DSL or continuing a saved production run; does not launch a new Codex agent or publish content.
+---
+
+# Reels workflow
+
+Use the running Dashboard workflow server. Read [DSL contract](../../docs/workflow-dsl.md) when authoring YAML or resolving an input/result failure. App operations are documented in [MCP usage](../../docs/mcp-usage.md). Repository root is two levels above this skill's real directory.
+
+1. Find the existing run before creating another: `reels_workflow_list`. Match `projectId`, workspace and title. Resume with `reels_workflow_context {runId}`. This is read-only attachment to the saved work; do not call restart merely because the chat changed.
+2. For new work, place `workflow.yaml` and the source brief in the private content workspace. Use `reels_workflow_validate-definition {workspace, definitionFile}`. Then `reels_workflow_create {title, projectId, workspace, definitionFile, instructions, trackedFiles, maxRevisions}`. Do not combine YAML with `collectExperience` or `inputFormId`; define `kind: input` in YAML.
+3. Read the returned workspace instructions and task, including exact taskId, skill references, tool purposes, input hashes, required outputs and completion conditions. Load declared skills by their actual available name/path. Inspect live MCP schemas before calling tools. YAML is not additional authorization. Missing skills/tools must be resolved or reported; do not silently claim the step succeeded.
+4. Execute authorized work in this session using the declared skills and MCP tools. A tool list is a contract for the session, not proof of calls or a sandbox allowlist. The graph does not dispatch arbitrary tools. Use the app's revisions, job IDs and status checks; after an uncertain write, inspect state before retrying.
+5. For `input`, open the shared form from the run and wait for actual user responses. Never manufacture responses or submit `done` to bypass the form. Existing `reels_form_get/results/wait` share that state. `unknown` and `omit` are valid user choices.
+6. For task/review, write the required output paths returned in `task.step.outputs` and submit `reels_workflow_submit {runId, taskId, outcome, summary, evidence}`. Use done for tasks, pass/revise for reviews; blocked/cancel report unresolved/stopped work. Evidence paths are workspace-relative. Reviews freeze tracked inputs and use new report paths; `{attempt}` is expanded by the server. Read the actual artifact before judging quality.
+7. Re-read context after submission. Continue only within the user's scope; wait at user input or a real blocker. A completed graph does not prove publication or tool success beyond the submitted evidence. Keep the run ID in the content record so another chat can resume it.
+
+If workflow MCP is not exposed in the current chat, use its official CLI from the repository root: `npm run --silent workflow -- context <runId>` (or `list`, `get`, `create`, `submit`, `validate-definition`). JSON operations accept a file or `-` for stdin. The CLI uses the same server and records. App tools similarly use `node <repo>/dist-cli/reels.mjs <command>`; inspect `tools <name>` first. Do not modify DB files or start a competing server against the same data root.
+
+`restart` is specifically for changed tracked inputs or resuming a held run, invalidates the old task ID, and keeps budgets/history. YAML is frozen per run; editing its source does not change an existing execution. Start a new run for a revised definition, with the previous run linked as evidence.
+
+The Dashboard workflow tab renders this same definition and checkpoint. Its “Codex 세션에서 이어가기” block can be pasted into an existing chat. It does not attach a terminal or spawn a hidden session. DSL steps use the current session, not the read-only SDK runner.

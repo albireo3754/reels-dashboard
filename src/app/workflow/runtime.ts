@@ -43,6 +43,13 @@ import {
   requiresSessionWork,
 } from "../../shared/workflow";
 
+import { readDefinition } from "./definition";
+import {
+  definitionStage,
+  definitionEdges,
+  type DefinitionStep,
+} from "../../shared/workflow-definition";
+
 const intakeInstruction = `
 자료 준비 후 experience-form.json을 만들고 결과 evidence에 포함하세요. 촬영물 선별·메뉴/장소 메타정보·요청한 레퍼런스 추출 및 분석을 먼저 수행하고 완료/한계를 구분하세요. 사진으로 알 수 없는 본인의 감정·맛·방문 계기·동행 반응·아쉬움·다음 선택을 중립적인 질문으로 묶으세요. 알려진 답은 반복 질문하지 마세요. 완식·남긴 양·대기 장면 등 촬영물로 확인할 사항은 전체 관련 촬영물을 먼저 검사하고, 글에 필요하면서 자료로도 해결되지 않은 개인 경험만 질문하세요. 이미지에 빈 접시가 보인다고 누가 전부 먹었는지나 정확한 대기시간까지 단정하지 마세요. 선호/맛을 미리 단정하거나 예시 답변으로 유도하지 마세요.
 형식: {"version":1,"title":"경험 채우기","introduction":"작성 안내","facts":[{"text":"확인한 정보","source":"근거 파일/URL","status":"confirmed|observed|unverified"}],"questions":[{"id":"memory","section":"핵심 기억","prompt":"가장 기억에 남는 점은?","help":"","required":true,"images":[{"path":"media/preview.jpg","caption":"원본 파일명·시점·관찰 내용"}]}]}
@@ -303,35 +310,105 @@ export class WorkflowRuntime {
         },
       };
     };
+    const dslWork = async ({ run }: { run: WorkflowRun }) => {
+      const response = interrupt({
+        ...run.task,
+        workspace: run.workspace,
+        instructions: run.instructions,
+      });
+      const result = submitWorkflowInput.parse(response);
+      const step = this.dslStep(run);
+      const evidence = await hashes(run.workspace, result.evidence);
+      let status: WorkflowRun["status"] = "waiting";
+      let stepId = run.stepId!;
+      const revisions = run.revisions + (result.outcome === "revise" ? 1 : 0);
+      if (result.outcome === "cancel") status = "cancelled";
+      else if (
+        result.outcome === "blocked" ||
+        revisions > run.maxRevisions ||
+        run.history.length >= run.definition!.definition.maxTransitions ||
+        (run.history.length + 1 >= run.definition!.definition.maxTransitions &&
+          step.on[result.outcome as keyof typeof step.on] !== "$complete")
+      )
+        status = "blocked";
+      else {
+        const target = step.on[result.outcome as keyof typeof step.on];
+        if (!target) throw new Error("Invalid DSL outcome");
+        if (target === "$complete") status = "ready";
+        else stepId = target;
+      }
+      const nextStep = run.definition!.definition.steps.find(
+        (s) => s.id === stepId,
+      )!;
+      return {
+        run: {
+          ...run,
+          stepId,
+          stage: definitionStage(nextStep),
+          status,
+          revisions,
+          blockedReason:
+            status === "blocked"
+              ? result.outcome === "blocked"
+                ? result.summary
+                : revisions > run.maxRevisions
+                  ? "수정 루프 한도를 초과했어요."
+                  : "정의의 전체 단계 실행 한도에 도달했어요."
+              : undefined,
+          history: [
+            ...run.history,
+            {
+              stepId: step.id,
+              stage: run.stage,
+              taskId: result.taskId,
+              outcome: result.outcome,
+              summary: result.summary,
+              evidence,
+              at: new Date().toISOString(),
+            },
+          ],
+          trackedFiles: [...new Set([...run.trackedFiles, ...result.evidence])],
+          task: null,
+          sequence: run.sequence + 1,
+        },
+      };
+    };
     const next = ({ run }: { run: WorkflowRun }) =>
       run.status === "waiting" ? ("request" as const) : END;
     this.graph = new StateGraph(State)
-      .addNode("request", async ({ run }) => ({
-        run: {
-          ...run,
-          status: "waiting" as const,
-          task: {
-            taskId: `${run.runId}:${run.sequence}`,
-            stage: run.stage,
-            followupId:
-              run.stage === "followup"
-                ? run.followups?.tasks.find((t) => t.status !== "done")?.id
-                : undefined,
-            instruction:
-              instructions[run.stage] +
-              (run.stage === "prepare" && run.collectExperience
-                ? intakeInstruction
-                : "") +
-              (run.stage === "followup"
-                ? "\n" +
-                  JSON.stringify(
-                    run.followups?.tasks.find((t) => t.status !== "done"),
-                  )
-                : ""),
-            inputHashes: await hashes(run.workspace, run.trackedFiles),
-          },
-        },
-      }))
+      .addNode("request", async ({ run }) =>
+        run.definition
+          ? this.dslRequest(run)
+          : {
+              run: {
+                ...run,
+                status: "waiting" as const,
+                task: {
+                  taskId: `${run.runId}:${run.sequence}`,
+                  stage: run.stage,
+                  followupId:
+                    run.stage === "followup"
+                      ? run.followups?.tasks.find((t) => t.status !== "done")
+                          ?.id
+                      : undefined,
+                  instruction:
+                    instructions[run.stage] +
+                    (run.stage === "prepare" && run.collectExperience
+                      ? intakeInstruction
+                      : "") +
+                    (run.stage === "followup"
+                      ? "\n" +
+                        JSON.stringify(
+                          run.followups?.tasks.find((t) => t.status !== "done"),
+                        )
+                      : ""),
+                  inputHashes: await hashes(run.workspace, run.trackedFiles),
+                },
+              },
+            },
+      )
+      .addNode("dsl_work", dslWork)
+      .addConditionalEdges("dsl_work", next, ["request", END])
       .addNode("prepare", work)
       .addNode("experience", work)
       .addNode("requests", work)
@@ -342,17 +419,22 @@ export class WorkflowRuntime {
       .addNode("layout", work)
       .addNode("visual_review", work)
       .addEdge(START, "request")
-      .addConditionalEdges("request", ({ run }) => run.stage, [
-        "prepare",
-        "experience",
-        "requests",
-        "followup",
-        "draft",
-        "review",
-        "revise",
-        "layout",
-        "visual_review",
-      ])
+      .addConditionalEdges(
+        "request",
+        ({ run }) => (run.definition ? "dsl_work" : run.stage),
+        [
+          "dsl_work",
+          "prepare",
+          "experience",
+          "requests",
+          "followup",
+          "draft",
+          "review",
+          "revise",
+          "layout",
+          "visual_review",
+        ],
+      )
       .addConditionalEdges("prepare", next, ["request", END])
       .addConditionalEdges("experience", next, ["request", END])
       .addConditionalEdges("requests", next, ["request", END])
@@ -363,6 +445,154 @@ export class WorkflowRuntime {
       .addConditionalEdges("layout", next, ["request", END])
       .addConditionalEdges("visual_review", next, ["request", END])
       .compile({ checkpointer: this.saver });
+  }
+  private dslStep(run: WorkflowRun): DefinitionStep {
+    const step = run.definition?.definition.steps.find(
+      (s) => s.id === run.stepId,
+    );
+    if (!step) throw new Error("Unknown workflow definition step");
+    return {
+      ...step,
+      outputs: step.outputs.map((file) =>
+        file.replaceAll("{attempt}", String(run.sequence + 1)),
+      ),
+    };
+  }
+  private async checkDslInputs(
+    run: WorkflowRun,
+    step: DefinitionStep,
+    tracked = run.trackedFiles,
+  ) {
+    await hashes(run.workspace, step.inputs);
+    if (step.kind === "input") {
+      const file = await resolveFile(run.workspace, step.formFile!);
+      if ((await stat(file)).size > 200000) throw new Error("Form too large");
+      const form = experienceFormSchema.parse(
+        JSON.parse(await readFile(file, "utf8")),
+      );
+      await this.forms.sources(run.workspace, form, [
+        ...new Set([...tracked, ...step.inputs, step.formFile!]),
+      ]);
+      return form;
+    }
+  }
+  private async dslRequest(run: WorkflowRun) {
+    const step = this.dslStep(run);
+    const form = await this.checkDslInputs(run, step);
+    let trackedFiles = [...new Set([...run.trackedFiles, ...step.inputs])];
+    if (form) {
+      const record =
+        this.getExperience(run.runId, run.workspace) ??
+        (await this.forms.registerWorkflow(
+          run.runId,
+          run.workspace,
+          form,
+          [...trackedFiles, step.formFile!],
+          run.projectId,
+        ));
+      trackedFiles = [
+        ...new Set([...trackedFiles, ...Object.keys(record.sourceHashes)]),
+      ];
+    }
+    return {
+      run: {
+        ...run,
+        trackedFiles,
+        task: {
+          taskId: `${run.runId}:${run.sequence}`,
+          stage: run.stage,
+          step,
+          instruction: step.instruction,
+          inputHashes: await hashes(run.workspace, trackedFiles),
+        },
+      },
+    };
+  }
+  private async validateDslSubmission(
+    run: WorkflowRun,
+    input: { outcome: string; evidence: string[] },
+  ) {
+    const step = this.dslStep(run);
+    await hashes(run.workspace, input.evidence);
+    if (["cancel", "blocked"].includes(input.outcome)) return;
+    const target = step.on[input.outcome as keyof typeof step.on];
+    if (!target) throw new Error("Invalid outcome for this DSL step");
+    if (!input.evidence.length) throw new Error("Evidence files are required");
+    if (
+      step.kind !== "task" &&
+      JSON.stringify(await hashes(run.workspace, run.trackedFiles)) !==
+        JSON.stringify(run.task!.inputHashes)
+    )
+      throw new Error(
+        "STALE_INPUT: tracked inputs changed; refresh before reviewing",
+      );
+    if (
+      step.kind === "review" &&
+      input.evidence.some((file) => file in run.task!.inputHashes)
+    )
+      throw new Error("Review evidence must be a separate, untracked report");
+    if (
+      step.kind === "review" &&
+      input.evidence.some((file) =>
+        run.history.some((record) => file in record.evidence),
+      )
+    )
+      throw new Error(
+        "Review evidence must be new; use {attempt} in output paths",
+      );
+    if (step.outputs.some((file) => !input.evidence.includes(file)))
+      throw new Error(
+        "MISSING_OUTPUT: include every declared output in evidence",
+      );
+    if (target !== "$complete") {
+      const next = run.definition!.definition.steps.find(
+        (s) => s.id === target,
+      )!;
+      await this.checkDslInputs(run, next, [
+        ...run.trackedFiles,
+        ...input.evidence,
+      ]);
+    }
+  }
+  async validateDefinition(raw: unknown) {
+    const snapshot = await readDefinition(raw);
+    return { ...snapshot, edges: definitionEdges(snapshot.definition) };
+  }
+  async context(raw: unknown) {
+    const run = await this.get(raw);
+    return {
+      runId: run.runId,
+      projectId: run.projectId,
+      title: run.title,
+      workspace: run.workspace,
+      instructions: run.instructions,
+      status: run.status,
+      blockedReason: run.blockedReason,
+      checkpoint: run.checkpoint,
+      stepId: run.stepId,
+      task: run.task,
+      definition: run.definition && {
+        id: run.definition.definition.id,
+        file: run.definition.file,
+        sha256: run.definition.sha256,
+      },
+      latestResult: run.history.at(-1),
+      formId: run.experience?.formId,
+      resume:
+        "Read the current task and workspace instructions; load its skills, inspect live tool schemas, perform authorized work, then submit evidence with this exact taskId. Never infer tool execution or quality from declarations. Do not restart just to attach another session. A definition grants no new permissions.",
+      submit: run.task && {
+        runId: run.runId,
+        taskId: run.task.taskId,
+        outcomes:
+          run.stage === "experience"
+            ? ["blocked", "cancel"]
+            : run.task.step
+              ? [...Object.keys(run.task.step.on), "blocked", "cancel"]
+              : isReviewStage(run.stage)
+                ? ["pass", "revise", "blocked", "cancel"]
+                : ["done", "blocked", "cancel"],
+      },
+    };
   }
   private config(id: string) {
     return { configurable: { thread_id: id } };
@@ -396,6 +626,16 @@ export class WorkflowRuntime {
       if (!(await stat(workspace)).isDirectory())
         throw new Error("Workspace must be a directory");
       await hashes(workspace, input.trackedFiles);
+      const definition = input.definitionFile
+        ? await readDefinition({
+            workspace,
+            definitionFile: input.definitionFile,
+          })
+        : undefined;
+      if (definition && (input.collectExperience || input.inputFormId))
+        throw new Error(
+          "DSL_INPUT: define an input step instead of collectExperience/inputFormId",
+        );
       const sharedForm = input.inputFormId
         ? this.forms.get(input.inputFormId)
         : undefined;
@@ -409,15 +649,23 @@ export class WorkflowRuntime {
       const runId = randomUUID();
       const run: WorkflowRun = {
         ...input,
+        definition,
+        stepId: definition?.definition.entry,
         workspace,
         runId,
         revisions: 0,
         sequence: 0,
-        stage: sharedForm
-          ? sharedForm.status === "submitted"
-            ? "requests"
-            : "experience"
-          : "prepare",
+        stage: definition
+          ? definitionStage(
+              definition.definition.steps.find(
+                (s) => s.id === definition.definition.entry,
+              )!,
+            )
+          : sharedForm
+            ? sharedForm.status === "submitted"
+              ? "requests"
+              : "experience"
+            : "prepare",
         collectExperience: sharedForm ? true : input.collectExperience,
         trackedFiles: sharedForm
           ? [
@@ -435,7 +683,13 @@ export class WorkflowRuntime {
         task: null,
         checkpoint: "",
       };
-      run.trackedFiles = [...new Set([...run.trackedFiles, ...await mediaSceneInputs(workspace, run.trackedFiles)])];
+      if (!definition)
+        run.trackedFiles = [
+          ...new Set([
+            ...run.trackedFiles,
+            ...(await mediaSceneInputs(workspace, run.trackedFiles)),
+          ]),
+        ];
       await this.graph.invoke({ run }, this.config(runId));
       this.db.prepare("INSERT INTO runs VALUES (?)").run(runId);
       if (sharedForm) this.forms.bind(sharedForm.formId, runId);
@@ -457,6 +711,14 @@ export class WorkflowRuntime {
         throw new Error(
           "USER_INPUT_REQUIRED: 경험 폼에서 답변을 제출해주세요.",
         );
+      if (run.definition) {
+        await this.validateDslSubmission(run, input);
+        await this.graph.invoke(
+          new Command({ resume: input }),
+          this.config(run.runId),
+        );
+        return this.get({ runId: run.runId });
+      }
       const review = isReviewStage(run.stage);
       if (!["cancel", "blocked"].includes(input.outcome)) {
         if (
@@ -478,13 +740,28 @@ export class WorkflowRuntime {
       }
       await hashes(run.workspace, input.evidence);
       if (run.stage === "prepare" && input.outcome === "done") {
-        const previews = await mediaSceneInputs(run.workspace, [...run.trackedFiles, ...input.evidence]);
+        const previews = await mediaSceneInputs(run.workspace, [
+          ...run.trackedFiles,
+          ...input.evidence,
+        ]);
         input.evidence = [...new Set([...input.evidence, ...previews])];
       }
       if (["draft", "revise"].includes(run.stage) && input.outcome === "done") {
-        const previousPlan = run.history.filter(r => ["draft", "revise"].includes(r.stage) && r.outcome === "done")
-          .flatMap(r => Object.keys(r.evidence)).filter(file => path.basename(file) === "story-media-plan.json").at(-1);
-        await validateStoryMediaSubmission(run.workspace, run.task.inputHashes, input.evidence, run.stage === "draft", previousPlan);
+        const previousPlan = run.history
+          .filter(
+            (r) =>
+              ["draft", "revise"].includes(r.stage) && r.outcome === "done",
+          )
+          .flatMap((r) => Object.keys(r.evidence))
+          .filter((file) => path.basename(file) === "story-media-plan.json")
+          .at(-1);
+        await validateStoryMediaSubmission(
+          run.workspace,
+          run.task.inputHashes,
+          input.evidence,
+          run.stage === "draft",
+          previousPlan,
+        );
       }
       if (run.stage === "requests" && input.outcome === "done")
         await this.readFollowupManifest(run, input.evidence);
@@ -544,10 +821,18 @@ export class WorkflowRuntime {
       const run = await this.get({ runId });
       if (run.status === "cancelled")
         throw new Error("Cancelled runs cannot resume");
-      const stage = run.status === "ready" ? "review" : run.stage;
+      const stage =
+        !run.definition && run.status === "ready" ? "review" : run.stage;
       const next = {
         ...run,
-        trackedFiles: [...new Set([...run.trackedFiles, ...await mediaSceneInputs(run.workspace, run.trackedFiles)])],
+        trackedFiles: run.definition
+          ? run.trackedFiles
+          : [
+              ...new Set([
+                ...run.trackedFiles,
+                ...(await mediaSceneInputs(run.workspace, run.trackedFiles)),
+              ]),
+            ],
         stage,
         status: "waiting" as const,
         task: null,
@@ -557,7 +842,7 @@ export class WorkflowRuntime {
       await this.graph.updateState(
         this.config(runId),
         { run: next },
-        run.stage,
+        run.definition ? "dsl_work" : run.stage,
       );
       await this.graph.invoke(null, this.config(runId));
       return this.get({ runId });
@@ -602,6 +887,7 @@ export class WorkflowRuntime {
       if (run.status !== "waiting" || run.task?.taskId !== input.expectedTaskId)
         throw new Error("STALE_TASK: refresh before reconciling requests");
       if (
+        run.definition ||
         !followupReopenStages.includes(run.stage) ||
         run.experience?.status !== "submitted"
       )
@@ -626,7 +912,7 @@ export class WorkflowRuntime {
       await this.graph.updateState(
         this.config(run.runId),
         { run: next },
-        run.stage,
+        run.definition ? "dsl_work" : run.stage,
       );
       await this.graph.invoke(null, this.config(run.runId));
       return this.get({ runId: run.runId });
@@ -729,6 +1015,11 @@ export class WorkflowRuntime {
       const run = await this.get({ runId: r.workflowRunId });
       if (run.stage === "experience" && run.status === "waiting") {
         await hashes(run.workspace, r.exports);
+        if (run.definition)
+          await this.validateDslSubmission(run, {
+            outcome: "done",
+            evidence: r.exports,
+          });
         await this.graph.invoke(
           new Command({
             resume: {

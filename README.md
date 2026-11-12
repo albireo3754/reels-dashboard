@@ -70,6 +70,8 @@ Dashboard workflows and Codex sessions share the same versioned forms, user answ
 
 ## Headless workflows
 
+Production workflows can now be defined in **YAML**: steps declare skills, MCP tools, evidence and transitions; the current Codex session executes and resumes them, while Dashboard renders the same saved definition and live state. Start with the [DSL contract](docs/workflow-dsl.md), [production example](docs/workflow-examples/production.yaml) and [session skill](skills/reels-workflow/SKILL.md).
+
 Blog editorial loops can run through LangGraph with a local web server, CLI and independent MCP server. Tasks can be performed by the current Codex session or explicitly run through the Codex TypeScript SDK. Saved Codex login works without an API key; a configured key takes priority. The desktop app starts the workflow server itself. For browser/CLI/MCP use without the app, run `npm run build:web` then `npm run start:server`. See [workflow control and scope](docs/workflows.md) and [desktop embedded server](docs/workflows.md#desktop-embedded-server--2026-11-03). Native Photos/editor features retain their existing platform requirements.
 
 ## Run locally

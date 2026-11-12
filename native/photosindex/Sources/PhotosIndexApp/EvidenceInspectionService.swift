@@ -13,7 +13,9 @@ struct EvidenceInspectionService: Sendable {
 
     init(
         generator: EvidenceGenerator = EvidenceGenerator(
-            imageProvider: PhotoKitEvidenceImageProvider(),
+            // Fast PhotoKit delivery may return only a 64px degraded cache image.
+            // Inspection needs the requested resolution for signs, menus and OCR.
+            imageProvider: PhotoKitEvidenceImageProvider(highQuality: true),
             analyzer: VisionEvidenceAnalyzer()
         ),
         timeout: TimeInterval = 600

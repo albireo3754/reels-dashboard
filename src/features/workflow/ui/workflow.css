@@ -316,3 +316,83 @@
   color: inherit;
   line-height: 1.5;
 }
+
+.definition-flow {
+  border: 1px solid var(--border, #ccd1d9);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+.definition-flow header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+.definition-flow header span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.definition-graph-scroll {
+  overflow: auto;
+  max-height: 520px;
+  margin: 12px 0;
+}
+.definition-graph-scroll svg {
+  width: 100%;
+  min-width: 520px;
+  max-width: 760px;
+  display: block;
+  color: #64748b;
+}
+.definition-revise {
+  color: #b7791f;
+  stroke-dasharray: 5 3;
+}
+.definition-node {
+  cursor: pointer;
+}
+.definition-node rect {
+  fill: var(--panel, #fff);
+  stroke: #94a3b8;
+}
+.definition-node text {
+  fill: var(--text, #172033);
+  font-size: 14px;
+}
+.definition-node .definition-node-status {
+  font-size: 11px;
+}
+.definition-node.is-current rect {
+  stroke: #b43e68;
+  stroke-width: 3px;
+}
+.definition-node:focus {
+  outline: none;
+}
+.definition-node:focus rect {
+  stroke: #2563eb;
+  stroke-width: 3px;
+}
+.definition-step {
+  border-top: 1px solid var(--border, #ccd1d9);
+  overflow-wrap: anywhere;
+}
+.definition-step dl {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+}
+.definition-step dd {
+  margin: 0;
+}
+.definition-step ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.definition-flow pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 340px;
+  overflow: auto;
+}

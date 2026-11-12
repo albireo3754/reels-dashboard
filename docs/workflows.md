@@ -1,5 +1,7 @@
 # Headless editorial workflows
 
+For configurable production flows executed by the current session, use the [YAML DSL](workflow-dsl.md). Its stored definition drives both checkpoint transitions and the Dashboard graph. The fixed editorial flow below remains available for existing runs.
+
 LangGraph owns stage transitions and durable checkpoints. Work can be performed by the **current Codex session**, or by explicitly starting one **Codex TypeScript SDK** job. Both use the same task/result validation. Saved Codex login works without an API key. Electron and shell orchestration loops are not required.
 
 ## Start

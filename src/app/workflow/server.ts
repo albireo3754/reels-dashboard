@@ -93,6 +93,11 @@ export async function startWorkflowServer(options: {
         });
         return json(200, runtime.getJob(jobId));
       }
+      if (url.pathname === "/api/workflows/context" && req.method === "GET")
+        return json(
+          200,
+          await runtime.context({ runId: url.searchParams.get("id") }),
+        );
       if (url.pathname === "/api/workflows/run" && req.method === "GET")
         return json(
           200,
@@ -146,6 +151,8 @@ export async function startWorkflowServer(options: {
               opened: request.surface === "desktop",
             });
           }
+          case "/api/workflows/validate-definition":
+            return json(200, await runtime.validateDefinition(input));
           case "/api/workflows/create":
             return json(200, await runtime.create(input));
           case "/api/workflows/followups-open":
@@ -188,7 +195,10 @@ export async function startWorkflowServer(options: {
                 controller.abort(new Error("Client disconnected"));
             });
             try {
-              return json(200, await executor.chatBlog(input, controller.signal));
+              return json(
+                200,
+                await executor.chatBlog(input, controller.signal),
+              );
             } catch (error) {
               if (res.destroyed) return;
               throw error;

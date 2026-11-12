@@ -161,8 +161,11 @@ upload status must not require local download currency. No full web suite was ru
 The subsequent single-outbound revision passed 389 Node unit tests, type/FSD and
 public-source checks, both content-board web tests, and real desktop/MCP tests
 that delivered twice into the same iCloud directory, replaced a stable filename,
-and read the earlier bytes from local history. The installed-app replacement and
-existing content consolidation are tracked separately in TASKS.md.
+and read the earlier bytes from local history. After unlocking the Mac, the
+installed app was updated and a real project's latest video/cover/text were
+published to its fixed outbound directory. Upload completion, current card
+previews, and valid resource links were verified. Two former version directories
+were preserved locally, leaving one iCloud outbound folder for that project.
 
 ## General validation
 
