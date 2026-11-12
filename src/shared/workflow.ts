@@ -1,6 +1,11 @@
 import { inputFormActions } from "./input-forms";
 import { z } from "zod";
-import type { DefinitionSnapshot, DefinitionStep } from "./workflow-definition";
+import {
+  builtinDefinitionName,
+  type DefinitionSnapshot,
+  type DefinitionStep,
+} from "./workflow-definition";
+import type { GuideSnapshot } from "./workflow-guide";
 
 export const workflowStages = [
   "prepare",
@@ -27,6 +32,10 @@ export const stageLabels: Record<WorkflowStage, string> = {
 };
 export const createWorkflowInput = z.strictObject({
   definitionFile: z.string().min(1).optional(),
+  /** App-owned definition by name, instead of definitionFile. */
+  builtinDefinition: builtinDefinitionName.optional(),
+  /** Local guide file adding documents/instructions/skills per step (YAML runs). */
+  guideFile: z.string().min(1).optional(),
   projectId: z.string().trim().min(1).max(200).optional(),
   title: z.string().trim().min(1).max(200),
   workspace: z.string().min(1),
@@ -80,7 +89,7 @@ export type WorkflowAction = z.infer<typeof workflowAction>;
  * handler code is reported as stale instead of being reused. Dev and installed
  * builds of the same protocol share one server and data dir by design.
  */
-export const WORKFLOW_PROTOCOL_VERSION = 6;
+export const WORKFLOW_PROTOCOL_VERSION = 7;
 /** Shown when the server answering the workflow URL predates this app's actions. */
 export const STALE_WORKFLOW_SERVER_MESSAGE =
   "실행 중인 워크플로 서버가 이전 버전이에요. 따로 실행한 서버(npm run start:server)를 종료한 뒤 앱을 다시 시작해주세요.";
@@ -219,6 +228,10 @@ export interface WorkflowRun {
   blockedReason?: string;
   definition?: DefinitionSnapshot;
   definitionFile?: string;
+  builtinDefinition?: import("./workflow-definition").BuiltinDefinitionName;
+  /** Local guide frozen at create; merged into each task after the definition's text. */
+  guide?: GuideSnapshot;
+  guideFile?: string;
   stepId?: string;
   projectId?: string;
   followups?: import("./followups").Followups;

@@ -43,7 +43,8 @@ import {
   requiresSessionWork,
 } from "../../shared/workflow";
 
-import { readDefinition } from "./definition";
+import { readDefinition, readGuide } from "./definition";
+import { guidedStep } from "../../shared/workflow-guide";
 import { adoptStep, previewAdoption } from "./adopt";
 import {
   definitionStage,
@@ -552,6 +553,8 @@ export class WorkflowRuntime {
   private async dslRequest(run: WorkflowRun) {
     const step = this.dslStep(run);
     const adopt = await this.dslAdoption(run, step);
+    // The session receives the definition's contract followed by the local guide.
+    const guided = guidedStep(step, run.guide);
     if (adopt)
       return {
         run: {
@@ -559,8 +562,8 @@ export class WorkflowRuntime {
           task: {
             taskId: `${run.runId}:${run.sequence}`,
             stage: run.stage,
-            step,
-            instruction: step.instruction,
+            step: guided,
+            instruction: guided.instruction,
             inputHashes: await hashes(run.workspace, run.trackedFiles),
             adopt,
           },
@@ -589,8 +592,8 @@ export class WorkflowRuntime {
         task: {
           taskId: `${run.runId}:${run.sequence}`,
           stage: run.stage,
-          step,
-          instruction: step.instruction,
+          step: guided,
+          instruction: guided.instruction,
           inputHashes: await hashes(run.workspace, trackedFiles),
         },
       },
@@ -644,13 +647,22 @@ export class WorkflowRuntime {
   }
   async validateDefinition(raw: unknown) {
     const snapshot = await readDefinition(raw);
+    const input = raw as { workspace: string; guideFile?: string };
+    const workspace = await realpath(input.workspace);
+    const guide = input.guideFile
+      ? await readGuide(workspace, input.guideFile, snapshot.definition)
+      : undefined;
     return {
       ...snapshot,
       edges: definitionEdges(snapshot.definition),
-      skippable: await previewAdoption(
-        await realpath((raw as { workspace: string }).workspace),
-        snapshot.definition,
-      ),
+      skippable: await previewAdoption(workspace, snapshot.definition),
+      // Which local guide additions each step receives (documents by path and hash).
+      guide: guide && {
+        file: guide.file,
+        sha256: guide.sha256,
+        base: guide.base,
+        steps: guide.steps,
+      },
     };
   }
   async context(raw: unknown) {
@@ -671,6 +683,7 @@ export class WorkflowRuntime {
         file: run.definition.file,
         sha256: run.definition.sha256,
       },
+      guide: run.guide && { file: run.guide.file, sha256: run.guide.sha256 },
       latestResult: run.history.at(-1),
       formId: run.experience?.formId,
       resume:
@@ -721,11 +734,20 @@ export class WorkflowRuntime {
       if (!(await stat(workspace)).isDirectory())
         throw new Error("Workspace must be a directory");
       await hashes(workspace, input.trackedFiles);
-      const definition = input.definitionFile
-        ? await readDefinition({
-            workspace,
-            definitionFile: input.definitionFile,
-          })
+      const definition =
+        input.definitionFile || input.builtinDefinition
+          ? await readDefinition({
+              workspace,
+              definitionFile: input.definitionFile,
+              builtinDefinition: input.builtinDefinition,
+            })
+          : undefined;
+      if (input.guideFile && !definition)
+        throw new Error(
+          "GUIDE: a guide file needs definitionFile or builtinDefinition",
+        );
+      const guide = input.guideFile
+        ? await readGuide(workspace, input.guideFile, definition!.definition)
         : undefined;
       if (definition && (input.collectExperience || input.inputFormId))
         throw new Error(
@@ -746,6 +768,7 @@ export class WorkflowRuntime {
         ...input,
         skipCompleted: definition ? input.skipCompleted : undefined,
         definition,
+        guide,
         stepId: definition?.definition.entry,
         workspace,
         runId,

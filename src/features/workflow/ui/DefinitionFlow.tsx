@@ -173,6 +173,21 @@ export function DefinitionFlow({ run }: { run: WorkflowRun }) {
               </div>
             ))}
           </dd>
+          {run.guide?.steps[detail.id] && (
+            <>
+              <dt>로컬 가이드</dt>
+              <dd>
+                {run.guide.steps[detail.id].instruction && (
+                  <p>{run.guide.steps[detail.id].instruction}</p>
+                )}
+                {[
+                  ...run.guide.steps[detail.id].docs.map((d) => d.file),
+                  ...run.guide.steps[detail.id].skills,
+                  ...run.guide.steps[detail.id].tools.map((t) => t.name),
+                ].join(" · ") || "추가 지시만"}
+              </dd>
+            </>
+          )}
           <dt>입력</dt>
           <dd>{detail.inputs.join(" · ") || "현재 작업의 추적 근거"}</dd>
           <dt>산출물</dt>

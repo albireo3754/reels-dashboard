@@ -59,7 +59,7 @@ const handle = serveStdio(() => {
     [
       "validate-definition",
       definitionLocationInput,
-      "Validate a workspace YAML workflow without creating a run. Returns the normalized definition, hash and edges; does not execute tools.",
+      'Validate a workflow definition without creating a run: definitionFile (workspace YAML or <ancestor>/workflows/*.yaml) or builtinDefinition (app-owned, e.g. "blog"), plus optional guideFile (local per-step documents/instructions/skills). Returns the normalized definition, hash, edges, the leading steps a new run would skip and which guide additions attach to which step; does not execute tools.',
     ],
     [
       "context",
@@ -110,7 +110,7 @@ const handle = serveStdio(() => {
     [
       "create",
       createWorkflowInput,
-      "Start a saved workflow; optionally load definitionFile (workspace-relative YAML) and projectId. DSL runs are executed by the current session through declared skills/tools. Existing source files and workspace instructions are required.",
+      'Start a saved workflow; optionally load definitionFile (workspace-relative YAML or <ancestor>/workflows/*.yaml) or builtinDefinition (app-owned flow by name, e.g. "blog"), an optional guideFile with local per-step documents/instructions/skills, and projectId. DSL runs are executed by the current session through declared skills/tools. Existing source files and workspace instructions are required.',
     ],
     [
       "submit",

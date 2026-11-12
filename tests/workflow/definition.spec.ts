@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startWorkflowServer } from "../../src/app/workflow/server";
@@ -184,6 +184,71 @@ test("YAML UI, real MCP and CLI share one persisted run and display its topology
     expect(errors).toEqual([]);
   } finally {
     await client.close().catch(() => {});
+    await handle.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("UI creates a run from the built-in blog definition with a local guide", async ({
+  page,
+}) => {
+  const root = await mkdtemp(path.join(tmpdir(), "dsl-builtin-"));
+  const workspace = path.join(root, "research", "post");
+  await mkdir(workspace, { recursive: true });
+  await mkdir(path.join(root, "workflows"));
+  await mkdir(path.join(root, "notes"));
+  await writeFile(path.join(workspace, "brief.md"), "Synthetic brief");
+  await writeFile(path.join(root, "notes", "rules.md"), "Synthetic rules");
+  const guideFile = path.join(root, "workflows", "guides.yaml");
+  await writeFile(
+    guideFile,
+    "version: 1\ndefinition: blog\nsteps:\n  prepare:\n    docs: [notes/rules.md]\n    instruction: 합성 로컬 지시.\n    skills: [fixture-skill]\n",
+  );
+  const handle = await startWorkflowServer({
+    root: path.join(root, "db"),
+    port: 0,
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  try {
+    await page.goto(handle.url + "/?workflow=1");
+    await page
+      .getByRole("button", { name: "새 워크플로", exact: true })
+      .click();
+    await page.getByLabel("제목", { exact: true }).fill("내장 정의 실행");
+    await page.getByLabel("작업 폴더", { exact: true }).fill(workspace);
+    await page
+      .getByLabel("앱 내장 워크플로", { exact: false })
+      .selectOption("blog");
+    await expect(
+      page.getByLabel("워크플로 YAML", { exact: false }),
+    ).toBeDisabled();
+    await page.getByLabel("로컬 가이드 파일", { exact: false }).fill(guideFile);
+    await page.getByLabel("작성·검토 기준").fill("합성 자료만 사용한다.");
+    await page.getByLabel("기존 근거 파일", { exact: false }).fill("brief.md");
+    await page
+      .getByRole("button", { name: "워크플로 시작", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "현재 요청 · 촬영분 분석·장면 목록" }),
+    ).toBeVisible();
+    await expect(page.getByText("합성 로컬 지시.").first()).toBeVisible();
+    await page
+      .getByRole("button", { name: "촬영분 분석·장면 목록 · 현재", exact: true })
+      .click();
+    await expect(page.getByLabel("선택한 단계 계약")).toContainText(
+      "로컬 가이드",
+    );
+    await expect(page.getByLabel("선택한 단계 계약")).toContainText(
+      "notes/rules.md",
+    );
+    const { runs } = await fetch(handle.url + "/api/workflows").then((r) =>
+      r.json(),
+    );
+    expect(runs[0].definition.file).toBe("builtin:blog");
+    expect(runs[0].task.step.skills).toContain("fixture-skill");
+    expect(errors).toEqual([]);
+  } finally {
     await handle.close();
     await rm(root, { recursive: true, force: true });
   }

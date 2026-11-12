@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-const id = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/);
-const relativeFile = z
+export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/);
+const id = stepIdSchema;
+export const relativeFile = z
   .string()
   .min(1)
   .max(500)
@@ -34,29 +35,43 @@ const sharedDefinitionFile = z
         .every((part) => part !== ".." && part !== "." && part !== ""),
     "Use a workspace-relative path or a normalized absolute YAML path",
   );
+/** Workspace-relative file, or an absolute YAML file in `<ancestor>/workflows/`. */
+export const definitionPath = z.union([relativeFile, sharedDefinitionFile]);
+/**
+ * Definitions owned by the app, chosen by name. The flow (steps, transitions,
+ * kinds, outputs) and public instructions live in the source; local guides add
+ * private documents, instructions and skills per step.
+ */
+export const builtinDefinitionNames = ["blog"] as const;
+export const builtinDefinitionName = z.enum(builtinDefinitionNames);
+export type BuiltinDefinitionName = z.infer<typeof builtinDefinitionName>;
+export const builtinDefinitionLabels: Record<BuiltinDefinitionName, string> = {
+  blog: "블로그 · 촬영분에서 미리보기까지",
+};
+/** Exactly one of `definitionFile` and `builtinDefinition`; checked when read. */
 export const definitionLocationInput = z.strictObject({
   workspace: z.string().min(1),
-  definitionFile: z.union([relativeFile, sharedDefinitionFile]),
+  definitionFile: definitionPath.optional(),
+  builtinDefinition: builtinDefinitionName.optional(),
+  /** Local guide file (see workflow-guide.ts); same path rule as definitionFile. */
+  guideFile: definitionPath.optional(),
 });
+export const stepToolSchema = z.strictObject({
+  server: z.string().trim().min(1).max(100),
+  name: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .max(120),
+  purpose: z.string().trim().min(1).max(1000),
+});
+export const stepSkillSchema = z.string().trim().min(1).max(1000);
 const stepSchema = z.strictObject({
   id,
   title: z.string().trim().min(1).max(200),
   kind: z.enum(["task", "review", "input"]),
   instruction: z.string().trim().min(1).max(20000),
-  skills: z.array(z.string().trim().min(1).max(1000)).max(20).default([]),
-  tools: z
-    .array(
-      z.strictObject({
-        server: z.string().trim().min(1).max(100),
-        name: z
-          .string()
-          .regex(/^[a-zA-Z0-9_-]+$/)
-          .max(120),
-        purpose: z.string().trim().min(1).max(1000),
-      }),
-    )
-    .max(30)
-    .default([]),
+  skills: z.array(stepSkillSchema).max(20).default([]),
+  tools: z.array(stepToolSchema).max(30).default([]),
   inputs: z.array(relativeFile).max(100).default([]),
   outputs: z.array(relativeFile).max(100).default([]),
   completion: z.array(z.string().trim().min(1).max(2000)).min(1).max(20),
@@ -141,6 +156,7 @@ export const workflowDefinitionSchema = z
 export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>;
 export type DefinitionStep = WorkflowDefinition["steps"][number];
 export interface DefinitionSnapshot {
+  /** Path as given, or `builtin:<name>` for an app-owned definition. */
   file: string;
   sha256: string;
   source: string;

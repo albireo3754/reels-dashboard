@@ -1,4 +1,8 @@
 import { DefinitionFlow } from "./DefinitionFlow";
+import {
+  builtinDefinitionLabels,
+  builtinDefinitionNames,
+} from "../../../shared/workflow-definition";
 import { FormInbox } from "./FormInbox";
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExperienceForm } from "./ExperienceForm";
@@ -160,6 +164,8 @@ function ConnectedWorkflowPanel({
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [definitionFile, setDefinitionFile] = useState("");
+  const [builtinDefinition, setBuiltinDefinition] = useState("");
+  const usesDefinition = !!(definitionFile || builtinDefinition);
   const [openNotice, setOpenNotice] = useState("");
   const handledOpenRun = useRef<number | undefined>(undefined);
   const refresh = useCallback(async () => {
@@ -254,10 +260,15 @@ function ConnectedWorkflowPanel({
                   .filter(Boolean),
                 maxRevisions: Number(form.get("maxRevisions")),
                 collectExperience:
-                  !definitionFile && form.get("experience") === "on",
-                ...(definitionFile
+                  !usesDefinition && form.get("experience") === "on",
+                ...(usesDefinition
                   ? {
-                      definitionFile,
+                      ...(builtinDefinition
+                        ? { builtinDefinition }
+                        : { definitionFile }),
+                      ...(form.get("guideFile")
+                        ? { guideFile: form.get("guideFile") }
+                        : {}),
                       skipCompleted: form.get("skipCompleted") === "on",
                     }
                   : {}),
@@ -283,15 +294,38 @@ function ConnectedWorkflowPanel({
             />
           </label>
           <label>
+            앱 내장 워크플로 (선택)
+            <select
+              name="builtinDefinition"
+              value={builtinDefinition}
+              onChange={(e) => setBuiltinDefinition(e.target.value)}
+            >
+              <option value="">사용 안 함</option>
+              {builtinDefinitionNames.map((name) => (
+                <option key={name} value={name}>
+                  {builtinDefinitionLabels[name]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             워크플로 YAML (선택 · 작업 폴더 기준 상대 경로, 또는 상위 폴더
             workflows/ 아래 공통 정의의 절대 경로)
             <input
               name="definitionFile"
               value={definitionFile}
+              disabled={!!builtinDefinition}
               onChange={(e) => setDefinitionFile(e.target.value)}
               placeholder="workflow.yaml"
             />
           </label>
+          {usesDefinition && (
+            <label>
+              로컬 가이드 파일 (선택 · 단계별로 읽을 문서·추가 지시·스킬, 같은
+              경로 규칙)
+              <input name="guideFile" placeholder="workflow.guides.yaml" />
+            </label>
+          )}
           <label>
             연결할 프로젝트 ID (선택)
             <input name="projectId" placeholder="Dashboard 프로젝트 ID" />
@@ -318,11 +352,11 @@ function ConnectedWorkflowPanel({
               defaultValue="2"
             />
           </label>
-          {definitionFile && (
+          {usesDefinition && (
             <label className="experience-toggle">
               <input type="checkbox" name="skipCompleted" defaultChecked />
-              이미 끝난 단계(산출물이 있고 유효함)는 넘어가기 · 검토 단계는
-              항상 실행
+              이미 끝난 단계(산출물이 있고 유효함)는 넘어가기 · 검토 단계는 항상
+              실행
             </label>
           )}
           <label className="experience-toggle">
@@ -330,7 +364,7 @@ function ConnectedWorkflowPanel({
               type="checkbox"
               name="experience"
               defaultChecked
-              disabled={!!definitionFile}
+              disabled={usesDefinition}
             />
             자료 준비 후 내 경험을 한 폼으로 받기
           </label>
