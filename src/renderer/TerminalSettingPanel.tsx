@@ -52,7 +52,17 @@ export function TerminalSettingPanel({ bridge }: { bridge: DashboardBridge }) {
           disabled={!setting || busy}
           onChange={(e) => {
             const enabled = e.target.checked;
-            void act(async () => setSetting(await api.set(enabled)));
+            const previous = setting!;
+            // Reflect the click at once; the saved value replaces it, or a failure restores it.
+            setSetting({ ...previous, enabled });
+            void act(async () => {
+              try {
+                setSetting(await api.set(enabled));
+              } catch (error) {
+                setSetting(previous);
+                throw error;
+              }
+            });
           }}
         />
         터미널 사용
