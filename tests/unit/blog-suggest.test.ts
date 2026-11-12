@@ -34,7 +34,6 @@ async function withWorkflowUrl<T>(url:string,run:()=>Promise<T>){
 }
 const post=(base:string,body:unknown)=>fetch(base+"/api/blog/suggest",{method:"POST",headers:{"Content-Type":"application/json",Origin:base},body:JSON.stringify(body)});
 const texts=(list:unknown[])=>list.map(s=>(typeof s==="string"?s:(s as {text:string}).text).trim());
-/** Every file below root with size+mtime, to prove a suggestion never writes anything. */
 
 test("/api/blog/suggest uses the unsaved paragraph and splits before/after at the plain-text caret",async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),"blog-suggest-"));
