@@ -40,6 +40,7 @@ import {
   type BoardQuery,
 } from "../features/content-board";
 import { savedAgentPermission } from "../shared/workbench";
+import { ProjectTerminalDialog } from "./ProjectTerminalDialog";
 import {
   DevWorkspace,
   workbenchShortcutTarget,
@@ -82,6 +83,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   useEffect(() => { if (tab === "workflow") setWorkflowVisited(true); }, [tab]);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [requestedTerminal, setRequestedTerminal] = useState("");
+  const [terminalProject, setTerminalProject] = useState<Project | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [feedbackDrafts, setFeedbackDrafts] = useState<{ id: number; text: string; phase: "fix" }[]>([]);
   const feedbackSequence = useRef(0);
@@ -877,6 +879,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                     bridge={bridge}
                     readOnly={readOnly}
                     busy={!!busy}
+                    onTerminal={!readOnly && bridge.mode === "desktop" ? () => setTerminalProject(project) : undefined}
                     onEdit={() => {
                       setEditingRevision(dashboard.updatedAt);
                       setEditingProject({ ...project });
@@ -1635,6 +1638,20 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           </>
         )}
       </main>
+      {terminalProject && (
+        <ProjectTerminalDialog
+          key={terminalProject.id}
+          project={terminalProject}
+          api={bridge.workbench}
+          onClose={() => setTerminalProject(null)}
+          onSettings={() => { setTerminalProject(null); setTab("settings"); }}
+          onStarted={id => {
+            setTerminalProject(null);
+            setRequestedTerminal(id);
+            setDrawerMode("open");
+          }}
+        />
+      )}
       {editingProject && (
         <ProjectDialog
           project={editingProject}

@@ -776,6 +776,10 @@ dialog.clip-upload-dialog {
 .project-dialog {
   max-height: calc(100vh - 48px);
 }
+.project-terminal-prompt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .project-form {
   display: flex;
   flex: 1 1 auto;

@@ -9,6 +9,7 @@ import {
   HERDR_TERMINAL_KINDS,
   TERMINAL_BACKENDS,
   workPrompt,
+  projectWorkPrompt,
   type TerminalBackendId,
   type TerminalKind,
   type WorkTerminal,
@@ -64,8 +65,16 @@ const startSchema = z
       .refine((v) => !/[\x00-\x08\x0b-\x1f\x7f]/.test(v))
       .optional(),
     permission: z.enum(["ask", "bypass"]).optional(),
+    project: z.object({
+      id: z.string().trim().min(1).max(500).regex(/^[^\x00-\x1f\x7f]+$/),
+      title: z.string().trim().min(1).max(500).regex(/^[^\x00-\x1f\x7f]+$/),
+    }).strict().optional(),
   })
-  .strict();
+  .strict()
+  .refine(value => !value.project || (
+    (value.kind === "codex" || value.kind === "claude") &&
+    (!value.phase || value.phase === "implement")
+  ), "프로젝트 터미널은 에이전트 구현 세션에서만 사용할 수 있어요.");
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 export function terminalCommand(input: StartTerminal): string | null {
   const value = startSchema.parse(input);
@@ -74,7 +83,9 @@ export function terminalCommand(input: StartTerminal): string | null {
     return "exec npm run dev -- --host 127.0.0.1 --port 4183 --strictPort";
   if (value.kind === "checks")
     return "npm run typecheck && npm run check:architecture && npm test && npm run build";
-  const prompt = value.task?.trim()
+  const prompt = value.project
+    ? projectWorkPrompt(value.project, value.task)
+    : value.task?.trim()
     ? workPrompt(value.phase ?? "implement", value.task)
     : "";
   const args = agentProvider(value.kind).args(

@@ -44,6 +44,7 @@ export function ProjectCard({
   busy,
   onEdit,
   onReveal,
+  onTerminal,
 }: {
   project: Project;
   bridge: DashboardBridge;
@@ -51,6 +52,7 @@ export function ProjectCard({
   busy: boolean;
   onEdit: () => void;
   onReveal?: (path: string) => void;
+  onTerminal?: () => void;
 }) {
   const resources = project.resources ?? [];
   const publications = project.publications ?? [];
@@ -125,6 +127,11 @@ export function ProjectCard({
         <p className="project-next">
           {project.nextAction || "다음 할 일을 정해보세요."}
         </p>
+        {onTerminal && (
+          <button type="button" className="small" onClick={onTerminal} disabled={busy}>
+            프로젝트 터미널
+          </button>
+        )}
         {!readOnly && resources.length > 0 && (
           <details className="local-resources">
             <summary>연결 자료 {resources.length}개</summary>
