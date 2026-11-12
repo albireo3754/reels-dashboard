@@ -1,5 +1,15 @@
 # Reels Dashboard 진행 상태
 
+## 원본 직접 재생 + GPU 사본 통합 — 2026-11-12
+
+배경: `feat/direct-playback`(원본 직접 재생, 사본은 실패·dataless 때만)과 `feat/gpu-proxy`(사본 VideoToolbox 생성, CPU 자동 폴백)를 `feat/playback-direct-gpu`로 합쳤다. 문서 충돌 두 곳은 양쪽 내용을 모두 살렸다.
+
+- [x] 검증: `npm run typecheck`, `npm run check:architecture`, `npm test`(498개 중 494 통과·4 건너뜀), `npm run build`, `npm run build:editor` 후 `npm run test:editor-engine` 21개 통과, 웹 `editor`·`content-board`·`route-map` 23개 통과, Electron background QA 7개 통과·1개 opt-in skip, `npm run package:mac` 성공(`release/mac-arm64`, 설치·교체 안 함)과 패키지 앱으로 재생 spec 2개 통과.
+- [x] 실제 HEVC 10bit HLG 2160×3840 20초 원본이 보드·편집기에서 사본 없이 재생. Chromium이 못 읽는 ProRes HLG `.mov`는 보드·편집기 모두 사본으로 자동 전환되고 사본은 GPU 경로(`GPU proxy unavailable` 없음)로 만들어짐. 클릭부터 사본 재생까지 개발 빌드 약 3.2~3.3초(4초 클립).
+- [x] 오디오가 있고 영상 코덱만 못 읽는 파일은 `<video>` 오류 없이 오디오만 재생되어 폴백이 일어나지 않던 문제를 고침. 보드·촬영 지도·편집기가 `loadedmetadata`에서 `videoWidth`가 0이면 재생 실패로 처리.
+- [x] opt-in Electron 폴백 spec 추가(`REELS_FALLBACK_SOURCE`, GPU 경로 확인은 `REELS_FALLBACK_EXPECT_GPU=1`). 결과는 [Electron QA](docs/editor-electron-qa.md#원본-직접-재생--gpu-사본-통합--2026-11-12).
+- [ ] 실제 dataless 파일의 사본 경로 end-to-end, HDR 원본과 SDR 사본의 화면 톤 육안 비교, 실행 중 앱 반영은 하지 않음.
+
 ## 원본 직접 재생 — 2026-11-12
 
 배경: 보드 재생·촬영 지도·편집기 가져오기가 모든 영상을 ffmpeg SDR 사본으로 바꾼 뒤 재생해 첫 재생이 느리고 HDR 원본을 그대로 볼 수 없었다. 사용자 결정으로 원본을 기본 재생하고 사본은 필요할 때만 만든다.

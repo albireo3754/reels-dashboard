@@ -31,7 +31,7 @@ Photos 또는 로컬 영상 한 편을 선택한 뒤 자막·장소 안내 묶�
 
 재생용 사본(엔진의 `reels-editor proxy`, H.264/AAC·최대 1080px·HDR은 SDR 변환, VideoToolbox GPU 우선이고 GPU가 못 하면 CPU zscale/tonemap)은 두 경우에만 만들어요.
 
-1. **renderer가 원본을 재생하지 못했을 때.** `<video>`의 `error`(디코드 불가·로드 실패)를 받으면 화면이 “원본을 바로 재생하지 못해 재생용 사본을 준비하고 있어요.”를 표시하고 사본을 요청해 자동으로 이어 재생해요. 편집기는 `editor.playbackCopy(id)`로 프로젝트 폴더의 `playback.mp4`를 만들고 `reels-media://video/{id}/copy`를 받아요. 보드·촬영 지도는 `contentMedia.open(projectId, file, {copy: true})`로 기존 보관함 캐시에 사본을 만들어요. 사본도 재생하지 못하면 오류로 알려요.
+1. **renderer가 원본을 재생하지 못했을 때.** `<video>`의 `error`(디코드 불가·로드 실패)를 받거나, 메타데이터는 읽었는데 화면 크기(`videoWidth`)가 0이면 실패로 봐요. 후자는 영상 코덱만 Chromium이 못 읽고(예: ProRes) 오디오는 읽을 수 있는 파일이에요. 이때 Chromium은 오류 없이 오디오만 재생하고 화면은 비어 있어요. 실패로 판단하면 화면이 “원본을 바로 재생하지 못해 재생용 사본을 준비하고 있어요.”를 표시하고 사본을 요청해 자동으로 이어 재생해요. 편집기는 `editor.playbackCopy(id)`로 프로젝트 폴더의 `playback.mp4`를 만들고 `reels-media://video/{id}/copy`를 받아요. 보드·촬영 지도는 `contentMedia.open(projectId, file, {copy: true})`로 기존 보관함 캐시에 사본을 만들어요. 사본도 재생하지 못하면 오류로 알려요.
 2. **원본이 iCloud에만 있고 이 Mac에 내려받지 않은(dataless) 상태일 때.** macOS `stat -f %f`의 `SF_DATALESS`(0x40000000) 플래그로 판별하고, 플래그를 읽지 못할 때만 `blocks === 0 && size > 0`을 보조로 써요. 판별할 수 없으면 원본 직접 재생으로 둬요. iCloud Drive 경로라는 이유만으로 사본을 만들지 않아요(내려받은 파일은 원본 재생). 보드는 열 때 판별해 바로 사본을 쓰고, 편집기는 원본 스트림의 첫 요청(시작 바이트 0)에서 dataless면 503으로 거절해 위 1번 폴백으로 넘겨요. 판별 자체는 다운로드를 일으키지 않아요.
 
 가져오기(로컬·Photos·MCP `reels_import_video`)는 사본을 미리 만들지 않아요. 이전에 저장된 편집 기록의 `proxyPath`와 `playback.mp4`는 그대로 읽히며, 폴백이 필요할 때 기존 사본을 재사용해요. 표지·영상 렌더·합성 미리보기 프레임은 지금처럼 원본(`sourcePath`)으로 만들고 이번 변경과 무관해요. 편집기 상단은 HDR 원본이면 “원본 HDR 그대로 재생”, 사본으로 폴백했으면 “원본 HDR · 재생용 SDR 사본”을 표시해요.

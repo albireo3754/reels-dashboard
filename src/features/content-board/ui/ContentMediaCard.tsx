@@ -464,6 +464,12 @@ function MediaPlayer({
   const { media, error, preparingCopy, playbackFailed, retry } =
     useContentPlayback(bridge.contentMedia, projectId, item.path, supported);
   const url = media?.url ?? "";
+  const videoFailed = () =>
+    playbackFailed(
+      media?.playback === "copy"
+        ? "재생용 사본도 재생하지 못했어요. 파일 상태를 확인해주세요."
+        : "영상을 재생하지 못했어요. 파일 상태를 확인해주세요.",
+    );
   return (
     <>
       <div className="board-player-stage">
@@ -492,13 +498,12 @@ function MediaPlayer({
             playsInline
             preload="metadata"
             aria-label={`${item.label} 재생`}
-            onError={() =>
-              playbackFailed(
-                media?.playback === "copy"
-                  ? "재생용 사본도 재생하지 못했어요. 파일 상태를 확인해주세요."
-                  : "영상을 재생하지 못했어요. 파일 상태를 확인해주세요.",
-              )
-            }
+            onError={videoFailed}
+            // Audio plays on without an error when only the video codec is
+            // unsupported; no frame dimensions means the video cannot be shown.
+            onLoadedMetadata={(e) => {
+              if (!e.currentTarget.videoWidth) videoFailed();
+            }}
           />
         ) : (
           <audio

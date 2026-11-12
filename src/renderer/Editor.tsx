@@ -736,6 +736,13 @@ export function Editor({
                         )
                       }
                       onLoadedMetadata={(e) => {
+                        // Chromium keeps playing the audio of a file whose video
+                        // codec it cannot decode and reports no error, so a video
+                        // without frame dimensions also counts as a failure.
+                        if (!e.currentTarget.videoWidth) {
+                          void playbackFailed();
+                          return;
+                        }
                         // Resume where the original stopped once the copy is loaded.
                         if (playbackMode === "copy" && time > 0)
                           e.currentTarget.currentTime = time;

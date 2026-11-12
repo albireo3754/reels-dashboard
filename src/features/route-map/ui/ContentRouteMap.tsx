@@ -42,6 +42,6 @@ function RouteMedia({ bridge, projectId, file, name }: { bridge: DashboardBridge
     {!requested && <Button variant="secondary" onClick={() => setRequested(true)}>선택한 촬영분 열기</Button>}
     {requested && !media && !error && <StatusText live busy>{preparingCopy ? playbackCopyStatus : "원본을 열고 있어요."}</StatusText>}
     {error && <Notice tone="danger">{error}</Notice>}
-    {media && (media.kind === "video" ? <video key={media.url} controls preload="metadata" src={media.url} aria-label={`${name} 재생`} onError={() => playbackFailed("영상을 재생하지 못했어요.")} /> : <img src={media.url} alt={name} onError={() => playbackFailed("사진을 열지 못했어요.")} />)}
+    {media && (media.kind === "video" ? <video key={media.url} controls preload="metadata" src={media.url} aria-label={`${name} 재생`} onError={() => playbackFailed("영상을 재생하지 못했어요.")} onLoadedMetadata={(e) => { if (!e.currentTarget.videoWidth) playbackFailed("영상을 재생하지 못했어요."); }} /> : <img src={media.url} alt={name} onError={() => playbackFailed("사진을 열지 못했어요.")} />)}
   </div>;
 }
