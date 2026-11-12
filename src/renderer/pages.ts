@@ -69,9 +69,6 @@ export const pages: Record<Tab, Page> = {
   },
 };
 
-/** Shared label map; kept under this name for the renderer modules. */
-export { projectStageLabels as stageLabels } from "../shared/contracts";
-
 export const permissionLabels: Record<string, string> = {
   "not-determined": "아직 요청하지 않음",
   authorized: "허용됨",

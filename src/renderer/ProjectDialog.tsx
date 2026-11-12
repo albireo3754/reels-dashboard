@@ -1,6 +1,9 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import type { Project, Stage } from "../shared/contracts";
-import { stageLabels } from "./pages";
+import {
+  projectStageLabels as stageLabels,
+  type Project,
+  type Stage,
+} from "../shared/contracts";
 import { Icon } from "./ui";
 import {
   publicationChannelLabels,
