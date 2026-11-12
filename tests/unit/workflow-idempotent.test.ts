@@ -685,3 +685,45 @@ test("question images follow form registration rules (JPEG/PNG/WebP under 4 MB) 
     }
   }
 });
+
+test("a step is not skipped when its own evidence exists but cannot be read", async () => {
+  const f = await fixture();
+  const preview = path.join(f.workspace, "media", "s1.png");
+  const locked: string[] = [];
+  try {
+    // Task step: the scene preview passes the existence/size checks but cannot be read.
+    await writeMedia(f);
+    await submitAnswers(f);
+    await f.put("experience-form.json", form());
+    await chmod(preview, 0o000);
+    locked.push(preview);
+    let run = await f.runtime.create(f.input);
+    assert.equal(run.stepId, "prepare");
+    assert.equal(run.status, "waiting");
+    assert.ok(run.task && !run.task.adopt);
+    assert.equal(run.history.length, 0);
+    await chmod(preview, 0o600);
+    locked.pop();
+
+    // Input step: a submitted export (Markdown) cannot be read, so the form opens.
+    const { readdir } = await import("node:fs/promises");
+    const exportMd = (await readdir(f.workspace)).find((name) =>
+      /^experience-answers-.*\.md$/.test(name),
+    )!;
+    assert.ok(exportMd);
+    const exportPath = path.join(f.workspace, exportMd);
+    await chmod(exportPath, 0o000);
+    locked.push(exportPath);
+    run = await f.runtime.create(f.input);
+    assert.deepEqual(
+      run.history.map((h) => [h.stepId, h.outcome]),
+      [["prepare", "skipped"]],
+    );
+    assert.equal(run.stepId, "experience");
+    assert.equal(run.status, "waiting");
+    assert.ok(run.experience);
+  } finally {
+    for (const file of locked) await chmod(file, 0o600).catch(() => {});
+    await f.runtime.close();
+  }
+});

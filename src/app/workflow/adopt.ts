@@ -123,16 +123,19 @@ async function adoptInput(
   const form = current.state === "ok" ? current.form : undefined;
   const record = await coveringAnswers(workspace, form);
   if (!record) return;
+  const evidence = [
+    ...new Set([
+      ...record.exports,
+      ...(current.state === "ok" ? current.evidence : []),
+    ]),
+  ];
+  // The run hashes the evidence when it records the skip; unreadable files run the step.
+  if (!(await filesExist(workspace, evidence))) return;
   return {
     reason: form
       ? `제출된 답변(${record.file})이 ${step.formFile}의 질문 ${form.questions.length}개를 모두 덮어 입력 단계를 넘어갔어요.`
       : `${step.formFile}이 없고 제출된 답변(${record.file})이 있어 입력 단계를 넘어갔어요.`,
-    evidence: [
-      ...new Set([
-        ...record.exports,
-        ...(current.state === "ok" ? current.evidence : []),
-      ]),
-    ],
+    evidence,
   };
 }
 
@@ -185,6 +188,8 @@ async function adoptTask(
     const notes: string[] = [];
     for (const file of step.outputs)
       evidence.push(...(await adoptOutput(workspace, file, formFile, notes)));
+    // The run hashes the evidence when it records the skip; unreadable files run the step.
+    await hashes(workspace, [...new Set(evidence)]);
     return {
       reason:
         `선언된 산출물(${step.outputs.join(", ")})이 이미 있고 검증을 통과해 이 단계를 넘어갔어요.` +
