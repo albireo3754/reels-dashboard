@@ -4,7 +4,7 @@ A versioned YAML file defines the steps, skill/tool contracts, input/output file
 
 ## Start and resume
 
-Use the [session skill](../skills/reels-workflow/SKILL.md). Copy [production.yaml](workflow-examples/production.yaml) into a private content workspace and add that workspace's skill names/paths and channel-specific instructions. Keep real media, facts and credentials outside this source repository. The sample uses real Desktop MCP tool names but does not grant permission to deliver or publish.
+Use the [session skill](../skills/reels-workflow/SKILL.md). For blog production use the [built-in `blog` definition](#built-in-definitions-and-local-guides--2026-11-13) and put personal documents, instructions and skill names in a local guide file. For other work, copy [production.yaml](workflow-examples/production.yaml) into a private content workspace and add that workspace's skill names/paths and channel-specific instructions. Keep real media, facts and credentials outside this source repository. The sample uses real Desktop MCP tool names but does not grant permission to deliver or publish.
 
 Validate through `reels_workflow_validate-definition` or CLI:
 
@@ -14,7 +14,7 @@ npm run --silent workflow -- create /absolute/path/to/run-input.json
 npm run --silent workflow -- context <run-id>
 ```
 
-Definition input: `{"workspace":"/absolute/path/to/content","definitionFile":"workflow.yaml"}`. The result also carries `skippable: {skipped, startsAt}`, a dry run of the leading steps a new run would skip (see [Idempotent steps](#idempotent-steps--2026-11-13)).
+Definition input: `{"workspace":"/absolute/path/to/content","definitionFile":"workflow.yaml"}`, or `{"workspace":"…","builtinDefinition":"blog","guideFile":"/absolute/path/to/workflows/blog.guides.yaml"}` (exactly one of `definitionFile`/`builtinDefinition`; `guideFile` optional). With a guide the result has `guide: {file, sha256, base, steps}`, showing per step the documents (path and hash), instruction, skills and tools that will be attached. The result also carries `skippable: {skipped, startsAt}`, a dry run of the leading steps a new run would skip (see [Idempotent steps](#idempotent-steps--2026-11-13)).
 
 Run input:
 
@@ -30,7 +30,7 @@ Run input:
 }
 ```
 
-`skipCompleted` (default `true`) enables [idempotent steps](#idempotent-steps--2026-11-13); pass `false` to work every step from the entry. `projectId` is a stored association, not a lookup that creates/merges a Dashboard card. The current session can discover that card with the Desktop MCP. The new-workflow UI accepts the same fields. Open `http://127.0.0.1:4318/?workflow=1&run=<run-id>` to see topology, current state, per-step contracts, original YAML and copyable resume context. Polling refreshes state after another session submits a result.
+Use `"builtinDefinition": "blog"` instead of `definitionFile` for the app-owned blog flow, and add `"guideFile"` for a local guide. `skipCompleted` (default `true`) enables [idempotent steps](#idempotent-steps--2026-11-13); pass `false` to work every step from the entry. `projectId` is a stored association, not a lookup that creates/merges a Dashboard card. The current session can discover that card with the Desktop MCP. The new-workflow UI accepts the same fields. Open `http://127.0.0.1:4318/?workflow=1&run=<run-id>` to see topology, current state, per-step contracts, original YAML and copyable resume context. Polling refreshes state after another session submits a result.
 
 `reels_workflow_context {runId}` / CLI `context` returns the pending task, expanded output paths, input hashes, definition hash, project ID and latest result. It does not restart or create a chat. A different Codex session can read the same task and submit its result; the first accepted submission advances the checkpoint and other submissions become stale. This is durable workflow handoff, not an exclusive lock on external work. Do not have two sessions perform the same external mutation concurrently.
 
@@ -79,6 +79,42 @@ Prefer one shared definition per kind of work over a hand-written `workflow.yaml
 - Step `inputs`/`outputs`/`formFile` stay workspace-relative, so one definition serves every workspace under that root.
 - The run stores the absolute path, the YAML text, its SHA-256 and the parsed definition exactly as for workspace definitions. Editing the shared file never changes existing runs; Dashboard renders the stored snapshot.
 
+## Built-in definitions and local guides — 2026-11-13
+
+**The app owns the flow; detailed guidance and personal taste stay local.** A built-in definition fixes the steps, kinds, transitions, inputs/outputs, completion criteria, `{attempt}` review reports and only general, publishable instructions. A local guide file in the private content tree points each step at local documents, adds instructions and names skills/tools. Nothing in a guide can change the flow.
+
+### Built-in definitions
+
+Select one by name with `builtinDefinition` on `validate-definition` and `create` (MCP, CLI and the new-workflow UI's 「앱 내장 워크플로」 select all use the same server fields). It is mutually exclusive with `definitionFile`; no file is needed in the workspace. The text lives in [`builtin-definitions.ts`](../src/app/workflow/builtin-definitions.ts), is parsed by the same validator, and is stored per run like a file (`definition.file` = `builtin:<name>`, YAML text, SHA-256, parsed definition). App updates do not change existing runs; skipping, the Dashboard graph and the stored YAML view work unchanged.
+
+| Name | Steps | Media and composition rules |
+|------|-------|-----------------------------|
+| `blog` | `prepare` (task) → `experience` (input, `experience-form.json`) → `draft` (task) → `image_review` → `text_review` (reviews) → `layout` (task) → `visual_review` (review) → complete. Reviews revise to `draft`; `visual_review` revises to `layout`. | [photo-first-drafting.md](photo-first-drafting.md) is the source of truth; the step instructions name its sections instead of repeating them. |
+
+`blog` outputs: `evidence/media-scenes.json` + `experience-form.json`; `article.markup.md`, `story-layout.md`, `evidence/story-media-plan.json`; `reviews/image-review-{attempt}.md` + `reviews/image-plan-{attempt}.md`; `reviews/text-review-{attempt}.md`; `publishing/smarteditor-draft-layout.html` + `reviews/layout-review.md`; `reviews/visual-review-{attempt}.md`. Step IDs and file names are kept stable so existing article folders are adopted by [idempotent steps](#idempotent-steps--2026-11-13).
+
+### Local guide file
+
+```yaml
+version: 1
+definition: blog          # optional; must equal the definition id when given
+steps:
+  draft:                  # a step id of that definition
+    docs: [style/writing.md, templates/images.md]   # relative to the guide's base folder
+    instruction: Follow the local image rhythm template.
+    skills: [my-layout-skill]
+    tools: [{server: my_server, name: my_tool, purpose: Why the step uses it}]
+  image_review:
+    instruction: Apply the local editorial gates.
+```
+
+- `guideFile` follows the `definitionFile` path rule: workspace-relative, or a normalized absolute YAML path directly in `<ancestor>/workflows/` (same [shared boundary](#shared-definitions--2026-11-13), errors start with `GUIDE:`). It is allowed with any definition, built-in or YAML.
+- `docs` are normalized relative paths from the guide's **base**: the workspace for a workspace guide, or the folder holding `workflows/` for a shared guide. Real paths (symlinks resolved) must stay inside the base and be files; absolute paths, `..`, missing files and links that leave the base are rejected.
+- Each step entry accepts only `docs`, `instruction`, `skills`, `tools`. Flow keys (`on`, `kind`, `inputs`, `outputs`, `completion`, `title`, …), unknown step IDs, top-level keys other than `version`/`definition`/`steps`, YAML aliases and duplicate keys are rejected.
+- The task's `instruction` and `step.instruction` become the definition instruction followed by `로컬 가이드 (<guideFile>):`, the guide instruction and `먼저 읽을 문서:` with absolute document paths. `step.skills`/`step.tools` append the guide's entries (duplicates dropped). Inputs, outputs, transitions and completion are those of the definition.
+- The guide file (its YAML text and SHA-256) is frozen with the run, like the definition. **Document contents are never copied**: the run stores each document's path and SHA-256 at create. Documents are not tracked inputs; editing one later does not make a review `STALE_INPUT`.
+- No guide: the run uses the built-in instructions only. The step contract in Dashboard shows a 「로컬 가이드」 row for steps that have one.
+
 ## Idempotent steps — 2026-11-13
 
 When a run created with `skipCompleted: true` (the default) reaches a step **for the first time**, the runtime checks whether that step's results already exist. If so, it records the step with outcome `skipped`, the reason and the evidence file hashes, adds the evidence to the tracked files, and moves on without issuing work. Dashboard labels it 「기존 산출물 채택 · 건너뜀」.
@@ -111,7 +147,7 @@ V1 supports one input step per run. Revision paths cannot return to that step. T
 
 ## Boundaries and connection
 
-This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **6** (5: shared definitions, `skipCompleted`, `skipped` records; 6: cross-review fixes to the skip rules); rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
+This uses the existing workflow HTTP server and independent `reels_workflows` stdio MCP from [workflows.md](workflows.md#mcp). The workflow server protocol is now **7** (5: shared definitions, `skipCompleted`, `skipped` records; 6: cross-review fixes to the skip rules; 7: `builtinDefinition` and `guideFile`); rebuild and restart an older host to use it. No client MCP configuration is changed automatically. An already-open chat can use the official CLI without waiting for MCP reconnection.
 
 Desktop editing/Photos/render tools still require the running app and its `reels_dashboard` MCP or equivalent CLI. The YAML runner does not add unsupported multi-clip editing. DSL tasks are deliberately session-executed: the existing read-only SDK cannot invoke their MCP/skills contract and is disabled for them. Final public publishing remains manual.
 
@@ -145,3 +181,10 @@ Native UI observation through computer use timed out; live MCP state and the pac
 A Codex cross review of `0c932be..8ae4403` led to these changes: a present but invalid form no longer counts as missing; input steps check their own inputs; skipped input steps track the form file and question images; preview and runtime share `adoptStep`; pending skips are judged again before recording and on start, with per-run failure isolation; `ALREADY_RECORDED` is limited to YAML runs. Each has a reproduction in `tests/unit/workflow-idempotent.test.ts`. Not changed (user decision): draft-submission plan validation for YAML runs, counting skips toward `maxTransitions`, and adopting the newest answers when no form file exists.
 
 A second Codex review (`8ae4403..b2c6cb7`) led to two more changes: the own/next-input check reads (hashes) the files instead of only resolving them, and question images use the same validator as form registration (`checkedImage` in `src/app/workflow/files.ts`). Both have reproductions in the same test file.
+
+## Verification — 2026-11-13 (built-in definitions, local guides)
+
+- `tests/unit/workflow-builtin-guide.test.ts` (synthetic fixtures): `blog` selected by name with no file in the workspace (7 steps, `{attempt}` review outputs, stored text and SHA-256); exactly one of `definitionFile`/`builtinDefinition`, and a guide needs a definition; a shared guide merged after the built-in instruction with absolute document paths, appended skills/tools and unchanged outputs/transitions; document bodies not stored and the guide snapshot frozen; rejection of unknown steps, flow keys, a mismatched `definition`, `..`/absolute/missing documents, a link leaving the base, guide files outside the `workflows/` rule and duplicate YAML keys; a workspace guide; skipping with a built-in definition and a guide (starts at the first review, which carries the guide).
+- Workflow unit tests 68/68. Full unit suite 560: 552 passed, 7 skipped, 1 failed (`face-mosaic.test.ts`, the known failure on `main`). Typecheck, architecture check and public-source audit passed.
+- Browser e2e (`test:workflow-ui`) could not run: Playwright fails to load every spec with `TypeError: (0 , api_1.createContextKey) is not a function` from the OpenTelemetry exporter imported through `src/app/workflow/server.ts`. The same happens on an unchanged copy of `main`, so it is an environment/dependency issue, not this change. A new scenario was added to `tests/workflow/definition.spec.ts`; the same flow (select `blog`, give a guide, see the guided first request and the 「로컬 가이드」 contract row) was checked by hand in a headless browser against an isolated server.
+- Dry run on a real private blog workspace with a temporary data root: the built-in definition and the earlier shared YAML definition gave the same skip result (three leading steps adopted, start at `image_review`), and the guide attached to six steps. Workspace files were only read.

@@ -84,6 +84,8 @@ If layout work changes previously approved source/prose files, the graph returns
 
 YAML runs are documented in [workflow-dsl.md](workflow-dsl.md). Since protocol 5, `definitionFile` may name a shared definition in a `workflows/` folder of a workspace ancestor, and `create` accepts `skipCompleted` (default `true`): leading steps whose outputs already validate, and input steps whose form is already answered, are recorded as `skipped` and passed. Reviews never skip. In YAML runs a repeated identical submission changes nothing and reports `STALE_TASK: ALREADY_RECORDED`. Protocol 6 (2026-11-13 cross-review fixes) refines the skip rules; see workflow-dsl.md. Built-in (non-YAML) runs keep their behavior.
 
+Protocol 7 adds `builtinDefinition` (an app-owned definition by name, currently `blog`) and `guideFile` (a local per-step guide: documents to read, extra instructions, skills/tools) to `create` and `validate-definition`. The flow is owned by the app; a guide cannot change steps, transitions, kinds or outputs. See [built-in definitions and local guides](workflow-dsl.md#built-in-definitions-and-local-guides--2026-11-13). The fixed editorial stages (non-DSL runs) are unrelated and unchanged.
+
 ## MCP
 
 Run `npm run start:workflow-mcp` as an independent stdio server while the HTTP server is running. It does not require the Electron MCP socket. It provides:
