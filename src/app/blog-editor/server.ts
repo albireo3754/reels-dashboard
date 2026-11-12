@@ -172,6 +172,7 @@ export async function startCanonicalEditor(
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".webp": "image/webp",
+        ".gif": "image/gif",
         ".woff2": "font/woff2",
         ".svg": "image/svg+xml",
         ".mp4": "video/mp4",
