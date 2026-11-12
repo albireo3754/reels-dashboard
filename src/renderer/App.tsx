@@ -69,6 +69,8 @@ type ActivePlan = {
   path: string;
   envelope: PlanEnvelope;
 };
+// Both the recover() guard and the retry button accept only a 64-hex digest.
+const isRecoveryDigest = (v: string) => /^[0-9a-f]{64}$/i.test(v);
 const readableTime = (v?: string) =>
   koreanDateTime(v, "시각 미상", {
     month: "short",
@@ -477,7 +479,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       if (
         !recovery ||
         !recoveryConfirmed ||
-        !/^[0-9a-f]{64}$/i.test(recoveryDigest)
+        !isRecoveryDigest(recoveryDigest)
       )
         throw new Error(
           "기존 이동 계획의 64자리 digest와 실행 내용을 확인해주세요.",
@@ -1481,7 +1483,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                       disabled={
                         !!busy ||
                         !recoveryConfirmed ||
-                        !/^[0-9a-f]{64}$/i.test(recoveryDigest)
+                        !isRecoveryDigest(recoveryDigest)
                       }
                     >
                       같은 이동 재시도
