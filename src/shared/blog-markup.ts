@@ -44,6 +44,7 @@ import { parseDocument } from "yaml";
  *   | 이름 없는 색 `색#a1b2c3` / `배경#fff8b2`.
  * - 태그 속성은 `key="value"`, 값 안의 `"`는 `&quot;`, `&`는 `&amp;`. 값 없는 속성(`core`)은 true.
  * - 한 줄에 강조가 여러 개면 번호가 다르다. 강조끼리 겹치거나 중첩되지 않는다.
+ * - COMPONENTS에 없는 태그 줄은 오류가 아니다. 원문 줄 그대로 보존하고(UnknownNode) 화면에는 원문을 보여 준다.
  */
 
 export const BLOG_MARKUP_VERSION = 1 as const;
@@ -161,7 +162,20 @@ export interface ComponentNode {
   children?: ParagraphNode[];
 }
 
-export type MarkupNode = ParagraphNode | ComponentNode;
+/**
+ * 이 버전의 COMPONENTS에 없는 태그 한 줄. 문서를 막지 않고 원문 줄을 그대로 보존한다.
+ * 여는 줄과 닫는 줄은 각각 한 노드가 되고, 그 사이 문단은 묶음의 본문 문단으로 읽는다.
+ */
+export interface UnknownNode {
+  kind: "unknown";
+  tag: string;
+  source: string;
+  /** 항상 비어 있다. 문단이 아닌 노드의 text·children을 훑는 코드가 분기 없이 지나가게 한다. */
+  text?: undefined;
+  children?: undefined;
+}
+
+export type MarkupNode = ParagraphNode | ComponentNode | UnknownNode;
 
 export interface MarkupBundle {
   id: string;
@@ -182,7 +196,7 @@ export interface MarkupDoc {
 
 /** Paragraphs of a bundle in order, including those nested in components. */
 export const bundleParagraphs = (bundle: MarkupBundle): ParagraphNode[] =>
-  bundle.nodes.flatMap((n) => (n.kind === "paragraph" ? [n] : n.children ?? []));
+  bundle.nodes.flatMap((n) => (n.kind === "paragraph" ? [n] : n.kind === "component" ? n.children ?? [] : []));
 
 // ─── 서식 토큰 ──────────────────────────────────────────────────────────────
 
@@ -284,6 +298,10 @@ export function serialize(doc: MarkupDoc, opts: { palette?: readonly PaletteEntr
     for (const n of b.nodes) {
       if (n.kind === "paragraph") {
         out.push("", ...paragraphLines(n, palette), "");
+        continue;
+      }
+      if (n.kind === "unknown") {
+        out.push(n.source);
         continue;
       }
       const form = COMPONENTS[n.tag].form;
@@ -421,6 +439,10 @@ export function parse(source: string, opts: { palette?: readonly PaletteEntry[] 
       }
       if ((m = line.match(/^<\/(\w+)>$/))) {
         closePara(ln);
+        if (!container && !isTag(m[1])) {
+          bundle.nodes.push({ kind: "unknown", tag: m[1], source: line });
+          return;
+        }
         if (!container || container.tag !== m[1]) throw new Error(`열지 않은 </${m[1]}>`);
         container = null;
         return;
@@ -428,7 +450,12 @@ export function parse(source: string, opts: { palette?: readonly PaletteEntry[] 
       if ((m = line.match(/^<(\w+)(.*?)\/>$/)) || (m = line.match(/^<(\w+)([^>]*)>(.*)<\/(\w+)>$/)) || (m = line.match(/^<(\w+)([^>]*)>$/))) {
         closePara(ln);
         const tag = m[1];
-        if (!isTag(tag)) throw new Error(`모르는 컴포넌트 <${tag}>`);
+        if (!isTag(tag)) {
+          // 새 버전에서 쓴 태그일 수 있다. 문서를 막지 않고 원문 줄로 보존한다.
+          if (container) throw new Error(`컨테이너 <${container.tag}> 안에는 문단만 (모르는 컴포넌트 <${tag}>)`);
+          bundle.nodes.push({ kind: "unknown", tag, source: line });
+          return;
+        }
         const form = COMPONENTS[tag].form;
         const node: ComponentNode = { kind: "component", tag, attrs: parseAttrs(m[2]) };
         if (line.endsWith("/>")) {
@@ -486,7 +513,7 @@ type Located = { bundle: MarkupBundle; p: ParagraphNode; body: boolean };
 function paragraphs(doc: MarkupDoc): Located[] {
   return doc.bundles.flatMap((bundle) =>
     bundle.nodes.flatMap((n): Located[] =>
-      n.kind === "paragraph" ? [{ bundle, p: n, body: true }] : (n.children ?? []).map((p) => ({ bundle, p, body: false })),
+      n.kind === "paragraph" ? [{ bundle, p: n, body: true }] : n.kind === "component" ? (n.children ?? []).map((p) => ({ bundle, p, body: false })) : [],
     ),
   );
 }
@@ -531,6 +558,7 @@ export function validate(doc: MarkupDoc, opts: ValidateOptions = {}): MarkupIssu
         if (!collageRatios(n.attrs.ratios, count)) issues.push({ level: "error", where: b.id, message: `Collage ratios는 사진 ${count}장마다 "가로:세로"를 " · "로 구분해 적음: ${n.attrs.ratios}` });
         if (collageRows(layout, count).reduce((a, c) => a + c, 0) !== count) issues.push({ level: "error", where: b.id, message: `Collage layout ${layout}의 칸 수가 사진 ${count}장과 다름` });
       }
+      if (n.kind === "unknown") issues.push({ level: "warn", where: b.id, message: `모르는 컴포넌트 <${n.tag}> — 원문 줄만 보여 주고 그대로 보존함` });
     }
   }
   const pids = new Set<string>();

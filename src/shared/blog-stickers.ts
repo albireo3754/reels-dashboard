@@ -36,12 +36,13 @@ export function stickerPlan(doc: MarkupDoc): StickerPlacement[] {
 }
 function nodeLabel(n: MarkupNode): string {
   if (n.kind === "paragraph") return `문단 · ${n.lines.join(" ").slice(0, 36)}`;
+  if (n.kind === "unknown") return `모르는 컴포넌트 · ${n.tag}`;
   if (n.tag === "Photo") return `사진 · ${n.attrs.alt || n.attrs.file}`;
   if (n.tag === "Collage") return "사진 묶음";
   return ({ Heading: "소제목", Title: "제목", Tags: "태그", Map: "지도", VisitCard: "방문 정보", PriceBox: "가격 정보", Divider: "구분선", Info: "정보", Source: "출처", QuestionCard: "질문 카드" } as Record<string,string>)[n.tag] ?? n.tag;
 }
 const gapNode = (n: MarkupNode | undefined): string | undefined => !n ? undefined : n.kind === "paragraph" ? n.id
-  : n.children?.[0]?.id ?? `${n.tag}:${String(n.attrs.file ?? n.attrs.files ?? n.text ?? "")}`;
+  : n.kind === "unknown" ? `${n.tag}:${n.source}` : n.children?.[0]?.id ?? `${n.tag}:${String(n.attrs.file ?? n.attrs.files ?? n.text ?? "")}`;
 export const stickerAnchors = (doc: MarkupDoc): StickerAnchor[] => placementGaps(doc).map(({ next: _, ...gap }) => gap);
 /** The stored gap of a placement in `to`, given it was placed against `from`. */
 export function movedGap(from: StickerAnchor[], to: StickerAnchor[], item: Pick<StickerPlacement, "bundleId" | "before">): number {

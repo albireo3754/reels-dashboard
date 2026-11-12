@@ -71,7 +71,7 @@ export function renderHtml(doc:MarkupDoc,style:RenderStyle={}, editable=false):s
       const index=isSticker(n)?undefined:nodeIndex++;
       // Keep original node indexes even when the duplicate source Title is hidden.
       if(editable&&n.kind==="component"&&n.tag==="Title")return "";
-      const fragment=n.kind==="paragraph"?`<p class="paragraph"${editing(n)}>${paragraph(n)}</p>`:component(n);
+      const fragment=n.kind==="paragraph"?`<p class="paragraph"${editing(n)}>${paragraph(n)}</p>`:n.kind==="unknown"?`<aside class="unknown-component" data-component="Unknown" title="이 버전이 모르는 컴포넌트예요. 원문은 그대로 보존돼요."><code>${esc(n.source)}</code></aside>`:component(n);
       return fragment.replace(/^<(\w+)/, `<$1 data-bundle="${esc(b.id)}"`+(editable&&index!==undefined?` data-node-index="${index}"`:"")+(i===0?` data-bundle-start data-bundle-name="${esc(b.name)}"`:""));
     }).join("");
     return (editable?`<section class="editor-bundle" data-bundle="${esc(b.id)}"><div class="editor-bundle-label">${esc(b.name)}</div>`:"")+content+(editable?"</section>":"");
@@ -90,6 +90,8 @@ article .photo-collage-rows{display:flex;flex-direction:column;gap:8px;margin:30
 article .photo-collage-rows .collage-row{display:flex;gap:8px}
 article .photo-collage-rows .collage-row>div{flex:var(--r,1) 1 0;min-width:0;aspect-ratio:var(--r,1);overflow:hidden}
 article .photo-collage-rows img{display:block;width:100%;height:100%;max-width:none;margin:0;object-fit:cover}
+article .unknown-component{margin:24px 0;padding:10px 12px;border:1px dashed #bbb;border-radius:6px;background:#fafafa;text-align:left}
+article .unknown-component code{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#555;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:600px){article .photo-collage-rows,article .photo-collage-rows .collage-row{gap:6px}}
 @media(max-width:600px){article{font-size:var(--mobileBodyPx,17px)}}
 </style>`;

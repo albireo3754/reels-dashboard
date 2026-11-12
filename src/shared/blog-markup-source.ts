@@ -20,7 +20,7 @@ export function protectedText(doc:MarkupDoc):string {
 export type Change = "text" | "format" | "structure" | "none";
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 function structure(b: MarkupBundle) {
-  return { ...b, nodes: b.nodes.map(n => n.kind === "paragraph" ? {kind:n.kind,id:n.id} : {...n,text:undefined,children:n.children?.map(p=>p.id)}) };
+  return { ...b, nodes: b.nodes.map(n => n.kind === "paragraph" ? {kind:n.kind,id:n.id} : n.kind === "unknown" ? n : {...n,text:undefined,children:n.children?.map(p=>p.id)}) };
 }
 export function classify(before: MarkupDoc, after: MarkupDoc): {document: Change; bundles: Record<string, Change>; paragraphs: Record<string, Change>} {
   const paragraphs: Record<string, Change> = {};

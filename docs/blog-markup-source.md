@@ -31,6 +31,12 @@ Unsupported SmartEditor font sizes remain validation errors and cannot be saved 
 
 Unit tests cover normalization, YAML preservation, classification, independent/conflicting merges, duplicate footnotes, text guard, concurrent user edits, locks/history/external drift and HTML output/escaping. Existing full unit suite, typecheck, public-source audit and architecture checks passed on 2026-11-01. Real manuscript equivalence evidence stays in its vault research directory.
 
+## Unknown components — 2026-11-12
+
+A tag line that is not in `COMPONENTS` no longer fails the parse (before: `모르는 컴포넌트 <Video>` kept the whole document from opening in a build without that component). It becomes an `unknown` node that keeps the source line as written: the editor and preview show that line in a dashed box, `validate` reports a warning, and saving writes the line back unchanged. An unknown opening line and its closing line are one node each, and the paragraphs between them are read as body paragraphs of the bundle. Inside a known container the tag is still an error, because containers hold paragraphs only.
+
+Not covered: the unknown line cannot be edited in the editor, and the SmartEditor transfer does not know what to do with it.
+
 ## Mixed-ratio collage — 2026-11-10
 
 `<Collage>` takes an optional `ratios` attribute, one `width:height` per photo in `files` order, separated by ` · `:
