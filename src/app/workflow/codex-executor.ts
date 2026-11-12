@@ -250,64 +250,72 @@ export class CodexExecutor {
     await Promise.all([...this.active.keys()].map((id) => this.stop(id)));
   }
   /**
-   * Manual inline suggestion: a short, synchronous SDK call. No SQLite job, no
-   * artifacts, no file writes. Aborts on timeout or when the caller disconnects.
+   * Shared skeleton of the short, synchronous SDK calls (inline suggestions and
+   * selection chat): concurrency budget, timeout, client abort, and error redaction.
+   * `finish` runs inside the try so its errors are redacted like the call's own.
    */
-  async suggestInline(raw: unknown, clientSignal?: AbortSignal) {
-    const input = inlineSuggestInput.parse(raw);
-    if (this.suggesting.size >= 4)
-      throw new Error("추천 요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.");
+  private async runShortCall<P extends object>(
+    input: { id: string },
+    clientSignal: AbortSignal | undefined,
+    call: {
+      busyMessage: string;
+      timeoutEnv: string;
+      defaultTimeoutMs: number;
+      timeoutMessage: (seconds: number) => string;
+      cancelMessage: string;
+      kind: "inline-suggest" | "blog-chat";
+      prompt: () => string;
+      schema: () => unknown;
+      modelEnv: string;
+      reasoningEnv: string;
+      defaultReasoning: z.infer<typeof reasoningEffort>;
+      finish: (output: unknown) => P;
+    },
+  ) {
+    if (this.suggesting.size >= 4) throw new Error(call.busyMessage);
     const started = Date.now();
     const timeoutMs = z.coerce
       .number()
       .int()
       .min(1000)
       .max(600000)
-      .catch(90000)
-      .parse(this.env.REELS_SUGGEST_TIMEOUT_MS ?? 90000);
+      .catch(call.defaultTimeoutMs)
+      .parse(this.env[call.timeoutEnv] ?? call.defaultTimeoutMs);
     const controller = new AbortController();
     const timer = setTimeout(
       () =>
         controller.abort(
-          new Error(
-            `SUGGEST_TIMEOUT: 추천이 ${Math.round(timeoutMs / 1000)}초 안에 끝나지 않아 중단했어요.`,
-          ),
+          new Error(call.timeoutMessage(Math.round(timeoutMs / 1000))),
         ),
       timeoutMs,
     );
-    const onClientAbort = () =>
-      controller.abort(new Error("SUGGEST_CANCELLED: 추천 요청이 취소됐어요."));
+    const onClientAbort = () => controller.abort(new Error(call.cancelMessage));
     if (clientSignal?.aborted) onClientAbort();
     else clientSignal?.addEventListener("abort", onClientAbort, { once: true });
     this.suggesting.add(controller);
-    const job: SdkJob = {
-      ...this.job("inline-suggest"),
-      id: input.id,
-      role: "inline-suggest",
-    };
+    const job: SdkJob = { ...this.job(call.kind), id: input.id, role: call.kind };
     try {
-      const workspace = path.join(this.root, "inline-suggest");
+      const workspace = path.join(this.root, call.kind);
       await mkdir(workspace, { recursive: true, mode: 0o700 });
       const output = await this.generate(
         job,
-        buildSuggestPrompt(input),
-        z.toJSONSchema(inlineSuggestResult),
+        call.prompt(),
+        call.schema(),
         workspace,
         controller.signal,
         [],
         {
           persist: false,
-          model:
-            this.env.REELS_SUGGEST_MODEL || this.env.REELS_CODEX_MODEL || undefined,
+          model: this.env[call.modelEnv] || this.env.REELS_CODEX_MODEL || undefined,
           reasoning: reasoningEffort
-            .catch("low")
-            .parse(this.env.REELS_SUGGEST_REASONING_EFFORT ?? "low"),
+            .catch(call.defaultReasoning)
+            .parse(this.env[call.reasoningEnv] ?? call.defaultReasoning),
         },
       );
       controller.signal.throwIfAborted();
       return {
         id: input.id,
-        suggestions: cleanSuggestions(output, input),
+        ...call.finish(output),
         elapsedMs: Date.now() - started,
         authModes: job.authModes,
       };
@@ -322,72 +330,49 @@ export class CodexExecutor {
     }
   }
   /**
+   * Manual inline suggestion: a short, synchronous SDK call. No SQLite job, no
+   * artifacts, no file writes. Aborts on timeout or when the caller disconnects.
+   */
+  async suggestInline(raw: unknown, clientSignal?: AbortSignal) {
+    const input = inlineSuggestInput.parse(raw);
+    return this.runShortCall(input, clientSignal, {
+      busyMessage: "추천 요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.",
+      timeoutEnv: "REELS_SUGGEST_TIMEOUT_MS",
+      defaultTimeoutMs: 90000,
+      timeoutMessage: (seconds) =>
+        `SUGGEST_TIMEOUT: 추천이 ${seconds}초 안에 끝나지 않아 중단했어요.`,
+      cancelMessage: "SUGGEST_CANCELLED: 추천 요청이 취소됐어요.",
+      kind: "inline-suggest",
+      prompt: () => buildSuggestPrompt(input),
+      schema: () => z.toJSONSchema(inlineSuggestResult),
+      modelEnv: "REELS_SUGGEST_MODEL",
+      reasoningEnv: "REELS_SUGGEST_REASONING_EFFORT",
+      defaultReasoning: "low",
+      finish: (output) => ({ suggestions: cleanSuggestions(output, input) }),
+    });
+  }
+  /**
    * Selection chat: a short, synchronous SDK call over the attached phrases. Like
    * suggestInline it keeps no SQLite job, artifacts or file writes, and shares the
    * same concurrency budget.
    */
   async chatBlog(raw: unknown, clientSignal?: AbortSignal) {
     const input = blogChatInput.parse(raw);
-    if (this.suggesting.size >= 4)
-      throw new Error("요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.");
-    const started = Date.now();
-    const timeoutMs = z.coerce
-      .number()
-      .int()
-      .min(1000)
-      .max(600000)
-      .catch(120000)
-      .parse(this.env.REELS_CHAT_TIMEOUT_MS ?? 120000);
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () =>
-        controller.abort(
-          new Error(
-            `CHAT_TIMEOUT: 답변이 ${Math.round(timeoutMs / 1000)}초 안에 끝나지 않아 중단했어요.`,
-          ),
-        ),
-      timeoutMs,
-    );
-    const onClientAbort = () =>
-      controller.abort(new Error("CHAT_CANCELLED: 질문을 취소했어요."));
-    if (clientSignal?.aborted) onClientAbort();
-    else clientSignal?.addEventListener("abort", onClientAbort, { once: true });
-    this.suggesting.add(controller);
-    const job: SdkJob = { ...this.job("blog-chat"), id: input.id, role: "blog-chat" };
-    try {
-      const workspace = path.join(this.root, "blog-chat");
-      await mkdir(workspace, { recursive: true, mode: 0o700 });
-      const output = await this.generate(
-        job,
-        buildChatPrompt(input),
-        z.toJSONSchema(blogChatResult),
-        workspace,
-        controller.signal,
-        [],
-        {
-          persist: false,
-          model: this.env.REELS_CHAT_MODEL || this.env.REELS_CODEX_MODEL || undefined,
-          reasoning: reasoningEffort
-            .catch("medium")
-            .parse(this.env.REELS_CHAT_REASONING_EFFORT ?? "medium"),
-        },
-      );
-      controller.signal.throwIfAborted();
-      return {
-        id: input.id,
-        ...cleanChatResult(output, input),
-        elapsedMs: Date.now() - started,
-        authModes: job.authModes,
-      };
-    } catch (error) {
-      if (controller.signal.aborted)
-        throw new Error(this.safeError(controller.signal.reason));
-      throw new Error(this.safeError(error));
-    } finally {
-      clearTimeout(timer);
-      clientSignal?.removeEventListener("abort", onClientAbort);
-      this.suggesting.delete(controller);
-    }
+    return this.runShortCall(input, clientSignal, {
+      busyMessage: "요청이 너무 많이 진행 중이에요. 잠시 후 다시 시도해주세요.",
+      timeoutEnv: "REELS_CHAT_TIMEOUT_MS",
+      defaultTimeoutMs: 120000,
+      timeoutMessage: (seconds) =>
+        `CHAT_TIMEOUT: 답변이 ${seconds}초 안에 끝나지 않아 중단했어요.`,
+      cancelMessage: "CHAT_CANCELLED: 질문을 취소했어요.",
+      kind: "blog-chat",
+      prompt: () => buildChatPrompt(input),
+      schema: () => z.toJSONSchema(blogChatResult),
+      modelEnv: "REELS_CHAT_MODEL",
+      reasoningEnv: "REELS_CHAT_REASONING_EFFORT",
+      defaultReasoning: "medium",
+      finish: (output) => cleanChatResult(output, input),
+    });
   }
   async execute(raw: unknown) {
     const input = executeWorkflowInput.parse(raw);
