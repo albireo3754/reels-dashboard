@@ -43,7 +43,7 @@ Photos discovery tools expose only validated status, date indexing, group listin
 
 MCP results use structured JSON for state and jobs, and image content for previews. Tool errors are `isError` results with actionable messages. Runtime input validation also happens at the app boundary; MCP validation alone is not trusted.
 
-The `reels` CLI derives its subcommands, flags and schemas from `toolDefinitions`, sends each write exactly once and never fills in a revision for the caller. It reports one JSON document on stdout and a documented exit code. See [CLI usage](cli-usage.md). A request that was sent but not answered is `CONNECTION_LOST` or `REQUEST_TIMEOUT`, never `APP_OFFLINE`: only a request the app never received may be reported as not applied. A signal during an app call follows the same rule: the CLI reports the write as unknown, and only after it holds a job id does it report the render as started.
+The `reels` CLI derives its subcommands, flags and schemas from `toolDefinitions`, sends each write exactly once and never fills in a revision for the caller. It reports one JSON document on stdout and a documented exit code. See [CLI usage](cli-usage.md). An agent that only has the installed `reels` command reads `reels help agent`, the [reels-cli skill](../skills/reels-cli/SKILL.md) embedded in that build. A request that was sent but not answered is `CONNECTION_LOST` or `REQUEST_TIMEOUT`, never `APP_OFFLINE`: only a request the app never received may be reported as not applied. A signal during an app call follows the same rule: the CLI reports the write as unknown, and only after it holds a job id does it report the render as started.
 
 ## Acceptance
 

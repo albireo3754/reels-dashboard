@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { chmod } from "node:fs/promises";
+import { chmod, readFile } from "node:fs/promises";
 // npm can disable dependency install scripts; node-pty's prebuilt helper still
 // needs its executable bit in development and in the packaged asarUnpack tree.
 if (process.platform === "darwin") {
@@ -52,6 +52,8 @@ await build({
 });
 
 // Single self-contained file: zod is bundled so the CLI runs from any directory.
+// The agent guide is embedded too, so `reels help agent` matches this build without the repository.
+const agentGuide = await readFile("skills/reels-cli/SKILL.md", "utf8");
 await build({
   entryPoints: ["src/app/cli/main.ts"],
   outfile: "dist-cli/reels.mjs",
@@ -61,5 +63,6 @@ await build({
   target: "node22",
   sourcemap: true,
   banner: { js: "#!/usr/bin/env node" },
+  define: { __REELS_AGENT_GUIDE__: JSON.stringify(agentGuide) },
 });
 await chmod("dist-cli/reels.mjs", 0o755);

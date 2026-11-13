@@ -84,6 +84,16 @@ test(
       assert.equal(doctor.document.data.checks[0].ok, true);
       await assert.rejects(stat(home));
 
+      // The guide is embedded at build time; the copy has no skills/ to read.
+      const guide = await reels(cwd, root, ["help", "agent"]);
+      assert.equal(guide.code, 0);
+      assert.equal(
+        guide.document.data.guide,
+        await readFile("skills/reels-cli/SKILL.md", "utf8"),
+      );
+      assert.equal(guide.document.data.name, "reels-cli");
+      await assert.rejects(stat(path.join(cwd, "skills")));
+
       const tools = await reels(cwd, root, ["tools"]);
       assert.equal(tools.code, 0);
       assert.ok(tools.document.data.count > 0);

@@ -33,6 +33,11 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels prepare-media ...` | no | [Local media copy](#local-media-copy). |
 | `reels --help`, `reels <command> --help`, `reels help [<command>]`, `reels --version` | no | Help and version. |
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
+| `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |
+
+### Agent guide
+
+`reels help agent` prints [`skills/reels-cli/SKILL.md`](../skills/reels-cli/SKILL.md), a short skill for operating the app through this CLI: `{"ok":true,"data":{"guide":"<markdown>","name":"reels-cli","version":"0.1.0"}}`. The build embeds the file in `dist-cli/reels.mjs`, so the guide always matches the installed CLI and needs no repository; from source the CLI reads the file. The last line of `reels --help` points agents to it. Edit the skill file, not a copy, and rebuild.
 
 A tool can be named as `reels_get_project`, `get_project` (the form the guidance text uses) or `get-project`, in every place that takes a tool name.
 
@@ -190,7 +195,7 @@ If `dashboard.json` is damaged, unreadable or from a newer app, every form of th
 - A `--timeout` shorter than `reels_form_wait`'s `timeoutMs` produces a false timeout. Keep `--timeout` longer.
 - For `upsert-content`, `merge-projects` and `link-project-edit`, `--expected-updated-at` is the dashboard revision, not a project's `updatedAt`, even though `link-project-edit` also takes `--project-id`. Read it from `.data.dashboard.updatedAt` of `reels list-projects`, which also works for an entry that does not exist yet, or from the top-level `.data.updatedAt` of `reels get-content`. `.data.project` has no `updatedAt`.
 - The running app must be at least as new as the CLI. Otherwise a new tool returns the app's `UNKNOWN_TOOL`, and some errors lose their code and fall back to exit 4.
-- The CLI is not included in the packaged app. Like `dist-mcp`, it runs from a source build.
+- The packaged app ships the CLI bundle and installs the `~/.local/bin/reels` launcher on launch ([Installed with the app](#installed-with-the-app)). The Dev build and a source checkout do not: there, build `dist-cli/reels.mjs` and run it as in [Setup](#setup).
 
 ## Validation
 

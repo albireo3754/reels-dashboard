@@ -257,6 +257,7 @@ test("the built-in table keeps names unique and help reachable", () => {
   // A topic is matched before routing, so it would hide a command or tool of the same name.
   const topics = helpTopics.map(({ name }) => name);
   assert.equal(new Set(topics).size, topics.length);
+  assert.deepEqual(topics, ["exit-codes", "agent"]);
   for (const topic of topics) {
     assert.ok(!names.includes(topic), topic);
     assert.ok(!toolSlugs.includes(topic), topic);
@@ -2476,7 +2477,25 @@ test("every help page has an example and the top level says where ids come from"
     assert.match(top, /dashboard\.projects\[\]\.id/);
     assert.match(top, /REELS_USER_DATA/);
     assert.match(top, /reels help exit-codes/);
+    assert.match(top, /reels help agent/);
     assert.ok(top.split("\n").length <= 15, "--help stays short");
+  });
+});
+
+test("reels help agent prints the reels-cli skill for this version", async () => {
+  await offlineRoot(async (root) => {
+    const result = await cli(root, ["help", "agent"]);
+    assert.equal(result.code, 0);
+    assert.equal(result.document.ok, true);
+    const { data } = result.document;
+    assert.deepEqual(Object.keys(data), ["guide", "name", "version"]);
+    assert.equal(data.guide, await readFile("skills/reels-cli/SKILL.md", "utf8"));
+    assert.equal(data.name, "reels-cli");
+    assert.match(data.guide, /^---\nname: reels-cli\n/);
+    assert.equal(
+      data.version,
+      JSON.parse(await readFile("package.json", "utf8")).version,
+    );
   });
 });
 

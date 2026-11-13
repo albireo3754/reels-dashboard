@@ -24,6 +24,7 @@ import { errorMessage } from "../../shared/lib/errors";
 import { localPathSchema } from "../../shared/local-resources";
 import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
 import { engines, version } from "../../../package.json";
+import { agentGuide } from "./agent-guide";
 import { runtimeCheck, setupChecks, type Check } from "./doctor";
 import { checkOutputPath, saveImage } from "./image-output";
 import {
@@ -849,7 +850,8 @@ Resume:  reels get-render-job --job-id <id> --wait
 Any:     reels call <tool> --input - < input.json
 Copy:    reels prepare-media --list | reels prepare-media --help
 Env:     REELS_USER_DATA selects the app profile.
-Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.`;
+Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.
+Agents: reels help agent prints the usage guide for this version.`;
 const helpFlag = {
   name: "--help",
   aliases: ["-h"],
@@ -923,6 +925,13 @@ Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --se
 } satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
   { name: "exit-codes", run: exitCodeHelp },
+  {
+    name: "agent",
+    run: () => {
+      const { guide, name } = agentGuide();
+      return { data: { guide, name, version } };
+    },
+  },
 ];
 const helpCommand = {
   name: "help",
