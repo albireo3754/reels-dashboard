@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyDashboard } from "../../src/shared/contracts";
 import type { Dashboard, Project } from "../../src/shared/contracts";
+import { editOwner } from "../../src/shared/production-project";
 import {
   attachPhotosBundle,
   emptyPhotosImportLedger,
@@ -42,10 +43,15 @@ function harness(projects: Project[] = [card("content:sukseongdo")]) {
   const edits = new Set<string>();
   const materialized: string[] = [];
   let failOn: string | undefined;
+  let failEdit = false;
   let editCounter = 0;
   const deps: PhotosBundleDeps = {
     groupAssets: async () => group,
-    projectExists: async (id) => dashboard.projects.some((p) => p.id === id),
+    target: async (id) => {
+      const p = dashboard.projects.find((x) => x.id === id);
+      return p ? { resourcePaths: (p.resources ?? []).map((r) => r.path) } : undefined;
+    },
+    editOwner: async (id) => editOwner(dashboard, { kind: "video", id })?.id,
     loadLedger: async () => structuredClone(ledger),
     saveLedger: async (next) => {
       ledger = structuredClone(next);
@@ -64,6 +70,7 @@ function harness(projects: Project[] = [card("content:sukseongdo")]) {
       return { assetID: assetId, mediaKind: asset.mediaKind, sourcePath, pairedVideoPath, originalFilename: asset.publicFilename };
     },
     createEdit: async () => {
+      if (failEdit) throw new Error("영상 정보를 읽지 못했어요.");
       const id = `00000000-0000-4000-8000-${String(++editCounter).padStart(12, "0")}`;
       edits.add(id);
       return { id };
@@ -81,6 +88,7 @@ function harness(projects: Project[] = [card("content:sukseongdo")]) {
     edits,
     materialized,
     failOn: (id?: string) => (failOn = id),
+    failEdit: (value: boolean) => (failEdit = value),
     get dashboard() {
       return dashboard;
     },
@@ -138,13 +146,16 @@ test("bundle import is idempotent: a second run copies nothing and adds nothing"
   assert.deepEqual(h.dashboard.projects[0].production, before.production);
 });
 
-test("a missing copy or edit is copied again instead of reused", async () => {
+test("a missing copy is copied again; a missing edit is made again from the kept copy", async () => {
   const h = harness();
   await importPhotosBundle(input, h.deps);
   h.files.delete(h.ledger.assets.p2.sourcePath);
-  h.edits.delete(h.ledger.assets.v2.editId!);
+  const oldEdit = h.ledger.assets.v2.editId!;
+  h.edits.delete(oldEdit);
   const again = await importPhotosBundle(input, h.deps);
-  assert.deepEqual(h.materialized.slice(4), ["p2", "v2"]);
+  assert.deepEqual(h.materialized.slice(4), ["p2"]);
+  assert.notEqual(h.ledger.assets.v2.editId, oldEdit);
+  assert.ok(!h.dashboard.projects[0].production!.edits.some((e) => e.id === oldEdit));
   assert.equal(again.counts.imported, 2);
   assert.equal(again.counts["already-imported"], 2);
 });
@@ -205,4 +216,50 @@ test("attachPhotosBundle keeps existing resources and rejects more than 500", ()
   assert.deepEqual(next.projects[0].resources, [existing, { role: "footage", path: "/x/p.jpg", label: "p.jpg" }]);
   const many = Array.from({ length: 500 }, (_, i) => ({ ...entry, assetId: `a${i}`, sourcePath: `/x/${i}.jpg` }));
   assert.throws(() => attachPhotosBundle(dashboard, "c", many), /TOO_MANY_RESOURCES/);
+});
+
+test("a failed edit keeps the recorded copy; the rerun makes only the edit", async () => {
+  const h = harness();
+  h.failEdit(true);
+  const first = await importPhotosBundle({ ...input, assetIds: ["v1"] }, h.deps);
+  assert.equal(first.counts.failed, 1);
+  assert.equal(h.ledger.assets.v1.editId, undefined);
+  assert.ok(h.files.has(h.ledger.assets.v1.sourcePath));
+  h.failEdit(false);
+  const second = await importPhotosBundle({ ...input, assetIds: ["v1"] }, h.deps);
+  assert.equal(second.counts.imported, 1);
+  assert.deepEqual(h.materialized, ["v1"]);
+  const target = h.dashboard.projects[0];
+  assert.deepEqual(target.production!.edits.map((e) => e.id), [h.ledger.assets.v1.editId]);
+});
+
+test("a re-copied video replaces its missing footage and dead edit on the same card", async () => {
+  const h = harness();
+  await importPhotosBundle({ ...input, assetIds: ["v1"] }, h.deps);
+  const old = structuredClone(h.ledger.assets.v1);
+  h.files.delete(old.sourcePath);
+  await importPhotosBundle({ ...input, assetIds: ["v1"] }, h.deps);
+  const now = h.ledger.assets.v1;
+  assert.notEqual(now.sourcePath, old.sourcePath);
+  const target = h.dashboard.projects[0];
+  assert.deepEqual(target.resources!.map((r) => r.path), [now.sourcePath]);
+  assert.deepEqual(target.production!.edits.map((e) => e.id), [now.editId]);
+});
+
+test("a video owned by another card is reported without copying or a new edit", async () => {
+  const h = harness([card("content:sukseongdo"), card("content:other")]);
+  await importPhotosBundle({ ...input, projectId: "content:other", assetIds: ["v1"] }, h.deps);
+  h.files.delete(h.ledger.assets.v1.sourcePath);
+  const result = await importPhotosBundle({ ...input, assetIds: ["v1"] }, h.deps);
+  assert.equal(result.items[0].status, "linked-elsewhere");
+  assert.equal(result.items[0].ownerId, "content:other");
+  assert.deepEqual(h.materialized, ["v1"]);
+  assert.equal(h.edits.size, 1);
+});
+
+test("the 500-resource cap is checked before anything is copied", async () => {
+  const resources = Array.from({ length: 498 }, (_, i) => ({ role: "document" as const, path: `/n/${i}.md`, label: `${i}` }));
+  const h = harness([card("content:sukseongdo", { resources })]);
+  await assert.rejects(importPhotosBundle(input, h.deps), /TOO_MANY_RESOURCES/);
+  assert.deepEqual(h.materialized, []);
 });

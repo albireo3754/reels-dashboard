@@ -126,8 +126,11 @@ function forwardHostShortcuts(
 }
 const fixture = process.env.REELS_DEMO === "1";
 // QA only: Photos calls use the demo library while the rest of the app (agent
-// MCP, store, editor) stays real. Never set by the packaged launch.
-const photosDemo = fixture || process.env.REELS_PHOTOS_DEMO_QA === "1";
+// MCP, store, editor) stays real. It needs an explicit QA profile
+// (REELS_USER_DATA) so synthetic media never reaches the default profile.
+const photosDemo =
+  fixture ||
+  (process.env.REELS_PHOTOS_DEMO_QA === "1" && !!process.env.REELS_USER_DATA);
 const grants = new Set<string>();
 const imageGrants = new Set<string>();
 const destinations = new Set<string>();

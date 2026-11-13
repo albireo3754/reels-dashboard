@@ -82,8 +82,10 @@ export interface PhotosBundleResult {
 export interface PhotosBundleDeps {
   /** Current group membership from the read-only `groups.show`. */
   groupAssets(): Promise<BundleAsset[]>;
-  /** The target card must exist before anything is copied. */
-  projectExists(projectId: string): Promise<boolean>;
+  /** Resource paths of the target card; undefined when the card does not exist. */
+  target(projectId: string): Promise<{ resourcePaths: string[] } | undefined>;
+  /** Card that owns a video edit project, if any. */
+  editOwner(editId: string): Promise<string | undefined>;
   loadLedger(): Promise<PhotosImportLedger>;
   saveLedger(ledger: PhotosImportLedger): Promise<void>;
   isFile(file: string): Promise<boolean>;
@@ -105,24 +107,23 @@ export interface PhotosBundleDeps {
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-/** Reuse a previous copy only while every file (and the edit) it names still exists. */
-async function reusable(
+export const maxCardResources = 500;
+
+/** A previous copy is reusable while every file it names still exists. */
+async function copyExists(
   entry: PhotosImportEntry | undefined,
   deps: PhotosBundleDeps,
 ) {
   if (!entry || !(await deps.isFile(entry.sourcePath))) return false;
-  if (entry.pairedVideoPath && !(await deps.isFile(entry.pairedVideoPath)))
-    return false;
-  if (entry.mediaKind === "video")
-    return !!entry.editId && (await deps.editExists(entry.editId));
-  return true;
+  return !entry.pairedVideoPath || (await deps.isFile(entry.pairedVideoPath));
 }
 
 export async function importPhotosBundle(
   input: PhotosBundleInput,
   deps: PhotosBundleDeps,
 ): Promise<PhotosBundleResult> {
-  if (!(await deps.projectExists(input.projectId)))
+  const target = await deps.target(input.projectId);
+  if (!target)
     throw new Error("CONTENT_NOT_FOUND: 가져올 대상 콘텐츠 카드를 확인해주세요.");
   const group = await deps.groupAssets();
   let selected = group;
@@ -139,36 +140,77 @@ export async function importPhotosBundle(
     throw new Error("PHOTOS_GROUP_EMPTY: 가져올 사진·영상이 없어요.");
 
   const ledger = await deps.loadLedger();
+  // Fail before copying when the card clearly cannot hold the new resources.
+  const onCard = new Set(target.resourcePaths);
+  const adding = selected.filter((a) => {
+    const entry = ledger.assets[a.id];
+    return !entry || !onCard.has(entry.sourcePath);
+  }).length;
+  if (target.resourcePaths.length + adding > maxCardResources)
+    throw new Error(
+      `TOO_MANY_RESOURCES: 카드 자료는 ${maxCardResources}개까지예요(지금 ${target.resourcePaths.length}개, 추가 ${adding}개). assetIds로 이 카드에 넣을 자산을 줄여주세요.`,
+    );
+
   const items: PhotosBundleItem[] = [];
   const entries: PhotosImportEntry[] = [];
+  const stale: PhotosImportEntry[] = [];
   for (const asset of selected) {
     const previous = ledger.assets[asset.id];
     try {
-      if (await reusable(previous, deps)) {
+      // A video already linked to another card stays there: no copy, no new edit.
+      const owner = previous?.editId
+        ? await deps.editOwner(previous.editId)
+        : undefined;
+      if (owner && owner !== input.projectId) {
+        items.push({
+          assetId: asset.id,
+          mediaKind: asset.mediaKind,
+          status: "linked-elsewhere",
+          ownerId: owner,
+          name: previous!.name,
+          path: previous!.sourcePath,
+          editId: previous!.editId,
+        });
+        continue;
+      }
+      const reuseCopy = await copyExists(previous, deps);
+      const editAlive =
+        !!previous?.editId && (await deps.editExists(previous.editId));
+      if (reuseCopy && (asset.mediaKind === "photo" || editAlive)) {
         entries.push(previous!);
         items.push({ assetId: asset.id, mediaKind: asset.mediaKind, status: "already-imported" });
         continue;
       }
-      const copied = await deps.materialize(asset.id);
-      if (copied.assetID !== asset.id || copied.mediaKind !== asset.mediaKind)
-        throw new Error("Photos 복사 결과가 선택한 자산과 달라요.");
-      const name =
-        copied.originalFilename ||
-        asset.publicFilename ||
-        path.basename(copied.sourcePath);
-      const entry: PhotosImportEntry = {
-        assetId: asset.id,
-        mediaKind: asset.mediaKind,
-        sourcePath: copied.sourcePath,
-        ...(copied.pairedVideoPath ? { pairedVideoPath: copied.pairedVideoPath } : {}),
-        name,
-        importedAt: deps.now().toISOString(),
-      };
-      if (asset.mediaKind === "video")
-        entry.editId = (await deps.createEdit(copied.sourcePath)).id;
-      ledger.assets[asset.id] = entry;
-      // Record each copy as soon as it exists so a later failure cannot orphan it.
-      await deps.saveLedger(ledger);
+      let entry: PhotosImportEntry;
+      if (reuseCopy) {
+        // The copy survived but its edit did not: only the edit is made again.
+        const { editId: _gone, ...kept } = previous!;
+        entry = kept;
+      } else {
+        const copied = await deps.materialize(asset.id);
+        if (copied.assetID !== asset.id || copied.mediaKind !== asset.mediaKind)
+          throw new Error("Photos 복사 결과가 선택한 자산과 달라요.");
+        entry = {
+          assetId: asset.id,
+          mediaKind: asset.mediaKind,
+          sourcePath: copied.sourcePath,
+          ...(copied.pairedVideoPath ? { pairedVideoPath: copied.pairedVideoPath } : {}),
+          name:
+            copied.originalFilename ||
+            asset.publicFilename ||
+            path.basename(copied.sourcePath),
+          importedAt: deps.now().toISOString(),
+        };
+        // Record the copy before anything else can fail, so a rerun never copies it again.
+        ledger.assets[asset.id] = entry;
+        await deps.saveLedger(ledger);
+      }
+      if (previous && (!reuseCopy || previous.editId)) stale.push(previous);
+      if (asset.mediaKind === "video") {
+        entry = { ...entry, editId: (await deps.createEdit(entry.sourcePath)).id };
+        ledger.assets[asset.id] = entry;
+        await deps.saveLedger(ledger);
+      }
       entries.push(entry);
       items.push({ assetId: asset.id, mediaKind: asset.mediaKind, status: "imported" });
     } catch (error) {
@@ -182,11 +224,11 @@ export async function importPhotosBundle(
   }
 
   const { dashboard, owners } = await deps.attach((current) =>
-    attachPhotosBundle(current, input.projectId, entries),
+    attachPhotosBundle(current, input.projectId, entries, stale),
   );
   for (const item of items) {
     const entry = entries.find((e) => e.assetId === item.assetId);
-    if (!entry) continue;
+    if (!entry || item.status === "linked-elsewhere") continue;
     item.name = entry.name;
     item.path = entry.sourcePath;
     if (entry.pairedVideoPath) item.pairedVideoPath = entry.pairedVideoPath;
@@ -228,17 +270,36 @@ export function attachPhotosBundle(
   current: Dashboard,
   projectId: string,
   entries: PhotosImportEntry[],
+  /** Earlier imports of re-copied assets: their missing files and dead edit leave the card. */
+  stale: PhotosImportEntry[] = [],
 ): { dashboard: Dashboard; owners: Map<string, string> } {
   const target = current.projects.find((p) => p.id === projectId);
   if (!target)
     throw new Error("CONTENT_NOT_FOUND: 가져올 대상 콘텐츠 카드를 확인해주세요.");
   const owners = new Map<string, string>();
-  const resources: LocalResource[] = [...(target.resources ?? [])];
+  const stalePaths = new Set(
+    stale.flatMap((e) => [e.sourcePath, ...(e.pairedVideoPath ? [e.pairedVideoPath] : [])]),
+  );
+  const fresh = new Set(entries.flatMap((e) => [e.sourcePath, e.pairedVideoPath]));
+  const resources: LocalResource[] = (target.resources ?? []).filter(
+    (r) => !(r.role === "footage" && stalePaths.has(r.path) && !fresh.has(r.path)),
+  );
   const add = (resource: LocalResource) => {
     if (!resources.some((r) => r.path === resource.path && r.role === resource.role))
       resources.push(resource);
   };
   let production = target.production;
+  const staleEdits = new Set(stale.flatMap((e) => (e.editId ? [e.editId] : [])));
+  if (production && staleEdits.size) {
+    const exported = new Set(production.exports.map((x) => x.edit.id));
+    production = {
+      ...production,
+      // An edit with recorded outputs stays: its export history must keep its edit.
+      edits: production.edits.filter(
+        (e) => !(e.kind === "video" && staleEdits.has(e.id) && !exported.has(e.id)),
+      ),
+    };
+  }
   for (const entry of entries) {
     if (entry.mediaKind === "video" && entry.editId) {
       const edit = { kind: "video" as const, id: entry.editId };
@@ -253,8 +314,10 @@ export function attachPhotosBundle(
     if (entry.pairedVideoPath)
       add({ role: "footage", path: entry.pairedVideoPath, label: livePhotoLabel(entry.name) });
   }
-  if (resources.length > 500)
-    throw new Error("TOO_MANY_RESOURCES: 카드 자료가 500개를 넘어요. 그룹을 나눠 가져와주세요.");
+  if (resources.length > maxCardResources)
+    throw new Error(
+      `TOO_MANY_RESOURCES: 카드 자료는 ${maxCardResources}개까지예요. assetIds로 이 카드에 넣을 자산을 줄여주세요.`,
+    );
   const next: Dashboard = {
     ...current,
     projects: current.projects.map((p) =>

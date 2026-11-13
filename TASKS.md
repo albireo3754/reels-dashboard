@@ -7,7 +7,8 @@
 - [x] native `media.materialize`: `editor.materialize`와 같은 인자·권한·그룹·index-run 검사로 사진·영상 모두 private `editor-sources/<UUID>/`에 복사. Live Photo는 원본 motion(`.pairedVideo`, 없으면 `.fullSizePairedVideo`)도 같은 폴더에 복사. PhotoKit은 resource 데이터 요청만. Swift 테스트 5개 추가.
 - [x] MCP·CLI `reels_import_photos_bundle`(`reels import-photos-bundle`): 입력 `projectId`·`groupId`·`indexRunId`·선택 `assetIds`. 영상은 카드 없는 편집 프로젝트로 만들어 대상 카드 `production.edits`에 연결, 사진·Live Photo 영상은 `footage` 자료로 등록. 카드 단계·다음 할 일은 바꾸지 않음.
 - [x] 멱등: 프로필 `photos-imports.json` ledger(공개 asset ID 기준). 단일 영상 가져오기도 ledger에 기록. 파일·편집이 사라진 항목만 다시 복사. 다른 카드에 이미 연결된 영상은 `linked-elsewhere`로 보고하고 옮기지 않음.
-- [x] 검증: 단위 `tests/unit/photos-bundle.test.ts`(8), `photos-copy-default`에 새 도구 분류, e2e `tests/electron/photos-bundle.spec.ts`(REELS_DEMO 합성 Photos, `REELS_EDITOR_QA=1`). 실제 Photos 보관함 QA는 하지 않음.
+- [x] 교차 리뷰(eris) 반영: 복사본을 편집 생성 전에 ledger에 기록(편집 실패 시 재복사 없이 편집만 재시도), 다른 카드 소유 영상은 복사 전에 `linked-elsewhere`, 같은 카드 재복사는 사라진 footage·죽은 편집을 교체, 500개 상한을 복사 전에 검사, 단일 영상 ledger 기록은 기다리지 않고 유효 항목을 덮지 않음, 편집 존재는 디스크로 확인, `REELS_PHOTOS_DEMO_QA`는 `REELS_USER_DATA`가 있을 때만. 남은 판단: Live Photo 영상 복사만 실패해도 사진까지 `failed`(재실행으로 복구).
+- [x] 검증: 단위 `tests/unit/photos-bundle.test.ts`(12), `photos-copy-default`에 새 도구 분류, e2e `tests/electron/photos-bundle.spec.ts`(REELS_DEMO 합성 Photos, `REELS_EDITOR_QA=1`). 실제 Photos 보관함 QA는 하지 않음.
 - 문서: [MCP](docs/mcp-usage.md#photos-bundle-import-default-for-blog-and-reels-material)·[인터페이스](docs/agent-interface.md)·[CLI 스킬](skills/reels-cli/SKILL.md)·[native README](native/photosindex/README.md).
 
 ## Photos 원본 기본 불변(복사 기본) — 2026-11-13

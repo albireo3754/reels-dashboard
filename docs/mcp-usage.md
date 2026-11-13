@@ -84,11 +84,11 @@ Input: `projectId` (existing content card, e.g. `content:example`), `groupId`, `
 - Videos become edit projects linked to the card through `production.edits`. No card per video is created, so `reels_merge_projects` is not needed afterwards.
 - Photos become `footage` resources on the card. A Live Photo also copies its original motion video, registered as a second `footage` resource labelled `… (Live Photo 영상)`.
 - The card's stage, next action and other resources are not changed.
-- Idempotent: a ledger (`photos-imports.json` in the app profile) keyed by the stable public asset ID reuses earlier copies, including videos imported by `reels_import_photos_video`. A copy whose file or edit project is gone is copied again.
+- Idempotent: a ledger (`photos-imports.json` in the app profile) keyed by the stable public asset ID reuses earlier copies, including videos imported by `reels_import_photos_video`. Each copy is recorded before its edit project is made, so a failed edit is retried from the kept copy. A copy whose file is gone is copied again and replaces the old footage (and its edit, unless that edit has recorded outputs) on the same card.
 - Output: `items[]` with `assetId`, `mediaKind`, `status` (`imported`, `already-imported`, `linked-elsewhere`, `failed`), `path`, `pairedVideoPath`, `editId`, `ownerId`, `error`; `counts` (per status plus `photos`, `videos`, `livePhotos`); `dashboardUpdatedAt`.
-- `linked-elsewhere`: the video's edit already belongs to another card (`ownerId`). It is left there; merge the cards if that was a mistake.
+- `linked-elsewhere`: the video's edit already belongs to another card (`ownerId`). Nothing is copied or created; it stays there. Merge the cards if that was a mistake.
 - A missing card or an asset outside the group fails before anything is copied. One asset's failure (for example an iCloud download) is reported per item and the rest still attach; repeat the call to finish.
-- One call is limited to 180 seconds. A large group or iCloud download can outlast it; the import keeps running in the app, and the same call repeated later returns the result without copying again. Split very large groups with `assetIds`. A card holds at most 500 resources.
+- One call is limited to 180 seconds. A large group or iCloud download can outlast it; the import keeps running in the app, and the same call repeated later returns the result without copying again. Split very large groups with `assetIds`. A card holds at most 500 resources; the import checks this before copying (one resource per new asset; a Live Photo adds a second).
 
 The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, or social publication. Explicit iCloud copy/status operations are described below. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
 

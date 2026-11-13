@@ -3,7 +3,7 @@ import { readJsonFile, writeFileAtomic, writeJsonAtomic } from "../../../shared/
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
-import { upsertExportedProject } from "../../../shared/production-project";
+import { editOwner, upsertExportedProject } from "../../../shared/production-project";
 import { type ChildProcess } from "node:child_process";
 import {
   access,
@@ -386,13 +386,17 @@ export class EditorService implements EditorBridge {
         throw new Error("선택한 촬영본을 확인해주세요.");
       const result = await this.options.materialize(selection);
       const project = await this.importFile(result.sourcePath);
+      const sourcePath = (await this.record(project.id)).sourcePath;
       // A later bundle import of the same asset reuses this copy instead of
-      // copying again. Best effort: the import itself already succeeded.
-      await this.withPhotosLedger(async (ledger, save) => {
+      // copying again. Best effort and not awaited: a running bundle import
+      // holds the ledger, and this import already succeeded.
+      void this.withPhotosLedger(async (ledger, save) => {
+        const existing = ledger.assets[selection.assetID];
+        if (existing && (await this.isFile(existing.sourcePath))) return;
         ledger.assets[selection.assetID] = {
           assetId: selection.assetID,
           mediaKind: "video",
-          sourcePath: (await this.record(project.id)).sourcePath,
+          sourcePath,
           editId: project.id,
           name: project.source.name,
           importedAt: new Date().toISOString(),
@@ -403,6 +407,13 @@ export class EditorService implements EditorBridge {
     });
   }
   private photosQueue: Promise<unknown> = Promise.resolve();
+  private async isFile(file: string) {
+    try {
+      return (await stat(file)).isFile();
+    } catch {
+      return false;
+    }
+  }
   private get ledgerFile() {
     return path.join(this.options.root, "photos-imports.json");
   }
@@ -445,21 +456,21 @@ export class EditorService implements EditorBridge {
         importPhotosBundle(input, {
           groupAssets: () =>
             groupAssets({ groupID: input.groupId, indexRunID: input.indexRunId }),
-          projectExists: async (id) =>
-            (await this.options.store.load()).projects.some((p) => p.id === id),
+          target: async (id) => {
+            const project = (await this.options.store.load()).projects.find((p) => p.id === id);
+            return project
+              ? { resourcePaths: (project.resources ?? []).map((r) => r.path) }
+              : undefined;
+          },
+          editOwner: async (editId) =>
+            editOwner(await this.options.store.load(), { kind: "video", id: editId })?.id,
           loadLedger: async () => ledger,
           saveLedger: save,
-          isFile: async (file) => {
-            try {
-              return (await stat(file)).isFile();
-            } catch {
-              return false;
-            }
-          },
+          isFile: (file) => this.isFile(file),
+          // On disk, not the in-memory record cache.
           editExists: async (id) => {
             try {
-              await this.record(id);
-              return true;
+              return await this.isFile(path.join(this.dir(safeID(id)), "project.json"));
             } catch {
               return false;
             }
