@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -31,10 +31,16 @@ import {
 } from "../../src/features/content-library";
 import { callAgent, startAgentSocket } from "../../src/shared/lib/agent-socket";
 import { LocalStore } from "../../src/shared/lib/storage";
+import { cliLauncher } from "../../src/shared/cli-launcher";
 import type { RenderJob } from "../../src/shared/editor";
-import { run } from "../../src/app/cli/run";
+import { exitCodes } from "../../src/app/cli/outcome";
 import {
   builtinCommands,
+  builtins,
+  helpTopics,
+  run,
+} from "../../src/app/cli/run";
+import {
   cliOptions,
   parseToolArgs,
   propertyFlag,
@@ -47,6 +53,11 @@ import {
   toolUsage,
   type CliIO,
 } from "../../src/app/cli/tool-command";
+import {
+  toolGroupIds,
+  toolGroupOf,
+  toolGroups,
+} from "../../src/app/cli/tool-groups";
 
 const toolSlugs = toolNames.map(toolSlug);
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -110,6 +121,8 @@ async function cli(
     interruptAfterStdin?: boolean;
     onStderr?: (text: string) => void;
     env?: NodeJS.ProcessEnv;
+    /** Extra CliIO fields, such as `script` and `versions` for `reels doctor`. */
+    io?: Partial<CliIO>;
   } = {},
 ) {
   let stdout = "",
@@ -142,6 +155,7 @@ async function cli(
       return options.cwd ?? root;
     },
     pollMs: 5,
+    ...options.io,
   };
   const code = await run(args, io);
   assert.equal(stdout.split("\n").length, 2, "stdout is one line");
@@ -235,6 +249,30 @@ test("tools list and schemas match the shared definitions and the real MCP serve
   });
 });
 
+test("the built-in table keeps names unique and help reachable", () => {
+  const names = builtins.flatMap(({ name, aliases }) => [
+    name,
+    ...(aliases ?? []),
+  ]);
+  assert.equal(new Set(names).size, names.length);
+  // A topic is matched before routing, so it would hide a command or tool of the same name.
+  const topics = helpTopics.map(({ name }) => name);
+  assert.equal(new Set(topics).size, topics.length);
+  assert.deepEqual(topics, ["exit-codes", "agent"]);
+  for (const topic of topics) {
+    assert.ok(!names.includes(topic), topic);
+    assert.ok(!toolSlugs.includes(topic), topic);
+  }
+  for (const entry of builtins) {
+    const flag = entry.name.startsWith("-");
+    assert.equal(builtinCommands.includes(entry.name), !flag, entry.name);
+    // data.builtins lists commands an agent runs, never a flag.
+    if (entry.summary) assert.ok(!flag, entry.name);
+    if (entry.help) assert.match(entry.help, /Example: reels |\nStart: /);
+    if (entry.usage) assert.match(entry.usage, /^reels /);
+  }
+});
+
 test("generated names never collide with built-ins or CLI options", async () => {
   const slugs = toolNames.map(toolSlug);
   assert.equal(new Set(slugs).size, slugs.length);
@@ -247,6 +285,363 @@ test("generated names never collide with built-ins or CLI options", async () => 
   for (const name of Object.keys(cliOptions))
     assert.ok(Object.hasOwn(toolDefinitions, name));
   assert.equal(propertyFlag("expectedUpdatedAt"), "expected-updated-at");
+});
+
+test("every tool sits in exactly one group, and group ids name nothing else", () => {
+  assert.deepEqual(
+    Object.keys(toolGroupOf).sort(),
+    Object.keys(toolDefinitions).sort(),
+  );
+  for (const [name, group] of Object.entries(toolGroupOf))
+    assert.ok(Object.hasOwn(toolGroups, group), name);
+  for (const id of toolGroupIds) {
+    assert.match(id, /^[a-z]+$/);
+    assert.ok(
+      toolNames.some((name) => toolGroupOf[name] === id),
+      id,
+    );
+    assert.ok(toolGroups[id].length <= 80, id);
+    // A group is a filter value, never a command word or a tool.
+    assert.ok(!builtinCommands.includes(id), id);
+    assert.ok(!toolSlugs.includes(id), id);
+    assert.ok(!helpTopics.some(({ name }) => name === id), id);
+  }
+});
+
+test("reels tools lists groups and filters by --group", async () => {
+  await offlineRoot(async (root) => {
+    const all = (await cli(root, ["tools"])).document.data;
+    assert.deepEqual(
+      all.groups.map(({ id }: { id: string }) => id),
+      toolGroupIds,
+    );
+    assert.equal(
+      all.groups.reduce(
+        (sum: number, { count }: { count: number }) => sum + count,
+        0,
+      ),
+      all.count,
+    );
+    for (const tool of all.tools)
+      assert.equal(
+        tool.group,
+        toolGroupOf[tool.name as keyof typeof toolGroupOf],
+      );
+    assert.ok(!Object.hasOwn(all, "group"));
+    for (const args of [["--group", "render"], ["--group=render"]]) {
+      const filtered = await cli(root, ["tools", ...args]);
+      assert.equal(filtered.code, 0, args.join(" "));
+      const { data } = filtered.document;
+      assert.equal(data.group, "render");
+      assert.deepEqual(
+        data.tools.map(({ name }: { name: string }) => name),
+        toolNames.filter((name) => toolGroupOf[name] === "render"),
+      );
+      assert.equal(data.count, data.tools.length);
+      assert.deepEqual(data.groups, all.groups);
+      assert.deepEqual(
+        data.tools[0],
+        all.tools.find(
+          ({ name }: { name: string }) => name === data.tools[0].name,
+        ),
+      );
+    }
+    const detail = (await cli(root, ["tools", "start-render"])).document.data;
+    assert.equal(detail.group, "render");
+    assert.match(
+      (await cli(root, ["start-render", "--help"])).document.data.help,
+      /^Group: render \(reels tools --group render\)$/m,
+    );
+    assert.match(
+      (await cli(root, ["tools", "--help"])).document.data.help,
+      /^Example: reels tools --group render$/m,
+    );
+  });
+});
+
+test("reels tools --group rejects unknown ids, tool names and other flags", async () => {
+  await offlineRoot(async (root) => {
+    const unknown = await cli(root, ["tools", "--group", "rendr"]);
+    assert.equal(unknown.code, 2);
+    assert.equal(unknown.document.error.code, "USAGE");
+    assert.equal(unknown.document.error.writeOutcome, "none");
+    assert.deepEqual(unknown.document.error.didYouMean, ["render"]);
+    assert.match(unknown.document.error.message, /Groups: editor, render/);
+    assert.match(unknown.document.error.usage, /--group <id>/);
+    for (const args of [
+      ["tools", "--group"],
+      ["tools", "--group", ""],
+      ["tools", "start-render", "--group", "render"],
+      ["tools", "--group", "render", "start-render"],
+      ["tools", "--group", "render", "--group", "forms"],
+      ["tools", "--group", "render", "--bogus"],
+      ["tools", "--bogus"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(document.error.code, "USAGE", args.join(" "));
+      assert.equal(document.error.writeOutcome, "none", args.join(" "));
+    }
+    const named = (
+      await cli(root, ["tools", "get-project", "--group", "editor"])
+    ).document.error;
+    assert.match(named.message, /does not take a tool name/);
+    const other = (await cli(root, ["tools", "--bogus"])).document.error;
+    assert.equal(other.message, "tools takes at most one tool name.");
+  });
+});
+
+/** For the opt-in text forms: stdout is text, never JSON, and exactly what `run` wrote. */
+async function cliText(root: string, args: string[]) {
+  let stdout = "";
+  const code = await run(args, {
+    stdin: () => Readable.from([]),
+    stdout: (text) => (stdout += text),
+    stderr: () => {},
+    env: { REELS_USER_DATA: root },
+    cwd: () => root,
+  });
+  return { code, stdout };
+}
+const isJson = (text: string) => {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test("help --plain and tools --plain print text for people", async () => {
+  await offlineRoot(async (root) => {
+    const text = async (...args: string[]) => {
+      const result = await cliText(root, args);
+      assert.equal(result.code, 0, args.join(" "));
+      assert.ok(!isJson(result.stdout), args.join(" "));
+      assert.ok(result.stdout.endsWith("\n"), args.join(" "));
+      return result.stdout;
+    };
+    const top = (await cli(root, ["--help"])).document.data.help;
+    assert.equal(await text("help", "--plain"), `${top}\n`);
+    assert.match(top, /--plain/);
+
+    const list = await text("tools", "--plain");
+    for (const id of toolGroupIds)
+      assert.match(list, new RegExp(`^${id}: ${toolGroups[id].replace(/[.()]/g, "\\$&")} \\(\\d+\\)$`, "m"));
+    for (const slug of toolSlugs)
+      assert.match(list, new RegExp(`^  reels ${slug}  `, "m"));
+    assert.match(list, /^  reels get-project +Read .*\(read-only\)$/m);
+    assert.match(list, /^  reels update-project +Patch .*[^)]$/m);
+    assert.match(list, /^Built-in commands:$/m);
+
+    const render = await text("tools", "--plain", "--group", "render");
+    assert.equal(await text("tools", "--group=render", "--plain"), render);
+    assert.match(render, /^render: /m);
+    assert.doesNotMatch(render, /^editor: |reels get-project/m);
+    assert.match(render, /^  reels start-render  /m);
+
+    const detail = await text("tools", "--plain", "get-project");
+    assert.equal(await text("tools", "reels_get_project", "--plain"), detail);
+    assert.match(detail, /^reels get-project \(read-only\)$/m);
+    assert.match(detail, /^Usage: reels get-project --project-id <uuid>$/m);
+    assert.match(detail, /^Example: reels get-project /m);
+    assert.match(detail, /^  --project-id  \(string, uuid, required\)$/m);
+    assert.match(detail, /^Group: editor /m);
+    const enums = await text("tools", "--plain", "preview-frame");
+    assert.match(enums, /--kind  \(one of [a-z|]*cover[a-z|]*, required\)/);
+    assert.match(enums, /^  --out <path> +New file for the image\.$/m);
+    assert.equal(await text("help", "--plain", "get-project"), detail);
+    assert.equal(await text("help", "get-project", "--plain"), detail);
+
+    assert.equal(
+      await text("help", "--plain", "status"),
+      `${(await cli(root, ["status", "--help"])).document.data.help}\n`,
+    );
+    const toolsHelp = await text("help", "--plain", "tools");
+    assert.equal(await text("tools", "--plain", "--help"), toolsHelp);
+    assert.match(toolsHelp, /^--plain  /m);
+
+    const codes = await text("help", "--plain", "exit-codes");
+    for (const [name, code] of Object.entries(exitCodes))
+      assert.match(codes, new RegExp(`^  ${code} +${name} +\\S`, "m"));
+    assert.equal(
+      await text("help", "--plain", "agent"),
+      await readFile("skills/reels-cli/SKILL.md", "utf8"),
+    );
+  });
+});
+
+test("--plain stays opt-in: failures are JSON and other commands are unchanged", async () => {
+  await offlineRoot(async (root) => {
+    for (const args of [
+      ["help", "--plain", "nope"],
+      ["help", "--plain", "--version"],
+      ["help", "--plain", "--plain"],
+      ["tools", "--plain", "nonexistent"],
+      ["tools", "--plain", "--group", "rendr"],
+      ["tools", "--plain", "--plain"],
+      ["tools", "--plain", "--bogus"],
+      ["status", "--plain"],
+      ["get-project", "--plain"],
+      ["photos-search", "--plain"],
+      ["call", "get-project", "--plain"],
+      ["--plain"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.ok(["USAGE", "UNKNOWN_TOOL"].includes(document.error.code), args.join(" "));
+    }
+    const group = (await cli(root, ["tools", "--plain", "--group", "rendr"]))
+      .document.error;
+    assert.deepEqual(group.didYouMean, ["render"]);
+    // A schema flag named like a text option is still a schema flag.
+    assert.deepEqual(
+      parseToolArgs("reels_photos_search", ["--text", "cafe"]).given.map(
+        ([flag, value]) => [flag.flag, value],
+      ),
+      [["--text", "cafe"]],
+    );
+    const help = await cli(root, ["photos-search", "--text", "cafe", "--help"]);
+    assert.equal(help.code, 0);
+    assert.match(help.document.data.help, /--text/);
+    // Without --plain every form is JSON as before.
+    for (const args of [["tools"], ["help", "get-project"], ["help", "agent"]])
+      assert.equal((await cli(root, args)).code, 0, args.join(" "));
+  });
+});
+
+const hasShell = (shell: string) =>
+  spawnSync("/bin/sh", ["-c", `command -v ${shell}`]).status === 0;
+
+test("reels completion prints a script built from this version's commands and flags", async () => {
+  await offlineRoot(async (root) => {
+    const version = JSON.parse(await readFile("package.json", "utf8")).version;
+    for (const shell of ["bash", "zsh", "fish"]) {
+      const { code, stdout } = await cliText(root, ["completion", shell]);
+      assert.equal(code, 0, shell);
+      assert.ok(!isJson(stdout), shell);
+      assert.match(stdout, new RegExp(`generated by reels ${version.replaceAll(".", "\\.")}`));
+      for (const word of [
+        ...builtinCommands,
+        "get-project",
+        "start-render",
+        "photos-search",
+        "--project-id",
+        "--expected-updated-at",
+        "--wait-timeout",
+        "--text",
+        "--plain",
+        "--group",
+        "--version",
+        "exit-codes",
+        ...toolGroupIds,
+      ])
+        assert.match(stdout, new RegExp(`[ '"=(]${word}[ '")|]`), `${shell}: ${word}`);
+      // Every tool, and each of its generated flags, is offered.
+      for (const name of toolNames) {
+        assert.ok(stdout.includes(toolSlug(name)), `${shell}: ${name}`);
+        for (const { flag } of toolFlags(name))
+          assert.match(stdout, new RegExp(`[ '"(]${flag}[ '")]`), `${shell}: ${name} ${flag}`);
+      }
+    }
+  });
+});
+
+test("completion scripts parse in their shells and complete as listed", async (t) => {
+  const root = await temporaryRoot();
+  try {
+    const script = async (shell: string) => {
+      const file = path.join(root, `reels.${shell}`);
+      await writeFile(file, (await cliText(root, ["completion", shell])).stdout);
+      return file;
+    };
+    const bash = await script("bash");
+    assert.equal(spawnSync("/bin/bash", ["-n", bash]).status, 0);
+    const complete = (...words: string[]) =>
+      spawnSync(
+        "/bin/bash",
+        [
+          "-c",
+          `source "$0"; COMP_WORDS=("$@"); COMP_CWORD=$(( $# - 1 )); _reels; printf '%s\\n' "\${COMPREPLY[@]}"`,
+          bash,
+          ...words,
+        ],
+        { encoding: "utf8" },
+      ).stdout.trim().split("\n");
+    assert.deepEqual(complete("reels", "comp"), ["completion"]);
+    assert.deepEqual(complete("reels", "completion", ""), ["bash", "zsh", "fish"]);
+    assert.deepEqual(complete("reels", "tools", "--group", "ren"), ["render"]);
+    assert.deepEqual(complete("reels", "call", "reels_get_project", "--pro"), ["--project-id"]);
+    assert.deepEqual(complete("reels", "photos-search", "--te"), ["--text"]);
+    assert.deepEqual(complete("reels", "help", "--pl"), ["--plain"]);
+    // Past the command, only a word starting with - gets flags. A path, or the value of a
+    // flag that takes one, gets an empty reply, so `complete -o default` offers file names.
+    const empty = [""];
+    assert.deepEqual(complete("reels", "preview-frame", "--out", ""), empty);
+    assert.deepEqual(complete("reels", "preview-frame", "--out", "-"), empty);
+    assert.deepEqual(complete("reels", "call", "preview-frame", "--out", ""), empty);
+    assert.deepEqual(complete("reels", "prepare-media", "--selection", "./"), empty);
+    assert.deepEqual(complete("reels", "prepare-media", "--list", ""), empty);
+    assert.deepEqual(complete("reels", "status", "--timeout", ""), empty);
+    assert.deepEqual(complete("reels", "status", "--t"), ["--timeout"]);
+    assert.deepEqual(complete("reels", "prepare-media", "--li"), ["--list"]);
+    // A command's own words still come before files.
+    assert.ok(complete("reels", "tools", "").includes("get-project"));
+    assert.ok(!complete("reels", "tools", "").includes("--group"));
+    assert.ok(complete("reels", "help", "").includes("exit-codes"));
+    assert.match(await readFile(bash, "utf8"), /^complete -o default -F _reels reels$/m);
+    assert.match(await readFile(bash, "utf8"), /^# Load it with: eval "\$\(reels completion bash\)"$/m);
+
+    // zsh falls back to _files in the same cases; fish keeps -f for the command position only.
+    const zshScript = await readFile(await script("zsh"), "utf8");
+    assert.match(zshScript, /if \(\( \$\{values\[\(Ie\)\$prev\]\} \)\); then\n\s+_files\n\s+return/);
+    assert.match(zshScript, /elif \[\[ \$PREFIX == -\* \]\]; then\n\s+candidates=\(\$flags\)/);
+    assert.match(zshScript, /else\n\s+_files\n\s+return/);
+    assert.match(zshScript, /preview-frame\|reels_preview_frame\) flags=\([^)]*--out[^)]*\) args=\(\) values=\([^)]*--out[^)]*\)/);
+    const fishScript = await readFile(await script("fish"), "utf8");
+    assert.doesNotMatch(fishScript, /^complete -c reels -f$/m);
+    for (const line of fishScript.split("\n").filter((text) => text.startsWith("complete") && / -f /.test(text)))
+      assert.match(line, /-n (__fish_use_subcommand|__reels_after_group) /, line);
+    assert.match(fishScript, /^complete -c reels -f -n __fish_use_subcommand -a /m);
+
+    await t.test("zsh -n", { skip: !hasShell("zsh") && "zsh is not installed" }, async () => {
+      assert.equal(spawnSync("zsh", ["-n", await script("zsh")]).status, 0);
+    });
+    await t.test("fish -n", { skip: !hasShell("fish") && "fish is not installed" }, async () => {
+      assert.equal(spawnSync("fish", ["-n", await script("fish")]).status, 0);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reels completion needs one known shell and installs nothing", async () => {
+  await offlineRoot(async (root) => {
+    for (const [args, didYouMean] of [
+      [["completion"], ["bash", "zsh", "fish"]],
+      [["completion", "bassh"], ["bash"]],
+      [["completion", "tcsh"], ["bash", "zsh", "fish"]],
+      [["completion", "--bogus"], ["bash", "zsh", "fish"]],
+    ] as const) {
+      const { code, document } = await cli(root, [...args]);
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(document.error.code, "USAGE", args.join(" "));
+      assert.equal(document.error.writeOutcome, "none", args.join(" "));
+      assert.deepEqual(document.error.didYouMean, didYouMean, args.join(" "));
+    }
+    assert.equal((await cli(root, ["completion", "bash", "zsh"])).code, 2);
+    const help = (await cli(root, ["completion", "--help"])).document.data.help;
+    assert.match(help, /^Example: reels completion zsh > /m);
+    assert.match(help, /installs nothing/);
+    assert.equal((await cli(root, ["help", "completion"])).document.data.help, help);
+    // It does no work against the app, so data.builtins leaves it out, as it does help and tools.
+    assert.ok(builtinCommands.includes("completion"));
+    assert.equal(
+      (await cli(root, ["tools", "completion"])).document.error.next[0],
+      "reels help completion",
+    );
+    assert.deepEqual(await readdir(root), []);
+  });
 });
 
 test("tool detail, help and version need no app", async () => {
@@ -2336,7 +2731,25 @@ test("every help page has an example and the top level says where ids come from"
     assert.match(top, /dashboard\.projects\[\]\.id/);
     assert.match(top, /REELS_USER_DATA/);
     assert.match(top, /reels help exit-codes/);
+    assert.match(top, /reels help agent/);
     assert.ok(top.split("\n").length <= 15, "--help stays short");
+  });
+});
+
+test("reels help agent prints the reels-cli skill for this version", async () => {
+  await offlineRoot(async (root) => {
+    const result = await cli(root, ["help", "agent"]);
+    assert.equal(result.code, 0);
+    assert.equal(result.document.ok, true);
+    const { data } = result.document;
+    assert.deepEqual(Object.keys(data), ["guide", "name", "version"]);
+    assert.equal(data.guide, await readFile("skills/reels-cli/SKILL.md", "utf8"));
+    assert.equal(data.name, "reels-cli");
+    assert.match(data.guide, /^---\nname: reels-cli\n/);
+    assert.equal(
+      data.version,
+      JSON.parse(await readFile("package.json", "utf8")).version,
+    );
   });
 });
 
@@ -2382,7 +2795,7 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
       (await cli(root, args)).document.error;
     assert.equal((await error("list")).didYouMean[0], "list-projects");
     assert.equal((await error("project")).didYouMean.length, 3);
-    for (const command of ["status", "prepare-media", "call", "tools"]) {
+    for (const command of ["status", "doctor", "prepare-media", "call", "tools"]) {
       const builtin = await error("tools", command);
       assert.equal(builtin.code, "UNKNOWN_TOOL", command);
       assert.deepEqual(builtin.next, [`reels help ${command}`], command);
@@ -2396,7 +2809,7 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
     const { data } = (await cli(root, ["tools"])).document;
     assert.deepEqual(
       data.builtins.map(({ command }: { command: string }) => command),
-      ["reels status", "reels prepare-media"],
+      ["reels status", "reels doctor", "reels prepare-media"],
     );
   });
 });
@@ -2503,5 +2916,290 @@ test("the CLI agrees with the real dispatch on jobs, revisions and busy edits", 
     assert.equal(busy.document.error.code, "EDITOR_BUSY");
     assert.equal(busy.document.error.retry, "wait");
     assert.equal(busy.document.error.writeOutcome, "not_applied");
+  });
+});
+
+/** A temp HOME, PATH and bundle for `reels doctor`; nothing outside the temp folder is read. */
+async function doctorSetup(root: string) {
+  const home = path.join(root, "home");
+  const binDir = path.join(home, ".local", "bin");
+  const launcher = path.join(binDir, "reels");
+  const bundle = path.join(root, "app", "reels.mjs");
+  const other = path.join(root, "other-bin");
+  // The runtime a managed launcher execs; it stands in for the app's Electron binary.
+  const runtime = path.join(root, "app", "Reels Dashboard's", "Electron");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(path.dirname(runtime), { recursive: true });
+  await mkdir(path.dirname(bundle), { recursive: true });
+  await mkdir(other, { recursive: true });
+  await writeFile(bundle, "// bundle\n");
+  const executable = async (file: string, text: string) => {
+    await writeFile(file, text);
+    await chmod(file, 0o755);
+  };
+  await executable(runtime, "#!/bin/sh\n");
+  const managed = (target = bundle, runs = runtime) =>
+    executable(launcher, cliLauncher(runs, target));
+  const doctor = async (
+    options: { pathEnv?: string; script?: string; extra?: string[] } = {},
+  ) => {
+    const result = await cli(root, ["doctor", ...(options.extra ?? [])], {
+      env: {
+        REELS_USER_DATA: root,
+        HOME: home,
+        PATH: options.pathEnv ?? binDir,
+      },
+      io: {
+        script: options.script ?? bundle,
+        versions: { node: "22.12.0" },
+      },
+    });
+    assert.equal(result.code, 0);
+    const checks = Object.fromEntries(
+      result.document.data.checks.map((check: { id: string }) => [
+        check.id,
+        check,
+      ]),
+    );
+    return { ...result, data: result.document.data, checks };
+  };
+  return { home, binDir, launcher, bundle, other, runtime, executable, managed, doctor };
+}
+
+const listTree = async (dir: string): Promise<string[]> =>
+  (await readdir(dir, { recursive: true })).map(String).sort();
+
+test("doctor reports a managed setup with the app closed, and writes nothing", async () => {
+  await offlineRoot(async (root) => {
+    const { managed, doctor, launcher, bundle, runtime } = await doctorSetup(root);
+    await managed();
+    const before = await listTree(root);
+    const { data, checks, document } = await doctor();
+    assert.deepEqual(await listTree(root), before);
+    assert.ok(!Object.hasOwn(document, "tool"));
+    assert.equal(data.healthy, false);
+    assert.deepEqual(
+      data.checks.map(({ id }: { id: string }) => id),
+      [
+        "runtime",
+        "profile",
+        "app",
+        "app_version",
+        "launcher",
+        "launcher_bundle",
+        "path_dir",
+        "path_command",
+      ],
+    );
+    for (const id of ["runtime", "profile", "launcher", "launcher_bundle", "path_dir", "path_command"])
+      assert.equal(checks[id].ok, true, id);
+    assert.equal(checks.app.ok, false);
+    assert.match(checks.app.detail, /no_connection_file/);
+    assert.match(checks.app.fix, /never launches/);
+    assert.equal(checks.app_version.ok, null);
+    assert.deepEqual(data.app, { online: false, reason: "no_connection_file" });
+    assert.equal(data.userData, root);
+    assert.deepEqual(data.launcher, {
+      path: launcher,
+      state: "managed",
+      bundle,
+      executable: runtime,
+    });
+    assert.deepEqual(data.cli, { version: data.cli.version, bundle, node: "22.12.0" });
+    // The app verdict is the one `reels status` prints.
+    const status = await cli(root, ["status"]);
+    assert.deepEqual(status.document.data.app, data.app);
+  });
+});
+
+test("doctor is healthy when the app answers and the launcher is on PATH", async () => {
+  await withApp(echo, async (root) => {
+    const { managed, doctor } = await doctorSetup(root);
+    await managed();
+    const { data, checks } = await doctor();
+    assert.equal(checks.app.ok, true);
+    assert.equal(data.app.online, true);
+    assert.equal(data.healthy, true);
+  });
+});
+
+test("doctor explains an unresolved profile without calling the app", async () => {
+  await offlineRoot(async (root) => {
+    const result = await cli(root, ["doctor"], {
+      cwdGone: true,
+      env: { REELS_USER_DATA: "relative", HOME: root, PATH: "" },
+      io: { versions: { node: "22.12.0" } },
+    });
+    assert.equal(result.code, 0);
+    const { data } = result.document;
+    const checks = Object.fromEntries(
+      data.checks.map((check: { id: string }) => [check.id, check]),
+    );
+    assert.equal(data.userData, null);
+    assert.equal(data.app.reason, "user_data_unresolved");
+    assert.equal(checks.profile.ok, false);
+    assert.match(checks.profile.detail, /REELS_USER_DATA/);
+    assert.equal(checks.app.ok, null);
+    assert.equal(checks.launcher_bundle.ok, null);
+    assert.equal(data.healthy, false);
+  });
+});
+
+test("doctor tells a missing, foreign and symlinked launcher apart", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, executable, launcher, binDir, bundle, other } =
+      await doctorSetup(root);
+
+    const missing = await doctor();
+    assert.equal(missing.data.launcher.state, "missing");
+    assert.equal(missing.checks.launcher.ok, false);
+    assert.match(missing.checks.launcher.fix, /never launches/);
+    assert.equal(missing.checks.path_command.ok, false);
+    // Another reels on PATH (say, npm link) still works, so the launcher is not a failure.
+    await executable(path.join(other, "reels"), "#!/bin/sh\n");
+    const elsewhere = await doctor({ pathEnv: `${binDir}:${other}` });
+    assert.equal(elsewhere.checks.launcher.ok, null);
+    assert.equal(elsewhere.checks.path_command.ok, true);
+    // ~/.local/bin off PATH is not a failure then either: the npm-link setup is healthy.
+    const linkedOnly = await doctor({ pathEnv: other });
+    assert.equal(linkedOnly.checks.launcher.ok, null);
+    assert.equal(linkedOnly.checks.path_dir.ok, null);
+    assert.match(linkedOnly.checks.path_dir.detail, /instead/);
+    assert.equal(linkedOnly.checks.path_command.ok, true);
+    // Only the closed app is a failure, so healthy follows the app alone.
+    assert.deepEqual(
+      linkedOnly.data.checks
+        .filter(({ ok }: { ok: boolean | null }) => ok === false)
+        .map(({ id }: { id: string }) => id),
+      ["app"],
+    );
+    assert.equal(elsewhere.data.command.onPath, path.join(other, "reels"));
+
+    await executable(launcher, "#!/bin/sh\necho mine\n");
+    const foreign = await doctor();
+    assert.equal(foreign.data.launcher.state, "foreign");
+    assert.equal(foreign.checks.launcher.ok, null);
+    assert.match(foreign.checks.launcher.fix, /Remove it once/);
+    assert.equal(foreign.checks.launcher_bundle.ok, null);
+    assert.equal(foreign.checks.path_command.ok, true);
+
+    await rm(launcher);
+    await symlink(bundle, launcher);
+    await chmod(bundle, 0o755);
+    const linked = await doctor();
+    assert.deepEqual(linked.data.launcher, {
+      path: launcher,
+      state: "symlink",
+      target: bundle,
+    });
+    assert.equal(linked.checks.launcher.ok, null);
+    assert.match(linked.checks.launcher.fix, /Remove the symlink once/);
+    assert.equal(linked.checks.launcher_bundle.ok, true);
+
+    await rm(launcher);
+    await symlink(path.join(root, "gone.mjs"), launcher);
+    const dangling = await doctor();
+    assert.equal(dangling.checks.launcher.ok, false);
+    assert.match(dangling.checks.launcher.detail, /does not exist/);
+    assert.equal(dangling.data.healthy, false);
+  });
+});
+
+test("doctor flags PATH without ~/.local/bin and a reels that shadows the launcher", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, executable, other, binDir } =
+      await doctorSetup(root);
+    await managed();
+    const off = await doctor({ pathEnv: `${other}::relative` });
+    assert.equal(off.checks.path_dir.ok, false);
+    assert.equal(off.checks.path_dir.fix, "Add ~/.local/bin to PATH.");
+    assert.equal(off.checks.path_command.ok, false);
+    assert.equal(off.data.command.binDirOnPath, false);
+
+    await executable(path.join(other, "reels"), "#!/bin/sh\n");
+    const shadowed = await doctor({ pathEnv: `${other}:${binDir}` });
+    assert.equal(shadowed.checks.path_dir.ok, true);
+    assert.equal(shadowed.checks.path_command.ok, false);
+    assert.match(shadowed.checks.path_command.detail, /comes before/);
+    assert.match(shadowed.checks.path_command.fix, /before /);
+  });
+});
+
+test("doctor compares the launcher's bundle with the running one", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, bundle } = await doctorSetup(root);
+    await managed();
+    const elsewhere = path.join(root, "checkout", "reels.mjs");
+    const mismatch = await doctor({ script: elsewhere });
+    assert.equal(mismatch.checks.launcher.ok, true);
+    assert.equal(mismatch.checks.launcher_bundle.ok, false);
+    assert.match(mismatch.checks.launcher_bundle.detail, new RegExp(bundle));
+    assert.equal(mismatch.data.healthy, false);
+
+    await managed(path.join(root, "moved", "reels.mjs"));
+    const moved = await doctor();
+    assert.equal(moved.checks.launcher.ok, false);
+    assert.match(moved.checks.launcher.detail, /does not exist/);
+    assert.equal(moved.checks.launcher_bundle.ok, null);
+  });
+});
+
+test("doctor checks that the launcher's runtime exists and is executable", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, runtime, bundle } = await doctorSetup(root);
+    await managed(bundle, path.join(root, "gone", "Electron"));
+    const gone = await doctor();
+    assert.equal(gone.checks.launcher.ok, false);
+    assert.match(gone.checks.launcher.detail, /runtime .*gone.* is missing or not executable/);
+    assert.match(gone.checks.launcher.fix, /rewrites the launcher/);
+    assert.equal(gone.data.healthy, false);
+
+    await managed();
+    await chmod(runtime, 0o644);
+    const notExecutable = await doctor();
+    assert.equal(notExecutable.checks.launcher.ok, false);
+    assert.match(notExecutable.checks.launcher.detail, /not executable/);
+
+    await chmod(runtime, 0o755);
+    assert.equal((await doctor()).checks.launcher.ok, true);
+  });
+});
+
+test("doctor checks the runtime against package.json engines", async () => {
+  await offlineRoot(async (root) => {
+    const { engines } = JSON.parse(await readFile("package.json", "utf8"));
+    const run = (versions: { node: string; electron?: string }) =>
+      cli(root, ["doctor"], {
+        env: { REELS_USER_DATA: root, HOME: root, PATH: "" },
+        io: { versions },
+      }).then(({ document }) => document.data);
+    const old = await run({ node: "22.11.9" });
+    assert.equal(old.checks[0].id, "runtime");
+    assert.equal(old.checks[0].ok, false);
+    assert.match(old.checks[0].detail, new RegExp(engines.node));
+    assert.ok(old.checks[0].fix);
+    const electron = await run({ node: "24.1.0", electron: "40.0.0" });
+    assert.equal(electron.checks[0].ok, true);
+    assert.match(electron.checks[0].detail, /Electron 40\.0\.0 as Node 24\.1\.0/);
+    assert.equal(electron.cli.electron, "40.0.0");
+  });
+});
+
+test("doctor usage errors exit 2 and its help ends in an example", async () => {
+  await offlineRoot(async (root) => {
+    for (const args of [
+      ["doctor", "--timeout", "0"],
+      ["doctor", "--fix"],
+      ["doctor", "extra"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(document.error.writeOutcome, "none", args.join(" "));
+      if (args[1] !== "--timeout")
+        assert.equal(document.error.usage, "reels doctor [--timeout <s>]");
+    }
+    const help = (await cli(root, ["help", "doctor"])).document.data.help;
+    assert.match(help, /^Example: reels doctor$/m);
+    assert.match(help, /never applies/);
   });
 });

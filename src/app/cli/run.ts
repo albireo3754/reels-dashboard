@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
@@ -21,8 +23,21 @@ import type { RenderJob } from "../../shared/editor";
 import { errorMessage } from "../../shared/lib/errors";
 import { localPathSchema } from "../../shared/local-resources";
 import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
-import { version } from "../../../package.json";
+import { engines, version } from "../../../package.json";
+import { agentGuide } from "./agent-guide";
+import { runtimeCheck, setupChecks, type Check } from "./doctor";
+import {
+  completionScript,
+  completionShells,
+  type CompletionShell,
+} from "./completion";
 import { checkOutputPath, saveImage } from "./image-output";
+import {
+  plainExitCodes,
+  plainToolDetail,
+  plainToolList,
+  takePlain,
+} from "./plain";
 import {
   agentFailure,
   CliError,
@@ -34,7 +49,7 @@ import {
   type Guidance,
 } from "./outcome";
 import {
-  builtinCommands,
+  closest,
   didYouMean,
   issueSummary,
   localPath,
@@ -59,53 +74,13 @@ import {
   wantsHelp,
   type CliIO,
 } from "./tool-command";
+import {
+  toolGroupIds,
+  toolGroupOf,
+  toolGroups,
+  type ToolGroup,
+} from "./tool-groups";
 
-const helpText = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
-Start:   reels status
-Find:    reels tools | reels tools update-project | reels help update-project
-List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
-Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
-Edit:    reels update-project --project-id <id> --expected-updated-at <rev> --patch '{"cover":{"time":7.25}}'
-Preview: reels preview-frame --project-id <id> --expected-updated-at <rev> --kind cover --out cover.png
-Render:  reels start-render --project-id <id> --expected-updated-at <rev> --target video --output-path /abs/new.mov --wait
-Resume:  reels get-render-job --job-id <id> --wait
-Any:     reels call <tool> --input - < input.json
-Copy:    reels prepare-media --list | reels prepare-media --help
-Env:     REELS_USER_DATA selects the app profile.
-Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.`;
-const usages = {
-  status: "reels status [--timeout <s>]",
-  tools: "reels tools [<name|slug>]",
-  call: "reels call <name|slug> [--input <json|-> | --input-file <path> | schema flags]",
-  prepareMedia:
-    "reels prepare-media --project-id <id> --selection <file|-> --destination <abs> | --list [--project-id <id>]",
-};
-const prepareMediaHelp = `Usage: reels prepare-media --project-id <id> --selection <file|-> --destination <abs>
-       reels prepare-media --list [--project-id <id>]
-Copies registered media to a new folder with receipt.json. Works without the app.
---selection    File holding a JSON array of absolute registered paths, or - for stdin.
---destination  New folder: it must not exist, and its parent must exist and not be a symlink.
---list         Read-only. Projects, or one project's registered paths. Works without the app.
-Select files, not folders; for a folder resource list the files inside it. Media: ${mediaExtensions.join(" ")}
-Example: reels prepare-media --list --project-id sample
-Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`;
-const statusHelp = `Usage: ${usages.status}
-Reports whether the app can be called. Exit 0 even when it cannot.
-Example: reels status --timeout 2`;
-const toolsHelp = `Usage: ${usages.tools}
-Lists every tool and built-in command, or prints one tool's input schema and flags.
-Example: reels tools start-render`;
-const callHelp = `Usage: ${usages.call}
-Calls any tool. List them with: reels tools
-Example: reels call reels_get_project --input '{"projectId":"<uuid>"}'
-Example: reels call reels_update_project --input - < input.json`;
-const builtinSummaries = [
-  { command: "reels status", summary: "Whether the app can be called." },
-  {
-    command: "reels prepare-media",
-    summary: "Copy registered media to a new folder. Works without the app.",
-  },
-];
 const statusOptions = { timeout: { type: "string" } } as const;
 const prepareMediaOptions = {
   "project-id": { type: "string" },
@@ -131,7 +106,12 @@ type Scope = {
   /** Set once a render job is known. */
   wait?: JobWait;
 };
-type Success = { tool?: ToolName; data: unknown };
+/**
+ * `raw` replaces the JSON document with text for people. Only the opt-in text
+ * forms set it (`help --plain`, `tools --plain`, `completion`); failures are
+ * always JSON.
+ */
+type Success = { tool?: ToolName; data: unknown; raw?: string };
 
 const shellArg = (value: unknown) => {
   const text = String(value);
@@ -141,6 +121,18 @@ const shellArg = (value: unknown) => {
 };
 
 const showHelp = (text: string): Success => ({ data: { help: text } });
+
+/** Words for `reels completion`: a command's own options, plus --help. */
+const optionWords = (options: object) => [
+  ...Object.keys(options).map((name) => `--${name}`),
+  "--help",
+];
+/** Options that take a value: after one, completion offers file names, not flags. */
+const valueWords = (options: Record<string, { type: string }>) =>
+  Object.entries(options)
+    .filter(([, { type }]) => type !== "boolean")
+    .map(([name]) => `--${name}`);
+const toolSlugs = () => toolNames.map(toolSlug);
 
 type Input = Record<string, any>;
 
@@ -230,29 +222,26 @@ function offlineReason(error: unknown) {
   return error.code === "APP_OFFLINE" ? error.reason : "unresponsive";
 }
 
-async function status(
-  args: string[],
+type AppStatus = {
+  app: Record<string, unknown> & { online: boolean; reason?: string };
+  userData: string | null;
+  hint?: string;
+};
+
+/** The one verdict on whether the app can be called; `status` and `doctor` both report it. */
+async function appStatus(
   io: CliIO,
   scope: Scope,
-): Promise<Success> {
-  scope.readOnly = true;
-  if (wantsHelp(args, statusOptions)) return showHelp(statusHelp);
-  const { timeout } = parseOptions(args, statusOptions, usages.status);
-  const cli = { version };
-  const timeoutMs =
-    secondsOption(timeout, "--timeout", maxCallSeconds) ??
-    defaultStatusSeconds * 1000;
+  timeoutMs: number,
+): Promise<AppStatus> {
   let root: string;
   try {
     root = profileRoot(io);
   } catch (error) {
     return {
-      data: {
-        app: { online: false, reason: "user_data_unresolved" },
-        cli,
-        userData: null,
-        hint: errorMessage(error),
-      },
+      app: { online: false, reason: "user_data_unresolved" },
+      userData: null,
+      hint: errorMessage(error),
     };
   }
   scope.inFlight = { retry: "safe" };
@@ -263,55 +252,222 @@ async function status(
       {},
       { timeoutMs, signal: scope.signal },
     );
-    return { data: { app: { online: true, ...state }, cli, userData: root } };
+    return { app: { online: true, ...state }, userData: root };
   } catch (error) {
     const reason = offlineReason(error);
     if (reason)
-      return {
-        data: {
-          app: { online: false, reason },
-          cli,
-          userData: root,
-          hint: openApp,
-        },
-      };
+      return { app: { online: false, reason }, userData: root, hint: openApp };
     // It answered, so it is online; only its state could not be read.
     const { code, message } = agentFailure(error, () => ({}));
     return {
-      data: {
-        app: { online: true, stateError: { code, message } },
-        cli,
-        userData: root,
-      },
+      app: { online: true, stateError: { code, message } },
+      userData: root,
     };
   }
+}
+
+function statusTimeout(args: string[], usage: string) {
+  const { timeout } = parseOptions(args, statusOptions, usage);
+  return (
+    secondsOption(timeout, "--timeout", maxCallSeconds) ??
+    defaultStatusSeconds * 1000
+  );
+}
+
+async function status(
+  args: string[],
+  io: CliIO,
+  scope: Scope,
+): Promise<Success> {
+  scope.readOnly = true;
+  if (wantsHelp(args, statusOptions)) return showHelp(statusCommand.help);
+  const timeoutMs = statusTimeout(args, statusCommand.usage);
+  const { app, userData, hint } = await appStatus(io, scope, timeoutMs);
+  return {
+    data: {
+      app,
+      cli: { version },
+      userData,
+      ...(hint === undefined ? {} : { hint }),
+    },
+  };
+}
+
+/** The app check of `reels doctor`, read off the same verdict `reels status` prints. */
+function appCheck({ app }: AppStatus): Check {
+  if (app.online) {
+    const stateError = app.stateError as { code: string } | undefined;
+    return stateError
+      ? {
+          id: "app",
+          ok: false,
+          detail: `Reels Dashboard answers, but its state could not be read (${stateError.code}).`,
+          fix: "Restart Reels Dashboard; see .data.app.stateError.",
+        }
+      : { id: "app", ok: true, detail: "Reels Dashboard answers." };
+  }
+  if (app.reason === "user_data_unresolved")
+    return {
+      id: "app",
+      ok: null,
+      detail: "Not checked: the profile folder is unresolved.",
+    };
+  return {
+    id: "app",
+    ok: false,
+    detail: `Reels Dashboard cannot be called (${app.reason}).`,
+    fix:
+      app.reason === "unresponsive"
+        ? "Reels Dashboard did not answer in time; wait for it to finish starting, or restart it. This CLI never launches it."
+        : openApp,
+  };
+}
+
+async function profileCheck({ userData, hint }: AppStatus, io: CliIO) {
+  const source = io.env.REELS_USER_DATA
+    ? "REELS_USER_DATA"
+    : "the default profile";
+  if (userData === null)
+    return {
+      id: "profile",
+      ok: false,
+      detail: hint ?? "REELS_USER_DATA could not be resolved.",
+      fix: "Set REELS_USER_DATA to an absolute path.",
+    } satisfies Check;
+  const folder = await stat(userData).catch(() => undefined);
+  return folder?.isDirectory()
+    ? ({
+        id: "profile",
+        ok: true,
+        detail: `${userData} (${source}) exists.`,
+      } satisfies Check)
+    : ({
+        id: "profile",
+        ok: false,
+        detail: `${userData} (${source}) is not a folder.`,
+        fix: "Check REELS_USER_DATA, or open Reels Dashboard once so it creates its profile folder.",
+      } satisfies Check);
+}
+
+async function doctor(
+  args: string[],
+  io: CliIO,
+  scope: Scope,
+): Promise<Success> {
+  scope.readOnly = true;
+  if (wantsHelp(args, statusOptions)) return showHelp(doctorCommand.help);
+  const timeoutMs = statusTimeout(args, doctorCommand.usage);
+  const versions = io.versions ?? {
+    node: process.versions.node,
+    electron: process.versions.electron,
+  };
+  const reported = await appStatus(io, scope, timeoutMs);
+  const setup = await setupChecks({
+    home: io.env.HOME || homedir(),
+    pathEnv: io.env.PATH,
+    script: io.script,
+  });
+  const checks: Check[] = [
+    runtimeCheck(versions, engines?.node),
+    await profileCheck(reported, io),
+    appCheck(reported),
+    {
+      id: "app_version",
+      ok: null,
+      detail:
+        "Unknown: the app does not report its version to the CLI. The app's launcher runs the bundle shipped with the app.",
+    },
+    ...setup.checks,
+  ];
+  return {
+    data: {
+      healthy: checks.every(({ ok }) => ok !== false),
+      checks,
+      cli: {
+        version,
+        ...(io.script ? { bundle: io.script } : {}),
+        node: versions.node,
+        ...(versions.electron ? { electron: versions.electron } : {}),
+      },
+      userData: reported.userData,
+      app: reported.app,
+      launcher: setup.launcher,
+      command: setup.command,
+    },
+  };
 }
 
 const firstSentence = (text: string) =>
   text.split(/(?<=[.!?])(?<!\b(?:e\.g|i\.e)\.)\s/)[0];
 
-function tools(args: string[], scope: Scope): Success {
+const toolEntry = (name: ToolName) => ({
+  name,
+  command: `reels ${toolSlug(name)}`,
+  readOnly: toolDefinitions[name].readOnly,
+  summary: firstSentence(toolDefinitions[name].description),
+  group: toolGroupOf[name],
+});
+const groupSummaries = toolGroupIds.map((id) => ({
+  id,
+  summary: toolGroups[id],
+  count: toolNames.filter((name) => toolGroupOf[name] === id).length,
+}));
+const isGroupFlag = (arg: string) =>
+  arg === "--group" || arg.startsWith("--group=");
+
+/** `--group <id>`, or undefined when the list is not filtered. */
+function groupFilter(args: string[]): ToolGroup | undefined {
+  const usage = toolsCommand.usage;
+  if (!args.some(isGroupFlag)) {
+    if (args.length > 1 || args[0]?.startsWith("-"))
+      throw new CliError("USAGE", "tools takes at most one tool name.", {
+        usage,
+      });
+    return undefined;
+  }
+  if (args.some((arg, i) => !arg.startsWith("-") && args[i - 1] !== "--group"))
+    throw new CliError(
+      "USAGE",
+      "--group filters the tool list; it does not take a tool name.",
+      { usage },
+    );
+  const { group } = parseOptions(args, toolsOptions, usage);
+  if (group !== undefined && Object.hasOwn(toolGroups, group))
+    return group as ToolGroup;
+  throw new CliError(
+    "USAGE",
+    `Unknown group: ${group}. Groups: ${toolGroupIds.join(", ")}.`,
+    { didYouMean: closest(group ?? "", toolGroupIds), usage },
+  );
+}
+
+function tools(argv: string[], scope: Scope): Success {
   scope.readOnly = true;
-  if (wantsHelp(args)) return showHelp(toolsHelp);
-  if (args.length > 1 || args[0]?.startsWith("-"))
-    throw new CliError("USAGE", "tools takes at most one tool name.", {
-      usage: usages.tools,
-    });
-  if (!args.length)
+  const { plain, rest: args } = takePlain(argv, toolsCommand.usage);
+  if (wantsHelp(args)) return asText(showHelp(toolsCommand.help), plain);
+  const group = groupFilter(args);
+  if (!args.length || group) {
+    const names = group
+      ? toolNames.filter((name) => toolGroupOf[name] === group)
+      : toolNames;
+    if (plain)
+      return {
+        data: null,
+        raw: plainToolList(names.map(toolEntry), builtinSummaries, group),
+      };
     return {
       data: {
         guidance: agentGuidance,
         builtins: builtinSummaries,
-        count: toolNames.length,
-        tools: toolNames.map((name) => ({
-          name,
-          command: `reels ${toolSlug(name)}`,
-          readOnly: toolDefinitions[name].readOnly,
-          summary: firstSentence(toolDefinitions[name].description),
-        })),
+        count: names.length,
+        tools: names.map(toolEntry),
+        groups: groupSummaries,
+        ...(group ? { group } : {}),
       },
     };
+  }
   const name = requireTool(args[0]);
+  if (plain) return { data: null, raw: plainToolDetail(name) };
   return {
     data: {
       name,
@@ -322,6 +478,7 @@ function tools(args: string[], scope: Scope): Success {
       flags: toolFlags(name),
       cliOptions: toolOptionDocs(name),
       example: toolExample(name),
+      group: toolGroupOf[name],
     },
   };
 }
@@ -353,6 +510,7 @@ function toolHelp(name: ToolName) {
         `  ${flag}${value ? ` ${value}` : ""}  ${summary}`,
     ),
     `Schema: reels tools ${toolSlug(name)}`,
+    `Group: ${toolGroupOf[name]} (reels tools --group ${toolGroupOf[name]})`,
   ].join("\n");
 }
 
@@ -589,8 +747,9 @@ async function prepareMedia(
 ): Promise<Success> {
   // Before parsing, so a bad option in a read-only listing also reads as one.
   scope.readOnly = args.includes("--list");
-  if (wantsHelp(args, prepareMediaOptions)) return showHelp(prepareMediaHelp);
-  const usage = usages.prepareMedia;
+  if (wantsHelp(args, prepareMediaOptions))
+    return showHelp(prepareMediaCommand.help);
+  const usage = prepareMediaCommand.usage;
   const options = parseOptions(args, prepareMediaOptions, usage);
   const projectId = options["project-id"];
   const { selection, destination, list } = options;
@@ -663,12 +822,13 @@ async function prepareMedia(
   }
 }
 
-function exitCodeHelp(): Success {
+function exitCodeHelp(plain: boolean): Success {
   const rows = Object.entries(exitCodes).map(([name, code]) => ({
     code,
     name,
     meaning: exitCodeMeanings[name as keyof typeof exitCodes],
   }));
+  if (plain) return { data: null, raw: plainExitCodes(rows) };
   return {
     data: {
       help: rows.map(({ code, meaning }) => `${code}  ${meaning}`).join("\n"),
@@ -676,6 +836,294 @@ function exitCodeHelp(): Success {
     },
   };
 }
+
+async function call(args: string[], io: CliIO, scope: Scope): Promise<Success> {
+  if (args[0] === undefined || args[0].startsWith("-")) {
+    if (wantsHelp(args)) return showHelp(callCommand.help);
+    throw new CliError("USAGE", "call needs a tool name.", {
+      usage: callCommand.usage,
+    });
+  }
+  return runTool(requireTool(args[0]), args.slice(1), io, scope);
+}
+
+/** What a built-in gets from the router besides its arguments. */
+type BuiltinContext = {
+  io: CliIO;
+  scope: Scope;
+  /** Dispatches another argv, as `help <name>` does. */
+  route(argv: string[]): Promise<Success>;
+};
+/**
+ * A built-in command or global flag. To add one, define an entry and list it in
+ * `builtins`: the router, `reels tools` and the unknown-name suggestions all read it.
+ */
+type Builtin = {
+  /** argv[0]. A name starting with `-` is a global flag, not a command word. */
+  name: string;
+  /** Other argv[0] spellings that run this entry. */
+  aliases?: readonly string[];
+  /** Attached to its usage errors. */
+  usage?: string;
+  /** What `reels help <name>` and `--help` print, ending in an example. */
+  help?: string;
+  /** Set on commands that do work; `reels tools` lists them in data.builtins. */
+  summary?: string;
+  /** Words `reels completion` offers after this command. */
+  completions?: () => readonly string[];
+  /** Its options that take a value, for `reels completion`. */
+  completionValues?: () => readonly string[];
+  run(args: string[], context: BuiltinContext): Promise<Success> | Success;
+};
+/** `reels help <topic>`: help that belongs to no command. `plain` asks for text. */
+type HelpTopic = { name: string; run(plain: boolean): Success };
+
+/** The help text of a result, as text for people when asked for. */
+function asText(result: Success, plain: boolean): Success {
+  if (!plain) return result;
+  const help = (result.data as { help?: unknown } | null)?.help;
+  if (typeof help === "string") return { data: null, raw: help };
+  throw new CliError("USAGE", "--plain only applies to help text.", {
+    usage: helpUsage,
+  });
+}
+
+const globalHelp = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
+Start:   reels status     (setup problems: reels doctor)
+Find:    reels tools | reels tools update-project | reels help update-project   (text: --plain)
+List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
+Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
+Edit:    reels update-project --project-id <id> --expected-updated-at <rev> --patch '{"cover":{"time":7.25}}'
+Preview: reels preview-frame --project-id <id> --expected-updated-at <rev> --kind cover --out cover.png
+Render:  reels start-render --project-id <id> --expected-updated-at <rev> --target video --output-path /abs/new.mov --wait
+Resume:  reels get-render-job --job-id <id> --wait
+Any:     reels call <tool> --input - < input.json
+Copy:    reels prepare-media --list | reels prepare-media --help
+Env:     REELS_USER_DATA selects the app profile.
+Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.
+Agents: reels help agent prints the usage guide for this version.`;
+const helpFlag = {
+  name: "--help",
+  aliases: ["-h"],
+  help: globalHelp,
+  run: () => showHelp(globalHelp),
+} satisfies Builtin;
+const versionFlag = {
+  name: "--version",
+  run: () => ({ data: { version } }),
+} satisfies Builtin;
+const statusUsage = "reels status [--timeout <s>]";
+const statusCommand = {
+  name: "status",
+  usage: statusUsage,
+  help: `Usage: ${statusUsage}
+Reports whether the app can be called. Exit 0 even when it cannot.
+Example: reels status --timeout 2`,
+  summary: "Whether the app can be called.",
+  completions: () => optionWords(statusOptions),
+  completionValues: () => valueWords(statusOptions),
+  run: (args, { io, scope }) => status(args, io, scope),
+} satisfies Builtin;
+const doctorUsage = "reels doctor [--timeout <s>]";
+const doctorCommand = {
+  name: "doctor",
+  usage: doctorUsage,
+  help: `Usage: ${doctorUsage}
+Read-only checks of why reels cannot be used right now: runtime, profile, app,
+~/.local/bin/reels launcher and PATH. Each check has ok true, false or null (unknown),
+and fix advice that the CLI never applies. Exit 0 whatever it finds.
+Example: reels doctor`,
+  summary: "Read-only checks of runtime, profile, app, launcher and PATH.",
+  completions: () => optionWords(statusOptions),
+  completionValues: () => valueWords(statusOptions),
+  run: (args, { io, scope }) => doctor(args, io, scope),
+} satisfies Builtin;
+const toolsUsage = "reels tools [<name|slug> | --group <id>]";
+const toolsOptions = { group: { type: "string" } } as const;
+const toolsCommand = {
+  name: "tools",
+  usage: toolsUsage,
+  help: `Usage: ${toolsUsage}
+Lists every tool and built-in command, or prints one tool's input schema and flags.
+--group <id>  Only the tools in one domain group. Groups: ${toolGroupIds.join(", ")}.
+--plain       Text for people instead of JSON; failures stay JSON. Also: reels help --plain [<name>].
+Example: reels tools start-render
+Example: reels tools --group render`,
+  completions: () => ["--plain", ...optionWords(toolsOptions), ...toolSlugs()],
+  run: (args, { scope }) => tools(args, scope),
+} satisfies Builtin;
+const callUsage =
+  "reels call <name|slug> [--input <json|-> | --input-file <path> | schema flags]";
+const callCommand = {
+  name: "call",
+  usage: callUsage,
+  help: `Usage: ${callUsage}
+Calls any tool. List them with: reels tools
+Example: reels call reels_get_project --input '{"projectId":"<uuid>"}'
+Example: reels call reels_update_project --input - < input.json`,
+  completions: toolSlugs,
+  run: (args, { io, scope }) => call(args, io, scope),
+} satisfies Builtin;
+const prepareMediaCommand = {
+  name: "prepare-media",
+  usage:
+    "reels prepare-media --project-id <id> --selection <file|-> --destination <abs> | --list [--project-id <id>]",
+  help: `Usage: reels prepare-media --project-id <id> --selection <file|-> --destination <abs>
+       reels prepare-media --list [--project-id <id>]
+Copies registered media to a new folder with receipt.json. Works without the app.
+--selection    File holding a JSON array of absolute registered paths, or - for stdin.
+--destination  New folder: it must not exist, and its parent must exist and not be a symlink.
+--list         Read-only. Projects, or one project's registered paths. Works without the app.
+Select files, not folders; for a folder resource list the files inside it. Media: ${mediaExtensions.join(" ")}
+Example: reels prepare-media --list --project-id sample
+Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`,
+  summary: "Copy registered media to a new folder. Works without the app.",
+  completions: () => optionWords(prepareMediaOptions),
+  completionValues: () => valueWords(prepareMediaOptions),
+  run: (args, { io, scope }) => prepareMedia(args, io, scope),
+} satisfies Builtin;
+export const helpTopics: readonly HelpTopic[] = [
+  { name: "exit-codes", run: exitCodeHelp },
+  {
+    name: "agent",
+    run: (plain) => {
+      const { guide, name } = agentGuide();
+      // The Markdown guide as it is: it already reads as text.
+      if (plain) return { data: null, raw: guide };
+      return { data: { guide, name, version } };
+    },
+  },
+];
+const helpUsage = "reels help [--plain] [<topic|command|tool>]";
+const helpCommand = {
+  name: "help",
+  completions: () => [
+    "--plain",
+    ...helpTopics.map(({ name }) => name),
+    ...builtinCommands,
+    ...toolSlugs(),
+  ],
+  /** A topic first; anything else is `<args> --help`. `--plain` is taken off first. */
+  run: async (argv, { route }) => {
+    const { plain, rest: args } = takePlain(argv, helpUsage);
+    const topic = helpTopics.find(({ name }) => name === args[0]);
+    if (topic) return topic.run(plain);
+    // People asking about one tool get the full detail of `reels tools --plain <tool>`.
+    const tool = plain && args.length === 1 ? resolveTool(args[0]) : undefined;
+    if (tool) return { data: null, raw: plainToolDetail(tool) };
+    const result = await route(args.length ? [...args, "--help"] : ["--help"]);
+    return asText(result, plain);
+  },
+} satisfies Builtin;
+
+const completionUsage = "reels completion <bash|zsh|fish>";
+const completionCommand = {
+  name: "completion",
+  usage: completionUsage,
+  help: `Usage: ${completionUsage}
+Prints a shell completion script as text, not JSON. It installs nothing.
+The script lists this version's commands and flags: re-run it after updating the app.
+Example: reels completion zsh > ~/.zfunc/_reels
+Example: eval "$(reels completion bash)"`,
+  completions: () => completionShells,
+  run: (args, { scope }) => completion(args, scope),
+} satisfies Builtin;
+
+/** Every built-in. The order of commands is the order of suggestions and of data.builtins. */
+export const builtins: readonly Builtin[] = [
+  helpFlag,
+  versionFlag,
+  statusCommand,
+  doctorCommand,
+  toolsCommand,
+  callCommand,
+  prepareMediaCommand,
+  helpCommand,
+  completionCommand,
+];
+/** Command words: never tool names, and offered when a name is mistyped. */
+export const builtinCommands = builtins
+  .map(({ name }) => name)
+  .filter((name) => !name.startsWith("-"));
+const builtinSummaries = builtins.flatMap(({ name, summary }) =>
+  summary ? [{ command: `reels ${name}`, summary }] : [],
+);
+/** Read from the built-in table and the tool definitions each time, so it matches this version. */
+function completionSpec() {
+  return {
+    version,
+    first: [
+      ...builtinCommands,
+      ...toolSlugs(),
+      ...builtins.flatMap(({ name }) => (name.startsWith("-") ? [name] : [])),
+    ],
+    commands: [
+      ...builtins.flatMap(({ name, completions, completionValues }) =>
+        completions && !name.startsWith("-")
+          ? [
+              {
+                names: [name],
+                words: completions(),
+                values: completionValues?.() ?? [],
+              },
+            ]
+          : [],
+      ),
+      ...toolNames.map((name) => ({
+        names: [toolSlug(name), name],
+        words: [
+          ...toolFlags(name).map(({ flag }) => flag),
+          ...toolOptionDocs(name).map(({ flag }) => flag),
+          "--help",
+        ],
+        values: [
+          ...toolFlags(name)
+            .filter(({ type }) => type !== "boolean")
+            .map(({ flag }) => flag),
+          ...toolOptionDocs(name).flatMap(({ flag, value }) =>
+            value ? [flag] : [],
+          ),
+        ],
+      })),
+    ],
+    groups: toolGroupIds,
+  };
+}
+
+function completion(args: string[], scope: Scope): Success {
+  scope.readOnly = true;
+  if (wantsHelp(args)) return showHelp(completionCommand.help);
+  const [shell, ...extra] = args;
+  const usage = completionCommand.usage;
+  if (shell === undefined || shell.startsWith("-"))
+    throw new CliError(
+      "USAGE",
+      shell === undefined
+        ? `completion needs a shell: ${completionShells.join(", ")}.`
+        : `Unknown option '${shell}'`,
+      { didYouMean: [...completionShells], usage },
+    );
+  if (!(completionShells as readonly string[]).includes(shell)) {
+    const near = closest(shell, completionShells);
+    throw new CliError(
+      "USAGE",
+      `Unknown shell: ${shell}. Shells: ${completionShells.join(", ")}.`,
+      { didYouMean: near.length ? near : [...completionShells], usage },
+    );
+  }
+  if (extra.length)
+    throw new CliError("USAGE", "completion takes one shell.", { usage });
+  return {
+    data: null,
+    raw: completionScript(shell as CompletionShell, completionSpec()),
+  };
+}
+
+const builtinsByName = new Map(
+  builtins.flatMap((entry) =>
+    [entry.name, ...(entry.aliases ?? [])].map((name) => [name, entry]),
+  ),
+);
 
 async function route(
   argv: string[],
@@ -685,24 +1133,13 @@ async function route(
   const [command, ...rest] = argv;
   if (command === undefined)
     throw new CliError("USAGE", "Missing command.", { usage: "reels --help" });
-  if (command === "--help" || command === "-h") return showHelp(helpText);
-  if (command === "help")
-    return rest[0] === "exit-codes"
-      ? exitCodeHelp()
-      : route(rest.length ? [...rest, "--help"] : ["--help"], io, scope);
-  if (command === "--version") return { data: { version } };
-  if (command === "status") return status(rest, io, scope);
-  if (command === "tools") return tools(rest, scope);
-  if (command === "prepare-media") return prepareMedia(rest, io, scope);
-  if (command === "call") {
-    if (rest[0] === undefined || rest[0].startsWith("-")) {
-      if (wantsHelp(rest)) return showHelp(callHelp);
-      throw new CliError("USAGE", "call needs a tool name.", {
-        usage: usages.call,
-      });
-    }
-    return runTool(requireTool(rest[0]), rest.slice(1), io, scope);
-  }
+  const builtin = builtinsByName.get(command);
+  if (builtin)
+    return builtin.run(rest, {
+      io,
+      scope,
+      route: (next) => route(next, io, scope),
+    });
   const tool = resolveTool(command);
   if (tool) return runTool(tool, rest, io, scope);
   throw new CliError("USAGE", `Unknown command: ${command}`, {
@@ -776,12 +1213,14 @@ export async function run(argv: string[], io: CliIO): Promise<number> {
   };
   try {
     // The race ends the command even if what it was doing cannot be aborted.
-    const { tool, data } = await Promise.race([
+    const { tool, data, raw } = await Promise.race([
       route(argv, io, scope),
       signals.raised,
     ]);
     signals.stop();
-    write({ ok: true, ...(tool ? { tool } : {}), data });
+    // Text for people goes through the same writer, so a failed write still exits 11.
+    if (raw !== undefined) io.stdout(raw.endsWith("\n") ? raw : raw + "\n");
+    else write({ ok: true, ...(tool ? { tool } : {}), data });
     return exitCodes.ok;
   } catch (error) {
     signals.stop();

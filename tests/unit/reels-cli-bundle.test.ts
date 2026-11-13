@@ -23,11 +23,17 @@ import { LocalStore } from "../../src/shared/lib/storage";
 const configured = process.env.REELS_CLI_BUNDLE;
 const built = configured ? path.resolve(configured) : "";
 
-function runBundle(bundle: string, cwd: string, root: string, args: string[]) {
+function runBundle(
+  bundle: string,
+  cwd: string,
+  root: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+) {
   return new Promise<{ code: number | null; document: any }>((resolve) => {
     const child = spawn(bundle, args, {
       cwd,
-      env: { PATH: process.env.PATH, REELS_USER_DATA: root },
+      env: { PATH: process.env.PATH, REELS_USER_DATA: root, ...env },
       stdio: ["ignore", "pipe", "ignore"],
     });
     let stdout = "";
@@ -64,6 +70,29 @@ test(
       const status = await reels(cwd, root, ["status"]);
       assert.equal(status.code, 0);
       assert.equal(status.document.data.app.reason, "no_connection_file");
+
+      // A temp HOME, so doctor never looks at the real ~/.local/bin.
+      const home = path.join(cwd, "home");
+      const doctor = await runBundle(bundle, cwd, root, ["doctor"], {
+        HOME: home,
+      });
+      assert.equal(doctor.code, 0);
+      assert.equal(doctor.document.data.healthy, false);
+      assert.equal(doctor.document.data.cli.bundle, bundle);
+      assert.equal(doctor.document.data.app.reason, "no_connection_file");
+      assert.equal(doctor.document.data.launcher.state, "missing");
+      assert.equal(doctor.document.data.checks[0].ok, true);
+      await assert.rejects(stat(home));
+
+      // The guide is embedded at build time; the copy has no skills/ to read.
+      const guide = await reels(cwd, root, ["help", "agent"]);
+      assert.equal(guide.code, 0);
+      assert.equal(
+        guide.document.data.guide,
+        await readFile("skills/reels-cli/SKILL.md", "utf8"),
+      );
+      assert.equal(guide.document.data.name, "reels-cli");
+      await assert.rejects(stat(path.join(cwd, "skills")));
 
       const tools = await reels(cwd, root, ["tools"]);
       assert.equal(tools.code, 0);
@@ -163,6 +192,15 @@ test(
       assert.equal(result.code, 11);
       assert.match(result.stderr, /could not write stdout/);
       assert.equal(result.stderr.split("\n").length, 2);
+      // Text for people takes the same writer, so it fails the same way.
+      const text = await runLimited(
+        cwd,
+        path.join(cwd, "data"),
+        ["tools", "--plain"],
+        " > big.txt",
+      );
+      assert.equal(text.code, 11);
+      assert.match(text.stderr, /could not write stdout/);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

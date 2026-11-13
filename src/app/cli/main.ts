@@ -48,6 +48,7 @@ const code = await run(process.argv.slice(2), {
   env: process.env,
   // Read on demand: the working folder may be gone, and most commands never need it.
   cwd: () => process.cwd(),
+  script: process.argv[1],
 });
 // Exit outright: an interrupted run can still hold a stdin read or a file copy open.
 await flushed(process.stderr);

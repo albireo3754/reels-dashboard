@@ -15,7 +15,7 @@ node /absolute/path/to/reels-dashboard/dist-cli/reels.mjs status
 
 The packaged app ships the bundle as `Contents/Resources/cli/reels.mjs`. Each time the packaged app starts (not the Dev build, not background QA), it writes `~/.local/bin/reels`, a small `sh` launcher that runs the bundle with the app's own executable under `ELECTRON_RUN_AS_NODE=1`. A separate Node install is not needed, and the command always matches the installed app version. If the app moves, the next launch rewrites the path.
 
-The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~/.local/bin/reels` only when that file is missing or carries the marker. A symlink, such as one from `npm link` to a checkout, or a script of your own is never replaced: remove it once to switch to the app's launcher. The result is logged as `[cli-install] installed|updated|unchanged|skipped`. `~/.local/bin` must be on `PATH`. Code: `src/desktop/cli-install.ts`.
+The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~/.local/bin/reels` only when that file is missing or carries the marker. A symlink, such as one from `npm link` to a checkout, or a script of your own is never replaced: remove it once to switch to the app's launcher. The result is logged as `[cli-install] installed|updated|unchanged|skipped`. `~/.local/bin` must be on `PATH`. Code: `src/desktop/cli-install.ts`; the marker and the launcher text live in `src/shared/cli-launcher.ts`, which [`reels doctor`](#diagnostics) also reads. `reels doctor` checks this setup.
 
 `REELS_USER_DATA` selects the app profile, as it does for the MCP server. Without it the CLI uses the normal application-support directory. A relative value needs the working folder: if that folder is gone, tools exit 2 and `reels status` reports `reason: "user_data_unresolved"`.
 
@@ -24,15 +24,53 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | Command | Needs the app | Purpose |
 | --- | --- | --- |
 | `reels status [--timeout <s>]` | no | Whether the app can be called. Exit 0 even when it cannot, or when it answers with an error. Default limit 5 s. |
-| `reels tools` | no | Every tool with its command, read-only flag and summary, plus the built-in commands that do work (`builtins`). |
-| `reels tools <name\|slug>` | no | Input schema, generated flags, CLI options and an example. |
+| `reels doctor [--timeout <s>]` | no | Read-only [setup checks](#diagnostics): runtime, profile, app, launcher and `PATH`. Exit 0 whatever it finds. Default limit 5 s for the app check. |
+| `reels tools` | no | Every tool with its command, read-only flag, summary and `group`, plus the built-in commands that do work (`builtins`) and the domain groups (`groups`: `id`, `summary`, `count`). |
+| `reels tools --group <id>` | no | The same list, only the tools in one [group](#tool-groups); `data.group` names it. |
+| `reels tools <name\|slug>` | no | Input schema, generated flags, CLI options, an example and the tool's `group`. |
 | `reels <slug> [options]` | yes | Any tool. `reels_get_project` is `reels get-project`. |
 | `reels call <name\|slug> [options]` | yes | The same, by full tool name. |
 | `reels prepare-media ...` | no | [Local media copy](#local-media-copy). |
 | `reels --help`, `reels <command> --help`, `reels help [<command>]`, `reels --version` | no | Help and version. |
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
+| `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |
+| `reels help --plain [<topic\|command\|tool>]` | no | The same help as [text for people](#text-for-people) instead of JSON. A tool shows the detail of `reels tools --plain <tool>`. |
+| `reels tools --plain [<name\|slug> \| --group <id>]` | no | The tool list grouped by domain, or one tool's usage, flags, example and group, as [text for people](#text-for-people). |
+| `reels completion <bash\|zsh\|fish>` | no | A [shell completion](#shell-completion) script as text. Installs nothing. |
+
+### Agent guide
+
+`reels help agent` prints [`skills/reels-cli/SKILL.md`](../skills/reels-cli/SKILL.md), a short skill for operating the app through this CLI: `{"ok":true,"data":{"guide":"<markdown>","name":"reels-cli","version":"0.1.0"}}`. The build embeds the file in `dist-cli/reels.mjs`, so the guide always matches the installed CLI and needs no repository; from source the CLI reads the file. The last line of `reels --help` points agents to it. Edit the skill file, not a copy, and rebuild.
 
 A tool can be named as `reels_get_project`, `get_project` (the form the guidance text uses) or `get-project`, in every place that takes a tool name.
+
+### Text for people
+
+`--plain` belongs to `reels help` and `reels tools` only; it is not a global option, so a tool flag such as `reels photos-search --text` keeps its meaning, and `--plain` on any other command is a usage error (exit 2). The exceptions are `--help` and `--version`, which are read before anything else: `reels --help --plain`, `reels --version --plain` and `reels status --help --plain` ignore `--plain` and print their JSON with exit 0. For help as text use `reels help --plain [<command>]`. Agents should keep reading the JSON forms.
+
+- `reels help --plain`: the top-level help. `reels help --plain <command>` prints that command's help text; `--plain` may come before or after the name.
+- `reels help --plain <tool>` and `reels tools --plain <tool>`: usage, every flag with its type, allowed values, format and whether it is required, the CLI options, an example and the group.
+- `reels tools --plain [--group <id>]`: the built-in commands, then each group as `<id>: <summary> (<count>)` followed by `  reels <slug>  <summary>` lines; read-only tools end in `(read-only)`.
+- `reels help --plain exit-codes`: the exit code table with names. `reels help --plain agent`: the Markdown guide as it is.
+
+### Shell completion
+
+`reels completion bash`, `zsh` or `fish` prints a completion script on stdout: the first word completes to the commands, tool slugs, `--help` and `--version`; after `help` come help topics, commands and tools; after a command or a tool (also as `call <tool>`) come its own flags for a word that starts with `-`; after `--group` come the group ids. Any other word past the command, and the value of a flag that takes one (such as `--out` or `--selection`), gets the command's own words (help topics, tool names, shells) or else the shell's file-name completion, so paths still complete. The script is generated when the command runs from the built-in commands and the tool schemas, so it matches the installed CLI version. It is static: re-run it after updating the app. The CLI installs nothing and never edits shell files; a person sets it up once, for example:
+
+```sh
+# bash: in ~/.bashrc (eval works in the macOS /bin/bash 3.2, where source <(...) silently loads nothing)
+eval "$(reels completion bash)"
+# zsh: save it on $fpath before compinit runs (the folder is an example)
+reels completion zsh > ~/.zfunc/_reels   # with fpath=(~/.zfunc $fpath) in ~/.zshrc
+# fish
+reels completion fish > ~/.config/fish/completions/reels.fish
+```
+
+A missing or unknown shell exits 2 with `didYouMean` and the valid shells. The bash and zsh scripts are checked with `bash -n` and `zsh -n` in the tests; the fish script is checked only where `fish` is installed.
+
+### Tool groups
+
+Every tool belongs to one domain group, so an agent can read a short list instead of all of them: `reels tools --group render`. Groups are a filter of `reels tools`, not commands, and the MCP tool definitions do not carry them. The ids are `editor`, `render`, `content`, `photos`, `delivery`, `forms`, `analysis`, `blog` and `planning`; `data.groups` lists each with its summary and tool count, and `reels <slug> --help` ends with the tool's group. An unknown id exits 2 with `didYouMean` and the valid ids in the message. `--group` does not combine with a tool name, and `reels tools` still rejects any other option with exit 2.
 
 Flags come from the tool's input schema: `expectedUpdatedAt` is `--expected-updated-at`. Strings and enums pass through, numbers are converted, a boolean is a flag without a value, and objects and arrays take JSON. A value starting with a dash needs `=`, as in `--after-revision=-1`. Repeating a flag is an error. `--help` and `-h` mean help only as options of their own: as the value of another option they are a usage error, so `--patch --help` exits 2 and never reads as a successful write. Usage lines and `reels tools <name>` show allowed values and formats, as in `--kind <video|cover>`, `--project-id <uuid>`, `--folder <abs-path>` and `--date <YYYY-MM-DD>`. In `flags`, a format that has no name of its own keeps its regular expression in `pattern`. `inputSchema` is the MCP schema unchanged, so it still carries Zod's `starts_with`.
 
@@ -52,6 +90,8 @@ Use one input source: schema flags, `--input` or `--input-file`. With none, the 
 ## Output
 
 stdout is one line holding one JSON document, including for failures, `--help` and SIGHUP, SIGINT or SIGTERM at any point of a command. Four things can still leave it empty: SIGKILL, SIGQUIT (which keeps its core-dump meaning), a signal in the first moments before the CLI has finished loading, and a second signal after the first. Treat an empty stdout from a write as `writeOutcome: "unknown"`. If the document cannot be written in full, for example on a full disk, the CLI says so in one stderr line and exits non-zero, keeping the command's own failure code and using 11 if the command had succeeded. stdout then holds cut-off JSON, so treat it like an empty one. A reader closing the pipe early is not such a failure. stderr carries a one-line diagnostic and `--wait` progress for people; `--help` writes only to stdout. There are no prompts, colors or spinners.
+
+The only exceptions are three opt-in text forms for people: `reels help --plain ...` and `reels tools --plain ...` write plain text instead of the JSON document, and `reels completion <shell>` writes a shell script. Nothing else writes text, and without `--plain` `help` and `tools` print JSON as before. A failure of any of them, including a bad `--plain` form or an unknown shell, is still the one-line JSON document with its usual exit code, and text that cannot be written in full exits 11 like JSON does.
 
 ```json
 {"ok":true,"tool":"reels_get_project","data":{"id":"…","updatedAt":"…"}}
@@ -74,11 +114,36 @@ stdout is one line holding one JSON document, including for failures, `--help` a
 
 `reason` is `no_connection_file`, `stale_connection`, `unsafe_connection_file`, `unresponsive` or `user_data_unresolved` (a relative `REELS_USER_DATA` with no working folder: `userData` is `null` and `hint` says what to fix). `online: false` means the app cannot be called right now, not that it is certainly closed. When online, `app` holds `reels_get_app_state`: `context`, `busy`, `runtime` and `jobs`. If the app answers but cannot produce that state, `status` still exits 0 with `"app":{"online":true,"stateError":{"code":"…","message":"…"}}`.
 
+## Diagnostics
+
+`reels doctor` answers "why can't I, or an agent, use `reels` right now". It only reads: it stats files, reads the launcher, walks `PATH` without running anything, and asks the app for its state the same way `reels status` does, so the two never disagree about the app. It never launches the app, writes the launcher or changes `PATH`. It exits 0 for every state it can diagnose; a bad option exits 2.
+
+| `id` | Checks | `ok: false` when |
+| --- | --- | --- |
+| `runtime` | Node version against `engines.node` in `package.json` (`>=22.12.0`); under the app's launcher it reports Electron as Node | the version is older |
+| `profile` | The profile folder, from `REELS_USER_DATA` or the default | it cannot be resolved (`user_data_unresolved`) or is not a folder |
+| `app` | The `reels status` verdict | the app cannot be called, or answers without its state. `null` when the profile is unresolved |
+| `app_version` | Always `null`: the app does not report its version to the CLI | never |
+| `launcher` | `<HOME>/.local/bin/reels`: `missing`, `managed` (carries the marker; with its `bundle` and `executable`), `foreign` (a file of your own) or `symlink` (with its `target`) | missing with no other `reels` on `PATH`, managed but its bundle is gone or the executable it runs (the app's Electron binary) is missing or not executable, or a dangling symlink. `null` for a foreign file, a working symlink, or a missing launcher while another `reels` is on `PATH` |
+| `launcher_bundle` | Whether the bundle this process runs (`process.argv[1]`) is the one the launcher runs, after resolving symlinks | they differ. `null` when there is nothing to compare |
+| `path_dir` | `<HOME>/.local/bin` is a `PATH` entry | it is not. `null` when there is no launcher and another `reels` is on `PATH` (such as `npm link`) |
+| `path_command` | The first executable `reels` on `PATH` (absolute entries only) | there is none, or another one comes before the launcher |
+
+`ok: null` means the check could not decide. `healthy` is true when no check is `false`. `fix` is advice for a person or agent, such as opening the app or editing `PATH`; the CLI never applies it, and `doctor` has no `next`. The result also carries `cli` (`version`, `bundle`, `node`, and `electron` under the launcher), `userData`, `app` as `reels status` prints it, `launcher` and `command` (`onPath`, `binDir`, `binDirOnPath`).
+
+With the app closed and no launcher installed (`checks` shortened):
+
+```json
+{"ok":true,"data":{"healthy":false,"checks":[{"id":"runtime","ok":true,"detail":"Node 22.12.0; needs Node >=22.12.0."},{"id":"app","ok":false,"detail":"Reels Dashboard cannot be called (no_connection_file).","fix":"Open Reels Dashboard; this CLI never launches it."},{"id":"app_version","ok":null,"detail":"Unknown: the app does not report its version to the CLI. …"},{"id":"launcher","ok":false,"detail":"/Users/example/.local/bin/reels does not exist.","fix":"Open the packaged Reels Dashboard once; it writes ~/.local/bin/reels on launch. This CLI never launches it."},{"id":"path_dir","ok":false,"detail":"/Users/example/.local/bin is not on PATH.","fix":"Add ~/.local/bin to PATH."}],"cli":{"version":"0.1.0","bundle":"/absolute/dist-cli/reels.mjs","node":"22.12.0"},"userData":"/absolute/profile","app":{"online":false,"reason":"no_connection_file"},"launcher":{"path":"/Users/example/.local/bin/reels","state":"missing"},"command":{"onPath":null,"binDir":"/Users/example/.local/bin","binDirOnPath":false}}}
+```
+
+Code: `src/app/cli/doctor.ts` and `doctor` in `src/app/cli/run.ts`.
+
 ## Exit codes
 
 | Code | Meaning | Error codes | `writeOutcome` for writes | `retry` |
 | --- | --- | --- | --- | --- |
-| 0 | Success | Includes offline `status` and a completed `--wait` | | |
+| 0 | Success | Includes offline `status`, every `doctor` result and a completed `--wait` | | |
 | 1 | CLI bug | `INTERNAL` | `unknown` | `no` |
 | 2 | Usage | `USAGE`, `UNKNOWN_TOOL` (from the CLI), `INVALID_JSON`, `INVALID_INPUT`, `REQUEST_TOO_LARGE`, `OUTPUT_EXISTS`. Includes every `prepare-media` refusal before the destination exists | `not_applied` | `fix_input` |
 | 3 | App offline | `APP_OFFLINE` | `not_applied` | `safe`, after opening the app |
@@ -159,7 +224,7 @@ If `dashboard.json` is damaged, unreadable or from a newer app, every form of th
 - A `--timeout` shorter than `reels_form_wait`'s `timeoutMs` produces a false timeout. Keep `--timeout` longer.
 - For `upsert-content`, `merge-projects` and `link-project-edit`, `--expected-updated-at` is the dashboard revision, not a project's `updatedAt`, even though `link-project-edit` also takes `--project-id`. Read it from `.data.dashboard.updatedAt` of `reels list-projects`, which also works for an entry that does not exist yet, or from the top-level `.data.updatedAt` of `reels get-content`. `.data.project` has no `updatedAt`.
 - The running app must be at least as new as the CLI. Otherwise a new tool returns the app's `UNKNOWN_TOOL`, and some errors lose their code and fall back to exit 4.
-- The CLI is not included in the packaged app. Like `dist-mcp`, it runs from a source build.
+- The packaged app ships the CLI bundle and installs the `~/.local/bin/reels` launcher on launch ([Installed with the app](#installed-with-the-app)). The Dev build and a source checkout do not: there, build `dist-cli/reels.mjs` and run it as in [Setup](#setup).
 
 ## Validation
 
@@ -171,4 +236,4 @@ npm run build:desktop
 npm run test:cli
 ```
 
-`tests/unit/reels-cli.test.ts` drives the CLI against a real private socket under a temporary profile, mostly with a fake dispatch and once with the real `createAgentDispatch` over stub ports, and compares every schema with a real stdio MCP server. `npm run test:cli` copies the built bundle to a temporary folder with no `node_modules` and runs the copy. Neither touches a running app.
+`tests/unit/reels-cli.test.ts` drives the CLI against a real private socket under a temporary profile, mostly with a fake dispatch and once with the real `createAgentDispatch` over stub ports, and compares every schema with a real stdio MCP server. The same file checks `reels doctor` against a temporary `HOME` and `PATH`, and parses the generated completion scripts with `bash -n` and `zsh -n` (`fish -n` where installed) and runs the bash function. `npm run test:cli` copies the built bundle to a temporary folder with no `node_modules` and runs the copy, including `reels doctor` and the embedded `reels help agent`; run `npm run build:desktop` (or `npm run build`) first so the bundle carries the current [agent guide](#agent-guide). Neither touches a running app.

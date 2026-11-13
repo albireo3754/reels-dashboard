@@ -15,6 +15,10 @@ export type CliIO = {
   /** Throws when the working folder is gone; only relative paths need it. */
   cwd(): string;
   pollMs?: number;
+  /** The bundle this process runs (process.argv[1]); `reels doctor` compares it with the launcher's. */
+  script?: string;
+  /** Defaults to process.versions; injected by tests of `reels doctor`. */
+  versions?: { node: string; electron?: string };
 };
 
 type ToolCliOption = {
@@ -37,13 +41,6 @@ export const cliOptions = {
 export const toolCliOption = (name: ToolName): ToolCliOption =>
   (cliOptions as Partial<Record<ToolName, ToolCliOption>>)[name] ?? {};
 
-export const builtinCommands = [
-  "status",
-  "tools",
-  "call",
-  "prepare-media",
-  "help",
-];
 export const reservedOptions = {
   input: { type: "string" },
   "input-file": { type: "string" },
@@ -84,6 +81,11 @@ function editDistance(from: string, to: string) {
 }
 
 export function didYouMean(value: string, extra: string[] = []) {
+  return closest(value, [...extra, ...slugs.keys()]);
+}
+
+/** Up to three candidates near `value`, nearest first. */
+export function closest(value: string, candidates: readonly string[]) {
   if (value.startsWith("-")) return [];
   const query = toolSlug(value.toLowerCase());
   const limit = Math.min(3, Math.max(1, Math.floor(query.length / 3)));
@@ -91,7 +93,7 @@ export function didYouMean(value: string, extra: string[] = []) {
     query.length >= 3 && (name.includes(query) || query.includes(name));
   const prefix = (name: string) => Number(name.startsWith(query));
   const gap = (name: string) => Math.abs(name.length - query.length);
-  return [...extra, ...slugs.keys()]
+  return candidates
     .map((name) => ({
       name,
       distance: contains(name) ? 0 : editDistance(query, name),
