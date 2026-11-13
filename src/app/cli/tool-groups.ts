@@ -10,7 +10,7 @@ export const toolGroups = {
   render: "Preview frames, renders and the cover signature they use.",
   content:
     "Production dashboard entries, linked edits and publication records.",
-  photos: "Search, index and inspect Photos, and import a video from it.",
+  photos: "Read-only Photos search, index and inspect; import copies a video.",
   delivery:
     "iCloud outbound delivery, publish readiness and clip upload bundles.",
   forms: "Shared input forms: create, read, save, apply and open.",

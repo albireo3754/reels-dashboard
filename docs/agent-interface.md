@@ -39,7 +39,7 @@ There is no HTTP listener. The MCP server and the `reels` CLI are both thin clie
 
 Tools cover app state, project listing/loading/opening, source import (optionally with settings from an existing project), supported templates, partial settings updates, preview images and render start/status/cancellation. Project updates and render requests carry the revision returned by a read. An outdated revision fails explicitly; it never retries by overwriting another writer. Unsaved UI changes remain visible and protected.
 
-Photos discovery tools expose only validated status, date indexing, group listing/detail and bounded evidence inspection. Photos permissions still belong to the existing native helper. Copy/move/delete and publication are not implicitly exposed by a generic request tool. An existing Photos selection can be imported through the same checked materialization service used by the UI.
+Photos discovery tools expose only validated status, date indexing, group listing/detail and bounded evidence inspection. Photos permissions still belong to the existing native helper. Copy/move/delete and publication are not implicitly exposed by a generic request tool. An existing Photos selection can be imported through the same checked materialization service used by the UI; the import is a copy and the Photos original stays untouched. Copy is the default for every agent and UI flow. Source deletion (verified move) runs only after an explicit user choice in the desktop UI.
 
 MCP results use structured JSON for state and jobs, and image content for previews. Tool errors are `isError` results with actionable messages. Runtime input validation also happens at the app boundary; MCP validation alone is not trusted.
 

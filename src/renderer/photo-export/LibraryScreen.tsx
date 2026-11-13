@@ -438,11 +438,12 @@ export function LibraryScreen({
                   </label>
                   <p className="ui-meta form-note">
                     도우미가 허용한 폴더만 쓸 수 있고, 계획 단계에서는
-                    원본을 복사하거나 지우지 않아요.
+                    원본을 복사하거나 지우지 않아요. 기본은 복사예요. Photos
+                    원본은 그대로 두고, 이동(원본 삭제)은 직접 고를 때만 해요.
                   </p>
                   <div className="button-row">
                     <button
-                      className="secondary"
+                      className="primary"
                       onClick={() => createPlan("export")}
                       disabled={!!busy || !validated || !destination}
                     >
@@ -450,6 +451,7 @@ export function LibraryScreen({
                     </button>
                     <button
                       className="secondary"
+                      title="복사·검증 뒤 Photos 원본을 최근 삭제 항목으로 옮겨요. 명시적으로 원할 때만 고르세요."
                       onClick={() => createPlan("move")}
                       disabled={!!busy || !validated || !destination}
                     >

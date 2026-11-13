@@ -1,5 +1,15 @@
 # Reels Dashboard 진행 상태
 
+## Photos 원본 기본 불변(복사 기본) — 2026-11-13
+
+배경: 사용자 지시 "대시보드로 영상 정리할 때 기존 Photos는 손대지 마라". 처음에는 move 제거를 검토했으나 사용자 정정으로 move는 그대로 두고 복사를 기본으로 했다.
+
+- [x] 조사: PhotoKit 쓰기는 `PhotoKitAssetDeleter`(move 전용) 한 곳뿐이고, 색인·검색·검사는 읽기만 하며 영상 가져오기(`reels_import_photos_video`·`editor.fromPhotos`)는 앱 저장소로 복사한다. MCP·CLI·워크플로에는 move 실행 도구가 없다.
+- [x] UI: `복사 계획 만들기`를 primary로, `이동 계획 만들기`는 보조 버튼과 설명으로 구분. 전송 화면에 "복사 내보내기 (기본)"·"검증 후 이동 (직접 고를 때만)" 표기. 기존 이동 확인 체크·native 확인창(기본 취소)은 유지.
+- [x] MCP 안내·`reels_import_photos_video` 설명에 "Photos 원본은 기본적으로 그대로, 가져오기는 복사"를 명시. [MCP](docs/mcp-usage.md#photos-and-limits)·[인터페이스](docs/agent-interface.md)·[UI 명세](docs/photosindex-ui-spec.md#5-복사이동복구-ux)·README 반영.
+- [x] 회귀 검사: `tests/unit/photos-copy-default.test.ts`(Photos 도구는 읽기 메서드만, 가져오기는 복사, move 실행 도구 없음, 복사 버튼 primary, move 확인창 기본 취소, PhotoKit 쓰기는 move 경로에만), web `copy is the default plan…`.
+- 범위 밖: move·deleter 코드와 기존 pending move 복구는 변경하지 않음. 실제 Photos 보관함 쓰기 QA는 하지 않음.
+
 ## main 통합·정식 경로 패키지 실행 — 2026-11-13
 
 - [x] 남은 콘텐츠 평가 이력·OpenCut 준비 변경을 main `a1d84dc`에 통합. 미병합 로컬 브랜치 없음. 별도 build worktree는 같은 기존 main에서 만든 무변경 빌드용 checkout이었으며 새 코드가 없었음.

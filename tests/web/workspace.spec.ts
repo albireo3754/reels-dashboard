@@ -338,6 +338,27 @@ test("duplicate IDs in an imported decision are rejected without normalizing the
   await expect(page.getByLabel(/^자산 분류 /).first()).toHaveValue("excluded");
 });
 
+test("copy is the default plan and keeps Photos originals; move stays a separate explicit choice", async ({
+  page,
+}) => {
+  await openDemo(page);
+  await prepareDecision(page);
+  await page.getByRole("button", { name: "목적지 선택", exact: true }).click();
+  const copy = page.getByRole("button", { name: "복사 계획 만들기", exact: true });
+  const move = page.getByRole("button", { name: "이동 계획 만들기", exact: true });
+  await expect(copy).toHaveClass(/\bprimary\b/);
+  await expect(move).not.toHaveClass(/\bprimary\b/);
+  await expect(page.getByText(/기본은 복사예요/)).toBeVisible();
+  await copy.click();
+  await expect(page.getByText("원본 유지", { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("Photos 원본이 최근 삭제 항목으로 이동함을 확인했어요", { exact: true }),
+  ).toHaveCount(0);
+  await page.getByLabel("계획을 검토했어요", { exact: true }).check();
+  await page.getByRole("button", { name: "복사 실행", exact: true }).click();
+  await expect(page.getByText(/Photos 원본은 유지돼요/)).toBeVisible();
+});
+
 test("move requires a separate source-deletion acknowledgement", async ({
   page,
 }) => {

@@ -20,7 +20,7 @@ import { settingsPatchSchema } from "../../../entities/agent-session";
 
 /** Operating rules shared by the MCP server and the `reels` CLI. */
 export const agentGuidance =
-  "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. No social publishing, Photos deletion or arbitrary shell execution is provided. Content prose stays in the content workspace.";
+  "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. Photos originals stay untouched by default: Photos tools only read, and imports copy the original into app storage. No social publishing, Photos deletion or move, or arbitrary shell execution is provided. Content prose stays in the content workspace.";
 
 const id = z.string().uuid();
 const revision = z
@@ -338,7 +338,7 @@ export const toolDefinitions = {
   },
   reels_import_photos_video: {
     description:
-      "Import a selected video from the current Photos index into a new edit project using the app's checked materialization service. No Photos deletion.",
+      "Import a selected video from the current Photos index into a new edit project. Copies the original into app storage through the checked materialization service; the Photos original stays untouched (no deletion, move, album or metadata change). Use this to put Photos videos on the dashboard.",
     input: z.strictObject({
       groupId: nativeID,
       indexRunId: nativeID,

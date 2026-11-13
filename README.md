@@ -29,7 +29,7 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 - Photo/video-based card-news Reels: adjustable reading-time recommendations, card order and music controls, matching previews, saved drafts and vertical MP4 export. See [card-news workflow and evidence](docs/card-news.md).
 - Bundled Swift helper: PhotoKit authorization, date indexing, GPS-radius/OCR search through MCP, coarse/fine capture groups, paged previews and privacy flags.
 - Complete include/exclude decisions with native validation; reviewed, digest-bound copy and move plans.
-- Verified iCloud move and interrupted-move recovery, retaining PhotosIndex's integrity checks and recovery journals.
+- Photos originals stay untouched by default: indexing and inspection only read, video import copies into app storage, and export copies to iCloud. Verified iCloud move (source deletion) and interrupted-move recovery remain available only as an explicit desktop choice, retaining PhotosIndex's integrity checks and recovery journals.
 - Local production dashboard with persistent stages, next actions and public links; media thumbnails, a video/image/audio viewer and paginated browsing of linked footage folders.
 - An integrated video editor: select a Photos or local video, edit timed captions and a place-guide bundle, choose a cover frame and two-line hook, then export video/audio and a PNG cover.
 - A bundled Python/Pillow/FFmpeg runtime, exact engine previews, original-first playback (HDR originals stream as they are; an SDR playback copy is made only when an original cannot be played or is not downloaded from iCloud — see [policy](docs/editor-workflow.md#원본-직접-재생--2026-11-12)), saved drafts, progress and cancellation.

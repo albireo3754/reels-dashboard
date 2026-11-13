@@ -50,14 +50,14 @@ export function TransfersScreen({
     <>
       <dl className="transfer-types">
         <div>
-          <dt>복사 내보내기</dt>
+          <dt>복사 내보내기 (기본)</dt>
           <dd>선택한 원본을 목적지에 복사해요. Photos 원본은 그대로예요.</dd>
         </div>
         <div>
-          <dt>검증 후 이동</dt>
+          <dt>검증 후 이동 (직접 고를 때만)</dt>
           <dd>
             업로드와 파일 검증을 마친 뒤 Photos 원본을 최근 삭제 항목으로
-            옮겨요.
+            옮겨요. 원본을 지우려는 경우에만 별도로 골라주세요.
           </dd>
         </div>
       </dl>

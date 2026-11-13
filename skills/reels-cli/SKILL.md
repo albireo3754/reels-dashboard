@@ -22,6 +22,10 @@ description: Operate a running Reels Dashboard app from a shell with the `reels`
 
 A tool can be named `reels_get_project`, `get_project` or `get-project`. Flags come from the schema: `expectedUpdatedAt` is `--expected-updated-at`. Objects and arrays take JSON. A value starting with a dash needs `=`. For a whole input use `--input <json|->` or `--input-file <path>`; use one input source only.
 
+## Photos
+
+Photos originals stay untouched by default. The `photos` group only reads (status, search, index, groups, inspect). To put a Photos video on the dashboard, use `reels import-photos-video`: it copies the original into app storage and leaves the Photos item unchanged. There is no move or delete command. Deleting originals is a desktop-only choice the user makes explicitly; "organize" or "정리" never means delete.
+
 ## Ids
 
 `--project-id` takes two kinds of id, and the usage line shows which:

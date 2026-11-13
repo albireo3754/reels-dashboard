@@ -73,6 +73,8 @@ CLI: `reels set-publication` with the same fields.
 
 ## Photos and limits
 
+**Photos originals stay untouched by default.** To put Photos videos on the dashboard, use `reels_import_photos_video`: it copies the selected original into app storage and leaves the Photos item, its albums and metadata unchanged. Every `reels_photos_*` tool only reads. Deleting originals (the desktop "검증 후 이동" plan) happens only when the user explicitly chooses it in the desktop UI and confirms the native dialog; agents never select it on their own, and "정리해줘"/"organize" is not a request to delete.
+
 `reels_photos_status`, `reels_photos_index`, `reels_photos_groups`, `reels_photos_group` and `reels_photos_inspect` use the app's validated native boundary. Inspection creates a bounded evidence page. `reels_import_photos_video` takes a group/index-run/asset selection and uses the same checked materialization as the UI. Existing macOS Photos permission is required; grant it through the app. Re-index after a native-helper restart rather than treating old index-run IDs as persistent project IDs.
 
 The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, or social publication. Explicit iCloud copy/status operations are described below. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.

@@ -76,6 +76,8 @@ Electron + React 앱이 PhotosIndex의 사용자 기능 전체를 제공해야 �
 
 ## 5. 복사·이동·복구 UX
 
+**원칙 (2026-11-13): Photos 원본은 기본적으로 손대지 않아요.** 기본 실행은 복사예요. 촬영 보관함의 첫 번째(primary) 버튼은 `복사 계획 만들기`이고, `이동 계획 만들기`는 원본 삭제를 원할 때 사용자가 직접 고르는 보조 버튼이에요. 이동은 별도 확인 체크와 native 확인창(기본 선택 `취소`)을 모두 거쳐야 실행돼요. MCP·CLI·워크플로에는 이동 실행 도구가 없고, 영상 가져오기(`reels_import_photos_video`)는 앱 저장소로 복사만 해요. 회귀 검사: `tests/unit/photos-copy-default.test.ts`, `tests/web/workspace.spec.ts`의 기본 복사 검사.
+
 근거: `ExportCommandService.swift`, `Sources/PhotosIndexExport/{ExportPlanner,ExportApplier,MoveApplier,PendingMoveStore,ExportSupport,ExportTypes}.swift`.
 
 ### 계획과 실행 분리
@@ -96,7 +98,7 @@ Electron + React 앱이 PhotosIndex의 사용자 기능 전체를 제공해야 �
 
 ### 검증 후 이동
 
-이동은 복사 성공 후에도 추가 검증이 있어요. UI의 실행 버튼에는 Photos 원본이 최근 삭제 항목으로 이동한다는 점과 정확한 대상 개수를 표시해요. 일반 복사 버튼과 혼동하지 않게 하고, 사용자 실행 없이 자동 이동하지 않아요.
+이동은 사용자가 명시적으로 고를 때만 실행하는 선택 경로예요. 복사 성공 후에도 추가 검증이 있어요. UI의 실행 버튼에는 Photos 원본이 최근 삭제 항목으로 이동한다는 점과 정확한 대상 개수를 표시해요. 일반 복사 버튼과 혼동하지 않게 하고, 사용자 실행 없이 자동 이동하지 않아요.
 
 순서는 **복사/기존 receipt 확인 → 목적지 hash 확인 → iCloud 업로드 확인 → 목적지 hash 재확인 → digest 이름의 move plan 저장 → private pending journal 저장 → 선택 원본 삭제 → 삭제 대상 일치 확인 → move receipt 저장 → journal 제거**예요. UI는 백엔드가 내보내는 실제 상태만 표시하고, 현재 API가 주지 않는 세부 진행률을 임의 숫자로 만들지 않아요.
 
