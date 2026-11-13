@@ -28,6 +28,12 @@ import { agentGuide } from "./agent-guide";
 import { runtimeCheck, setupChecks, type Check } from "./doctor";
 import { checkOutputPath, saveImage } from "./image-output";
 import {
+  plainExitCodes,
+  plainToolDetail,
+  plainToolList,
+  takePlain,
+} from "./plain";
+import {
   agentFailure,
   CliError,
   exitCodeMeanings,
@@ -95,7 +101,11 @@ type Scope = {
   /** Set once a render job is known. */
   wait?: JobWait;
 };
-type Success = { tool?: ToolName; data: unknown };
+/**
+ * `raw` replaces the JSON document with text for people. Only the opt-in text
+ * forms set it (`help --plain`, `tools --plain`); failures are always JSON.
+ */
+type Success = { tool?: ToolName; data: unknown; raw?: string };
 
 const shellArg = (value: unknown) => {
   const text = String(value);
@@ -413,14 +423,20 @@ function groupFilter(args: string[]): ToolGroup | undefined {
   );
 }
 
-function tools(args: string[], scope: Scope): Success {
+function tools(argv: string[], scope: Scope): Success {
   scope.readOnly = true;
-  if (wantsHelp(args)) return showHelp(toolsCommand.help);
+  const { plain, rest: args } = takePlain(argv, toolsCommand.usage);
+  if (wantsHelp(args)) return asText(showHelp(toolsCommand.help), plain);
   const group = groupFilter(args);
   if (!args.length || group) {
     const names = group
       ? toolNames.filter((name) => toolGroupOf[name] === group)
       : toolNames;
+    if (plain)
+      return {
+        data: null,
+        raw: plainToolList(names.map(toolEntry), builtinSummaries, group),
+      };
     return {
       data: {
         guidance: agentGuidance,
@@ -433,6 +449,7 @@ function tools(args: string[], scope: Scope): Success {
     };
   }
   const name = requireTool(args[0]);
+  if (plain) return { data: null, raw: plainToolDetail(name) };
   return {
     data: {
       name,
@@ -787,12 +804,13 @@ async function prepareMedia(
   }
 }
 
-function exitCodeHelp(): Success {
+function exitCodeHelp(plain: boolean): Success {
   const rows = Object.entries(exitCodes).map(([name, code]) => ({
     code,
     name,
     meaning: exitCodeMeanings[name as keyof typeof exitCodes],
   }));
+  if (plain) return { data: null, raw: plainExitCodes(rows) };
   return {
     data: {
       help: rows.map(({ code, meaning }) => `${code}  ${meaning}`).join("\n"),
@@ -835,12 +853,22 @@ type Builtin = {
   summary?: string;
   run(args: string[], context: BuiltinContext): Promise<Success> | Success;
 };
-/** `reels help <topic>`: help that belongs to no command. */
-type HelpTopic = { name: string; run(): Success };
+/** `reels help <topic>`: help that belongs to no command. `plain` asks for text. */
+type HelpTopic = { name: string; run(plain: boolean): Success };
+
+/** The help text of a result, as text for people when asked for. */
+function asText(result: Success, plain: boolean): Success {
+  if (!plain) return result;
+  const help = (result.data as { help?: unknown } | null)?.help;
+  if (typeof help === "string") return { data: null, raw: help };
+  throw new CliError("USAGE", "--plain only applies to help text.", {
+    usage: helpUsage,
+  });
+}
 
 const globalHelp = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
 Start:   reels status     (setup problems: reels doctor)
-Find:    reels tools | reels tools update-project | reels help update-project
+Find:    reels tools | reels tools update-project | reels help update-project   (text: --plain)
 List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
 Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
 Edit:    reels update-project --project-id <id> --expected-updated-at <rev> --patch '{"cover":{"time":7.25}}'
@@ -892,6 +920,7 @@ const toolsCommand = {
   help: `Usage: ${toolsUsage}
 Lists every tool and built-in command, or prints one tool's input schema and flags.
 --group <id>  Only the tools in one domain group. Groups: ${toolGroupIds.join(", ")}.
+--plain       Text for people instead of JSON; failures stay JSON. Also: reels help --plain [<name>].
 Example: reels tools start-render
 Example: reels tools --group render`,
   run: (args, { scope }) => tools(args, scope),
@@ -927,19 +956,27 @@ export const helpTopics: readonly HelpTopic[] = [
   { name: "exit-codes", run: exitCodeHelp },
   {
     name: "agent",
-    run: () => {
+    run: (plain) => {
       const { guide, name } = agentGuide();
+      // The Markdown guide as it is: it already reads as text.
+      if (plain) return { data: null, raw: guide };
       return { data: { guide, name, version } };
     },
   },
 ];
+const helpUsage = "reels help [--plain] [<topic|command|tool>]";
 const helpCommand = {
   name: "help",
-  /** A topic first; anything else is `<args> --help`. */
-  run: (args, { route }) => {
+  /** A topic first; anything else is `<args> --help`. `--plain` is taken off first. */
+  run: async (argv, { route }) => {
+    const { plain, rest: args } = takePlain(argv, helpUsage);
     const topic = helpTopics.find(({ name }) => name === args[0]);
-    if (topic) return topic.run();
-    return route(args.length ? [...args, "--help"] : ["--help"]);
+    if (topic) return topic.run(plain);
+    // People asking about one tool get the full detail of `reels tools --plain <tool>`.
+    const tool = plain && args.length === 1 ? resolveTool(args[0]) : undefined;
+    if (tool) return { data: null, raw: plainToolDetail(tool) };
+    const result = await route(args.length ? [...args, "--help"] : ["--help"]);
+    return asText(result, plain);
   },
 } satisfies Builtin;
 
@@ -1055,12 +1092,14 @@ export async function run(argv: string[], io: CliIO): Promise<number> {
   };
   try {
     // The race ends the command even if what it was doing cannot be aborted.
-    const { tool, data } = await Promise.race([
+    const { tool, data, raw } = await Promise.race([
       route(argv, io, scope),
       signals.raised,
     ]);
     signals.stop();
-    write({ ok: true, ...(tool ? { tool } : {}), data });
+    // Text for people goes through the same writer, so a failed write still exits 11.
+    if (raw !== undefined) io.stdout(raw.endsWith("\n") ? raw : raw + "\n");
+    else write({ ok: true, ...(tool ? { tool } : {}), data });
     return exitCodes.ok;
   } catch (error) {
     signals.stop();

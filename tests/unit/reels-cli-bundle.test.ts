@@ -192,6 +192,15 @@ test(
       assert.equal(result.code, 11);
       assert.match(result.stderr, /could not write stdout/);
       assert.equal(result.stderr.split("\n").length, 2);
+      // Text for people takes the same writer, so it fails the same way.
+      const text = await runLimited(
+        cwd,
+        path.join(cwd, "data"),
+        ["tools", "--plain"],
+        " > big.txt",
+      );
+      assert.equal(text.code, 11);
+      assert.match(text.stderr, /could not write stdout/);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

@@ -42,7 +42,7 @@ Use the new `.data.updatedAt` for the next write. For `upsert-content`, `merge-p
 
 ## Output contract
 
-stdout is always one line of JSON, including errors and help. stderr is for people. No prompts or colors.
+stdout is always one line of JSON, including errors and help. stderr is for people. No prompts or colors. (`reels help --plain` and `reels tools --plain` print text for people; do not use them.)
 
 - Success: `{"ok":true,"tool":"…","data":…}`.
 - Failure: `{"ok":false,"error":{"code","message","exitCode","retry","writeOutcome",…}}`, sometimes with `next`, `hint`, `issues`, `usage` or `didYouMean`.

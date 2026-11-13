@@ -33,6 +33,7 @@ import { callAgent, startAgentSocket } from "../../src/shared/lib/agent-socket";
 import { LocalStore } from "../../src/shared/lib/storage";
 import { cliLauncher } from "../../src/shared/cli-launcher";
 import type { RenderJob } from "../../src/shared/editor";
+import { exitCodes } from "../../src/app/cli/outcome";
 import {
   builtinCommands,
   builtins,
@@ -387,6 +388,125 @@ test("reels tools --group rejects unknown ids, tool names and other flags", asyn
     assert.match(named.message, /does not take a tool name/);
     const other = (await cli(root, ["tools", "--bogus"])).document.error;
     assert.equal(other.message, "tools takes at most one tool name.");
+  });
+});
+
+/** For the opt-in text forms: stdout is text, never JSON, and exactly what `run` wrote. */
+async function cliText(root: string, args: string[]) {
+  let stdout = "";
+  const code = await run(args, {
+    stdin: () => Readable.from([]),
+    stdout: (text) => (stdout += text),
+    stderr: () => {},
+    env: { REELS_USER_DATA: root },
+    cwd: () => root,
+  });
+  return { code, stdout };
+}
+const isJson = (text: string) => {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test("help --plain and tools --plain print text for people", async () => {
+  await offlineRoot(async (root) => {
+    const text = async (...args: string[]) => {
+      const result = await cliText(root, args);
+      assert.equal(result.code, 0, args.join(" "));
+      assert.ok(!isJson(result.stdout), args.join(" "));
+      assert.ok(result.stdout.endsWith("\n"), args.join(" "));
+      return result.stdout;
+    };
+    const top = (await cli(root, ["--help"])).document.data.help;
+    assert.equal(await text("help", "--plain"), `${top}\n`);
+    assert.match(top, /--plain/);
+
+    const list = await text("tools", "--plain");
+    for (const id of toolGroupIds)
+      assert.match(list, new RegExp(`^${id}: ${toolGroups[id].replace(/[.()]/g, "\\$&")} \\(\\d+\\)$`, "m"));
+    for (const slug of toolSlugs)
+      assert.match(list, new RegExp(`^  reels ${slug}  `, "m"));
+    assert.match(list, /^  reels get-project +Read .*\(read-only\)$/m);
+    assert.match(list, /^  reels update-project +Patch .*[^)]$/m);
+    assert.match(list, /^Built-in commands:$/m);
+
+    const render = await text("tools", "--plain", "--group", "render");
+    assert.equal(await text("tools", "--group=render", "--plain"), render);
+    assert.match(render, /^render: /m);
+    assert.doesNotMatch(render, /^editor: |reels get-project/m);
+    assert.match(render, /^  reels start-render  /m);
+
+    const detail = await text("tools", "--plain", "get-project");
+    assert.equal(await text("tools", "reels_get_project", "--plain"), detail);
+    assert.match(detail, /^reels get-project \(read-only\)$/m);
+    assert.match(detail, /^Usage: reels get-project --project-id <uuid>$/m);
+    assert.match(detail, /^Example: reels get-project /m);
+    assert.match(detail, /^  --project-id  \(string, uuid, required\)$/m);
+    assert.match(detail, /^Group: editor /m);
+    const enums = await text("tools", "--plain", "preview-frame");
+    assert.match(enums, /--kind  \(one of [a-z|]*cover[a-z|]*, required\)/);
+    assert.match(enums, /^  --out <path> +New file for the image\.$/m);
+    assert.equal(await text("help", "--plain", "get-project"), detail);
+    assert.equal(await text("help", "get-project", "--plain"), detail);
+
+    assert.equal(
+      await text("help", "--plain", "status"),
+      `${(await cli(root, ["status", "--help"])).document.data.help}\n`,
+    );
+    const toolsHelp = await text("help", "--plain", "tools");
+    assert.equal(await text("tools", "--plain", "--help"), toolsHelp);
+    assert.match(toolsHelp, /^--plain  /m);
+
+    const codes = await text("help", "--plain", "exit-codes");
+    for (const [name, code] of Object.entries(exitCodes))
+      assert.match(codes, new RegExp(`^  ${code} +${name} +\\S`, "m"));
+    assert.equal(
+      await text("help", "--plain", "agent"),
+      await readFile("skills/reels-cli/SKILL.md", "utf8"),
+    );
+  });
+});
+
+test("--plain stays opt-in: failures are JSON and other commands are unchanged", async () => {
+  await offlineRoot(async (root) => {
+    for (const args of [
+      ["help", "--plain", "nope"],
+      ["help", "--plain", "--version"],
+      ["help", "--plain", "--plain"],
+      ["tools", "--plain", "nonexistent"],
+      ["tools", "--plain", "--group", "rendr"],
+      ["tools", "--plain", "--plain"],
+      ["tools", "--plain", "--bogus"],
+      ["status", "--plain"],
+      ["get-project", "--plain"],
+      ["photos-search", "--plain"],
+      ["call", "get-project", "--plain"],
+      ["--plain"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.ok(["USAGE", "UNKNOWN_TOOL"].includes(document.error.code), args.join(" "));
+    }
+    const group = (await cli(root, ["tools", "--plain", "--group", "rendr"]))
+      .document.error;
+    assert.deepEqual(group.didYouMean, ["render"]);
+    // A schema flag named like a text option is still a schema flag.
+    assert.deepEqual(
+      parseToolArgs("reels_photos_search", ["--text", "cafe"]).given.map(
+        ([flag, value]) => [flag.flag, value],
+      ),
+      [["--text", "cafe"]],
+    );
+    const help = await cli(root, ["photos-search", "--text", "cafe", "--help"]);
+    assert.equal(help.code, 0);
+    assert.match(help.document.data.help, /--text/);
+    // Without --plain every form is JSON as before.
+    for (const args of [["tools"], ["help", "get-project"], ["help", "agent"]])
+      assert.equal((await cli(root, args)).code, 0, args.join(" "));
   });
 });
 

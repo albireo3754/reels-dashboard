@@ -34,12 +34,23 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels --help`, `reels <command> --help`, `reels help [<command>]`, `reels --version` | no | Help and version. |
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
 | `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |
+| `reels help --plain [<topic\|command\|tool>]` | no | The same help as [text for people](#text-for-people) instead of JSON. A tool shows the detail of `reels tools --plain <tool>`. |
+| `reels tools --plain [<name\|slug> \| --group <id>]` | no | The tool list grouped by domain, or one tool's usage, flags, example and group, as [text for people](#text-for-people). |
 
 ### Agent guide
 
 `reels help agent` prints [`skills/reels-cli/SKILL.md`](../skills/reels-cli/SKILL.md), a short skill for operating the app through this CLI: `{"ok":true,"data":{"guide":"<markdown>","name":"reels-cli","version":"0.1.0"}}`. The build embeds the file in `dist-cli/reels.mjs`, so the guide always matches the installed CLI and needs no repository; from source the CLI reads the file. The last line of `reels --help` points agents to it. Edit the skill file, not a copy, and rebuild.
 
 A tool can be named as `reels_get_project`, `get_project` (the form the guidance text uses) or `get-project`, in every place that takes a tool name.
+
+### Text for people
+
+`--plain` belongs to `reels help` and `reels tools` only; it is not a global option, so a tool flag such as `reels photos-search --text` keeps its meaning, and `--plain` on any other command is a usage error (exit 2). Agents should keep reading the JSON forms.
+
+- `reels help --plain`: the top-level help. `reels help --plain <command>` prints that command's help text; `--plain` may come before or after the name.
+- `reels help --plain <tool>` and `reels tools --plain <tool>`: usage, every flag with its type, allowed values, format and whether it is required, the CLI options, an example and the group.
+- `reels tools --plain [--group <id>]`: the built-in commands, then each group as `<id>: <summary> (<count>)` followed by `  reels <slug>  <summary>` lines; read-only tools end in `(read-only)`.
+- `reels help --plain exit-codes`: the exit code table with names. `reels help --plain agent`: the Markdown guide as it is.
 
 ### Tool groups
 
@@ -63,6 +74,8 @@ Use one input source: schema flags, `--input` or `--input-file`. With none, the 
 ## Output
 
 stdout is one line holding one JSON document, including for failures, `--help` and SIGHUP, SIGINT or SIGTERM at any point of a command. Four things can still leave it empty: SIGKILL, SIGQUIT (which keeps its core-dump meaning), a signal in the first moments before the CLI has finished loading, and a second signal after the first. Treat an empty stdout from a write as `writeOutcome: "unknown"`. If the document cannot be written in full, for example on a full disk, the CLI says so in one stderr line and exits non-zero, keeping the command's own failure code and using 11 if the command had succeeded. stdout then holds cut-off JSON, so treat it like an empty one. A reader closing the pipe early is not such a failure. stderr carries a one-line diagnostic and `--wait` progress for people; `--help` writes only to stdout. There are no prompts, colors or spinners.
+
+The only exception is opt-in text for people: `reels help --plain ...` and `reels tools --plain ...` write plain text instead of the JSON document. Nothing else writes text, and without `--plain` these two commands print JSON as before. A failure of either, including a bad `--plain` form, is still the one-line JSON document with its usual exit code, and text that cannot be written in full exits 11 like JSON does.
 
 ```json
 {"ok":true,"tool":"reels_get_project","data":{"id":"…","updatedAt":"…"}}
