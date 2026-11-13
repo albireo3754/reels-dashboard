@@ -1,4 +1,5 @@
 import { PublicationCalendar } from "../features/publication-calendar";
+import { InstagramInsights } from "../features/instagram-insights";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
 import {
@@ -303,7 +304,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   );
   const navigationTabs: Tab[] = [
     "dashboard",
-    ...(!readOnly ? (["calendar"] as const) : []),
+    ...(!readOnly ? (["calendar", "insights"] as const) : []),
     "library",
     "editor",
     "cards",
@@ -668,6 +669,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           } : undefined}
         /></div>
         {tab === "calendar" && <PublicationCalendar api={bridge.planning} projects={dashboard.projects} />}
+        {tab === "insights" && <InstagramInsights api={bridge.instagramInsights} projects={dashboard.projects} demo={bridge.mode === "demo"} onProject={project => {setEditingRevision(dashboard.updatedAt);setEditingProject({...project});}} />}
         {tab === "logs" && bridge.executionLogs && <ExecutionLogsPanel bridge={bridge.executionLogs} />}
         {(workflowVisited || tab === "workflow") && <div hidden={tab !== "workflow"}><WorkflowPanel openRunRequest={notificationRun} /></div>}
         {tab === "transfers" &&

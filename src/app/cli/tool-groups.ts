@@ -17,12 +17,16 @@ export const toolGroups = {
   analysis: "Image and frame analysis of a project folder.",
   blog: "Naver blog references, comment records and GIF motion clips.",
   planning: "Calendar and Linear planning snapshots.",
+  insights: "Private Instagram account insights and topic labels.",
 } as const;
 export type ToolGroup = keyof typeof toolGroups;
 export const toolGroupIds = Object.keys(toolGroups) as ToolGroup[];
 
 /** Exactly one group per tool; a tool added to toolDefinitions fails the type check until listed here. */
 export const toolGroupOf = {
+  reels_get_instagram_insights: "insights",
+  reels_refresh_instagram_insights: "insights",
+  reels_set_instagram_topics: "insights",
   reels_get_app_state: "editor",
   reels_list_projects: "editor",
   reels_get_project: "editor",

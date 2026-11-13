@@ -1,6 +1,7 @@
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import { gifConvertInput } from "../../../shared/gif-convert";
 import { planningUpdateSchema } from "../../../shared/planning";
+import { instagramTopicsInput } from "../../../shared/instagram-insights";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import {formIdInput} from "../../../shared/input-forms";
 import { analysisStart, analysisQuery, analysisCorrection } from "../../../shared/media-analysis";
@@ -35,6 +36,18 @@ const nativeID = z
   .refine((v) => !v.includes("\0"));
 const formDefinitions = Object.fromEntries(inputFormTools.map(([_action,name,input,description,readOnly])=>[name,{input,description,readOnly}])) as Record<typeof inputFormTools[number][1], {input:typeof inputFormTools[number][2];description:string;readOnly:boolean}>;
 export const toolDefinitions = {
+  reels_get_instagram_insights: {
+    description: "Read private Instagram connection status, latest or selected snapshot, history and topic labels. Never returns tokens or credential paths; does not call Instagram. No insights enter shared snapshots.",
+    input: z.strictObject({ snapshotId: z.string().uuid().optional() }), readOnly: true,
+  },
+  reels_refresh_instagram_insights: {
+    description: "Start reading the connected owner's Instagram profile and latest 100 media insights using the desktop's configured token file. Returns immediately; poll get_instagram_insights until busy=false and inspect lastError. Saves a private snapshot only on completion; authentication/rate limits preserve the last success. No OAuth, publishing or scheduling. Never retry an uncertain start.",
+    input: z.strictObject({}), readOnly: false,
+  },
+  reels_set_instagram_topics: {
+    description: "Update topic labels for media in the current owner's latest Instagram snapshot. Partial merge, empty string clears a label. Does not modify posts, production projects or raw metric history.",
+    input: z.strictObject({ topics: instagramTopicsInput }), readOnly: false,
+  },
   reels_get_planning: {
     description: "Read the private calendar/Linear import snapshot and revision. This does not query providers. No credentials or private planning data enter shared snapshots.",
     input: z.strictObject({}), readOnly: true,

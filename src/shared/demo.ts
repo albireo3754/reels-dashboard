@@ -6,6 +6,7 @@ import {
   demoVideo,
 } from "./editor-demo";
 import { emptyPlanning, planningSchema, planningUpdateSchema } from "./planning";
+import { emptyInstagramState, instagramSnapshotSchema, instagramTopicsInput, type InstagramInsightsState } from "./instagram-insights";
 import type {
   Arguments,
   Asset,
@@ -315,6 +316,22 @@ export function createDemoBridge(
   }
   return {
     mode: "demo",
+    instagramInsights: {
+      async get() {
+        const saved = storage?.getItem("reels-instagram-demo-v1");
+        if (!saved) return emptyInstagramState();
+        const state = JSON.parse(saved) as InstagramInsightsState;
+        return {...state,snapshot:state.snapshot ? instagramSnapshotSchema.parse(state.snapshot) : null,busy:false};
+      },
+      async connect() { throw new Error("조회 토큰 연결은 데스크톱 앱에서 사용할 수 있어요."); },
+      async refresh() { return this.get(); },
+      async setTopics(value) {
+        const state = await this.get();
+        const next = {...state,topics:{...state.topics,...instagramTopicsInput.parse(value)}};
+        storage?.setItem("reels-instagram-demo-v1",JSON.stringify(next));
+        return next;
+      },
+    },
     planning: {
       async get() { return planningSchema.parse(JSON.parse(storage?.getItem("reels-planning-demo-v1") ?? JSON.stringify(emptyPlanning()))); },
       async update(value) {

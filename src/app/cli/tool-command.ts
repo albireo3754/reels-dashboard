@@ -36,6 +36,7 @@ export const cliOptions = {
   reels_update_project: { sample: { patch: `'{"cover":{"time":7.25}}'` } },
   reels_photos_search: { sample: { text: "cafe" } },
   reels_sync_planning: { sample: { weeklyTarget: "3" } },
+  reels_set_instagram_topics: { sample: { topics: `'{"123":"Example topic"}'` } },
   reels_convert_gif: { sample: { outputPath: "/abs/clip.gif", crop: `'{"x":0,"y":0.15,"width":1,"height":0.85}'` } },
 } satisfies Partial<Record<ToolName, ToolCliOption>>;
 export const toolCliOption = (name: ToolName): ToolCliOption =>

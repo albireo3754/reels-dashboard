@@ -21,6 +21,15 @@
 - [x] 회귀 검사: `tests/unit/photos-copy-default.test.ts`(Photos 도구는 읽기 메서드만, 가져오기는 복사, move 실행 도구 없음, 복사 버튼 primary, move 확인창 기본 취소, PhotoKit 쓰기는 move 경로에만), web `copy is the default plan…`.
 - 범위 밖: move·deleter 코드와 기존 pending move 복구는 변경하지 않음. 실제 Photos 보관함 쓰기 QA는 하지 않음.
 
+## Instagram 인사이트 연결 — 2026-11-13
+
+- [x] 기존 조회 SDK에 명시적 Unified Login·소유 계정 ID 확인·v27·배치 조회·날짜 정규화·인증/요청 제한 중단을 연결. 계정별 기본값·토큰 값·운영 데이터를 공개 소스에 넣지 않음.
+- [x] 데스크톱 **Instagram 인사이트** 화면, 조회 토큰 파일 선택, 비동기 수동 수집, 비공개 불변 기록·재열기, 콘텐츠 URL 연결, 주제 분류, 48시간·기간 제외, 반응/저장/공유율·요일/시간대/주제 비교. 공유 snapshot 제외.
+- [x] MCP/CLI 조회·수집 시작·주제 부분 변경. 불확실한 시작 재시도 없음, 인증·요청 제한·전체 지표 실패 때 마지막 성공 기록 유지.
+- [x] 타입/FSD/빌드/공개 소스 검사 통과. 전체 단위 619개 중 614 통과·5 조건부 skip·실패 0(초기 macOS locale 실패는 UTF-8 locale을 지정해 재실행). 웹 9개 및 날짜 필드 배치 조정 후 해당 화면 2개 재검증. background Electron IPC/MCP/비공개 저장·재열기, 패키지 앱의 데모/비공개 프로필 분리 2개 통과. 소유 실계정의 앱 서비스 수집·패키지 UI 표시도 확인했고 개인 증거는 공개 저장소 밖에 보관.
+- [x] main 기준 코드와 이번 변경만 격리한 폴더에서 패키지 생성, 진행 중 OpenCut 미커밋 변경 제외 확인. `release/pending/instagram-20261113/Reels Dashboard.app`에 적용할 설치본 준비.
+- [x] 2026-11-14 운영 설치본 확인·실행 완료. 11/13 23:35 설치본에 Instagram 연동과 이후 Photos·블로그 변경이 이미 포함돼 있어 이전 대기 패키지로 덮어쓰지 않음. 해당 설치본의 background Electron 검증 2개 통과, 실제 화면과 CLI에서 게시물 29개·연결 정상 확인. 대시보드 80개·편집 프로젝트 51개를 유지했고 dashboard·Instagram 설정/기록 파일 해시도 실행 전후 동일. 사용자 정정에 따라 설치본 백업은 만들지 않았고 이후에도 별도 요청 없이 만들지 않도록 `AGENTS.md`에 기록. OAuth 자체 발급·자동 수집 예약·외부 게시·push는 범위 밖. [계약과 사용법](docs/instagram-insights.md).
+
 ## main 통합·정식 경로 패키지 실행 — 2026-11-13
 
 - [x] 남은 콘텐츠 평가 이력·OpenCut 준비 변경을 main `a1d84dc`에 통합. 미병합 로컬 브랜치 없음. 별도 build worktree는 같은 기존 main에서 만든 무변경 빌드용 checkout이었으며 새 코드가 없었음.

@@ -2,6 +2,7 @@
 export type Tab =
   | "dashboard"
   | "calendar"
+  | "insights"
   | "library"
   | "editor"
   | "cards"
@@ -19,6 +20,7 @@ type Page = {
 
 /** Navigation label and page heading copy for each workspace screen. */
 export const pages: Record<Tab, Page> = {
+  insights: { label: "Instagram 인사이트", title: "게시물 반응과 업로드 시각", description: "계정 통계를 비공개로 수집하고 게시물별 성과와 요일·시간대를 비교해요." },
   calendar: { label: "캘린더", title: "이번 주와 다음 주 게시 일정", description: "Google Calendar 일정과 Linear 할 일로 주간 목표를 확인해요." },
   dashboard: {
     label: "대시보드",

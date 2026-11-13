@@ -1,19 +1,9 @@
-# Instagram Insights — Instagram Login
+# Instagram Insights client
 
-Read-only client for the Instagram API with Instagram Login. Targets `graph.instagram.com/v26.0` and verifies the authenticated username before reading owned media. It maps a known permalink to the returned Graph media ID, then requests each insight independently. Missing, denied, failed and zero-valued metrics stay distinct. It does not publish content, write comments, grant permissions or use browser cookies as API tokens.
+Dependency-free, read-only client used by the desktop [Instagram insights integration](../../docs/instagram-insights.md). Supports explicitly selected Instagram Login (`graph.instagram.com`) or Unified Login (`graph.facebook.com`), API v27.0 by default. Every caller must specify the expected owner's username. Unified Login resolves that owner through `/me/assigned_instagram_accounts`; it never treats the system-user `/me` as an Instagram profile.
 
-First validation target: the already-published Japan walking/energy-jelly reel, using its permalink from the content workspace. Core metrics are views, reach, likes, comments, saved and shares. Reel watch metrics are supported as explicit additional requests after the basic permission check succeeds.
+`account()` verifies the owner before media access. `media()` normalizes API timestamps to ISO UTC and rebuilds fixed-origin pagination requests from cursors. `insights()` requests core metrics in one batch and isolates unsupported metrics on an explicit API rejection. Missing, denied, failed and real zero values remain distinct. Authentication and throttling stop collection. Tokens stay in a private class field and are sent only in Authorization headers; network redirects are refused and upstream error messages are not returned.
 
-Authentication preparation is incomplete. On 2026-10-28 the Meta developer dashboard led to a Facebook/managed Meta login, and no authenticated developer account or API credential was available to this task. The subsequent Instagram account authorization still uses Instagram Login. Account/role setup and the permission grant must be completed before a real API call can be claimed.
+There is no publishing, OAuth, permission grant, browser-cookie access or scheduling. Credentials, operational data and account-specific defaults do not belong in this package. Both SDK fixture tests and the desktop service/UI tests live in the parent repository. A live owned-account collection was verified separately; identifying evidence stays outside public source.
 
-Relevant permissions: `instagram_business_basic`, `instagram_business_manage_insights`. Owner-managed accounts added to the Meta app can use the documented Standard Access path; external account access has separate review requirements. Do not request publish, comments or messaging scopes for this reader.
-
-Sources verified in the official browser documentation:
-
-- https://developers.facebook.com/documentation/instagram-platform/create-an-instagram-app
-- https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started
-- https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
-- https://developers.facebook.com/documentation/instagram-platform/insights
-- https://developers.facebook.com/documentation/instagram-platform/reference/instagram-media/insights
-
-Four fixture tests verify account binding, Graph ID resolution, header-only credentials, no arbitrary pagination URL following, redacted errors and missing-vs-zero handling. These are not evidence of a live Instagram connection. This package is not yet wired into the mobile Site or scheduled collection.
+Primary sources: [Unified Login setup](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started?locale=en_US), [authentication and IDs](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/authentication?locale=en_US), [media insights](https://developers.facebook.com/documentation/instagram-platform/reference/instagram-media/insights).
