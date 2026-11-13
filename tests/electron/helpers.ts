@@ -1,10 +1,26 @@
 import { _electron, type ElectronApplication } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export async function makeProfile(): Promise<string> {
   return mkdtemp(join(tmpdir(), "reels-electron-qa-"));
+}
+
+// Direct terminal sessions run the product's `/bin/zsh -l` / `-lc`. Pointing ZDOTDIR at an
+// empty folder keeps that login path but skips the developer's own ~/.zshenv, ~/.zprofile and
+// ~/.zshrc (conda hooks, ssh-add, prompts), which otherwise cost CPU per PTY and make QA depend on
+// the local profile. The empty .zshenv also stops zsh-newuser-install from prompting.
+let qaZdotdir: string | undefined;
+function emptyZdotdir(): string {
+  if (!qaZdotdir) {
+    const dir = mkdtempSync(join(tmpdir(), "reels-electron-qa-zsh-"));
+    writeFileSync(join(dir, ".zshenv"), "");
+    process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
+    qaZdotdir = dir;
+  }
+  return qaZdotdir;
 }
 
 export async function launchApp(
@@ -39,6 +55,7 @@ export async function launchApp(
   // Terminal sessions default to herdr when installed. Keep existing scenarios
   // deterministic (and off the user's herdr server); herdr scenarios opt in below.
   env.REELS_TERMINAL_BACKEND = "direct";
+  env.ZDOTDIR = emptyZdotdir();
   for (const [key, value] of Object.entries(envOverrides)) {
     if (value === undefined) delete env[key];
     else env[key] = value;
