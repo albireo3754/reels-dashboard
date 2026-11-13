@@ -1,5 +1,19 @@
 # Reels Dashboard 진행 상태
 
+## herdr 방식 CLI 보강 — 2026-11-13
+
+배경: `reels` CLI를 사람·에이전트가 더 쉽게 찾고 진단하도록 보강했다. 기존 JSON 출력·종료 코드는 그대로 두고 추가만 했다. 새 의존성 없음. [CLI 사용법](docs/cli-usage.md).
+
+- [x] 내장 명령 표: `status`·`doctor`·`tools`·`call`·`prepare-media`·`help`·`completion`과 `--help`·`--version`을 한 표에서 라우팅·도움말·`data.builtins`·자동 완성에 사용.
+- [x] 도구 그룹: `reels tools`의 각 도구에 `group`, 목록에 `groups`(`id`·`summary`·`count`). `reels tools --group <id>`로 한 그룹만 표시.
+- [x] `reels doctor`: 런타임·프로필·앱·`~/.local/bin/reels` 런처·`PATH`를 읽기만 하는 진단. 검사마다 `ok` true/false/null과 CLI가 적용하지 않는 `fix`. 리뷰 반영으로 런처가 실행하는 실행 파일의 존재·실행 권한까지 확인하고, 런처 없이 다른 `reels`(npm link 등)가 `PATH`에 있으면 `path_dir`를 null로 보고.
+- [x] `reels help agent` + `skills/reels-cli/SKILL.md`: 에이전트용 사용 안내를 빌드에 포함해 설치된 CLI 버전과 일치. 리비전 안내는 `--expected-updated-at`를 받는 쓰기로 좁힘.
+- [x] `--plain`: `reels help --plain`·`reels tools --plain`만 사람용 텍스트. 실패는 JSON 유지. `--help`·`--version`은 먼저 처리되어 `--plain`을 무시하고 JSON 출력(기존 동작, 문서에 명시).
+- [x] `reels completion <bash|zsh|fish>`: 현재 버전 표에서 만든 정적 스크립트, 설치하지 않음. 리뷰 반영으로 경로·값을 받는 플래그 뒤에서는 파일 이름 완성 유지(bash `complete -o default`, zsh `_files`, fish는 명령·그룹 위치만 `-f`). macOS `/bin/bash` 3.2용으로 `eval "$(reels completion bash)"` 안내.
+- [x] 검증: typecheck, check:architecture, `npm test` 603개(598 통과·5 건너뜀·실패 0, fish 미설치 skip 포함), `npm run build`, `npm run test:cli` 4개, `npm run test:workflow` 82개 통과. 생성 스크립트 `bash -n`(3.2)·`zsh -n` 통과. 기존 명령 출력 캡처 비교에서 completion·도움말 예시·agent 안내 외 변화 없음.
+- [ ] 의도적으로 하지 않음: `npm run workflow`를 `reels workflow`로 감싸기(HTTP 경로이고 CLI는 비공개 소켓만 쓴다는 문서 계약, 번들 위험), `serve`·`blog:editor`(장시간 서버), `reels editor ...` 같은 그룹 하위 명령, doctor의 앱 버전(앱이 CLI에 버전을 알리지 않음), help의 `writeOutcome` 통일(기존 `help <unknown>` 출력이 바뀜).
+- 제한: 실행 중 앱·실제 `~/.local/bin/reels`·셸 설정 파일은 건드리지 않음. 패키징·push 안 함.
+
 ## 무음 반복 GIF 변환 — 2026-11-12
 
 - [x] 영상 → 소리 없는 무한 반복 GIF. 기본은 전체 길이·폭 480·15fps, `start`/`end` 구간(최대 60초), 회전 반영, HDR/HLG→SDR, 메타데이터(위치 포함) 제거. 번들 ffmpeg만 사용(새 의존성 없음): VideoToolbox 디코드·회전·톤매핑·축소 + 샘플 프레임 팔레트 + bayer 디더링, GPU 실패 시 CPU 경로. [문서](docs/gif-convert.md).
