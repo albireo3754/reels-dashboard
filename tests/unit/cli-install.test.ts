@@ -51,3 +51,12 @@ test("skips when the app has no bundled CLI", async () => {
   assert.equal(result.status, "skipped");
   assert.ok(cliLauncher("/a", "/b").includes(CLI_LAUNCHER_MARKER));
 });
+
+test("reels doctor reads back the bundle the launcher was written for", async () => {
+  const { readCliLauncher } = await import("../../src/shared/cli-launcher");
+  const bundle = "/Apps/It's here/reels.mjs";
+  const executable = "/Apps/Reels Dashboard.app/Contents/MacOS/Reels Dashboard";
+  assert.deepEqual(readCliLauncher(cliLauncher(executable, bundle)), { executable, bundle });
+  assert.equal(readCliLauncher("#!/bin/sh\necho mine\n"), undefined);
+  assert.equal(readCliLauncher(`${CLI_LAUNCHER_MARKER}\nexec node x\n`), undefined);
+});

@@ -15,7 +15,7 @@ node /absolute/path/to/reels-dashboard/dist-cli/reels.mjs status
 
 The packaged app ships the bundle as `Contents/Resources/cli/reels.mjs`. Each time the packaged app starts (not the Dev build, not background QA), it writes `~/.local/bin/reels`, a small `sh` launcher that runs the bundle with the app's own executable under `ELECTRON_RUN_AS_NODE=1`. A separate Node install is not needed, and the command always matches the installed app version. If the app moves, the next launch rewrites the path.
 
-The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~/.local/bin/reels` only when that file is missing or carries the marker. A symlink, such as one from `npm link` to a checkout, or a script of your own is never replaced: remove it once to switch to the app's launcher. The result is logged as `[cli-install] installed|updated|unchanged|skipped`. `~/.local/bin` must be on `PATH`. Code: `src/desktop/cli-install.ts`.
+The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~/.local/bin/reels` only when that file is missing or carries the marker. A symlink, such as one from `npm link` to a checkout, or a script of your own is never replaced: remove it once to switch to the app's launcher. The result is logged as `[cli-install] installed|updated|unchanged|skipped`. `~/.local/bin` must be on `PATH`. Code: `src/desktop/cli-install.ts`; the marker and the launcher text live in `src/shared/cli-launcher.ts`, which [`reels doctor`](#diagnostics) also reads. `reels doctor` checks this setup.
 
 `REELS_USER_DATA` selects the app profile, as it does for the MCP server. Without it the CLI uses the normal application-support directory. A relative value needs the working folder: if that folder is gone, tools exit 2 and `reels status` reports `reason: "user_data_unresolved"`.
 
@@ -24,6 +24,7 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | Command | Needs the app | Purpose |
 | --- | --- | --- |
 | `reels status [--timeout <s>]` | no | Whether the app can be called. Exit 0 even when it cannot, or when it answers with an error. Default limit 5 s. |
+| `reels doctor [--timeout <s>]` | no | Read-only [setup checks](#diagnostics): runtime, profile, app, launcher and `PATH`. Exit 0 whatever it finds. Default limit 5 s for the app check. |
 | `reels tools` | no | Every tool with its command, read-only flag, summary and `group`, plus the built-in commands that do work (`builtins`) and the domain groups (`groups`: `id`, `summary`, `count`). |
 | `reels tools --group <id>` | no | The same list, only the tools in one [group](#tool-groups); `data.group` names it. |
 | `reels tools <name\|slug>` | no | Input schema, generated flags, CLI options, an example and the tool's `group`. |
@@ -79,11 +80,36 @@ stdout is one line holding one JSON document, including for failures, `--help` a
 
 `reason` is `no_connection_file`, `stale_connection`, `unsafe_connection_file`, `unresponsive` or `user_data_unresolved` (a relative `REELS_USER_DATA` with no working folder: `userData` is `null` and `hint` says what to fix). `online: false` means the app cannot be called right now, not that it is certainly closed. When online, `app` holds `reels_get_app_state`: `context`, `busy`, `runtime` and `jobs`. If the app answers but cannot produce that state, `status` still exits 0 with `"app":{"online":true,"stateError":{"code":"…","message":"…"}}`.
 
+## Diagnostics
+
+`reels doctor` answers "why can't I, or an agent, use `reels` right now". It only reads: it stats files, reads the launcher, walks `PATH` without running anything, and asks the app for its state the same way `reels status` does, so the two never disagree about the app. It never launches the app, writes the launcher or changes `PATH`. It exits 0 for every state it can diagnose; a bad option exits 2.
+
+| `id` | Checks | `ok: false` when |
+| --- | --- | --- |
+| `runtime` | Node version against `engines.node` in `package.json` (`>=22.12.0`); under the app's launcher it reports Electron as Node | the version is older |
+| `profile` | The profile folder, from `REELS_USER_DATA` or the default | it cannot be resolved (`user_data_unresolved`) or is not a folder |
+| `app` | The `reels status` verdict | the app cannot be called, or answers without its state. `null` when the profile is unresolved |
+| `app_version` | Always `null`: the app does not report its version to the CLI | never |
+| `launcher` | `<HOME>/.local/bin/reels`: `missing`, `managed` (carries the marker), `foreign` (a file of your own) or `symlink` (with its `target`) | missing with no other `reels` on `PATH`, managed but its bundle is gone, or a dangling symlink. `null` for a foreign file, a working symlink, or a missing launcher while another `reels` is on `PATH` |
+| `launcher_bundle` | Whether the bundle this process runs (`process.argv[1]`) is the one the launcher runs, after resolving symlinks | they differ. `null` when there is nothing to compare |
+| `path_dir` | `<HOME>/.local/bin` is a `PATH` entry | it is not |
+| `path_command` | The first executable `reels` on `PATH` (absolute entries only) | there is none, or another one comes before the launcher |
+
+`ok: null` means the check could not decide. `healthy` is true when no check is `false`. `fix` is advice for a person or agent, such as opening the app or editing `PATH`; the CLI never applies it, and `doctor` has no `next`. The result also carries `cli` (`version`, `bundle`, `node`, and `electron` under the launcher), `userData`, `app` as `reels status` prints it, `launcher` and `command` (`onPath`, `binDir`, `binDirOnPath`).
+
+With the app closed and no launcher installed (`checks` shortened):
+
+```json
+{"ok":true,"data":{"healthy":false,"checks":[{"id":"runtime","ok":true,"detail":"Node 22.12.0; needs Node >=22.12.0."},{"id":"app","ok":false,"detail":"Reels Dashboard cannot be called (no_connection_file).","fix":"Open Reels Dashboard; this CLI never launches it."},{"id":"app_version","ok":null,"detail":"Unknown: the app does not report its version to the CLI. …"},{"id":"launcher","ok":false,"detail":"/Users/example/.local/bin/reels does not exist.","fix":"Open the packaged Reels Dashboard once; it writes ~/.local/bin/reels on launch. This CLI never launches it."},{"id":"path_dir","ok":false,"detail":"/Users/example/.local/bin is not on PATH.","fix":"Add ~/.local/bin to PATH."}],"cli":{"version":"0.1.0","bundle":"/absolute/dist-cli/reels.mjs","node":"22.12.0"},"userData":"/absolute/profile","app":{"online":false,"reason":"no_connection_file"},"launcher":{"path":"/Users/example/.local/bin/reels","state":"missing"},"command":{"onPath":null,"binDir":"/Users/example/.local/bin","binDirOnPath":false}}}
+```
+
+Code: `src/app/cli/doctor.ts` and `doctor` in `src/app/cli/run.ts`.
+
 ## Exit codes
 
 | Code | Meaning | Error codes | `writeOutcome` for writes | `retry` |
 | --- | --- | --- | --- | --- |
-| 0 | Success | Includes offline `status` and a completed `--wait` | | |
+| 0 | Success | Includes offline `status`, every `doctor` result and a completed `--wait` | | |
 | 1 | CLI bug | `INTERNAL` | `unknown` | `no` |
 | 2 | Usage | `USAGE`, `UNKNOWN_TOOL` (from the CLI), `INVALID_JSON`, `INVALID_INPUT`, `REQUEST_TOO_LARGE`, `OUTPUT_EXISTS`. Includes every `prepare-media` refusal before the destination exists | `not_applied` | `fix_input` |
 | 3 | App offline | `APP_OFFLINE` | `not_applied` | `safe`, after opening the app |

@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
@@ -21,7 +23,8 @@ import type { RenderJob } from "../../shared/editor";
 import { errorMessage } from "../../shared/lib/errors";
 import { localPathSchema } from "../../shared/local-resources";
 import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
-import { version } from "../../../package.json";
+import { engines, version } from "../../../package.json";
+import { runtimeCheck, setupChecks, type Check } from "./doctor";
 import { checkOutputPath, saveImage } from "./image-output";
 import {
   agentFailure,
@@ -190,29 +193,26 @@ function offlineReason(error: unknown) {
   return error.code === "APP_OFFLINE" ? error.reason : "unresponsive";
 }
 
-async function status(
-  args: string[],
+type AppStatus = {
+  app: Record<string, unknown> & { online: boolean; reason?: string };
+  userData: string | null;
+  hint?: string;
+};
+
+/** The one verdict on whether the app can be called; `status` and `doctor` both report it. */
+async function appStatus(
   io: CliIO,
   scope: Scope,
-): Promise<Success> {
-  scope.readOnly = true;
-  if (wantsHelp(args, statusOptions)) return showHelp(statusCommand.help);
-  const { timeout } = parseOptions(args, statusOptions, statusCommand.usage);
-  const cli = { version };
-  const timeoutMs =
-    secondsOption(timeout, "--timeout", maxCallSeconds) ??
-    defaultStatusSeconds * 1000;
+  timeoutMs: number,
+): Promise<AppStatus> {
   let root: string;
   try {
     root = profileRoot(io);
   } catch (error) {
     return {
-      data: {
-        app: { online: false, reason: "user_data_unresolved" },
-        cli,
-        userData: null,
-        hint: errorMessage(error),
-      },
+      app: { online: false, reason: "user_data_unresolved" },
+      userData: null,
+      hint: errorMessage(error),
     };
   }
   scope.inFlight = { retry: "safe" };
@@ -223,28 +223,149 @@ async function status(
       {},
       { timeoutMs, signal: scope.signal },
     );
-    return { data: { app: { online: true, ...state }, cli, userData: root } };
+    return { app: { online: true, ...state }, userData: root };
   } catch (error) {
     const reason = offlineReason(error);
     if (reason)
-      return {
-        data: {
-          app: { online: false, reason },
-          cli,
-          userData: root,
-          hint: openApp,
-        },
-      };
+      return { app: { online: false, reason }, userData: root, hint: openApp };
     // It answered, so it is online; only its state could not be read.
     const { code, message } = agentFailure(error, () => ({}));
     return {
-      data: {
-        app: { online: true, stateError: { code, message } },
-        cli,
-        userData: root,
-      },
+      app: { online: true, stateError: { code, message } },
+      userData: root,
     };
   }
+}
+
+function statusTimeout(args: string[], usage: string) {
+  const { timeout } = parseOptions(args, statusOptions, usage);
+  return (
+    secondsOption(timeout, "--timeout", maxCallSeconds) ??
+    defaultStatusSeconds * 1000
+  );
+}
+
+async function status(
+  args: string[],
+  io: CliIO,
+  scope: Scope,
+): Promise<Success> {
+  scope.readOnly = true;
+  if (wantsHelp(args, statusOptions)) return showHelp(statusCommand.help);
+  const timeoutMs = statusTimeout(args, statusCommand.usage);
+  const { app, userData, hint } = await appStatus(io, scope, timeoutMs);
+  return {
+    data: {
+      app,
+      cli: { version },
+      userData,
+      ...(hint === undefined ? {} : { hint }),
+    },
+  };
+}
+
+/** The app check of `reels doctor`, read off the same verdict `reels status` prints. */
+function appCheck({ app }: AppStatus): Check {
+  if (app.online) {
+    const stateError = app.stateError as { code: string } | undefined;
+    return stateError
+      ? {
+          id: "app",
+          ok: false,
+          detail: `Reels Dashboard answers, but its state could not be read (${stateError.code}).`,
+          fix: "Restart Reels Dashboard; see .data.app.stateError.",
+        }
+      : { id: "app", ok: true, detail: "Reels Dashboard answers." };
+  }
+  if (app.reason === "user_data_unresolved")
+    return {
+      id: "app",
+      ok: null,
+      detail: "Not checked: the profile folder is unresolved.",
+    };
+  return {
+    id: "app",
+    ok: false,
+    detail: `Reels Dashboard cannot be called (${app.reason}).`,
+    fix:
+      app.reason === "unresponsive"
+        ? "Reels Dashboard did not answer in time; wait for it to finish starting, or restart it. This CLI never launches it."
+        : openApp,
+  };
+}
+
+async function profileCheck({ userData, hint }: AppStatus, io: CliIO) {
+  const source = io.env.REELS_USER_DATA
+    ? "REELS_USER_DATA"
+    : "the default profile";
+  if (userData === null)
+    return {
+      id: "profile",
+      ok: false,
+      detail: hint ?? "REELS_USER_DATA could not be resolved.",
+      fix: "Set REELS_USER_DATA to an absolute path.",
+    } satisfies Check;
+  const folder = await stat(userData).catch(() => undefined);
+  return folder?.isDirectory()
+    ? ({
+        id: "profile",
+        ok: true,
+        detail: `${userData} (${source}) exists.`,
+      } satisfies Check)
+    : ({
+        id: "profile",
+        ok: false,
+        detail: `${userData} (${source}) is not a folder.`,
+        fix: "Check REELS_USER_DATA, or open Reels Dashboard once so it creates its profile folder.",
+      } satisfies Check);
+}
+
+async function doctor(
+  args: string[],
+  io: CliIO,
+  scope: Scope,
+): Promise<Success> {
+  scope.readOnly = true;
+  if (wantsHelp(args, statusOptions)) return showHelp(doctorCommand.help);
+  const timeoutMs = statusTimeout(args, doctorCommand.usage);
+  const versions = io.versions ?? {
+    node: process.versions.node,
+    electron: process.versions.electron,
+  };
+  const reported = await appStatus(io, scope, timeoutMs);
+  const setup = await setupChecks({
+    home: io.env.HOME || homedir(),
+    pathEnv: io.env.PATH,
+    script: io.script,
+  });
+  const checks: Check[] = [
+    runtimeCheck(versions, engines?.node),
+    await profileCheck(reported, io),
+    appCheck(reported),
+    {
+      id: "app_version",
+      ok: null,
+      detail:
+        "Unknown: the app does not report its version to the CLI. The app's launcher runs the bundle shipped with the app.",
+    },
+    ...setup.checks,
+  ];
+  return {
+    data: {
+      healthy: checks.every(({ ok }) => ok !== false),
+      checks,
+      cli: {
+        version,
+        ...(io.script ? { bundle: io.script } : {}),
+        node: versions.node,
+        ...(versions.electron ? { electron: versions.electron } : {}),
+      },
+      userData: reported.userData,
+      app: reported.app,
+      launcher: setup.launcher,
+      command: setup.command,
+    },
+  };
 }
 
 const firstSentence = (text: string) =>
@@ -717,7 +838,7 @@ type Builtin = {
 type HelpTopic = { name: string; run(): Success };
 
 const globalHelp = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
-Start:   reels status
+Start:   reels status     (setup problems: reels doctor)
 Find:    reels tools | reels tools update-project | reels help update-project
 List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
 Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
@@ -748,6 +869,18 @@ Reports whether the app can be called. Exit 0 even when it cannot.
 Example: reels status --timeout 2`,
   summary: "Whether the app can be called.",
   run: (args, { io, scope }) => status(args, io, scope),
+} satisfies Builtin;
+const doctorUsage = "reels doctor [--timeout <s>]";
+const doctorCommand = {
+  name: "doctor",
+  usage: doctorUsage,
+  help: `Usage: ${doctorUsage}
+Read-only checks of why reels cannot be used right now: runtime, profile, app,
+~/.local/bin/reels launcher and PATH. Each check has ok true, false or null (unknown),
+and fix advice that the CLI never applies. Exit 0 whatever it finds.
+Example: reels doctor`,
+  summary: "Read-only checks of runtime, profile, app, launcher and PATH.",
+  run: (args, { io, scope }) => doctor(args, io, scope),
 } satisfies Builtin;
 const toolsUsage = "reels tools [<name|slug> | --group <id>]";
 const toolsOptions = { group: { type: "string" } } as const;
@@ -806,6 +939,7 @@ export const builtins: readonly Builtin[] = [
   helpFlag,
   versionFlag,
   statusCommand,
+  doctorCommand,
   toolsCommand,
   callCommand,
   prepareMediaCommand,

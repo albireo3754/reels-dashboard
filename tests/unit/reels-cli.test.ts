@@ -31,6 +31,7 @@ import {
 } from "../../src/features/content-library";
 import { callAgent, startAgentSocket } from "../../src/shared/lib/agent-socket";
 import { LocalStore } from "../../src/shared/lib/storage";
+import { cliLauncher } from "../../src/shared/cli-launcher";
 import type { RenderJob } from "../../src/shared/editor";
 import {
   builtinCommands,
@@ -119,6 +120,8 @@ async function cli(
     interruptAfterStdin?: boolean;
     onStderr?: (text: string) => void;
     env?: NodeJS.ProcessEnv;
+    /** Extra CliIO fields, such as `script` and `versions` for `reels doctor`. */
+    io?: Partial<CliIO>;
   } = {},
 ) {
   let stdout = "",
@@ -151,6 +154,7 @@ async function cli(
       return options.cwd ?? root;
     },
     pollMs: 5,
+    ...options.io,
   };
   const code = await run(args, io);
   assert.equal(stdout.split("\n").length, 2, "stdout is one line");
@@ -2518,7 +2522,7 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
       (await cli(root, args)).document.error;
     assert.equal((await error("list")).didYouMean[0], "list-projects");
     assert.equal((await error("project")).didYouMean.length, 3);
-    for (const command of ["status", "prepare-media", "call", "tools"]) {
+    for (const command of ["status", "doctor", "prepare-media", "call", "tools"]) {
       const builtin = await error("tools", command);
       assert.equal(builtin.code, "UNKNOWN_TOOL", command);
       assert.deepEqual(builtin.next, [`reels help ${command}`], command);
@@ -2532,7 +2536,7 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
     const { data } = (await cli(root, ["tools"])).document;
     assert.deepEqual(
       data.builtins.map(({ command }: { command: string }) => command),
-      ["reels status", "reels prepare-media"],
+      ["reels status", "reels doctor", "reels prepare-media"],
     );
   });
 });
@@ -2639,5 +2643,247 @@ test("the CLI agrees with the real dispatch on jobs, revisions and busy edits", 
     assert.equal(busy.document.error.code, "EDITOR_BUSY");
     assert.equal(busy.document.error.retry, "wait");
     assert.equal(busy.document.error.writeOutcome, "not_applied");
+  });
+});
+
+/** A temp HOME, PATH and bundle for `reels doctor`; nothing outside the temp folder is read. */
+async function doctorSetup(root: string) {
+  const home = path.join(root, "home");
+  const binDir = path.join(home, ".local", "bin");
+  const launcher = path.join(binDir, "reels");
+  const bundle = path.join(root, "app", "reels.mjs");
+  const other = path.join(root, "other-bin");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(path.dirname(bundle), { recursive: true });
+  await mkdir(other, { recursive: true });
+  await writeFile(bundle, "// bundle\n");
+  const executable = async (file: string, text: string) => {
+    await writeFile(file, text);
+    await chmod(file, 0o755);
+  };
+  const managed = (target = bundle) =>
+    executable(launcher, cliLauncher("/Apps/Reels Dashboard's/Electron", target));
+  const doctor = async (
+    options: { pathEnv?: string; script?: string; extra?: string[] } = {},
+  ) => {
+    const result = await cli(root, ["doctor", ...(options.extra ?? [])], {
+      env: {
+        REELS_USER_DATA: root,
+        HOME: home,
+        PATH: options.pathEnv ?? binDir,
+      },
+      io: {
+        script: options.script ?? bundle,
+        versions: { node: "22.12.0" },
+      },
+    });
+    assert.equal(result.code, 0);
+    const checks = Object.fromEntries(
+      result.document.data.checks.map((check: { id: string }) => [
+        check.id,
+        check,
+      ]),
+    );
+    return { ...result, data: result.document.data, checks };
+  };
+  return { home, binDir, launcher, bundle, other, executable, managed, doctor };
+}
+
+const listTree = async (dir: string): Promise<string[]> =>
+  (await readdir(dir, { recursive: true })).map(String).sort();
+
+test("doctor reports a managed setup with the app closed, and writes nothing", async () => {
+  await offlineRoot(async (root) => {
+    const { managed, doctor, launcher, bundle } = await doctorSetup(root);
+    await managed();
+    const before = await listTree(root);
+    const { data, checks, document } = await doctor();
+    assert.deepEqual(await listTree(root), before);
+    assert.ok(!Object.hasOwn(document, "tool"));
+    assert.equal(data.healthy, false);
+    assert.deepEqual(
+      data.checks.map(({ id }: { id: string }) => id),
+      [
+        "runtime",
+        "profile",
+        "app",
+        "app_version",
+        "launcher",
+        "launcher_bundle",
+        "path_dir",
+        "path_command",
+      ],
+    );
+    for (const id of ["runtime", "profile", "launcher", "launcher_bundle", "path_dir", "path_command"])
+      assert.equal(checks[id].ok, true, id);
+    assert.equal(checks.app.ok, false);
+    assert.match(checks.app.detail, /no_connection_file/);
+    assert.match(checks.app.fix, /never launches/);
+    assert.equal(checks.app_version.ok, null);
+    assert.deepEqual(data.app, { online: false, reason: "no_connection_file" });
+    assert.equal(data.userData, root);
+    assert.deepEqual(data.launcher, { path: launcher, state: "managed", bundle });
+    assert.deepEqual(data.cli, { version: data.cli.version, bundle, node: "22.12.0" });
+    // The app verdict is the one `reels status` prints.
+    const status = await cli(root, ["status"]);
+    assert.deepEqual(status.document.data.app, data.app);
+  });
+});
+
+test("doctor is healthy when the app answers and the launcher is on PATH", async () => {
+  await withApp(echo, async (root) => {
+    const { managed, doctor } = await doctorSetup(root);
+    await managed();
+    const { data, checks } = await doctor();
+    assert.equal(checks.app.ok, true);
+    assert.equal(data.app.online, true);
+    assert.equal(data.healthy, true);
+  });
+});
+
+test("doctor explains an unresolved profile without calling the app", async () => {
+  await offlineRoot(async (root) => {
+    const result = await cli(root, ["doctor"], {
+      cwdGone: true,
+      env: { REELS_USER_DATA: "relative", HOME: root, PATH: "" },
+      io: { versions: { node: "22.12.0" } },
+    });
+    assert.equal(result.code, 0);
+    const { data } = result.document;
+    const checks = Object.fromEntries(
+      data.checks.map((check: { id: string }) => [check.id, check]),
+    );
+    assert.equal(data.userData, null);
+    assert.equal(data.app.reason, "user_data_unresolved");
+    assert.equal(checks.profile.ok, false);
+    assert.match(checks.profile.detail, /REELS_USER_DATA/);
+    assert.equal(checks.app.ok, null);
+    assert.equal(checks.launcher_bundle.ok, null);
+    assert.equal(data.healthy, false);
+  });
+});
+
+test("doctor tells a missing, foreign and symlinked launcher apart", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, executable, launcher, binDir, bundle, other } =
+      await doctorSetup(root);
+
+    const missing = await doctor();
+    assert.equal(missing.data.launcher.state, "missing");
+    assert.equal(missing.checks.launcher.ok, false);
+    assert.match(missing.checks.launcher.fix, /never launches/);
+    assert.equal(missing.checks.path_command.ok, false);
+    // Another reels on PATH (say, npm link) still works, so the launcher is not a failure.
+    await executable(path.join(other, "reels"), "#!/bin/sh\n");
+    const elsewhere = await doctor({ pathEnv: `${binDir}:${other}` });
+    assert.equal(elsewhere.checks.launcher.ok, null);
+    assert.equal(elsewhere.checks.path_command.ok, true);
+    assert.equal(elsewhere.data.command.onPath, path.join(other, "reels"));
+
+    await executable(launcher, "#!/bin/sh\necho mine\n");
+    const foreign = await doctor();
+    assert.equal(foreign.data.launcher.state, "foreign");
+    assert.equal(foreign.checks.launcher.ok, null);
+    assert.match(foreign.checks.launcher.fix, /Remove it once/);
+    assert.equal(foreign.checks.launcher_bundle.ok, null);
+    assert.equal(foreign.checks.path_command.ok, true);
+
+    await rm(launcher);
+    await symlink(bundle, launcher);
+    await chmod(bundle, 0o755);
+    const linked = await doctor();
+    assert.deepEqual(linked.data.launcher, {
+      path: launcher,
+      state: "symlink",
+      target: bundle,
+    });
+    assert.equal(linked.checks.launcher.ok, null);
+    assert.match(linked.checks.launcher.fix, /Remove the symlink once/);
+    assert.equal(linked.checks.launcher_bundle.ok, true);
+
+    await rm(launcher);
+    await symlink(path.join(root, "gone.mjs"), launcher);
+    const dangling = await doctor();
+    assert.equal(dangling.checks.launcher.ok, false);
+    assert.match(dangling.checks.launcher.detail, /does not exist/);
+    assert.equal(dangling.data.healthy, false);
+  });
+});
+
+test("doctor flags PATH without ~/.local/bin and a reels that shadows the launcher", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, executable, other, binDir } =
+      await doctorSetup(root);
+    await managed();
+    const off = await doctor({ pathEnv: `${other}::relative` });
+    assert.equal(off.checks.path_dir.ok, false);
+    assert.equal(off.checks.path_dir.fix, "Add ~/.local/bin to PATH.");
+    assert.equal(off.checks.path_command.ok, false);
+    assert.equal(off.data.command.binDirOnPath, false);
+
+    await executable(path.join(other, "reels"), "#!/bin/sh\n");
+    const shadowed = await doctor({ pathEnv: `${other}:${binDir}` });
+    assert.equal(shadowed.checks.path_dir.ok, true);
+    assert.equal(shadowed.checks.path_command.ok, false);
+    assert.match(shadowed.checks.path_command.detail, /comes before/);
+    assert.match(shadowed.checks.path_command.fix, /before /);
+  });
+});
+
+test("doctor compares the launcher's bundle with the running one", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, bundle } = await doctorSetup(root);
+    await managed();
+    const elsewhere = path.join(root, "checkout", "reels.mjs");
+    const mismatch = await doctor({ script: elsewhere });
+    assert.equal(mismatch.checks.launcher.ok, true);
+    assert.equal(mismatch.checks.launcher_bundle.ok, false);
+    assert.match(mismatch.checks.launcher_bundle.detail, new RegExp(bundle));
+    assert.equal(mismatch.data.healthy, false);
+
+    await managed(path.join(root, "moved", "reels.mjs"));
+    const moved = await doctor();
+    assert.equal(moved.checks.launcher.ok, false);
+    assert.match(moved.checks.launcher.detail, /does not exist/);
+    assert.equal(moved.checks.launcher_bundle.ok, null);
+  });
+});
+
+test("doctor checks the runtime against package.json engines", async () => {
+  await offlineRoot(async (root) => {
+    const { engines } = JSON.parse(await readFile("package.json", "utf8"));
+    const run = (versions: { node: string; electron?: string }) =>
+      cli(root, ["doctor"], {
+        env: { REELS_USER_DATA: root, HOME: root, PATH: "" },
+        io: { versions },
+      }).then(({ document }) => document.data);
+    const old = await run({ node: "22.11.9" });
+    assert.equal(old.checks[0].id, "runtime");
+    assert.equal(old.checks[0].ok, false);
+    assert.match(old.checks[0].detail, new RegExp(engines.node));
+    assert.ok(old.checks[0].fix);
+    const electron = await run({ node: "24.1.0", electron: "40.0.0" });
+    assert.equal(electron.checks[0].ok, true);
+    assert.match(electron.checks[0].detail, /Electron 40\.0\.0 as Node 24\.1\.0/);
+    assert.equal(electron.cli.electron, "40.0.0");
+  });
+});
+
+test("doctor usage errors exit 2 and its help ends in an example", async () => {
+  await offlineRoot(async (root) => {
+    for (const args of [
+      ["doctor", "--timeout", "0"],
+      ["doctor", "--fix"],
+      ["doctor", "extra"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(document.error.writeOutcome, "none", args.join(" "));
+      if (args[1] !== "--timeout")
+        assert.equal(document.error.usage, "reels doctor [--timeout <s>]");
+    }
+    const help = (await cli(root, ["help", "doctor"])).document.data.help;
+    assert.match(help, /^Example: reels doctor$/m);
+    assert.match(help, /never applies/);
   });
 });

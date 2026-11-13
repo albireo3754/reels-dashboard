@@ -15,6 +15,10 @@ export type CliIO = {
   /** Throws when the working folder is gone; only relative paths need it. */
   cwd(): string;
   pollMs?: number;
+  /** The bundle this process runs (process.argv[1]); `reels doctor` compares it with the launcher's. */
+  script?: string;
+  /** Defaults to process.versions; injected by tests of `reels doctor`. */
+  versions?: { node: string; electron?: string };
 };
 
 type ToolCliOption = {
