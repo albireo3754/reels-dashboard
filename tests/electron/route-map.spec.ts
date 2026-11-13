@@ -3,14 +3,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { writeFile, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 import { demoRouteMap } from "../../src/shared/route-map-demo";
 const execute = promisify(execFile);
 
 test("route map uses registered documents, real local playback, refreshed data and restart persistence", async ({}, info) => {
   test.setTimeout(90000);
   const profile = await realpath(await makeProfile());
-  const runtime = process.env.REELS_ELECTRON_EXECUTABLE ? path.resolve(path.dirname(process.env.REELS_ELECTRON_EXECUTABLE), "../Resources/editor-runtime") : path.resolve("native/editor-engine/.build/runtime");
+  const runtime = editorRuntime();
   const video = path.join(profile, "walk.mp4"), doc = path.join(profile, "route-map-data.json");
   await execute(path.join(runtime, "bin/ffmpeg"), ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=24:duration=1.5", "-c:v", "libx264", "-pix_fmt", "yuv420p", video]);
   const original = await readFile(video);

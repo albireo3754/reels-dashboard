@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import type { InputFormRecord } from "../../../shared/input-forms";
+import { errorMessage } from "../../../shared/lib/errors";
 import { workflowCall } from "../../../shared/workflow-client";
 import { ExperienceForm } from "./ExperienceForm";
 export function FormInbox({
@@ -31,7 +32,7 @@ export function FormInbox({
         const data = await workflowCall("forms-list", {});
         if (active) setForms(data.forms);
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : String(e));
+        if (active) setError(errorMessage(e));
       }
     };
     void load();

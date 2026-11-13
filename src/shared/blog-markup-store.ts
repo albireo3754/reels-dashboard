@@ -1,6 +1,7 @@
 import { readFile, writeFile, open, rename, mkdir, readdir, unlink, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { isMissing } from "./lib/fs";
 import { parse, validate, SE_FONT_STEPS } from "./blog-markup";
 import { fingerprint, merge3, normalize, protectedText, paragraphNodes } from "./blog-markup-source";
 
@@ -11,7 +12,7 @@ export async function load(file:string) {
   try {
     const last=await readFile(path.join(historyDir(file),"last-tool.md"),"utf8");
     if(last!==text) warnings.push("EXTERNAL_CHANGE: 마지막 도구 저장본과 다릅니다. Obsidian 덮어쓰기 여부를 비교하세요.");
-  } catch(e) {if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
+  } catch(e) {if(!isMissing(e))throw e;}
   return {text,fingerprint:fingerprint(text),warnings};
 }
 /** A save holds the lock for milliseconds, so a lock this old was left behind by a crash. */
@@ -29,7 +30,7 @@ async function acquire(lockFile:string){
 /** The text behind a fingerprint, when a save or tool kept it. Lets edits outlive a restart. */
 export async function recoverBase(file:string,wanted:string) {
   const dir=historyDir(file);
-  const names=await readdir(dir).catch(e=>{if(e.code==="ENOENT")return [] as string[];throw e;});
+  const names=await readdir(dir).catch(e=>{if(isMissing(e))return [] as string[];throw e;});
   for(const name of names.filter(n=>n.endsWith(".md")).sort().reverse()) {
     const text=await readFile(path.join(dir,name),"utf8").catch(()=>undefined);
     if(text!==undefined&&fingerprint(text)===wanted)return {text,fingerprint:wanted};
@@ -95,7 +96,7 @@ export async function save(file:string,mine:string,base:{text:string;fingerprint
     for(const name of conflicts.slice(0,Math.max(0,conflicts.length-CONFLICT_COPIES)))await unlink(path.join(dir,name));
     return {ok:true as const,text:result,fingerprint:fingerprint(result),warnings:verified?[]:["OVERWRITTEN_AFTER_SAVE"]};
   } finally {
-    await unlink(temp).catch(e=>{if(e.code!=="ENOENT")throw e;});
+    await unlink(temp).catch(e=>{if(!isMissing(e))throw e;});
     await lock.close();await unlink(file+".lock");
   }
 }

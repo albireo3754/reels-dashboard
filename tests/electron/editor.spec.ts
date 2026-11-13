@@ -17,15 +17,10 @@ import {
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type { EditorProject, RenderJob } from "../../src/shared/editor";
-import { cleanProfile, closeApp, launchApp, makeProfile } from "./helpers";
+import { editorRuntime, cleanProfile, closeApp, launchApp, makeProfile } from "./helpers";
 
 const execute = promisify(execFile);
-const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-  ? path.resolve(
-      path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-      "../Resources/editor-runtime",
-    )
-  : path.resolve("native/editor-engine/.build/runtime");
+const runtime = editorRuntime();
 const mediaTool = (name: string) => path.join(runtime, "bin", name);
 const digest = async (file: string) =>
   createHash("sha256")

@@ -4,6 +4,7 @@ import {parseDocument} from "yaml";
 import {z} from "zod";
 import {parse} from "../shared/blog-markup";
 import type {Project} from "../shared/contracts";
+import {errorMessage} from "../shared/lib/errors";
 import {LocalStore} from "../shared/lib/storage";
 import type {EditorConfig} from "../app/blog-editor/store";
 
@@ -44,7 +45,6 @@ const pointer=z.object({version:z.literal(1),results:relative});
 
 const missing=(e:unknown)=>["ENOENT","ENOTDIR"].includes((e as NodeJS.ErrnoException)?.code??"");
 const exists=(file:string)=>stat(file).then(()=>true,e=>{if(missing(e))return false;throw e;});
-const message=(e:unknown)=>e instanceof Error?e.message:String(e);
 
 /** The leading bytes of a file; undefined when it is not there or is a folder. */
 async function head(file:string){
@@ -161,7 +161,7 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
       const documents=[...new Set((card.resources??[]).filter(r=>r.role==="document"&&/\.md$/i.test(r.path)&&path.isAbsolute(r.path)).map(r=>path.resolve(r.path)))];
       const found=await Promise.all(documents.map(async file=>{
         try{return await markupHeader(file)?[await realpath(file)]:[];}
-        catch(e){issue(`${file}: ${message(e)}`);return [];}
+        catch(e){issue(`${file}: ${errorMessage(e)}`);return [];}
       }));
       const manuscripts=[...new Set(found.flat())];
       if(!manuscripts.length)continue;
@@ -171,7 +171,7 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
       if(owner){issue(`같은 원고가 ${owner} 카드에 이미 연결돼 있어요.`);continue;}
       owners.set(file,card.id);
       projects.push({id:card.id,title:card.title,config:await manuscriptConfig(file)});
-    }catch(e){issue(message(e));}
+    }catch(e){issue(errorMessage(e));}
   }
   return {projects,issues};
 }

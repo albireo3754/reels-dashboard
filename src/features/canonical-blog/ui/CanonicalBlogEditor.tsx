@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {planInlineProposals,proposalSignature,type InlineProposal} from "../../../shared/inline-review";
 import {safeRuns} from "../../../shared/blog-markup-edit";
 import {createAutosave,type AutosaveState} from "../model/autosave";
+import {hasBodyMark,proposalChip,proposalSummary} from "../model/proposal-view";
 import {
   escapeHtml,
   inlineHtml,
@@ -23,6 +24,7 @@ import {
 } from "../../../shared/canonical-blog";
 import { Menu, Popover, type MenuEntry } from "../../../shared/ui/Popover";
 import { CloseIcon, Dot, Segmented } from "../../../shared/ui/primitives";
+import { errorMessage } from "../../../shared/lib/errors";
 import "./canonical-editor.css";
 async function api(action: string, input?: unknown, signal?: AbortSignal) {
   const r = await fetch(
@@ -60,31 +62,6 @@ interface SaveReply{
   written?:Record<string,string>;
 }
 const SUGGEST_STALE="본문이 바뀌어 추천을 버렸어요. 다시 요청해주세요.";
-const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
-const clip=(text:string,limit:number)=>text.length>limit?text.slice(0,limit)+"…":text;
-/**
- * Whether the frame draws this proposal in the manuscript: an in-text diff at the
- * target phrase, or a small marker (format, note, blocked). Stale proposals (the
- * target text changed) are not drawn; the panel explains them.
- */
-function hasBodyMark(item:InlineProposal,doc:CanonicalDocument){
-  if(item.state==="applied"||item.state==="decided"||item.state==="changed")return false;
-  if(item.kind==="note")return !!item.paragraphId||doc.bundles.some(b=>b.id===item.bundleId);
-  return !!item.paragraphId;
-}
-function proposalChip(item:InlineProposal):{label:string;tone:string}{
-  if(item.state==="decided")return item.decision==="현재 유지"?{label:"현재 유지",tone:"kept"}:{label:item.decision??"적용 · 저장 전",tone:"applied"};
-  if(item.state==="applied")return {label:"반영됨",tone:"applied"};
-  if(item.state==="changed")return {label:"본문 변경됨",tone:"blocked"};
-  if(item.kind==="note")return {label:"의견",tone:"note"};
-  if(item.canApply)return {label:"적용 가능",tone:"available"};
-  return {label:"위치 확인 불가",tone:"blocked"};
-}
-function proposalSummary(item:InlineProposal){
-  if(item.kind==="text")return `${clip(item.before??"",40)} → ${item.after?clip(item.after,40):"(삭제)"}`;
-  if(item.kind==="format")return `“${clip(item.phrase??"",40)}” 서식`;
-  return clip(item.observation.split("\n")[0]??"",80);
-}
 /** Right panel: one of review, selection chat or my notes at a time. */
 type SidePanel = "review" | "chat" | "memo";
 export function CanonicalBlogEditor() {
@@ -618,7 +595,7 @@ export function CanonicalBlogEditor() {
       source = inlineSource(runs as InlineRun[]);
       readInline(source);
     } catch (e) {
-      return fail("이 문단의 입력 오류를 고친 뒤 추천을 요청해주세요. " + errorText(e));
+      return fail("이 문단의 입력 오류를 고친 뒤 추천을 요청해주세요. " + errorMessage(e));
     }
     suggestRef.current?.controller.abort();
     const controller = new AbortController(),
@@ -645,7 +622,7 @@ export function CanonicalBlogEditor() {
     } catch (e) {
       if (controller.signal.aborted || suggestRef.current?.requestId !== requestId) return;
       send({ type: "suggest-result", token, error: true });
-      setError("추천을 받지 못했어요. " + errorText(e));
+      setError("추천을 받지 못했어요. " + errorMessage(e));
     } finally {
       if (suggestRef.current?.requestId === requestId) {
         suggestRef.current = null;
@@ -1052,7 +1029,7 @@ export function CanonicalBlogEditor() {
       setError("");
       setNotice("채팅 제안을 본문에 반영했어요. 곧 자동으로 저장돼요.");
       return undefined;
-    }catch(e){return errorText(e);}
+    }catch(e){return errorMessage(e);}
   }
   async function saveChatMemo(input:{paragraphId:string;quote:string;context:string;note:string}){
     const r=await fetch("/api/blog/annotations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"add",id:crypto.randomUUID(),...input,checked:false})});

@@ -2,18 +2,13 @@ import { test, expect } from "@playwright/test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 const execute = promisify(execFile);
 
 test("video background trims, previews motion, saves, mixes with still and exports", async ({}, info) => {
   test.setTimeout(180000);
   const profile = await makeProfile();
-  const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-    ? path.resolve(
-        path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-        "../Resources/editor-runtime",
-      )
-    : path.resolve("native/editor-engine/.build/runtime");
+  const runtime = editorRuntime();
   const ffmpeg = path.join(runtime, "bin/ffmpeg"),
     ffprobe = path.join(runtime, "bin/ffprobe");
   const video = path.join(profile, "moving.mp4"),

@@ -74,6 +74,12 @@ Migrated read sites, because the semantics matched exactly:
 | `src/shared/lib/storage.ts` `LocalStore.load` | `readJsonFile` (empty dashboard on ENOENT) |
 | `src/desktop/blog-results.ts` `entries()` | `readJsonFile` (`[]` on ENOENT); the structure-file ENOENT check uses `isMissing` |
 | `src/desktop/blog-projects.ts` `readBlogProjects` | `readJsonFile` (`[]` on ENOENT) |
+| `src/desktop/workbench.ts` `initialize` | `readJsonFile` (`undefined` on ENOENT) |
+| `src/desktop/card-news.ts` `save` previous-plan read | `readJsonFile` (`undefined` on ENOENT) |
+| `src/desktop/media-analysis.ts` `load` | `readJsonFile` (empty document on ENOENT; the `schemaVersion`/`projectId` check runs inside `parse`) |
+| `src/desktop/media-evidence.ts` `readJson` | `readJsonFile` (`undefined` on ENOENT) |
+
+`src/desktop/media-evidence.ts` and `src/desktop/media-evidence-loop.ts` also write through `writeJsonAtomic` with mode `0o600`; they previously used a local pid-named temp file that was not removed on failure. The only difference is the transient temp name and the failure-path cleanup.
 
 Read sites left alone, with the reason:
 
@@ -107,7 +113,7 @@ Upstream [Workdesk #66](https://github.com/albireo3754/workdesk/pull/66) (`3a462
 
 | Upstream item | Status | Reels outcome |
 | --- | --- | --- |
-| #66 settings file IO (`settings/files.ts`) | Partially applied | `readJsonFile`/`isMissing` added to `main`'s `src/shared/lib/fs.ts` (which already had the atomic writers), migrated in `src/shared/lib/storage.ts`, `src/desktop/blog-results.ts`, `src/desktop/blog-projects.ts`. Left alone: `src/desktop/route-library.ts`, `src/desktop/mobile-briefing.ts`, `src/desktop/blog-extractor.ts` reads and the lock-file stores. Reasons in [Shared JSON file IO](#shared-json-file-io--workdesk-66). |
+| #66 settings file IO (`settings/files.ts`) | Partially applied | `readJsonFile`/`isMissing` added to `main`'s `src/shared/lib/fs.ts` (which already had the atomic writers), migrated in `src/shared/lib/storage.ts`, `src/desktop/blog-results.ts`, `src/desktop/blog-projects.ts`, `src/desktop/workbench.ts`, `src/desktop/card-news.ts`, `src/desktop/media-analysis.ts`, `src/desktop/media-evidence.ts` (reads; `media-evidence.ts` and `media-evidence-loop.ts` writes use `writeJsonAtomic`). Left alone: `src/desktop/route-library.ts`, `src/desktop/mobile-briefing.ts`, `src/desktop/blog-extractor.ts` reads and the lock-file stores. Reasons in [Shared JSON file IO](#shared-json-file-io--workdesk-66). |
 | #66 backend shell module split | Not applicable | Workdesk's shell/tmux launcher. Reels' PTY launch already lives in `src/desktop/workbench.ts` and `src/desktop/workbench-providers.ts`. |
 | #66 shared UI pieces (Badge, ListSection/section header, LoadMore, lnb button variant) | Not applicable | SectionHeader: reels' `SectionHeader` (`ui-section-header`, `src/shared/ui/primitives.tsx`) and the screens' `section-heading` markup have different class contracts, so merging would change styling. LoadMore: the two sites (`src/renderer/App.tsx` "콘텐츠 더 보기", `src/features/content-board/ui/ContentMediaCard.tsx` "자료 더 보기 (n/total)") use different text formats. Badge: reels already has a shared `Badge` (`ui-badge` with `data-tone`) in `src/shared/ui/primitives.tsx`; upstream's Tailwind tone classes add nothing. The lnb button variant has no reels counterpart. |
 | #66 KakaoWork `pagedSync` | Not applicable | Company integration. |

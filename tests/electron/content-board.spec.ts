@@ -4,17 +4,12 @@ import { promisify } from "node:util";
 import { writeFile, readFile, realpath, mkdir, unlink, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 const execute = promisify(execFile);
 test("packaged board previews actual images, plays/seek videos, browses folders and reports missing media", async ({}, info) => {
   test.setTimeout(90_000);
   const profile = await realpath(await makeProfile());
-  const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-    ? path.resolve(
-        path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-        "../Resources/editor-runtime",
-      )
-    : path.resolve("native/editor-engine/.build/runtime");
+  const runtime = editorRuntime();
   const footage = path.join(profile, "촬영본");
   await mkdir(footage);
   const video = path.join(footage, "산책 영상.mov");

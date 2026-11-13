@@ -4,18 +4,13 @@ import { promisify } from "node:util";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 const execute = promisify(execFile);
 
 test("desktop cards persist and export exact timed pictures with selected music, then cancel safely", async ({}, info) => {
   test.setTimeout(120000);
   const profile = await makeProfile();
-  const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-    ? path.resolve(
-        path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-        "../Resources/editor-runtime",
-      )
-    : path.resolve("native/editor-engine/.build/runtime");
+  const runtime = editorRuntime();
   const ffmpeg = path.join(runtime, "bin/ffmpeg"),
     ffprobe = path.join(runtime, "bin/ffprobe");
   const green = path.join(profile, "초록 사진.png"),

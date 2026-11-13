@@ -24,9 +24,6 @@ export function tabKeyTarget(
   }
 }
 
-/** The status dot of a tab; the words come from `sessionStateLabel`. */
-export type DotState = "running" | "detached" | "exited";
-export const dotState = (session: WorkTerminal): DotState => session.state;
 
 export interface StartChoice {
   /** Stable key for the menu and the empty screen. */

@@ -85,6 +85,13 @@ export interface AgentPorts {
 }
 export function createAgentDispatch(ports: AgentPorts) {
   const { editor, session } = ports;
+  const port = <K extends "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis">(
+    name: K,
+  ): NonNullable<AgentPorts[K]> => {
+    const value = ports[name];
+    if (!value) throw new Error("UNSUPPORTED");
+    return value;
+  };
   async function current(id: string, expected: string) {
     session.assertWritable(id);
     const project = await editor.load(id);
@@ -100,17 +107,13 @@ export function createAgentDispatch(ports: AgentPorts) {
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
       case "reels_get_planning":
-        if (!ports.planning) throw new Error("UNSUPPORTED");
-        return ports.planning.get();
+        return port("planning").get();
       case "reels_sync_planning":
-        if (!ports.planning) throw new Error("UNSUPPORTED");
-        return ports.planning.update(input);
+        return port("planning").update(input);
       case "reels_get_cover_preferences":
-        if (!ports.coverPreferences) throw new Error("UNSUPPORTED");
-        return ports.coverPreferences.get();
+        return port("coverPreferences").get();
       case "reels_set_cover_preferences":
-        if (!ports.coverPreferences) throw new Error("UNSUPPORTED");
-        return ports.coverPreferences.set(input);
+        return port("coverPreferences").set(input);
       case "reels_create_clip_upload_bundle":
         session.assertWritable();
         if (!ports.clipUpload) throw new Error("UNSUPPORTED");
@@ -121,57 +124,41 @@ export function createAgentDispatch(ports: AgentPorts) {
         return ports.gif.convert(input);
       case "reels_set_project_outbound":
         session.assertWritable();
-        if (!ports.icloud) throw new Error("UNSUPPORTED");
-        return ports.icloud.configure(input);
+        return port("icloud").configure(input);
       case "reels_icloud_status":
-        if (!ports.icloud) throw new Error("UNSUPPORTED");
-        return ports.icloud.status(input.paths);
+        return port("icloud").status(input.paths);
       case "reels_start_icloud_delivery":
         session.assertWritable();
-        if (!ports.icloud) throw new Error("UNSUPPORTED");
-        return ports.icloud.start(input);
+        return port("icloud").start(input);
       case "reels_get_publish_readiness":
-        if (!ports.icloud) throw new Error("UNSUPPORTED");
-        return ports.icloud.readiness(input);
+        return port("icloud").readiness(input);
       case "reels_get_icloud_delivery":
-        if (!ports.icloud) throw new Error("UNSUPPORTED");
-        return ports.icloud.get(input.jobId);
+        return port("icloud").get(input.jobId);
       case "reels_open_input_form":
         if(!ports.inputForms)throw new Error("UNSUPPORTED");
         return ports.inputForms.open(input);
       case "reels_extract_blog_reference":
-        if (!ports.blog) throw new Error("UNSUPPORTED");
-        return ports.blog.extract(input);
+        return port("blog").extract(input);
       case "reels_list_blog_references":
-        if (!ports.blog) throw new Error("UNSUPPORTED");
-        return ports.blog.results();
+        return port("blog").results();
       case "reels_link_blog_reference":
-        if (!ports.blog) throw new Error("UNSUPPORTED");
-        return ports.blog.link(input.directory);
+        return port("blog").link(input.directory);
       case "reels_unlink_blog_reference":
-        if (!ports.blog) throw new Error("UNSUPPORTED");
-        return ports.blog.unlink(input.id);
+        return port("blog").unlink(input.id);
       case "reels_list_blog_comments":
-        if (!ports.blogComments) throw new Error("UNSUPPORTED");
-        return ports.blogComments.list(input);
+        return port("blogComments").list(input);
       case "reels_create_blog_comment":
-        if (!ports.blogComments) throw new Error("UNSUPPORTED");
-        return ports.blogComments.create(input);
+        return port("blogComments").create(input);
       case "reels_update_blog_comment":
-        if (!ports.blogComments) throw new Error("UNSUPPORTED");
-        return ports.blogComments.update(input);
+        return port("blogComments").update(input);
       case "reels_remove_blog_comment":
-        if (!ports.blogComments) throw new Error("UNSUPPORTED");
-        return ports.blogComments.remove(input);
+        return port("blogComments").remove(input);
       case "reels_start_analysis":
-        if (!ports.analysis) throw new Error("UNSUPPORTED");
-        return ports.analysis.start(input);
+        return port("analysis").start(input);
       case "reels_search_analysis":
-        if (!ports.analysis) throw new Error("UNSUPPORTED");
-        return ports.analysis.search(input);
+        return port("analysis").search(input);
       case "reels_correct_analysis":
-        if (!ports.analysis) throw new Error("UNSUPPORTED");
-        return ports.analysis.correct(input);
+        return port("analysis").correct(input);
 
       case "reels_merge_projects":
         session.assertWritable();

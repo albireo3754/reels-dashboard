@@ -6,13 +6,9 @@ import {
   publicationsSchema,
 } from "./publications";
 import { dashboardRevision } from "./production-project";
+import { absolutePathSchema } from "./path-schema";
 
-export const localPathSchema = z
-  .string()
-  .min(1)
-  .max(4096)
-  .startsWith("/")
-  .refine((v) => !v.includes("\0"));
+export const localPathSchema = absolutePathSchema();
 export const localResourcesSchema = z
   .array(
     z.strictObject({

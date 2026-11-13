@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { writeJsonAtomic } from "../shared/lib/fs";
+import { sha256Hex } from "../shared/lib/hash";
 import { analysisContext, type AnalysisFields } from "../shared/media-analysis";
 import type { ImageAnalyzer } from "./analysis-provider";
 import { analyzeEvidence, renderEvidenceMetadataTable, type EvidenceManifest } from "./media-evidence";
@@ -77,18 +78,13 @@ export type EvidenceDocument = {
   images: EvidenceRow[]; provenance?: unknown;
 };
 
-const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
-async function writeJson(file: string, value: unknown) {
-  const temporary = `${file}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, file);
-}
+const writeJson = (file: string, value: unknown) => writeJsonAtomic(file, value, { mode: 0o600 });
 const readJson = async <T>(file: string) => JSON.parse(await readFile(file, "utf8")) as T;
 
 /** Extraction is skipped when the same settings already produced frames, so reruns keep identical inputs. */
 async function extractFrames(capture: EvidenceLoopSpec["captures"][number], archiveDir: string) {
   const frames = capture.frames!;
-  const key = createHash("sha256").update(JSON.stringify([capture.id, capture.sourcePath, frames])).digest("hex").slice(0, 16);
+  const key = sha256Hex(JSON.stringify([capture.id, capture.sourcePath, frames])).slice(0, 16);
   const dir = path.join(archiveDir, ".frames", key), done = path.join(dir, "complete.json");
   const finished = await stat(done).then(() => true, () => false);
   if (!finished) {
@@ -108,7 +104,7 @@ async function extractFrames(capture: EvidenceLoopSpec["captures"][number], arch
 }
 /** The analyzer reads JPEG; a HEIC original stays untouched and its derivative is labelled as one. */
 async function convertedPhoto(file: string, archiveDir: string) {
-  const key = createHash("sha256").update(file).digest("hex").slice(0, 16);
+  const key = sha256Hex(file).slice(0, 16);
   const dir = path.join(archiveDir, ".converted"), target = path.join(dir, key + ".jpg");
   await mkdir(dir, { recursive: true, mode: 0o700 });
   if (!await stat(target).then(() => true, () => false)) {
@@ -137,7 +133,7 @@ export async function assembleEvidence(specInput: unknown, outputDir: string) {
   for (const entry of entries) {
     const extension = path.extname(entry.path).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(extension)) throw new Error(`Unsupported image type: ${entry.path}`);
-    const bytes = await readFile(entry.path), hash = sha256(bytes);
+    const bytes = await readFile(entry.path), hash = sha256Hex(bytes);
     let id = seen.get(hash);
     if (!id) {
       id = "im-" + hash.slice(0, 20);
@@ -146,7 +142,7 @@ export async function assembleEvidence(specInput: unknown, outputDir: string) {
       try { await writeFile(target, bytes, { flag: "wx", mode: 0o600 }); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (sha256(await readFile(target)) !== hash) throw new Error(`Archive file differs: ${target}`);
+        if (sha256Hex(await readFile(target)) !== hash) throw new Error(`Archive file differs: ${target}`);
       }
       images.push({ ...entry, id, path: target });
     }
@@ -202,7 +198,7 @@ export async function verifyEvidence(manifest: EvidenceManifest, document: Evide
   const brokenImages: string[] = [];
   for (const row of document.images) {
     const bytes = await readFile(row.path).catch(() => undefined);
-    if (!bytes || sha256(bytes) !== row.sha256) brokenImages.push(row.id);
+    if (!bytes || sha256Hex(bytes) !== row.sha256) brokenImages.push(row.id);
   }
   const represented = new Set(document.images.filter((row) => row.status === "resolved").map((row) => row.captureId));
   const missingCaptures = manifest.captures.map((capture) => capture.id).filter((id) => !represented.has(id));

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { EditSettings, EditorProject } from "../../../shared/editor";
-import { validateEditSettings } from "../../../shared/editor-model";
+import { EDIT_LIMITS, validateEditSettings } from "../../../shared/editor-model";
 
 const text = (max: number) =>
   z
@@ -12,32 +12,32 @@ export const settingsPatchSchema = z.strictObject({
   place: z
     .strictObject({
       useDefaultPosition: z.boolean().optional(),
-      name: text(200).optional(),
-      description: text(300).optional(),
+      name: text(EDIT_LIMITS.placeName).optional(),
+      description: text(EDIT_LIMITS.placeDescription).optional(),
       material: z.enum(["none", "tape", "rectangle"]).optional(),
       x: ratio.optional(),
       y: ratio.optional(),
       offsetX: z.number().min(-1).max(1).optional(),
       offsetY: z.number().min(-1).max(1).optional(),
-      size: z.number().min(0.005).max(0.2).optional(),
+      size: z.number().min(EDIT_LIMITS.placeSize.min).max(EDIT_LIMITS.placeSize.max).optional(),
       persistent: z.boolean().optional(),
-      showDuring: text(400).optional(),
+      showDuring: text(EDIT_LIMITS.showDuring).optional(),
     })
     .optional(),
   captions: z
     .strictObject({
-      fontSizeRatio: z.number().min(0.005).max(0.082).optional(),
-      y: z.number().min(0.2).max(0.79).optional(),
+      fontSizeRatio: z.number().min(EDIT_LIMITS.captionFontSizeRatio.min).max(EDIT_LIMITS.captionFontSizeRatio.max).optional(),
+      y: z.number().min(EDIT_LIMITS.captionY.min).max(EDIT_LIMITS.captionY.max).optional(),
       items: z
         .array(
           z.strictObject({
-            id: text(100),
+            id: text(EDIT_LIMITS.captionId),
             start: z.number().min(0),
             end: z.number().min(0),
-            text: text(1000),
+            text: text(EDIT_LIMITS.captionText),
           }),
         )
-        .max(300)
+        .max(EDIT_LIMITS.maxCaptions)
         .optional(),
     })
     .optional(),
@@ -45,7 +45,7 @@ export const settingsPatchSchema = z.strictObject({
     .strictObject({
       useDefaultPosition: z.boolean().optional(),
       time: z.number().min(0).optional(),
-      hook: text(600).optional(),
+      hook: text(EDIT_LIMITS.hook).optional(),
       template: z.enum(["rosy-auto", "rosy-large", "rosy-follow"]).optional(),
       x: ratio.optional(),
       y: ratio.optional(),
@@ -55,10 +55,10 @@ export const settingsPatchSchema = z.strictObject({
       hookOffsetY: z.number().min(-1).max(1).optional(),
       placeOffsetX: z.number().min(-1).max(1).optional(),
       placeOffsetY: z.number().min(-1).max(1).optional(),
-      hookSize: z.number().int().min(1).max(185).nullable().optional(),
-      followCta: text(100).optional(),
-      followSignature: text(80).optional(),
-      followDarkness: z.number().min(0).max(0.85).optional(),
+      hookSize: z.number().int().min(EDIT_LIMITS.hookSize.min).max(EDIT_LIMITS.hookSize.max).nullable().optional(),
+      followCta: text(EDIT_LIMITS.followCta).optional(),
+      followSignature: text(EDIT_LIMITS.followSignature).optional(),
+      followDarkness: z.number().min(EDIT_LIMITS.followDarkness.min).max(EDIT_LIMITS.followDarkness.max).optional(),
     })
     .optional(),
 });

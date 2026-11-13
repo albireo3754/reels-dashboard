@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from "react";
 import type { DashboardBridge } from "../shared/contracts";
 import type {
@@ -22,7 +21,6 @@ import { TemplatePanel } from "../features/editor-templates";
 import { CaptionFileTools } from "../features/subtitle-files";
 import {
   selectCoverTemplate,
-  validateEditSettings,
 } from "../shared/editor-model";
 import {
   Button,
@@ -36,6 +34,13 @@ import {
 } from "../shared/ui/primitives";
 import { Menu } from "../shared/ui/Popover";
 import { Icon } from "./ui";
+import {
+  clampedTime,
+  formatSeconds,
+  signature,
+  validate,
+} from "./editor/format";
+import { EditorSection, NumberField, NumberInput } from "./editor/EditorFields";
 
 type EditorProps = {
   bridge: EditorBridge;
@@ -52,21 +57,12 @@ type Preview = {
   kind: "video" | "cover";
   signature: string;
 };
-const formatSeconds = (value: number) =>
-  `${Math.floor(value / 60)}:${(value % 60).toFixed(2).padStart(5, "0")}`;
-const signature = (project: EditorProject) =>
-  JSON.stringify({ id: project.id, settings: project.settings });
 const recentDate = (value: string) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? ""
     : date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 };
-const clampedTime = (time: number, duration: number) =>
-  Math.min(Math.max(0, time), Math.max(0, duration - 0.01));
-function validate(project: EditorProject, kind: "video" | "cover" | "export") {
-  validateEditSettings(project.settings, project.source.duration, kind);
-}
 
 export function Editor({
   bridge,
@@ -1234,75 +1230,5 @@ export function Editor({
         </div>
       )}
     </div>
-  );
-}
-function EditorSection({
-  id,
-  title,
-  actions,
-  children,
-}: {
-  id: string;
-  title: string;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className="ui-section editor-section"
-      data-divided=""
-      aria-labelledby={`${id}-title`}
-    >
-      <header className="ui-section-header">
-        <h2 id={`${id}-title`}>{title}</h2>
-        {actions && <div className="ui-actions">{actions}</div>}
-      </header>
-      {children}
-    </section>
-  );
-}
-type NumberProps = {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  disabled?: boolean;
-  min?: number;
-  max?: number;
-  step?: number;
-};
-function NumberInput({
-  label,
-  value,
-  onChange,
-  disabled,
-  min = 0,
-  max = 1,
-  step = 0.01,
-  named = true,
-}: NumberProps & { named?: boolean }) {
-  return (
-    <input
-      className="ui-narrow"
-      type="number"
-      aria-label={named ? label : undefined}
-      title={label}
-      min={min}
-      max={max}
-      step={step}
-      value={Number.isFinite(value) ? value : ""}
-      onChange={(e) =>
-        onChange(e.target.value === "" ? NaN : Number(e.target.value))
-      }
-      disabled={disabled}
-    />
-  );
-}
-/** 숫자 입력 한 칸. short가 있으면 짧은 글자만 보이고 접근 이름은 label 전체다. */
-function NumberField({ short, ...props }: NumberProps & { short?: string }) {
-  return (
-    <label className="editor-number">
-      <span>{short ?? props.label}</span>
-      <NumberInput {...props} named={!!short} />
-    </label>
   );
 }

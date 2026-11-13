@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../shared/lib/hash";
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import type { TerminalKind } from "../shared/workbench";
@@ -72,7 +72,7 @@ export function herdrSessionName(value: string | undefined): string | null {
 
 /** Identifies a source folder in labels: the first 12 hex chars of sha256(realpath). Pass a realpath. */
 export const herdrSourceTag = (realWorkspace: string) =>
-  createHash("sha256").update(realWorkspace).digest("hex").slice(0, 12);
+  sha256Hex(realWorkspace).slice(0, 12);
 
 export const herdrLabel = (kind: TerminalKind, id: string, source: string) =>
   `${HERDR_LABEL_PREFIX}${kind}:${id}:${source}`;

@@ -1,4 +1,4 @@
-import { realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -11,6 +11,17 @@ export async function resolveFile(workspace: string, relative: string) {
   if (!(await stat(resolved)).isFile())
     throw new Error("Expected a file: " + relative);
   return resolved;
+}
+/** Parse a workspace-relative JSON file, rejecting it with `tooLarge` when over `limit` bytes. */
+export async function readWorkspaceJson(
+  workspace: string,
+  relative: string,
+  limit: number,
+  tooLarge: string,
+) {
+  const resolved = await resolveFile(workspace, relative);
+  if ((await stat(resolved)).size > limit) throw new Error(tooLarge);
+  return JSON.parse(await readFile(resolved, "utf8"));
 }
 /** Question/preview image rule shared by form registration and step skipping. */
 export async function checkedImage(workspace: string, relative: string) {

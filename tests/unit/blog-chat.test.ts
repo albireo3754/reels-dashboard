@@ -1,12 +1,13 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {mkdtemp,readdir,readFile,realpath,rm,stat} from "node:fs/promises";
+import {mkdtemp,readFile,realpath,rm} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {ThreadEvent,CodexOptions,ThreadOptions} from "@openai/codex-sdk";
 import {markupFixture} from "../fixtures/markup-editor";
 import {makeCanonicalFixture} from "../fixtures/canonical-content";
+import {snapshot} from "../fixtures/fs-snapshot";
 import {startCanonicalEditor} from "../../src/app/blog-editor/server";
 import type {ChatCall} from "../../src/app/blog-editor/blog-chat";
 import {buildChatPrompt,cleanChatResult,fitChatInput,type BlogChatInput} from "../../src/shared/blog-chat";
@@ -16,11 +17,6 @@ import type {CodexObservationPort} from "../../src/app/observability/codex-obser
 
 // Synthetic fixtures only; no real manuscript or credential is used.
 const post=(base:string,body:unknown)=>fetch(base+"/api/blog/chat",{method:"POST",headers:{"Content-Type":"application/json",Origin:base},body:JSON.stringify(body)});
-async function snapshot(root:string){
- const out:Record<string,string>={};
- async function walk(dir:string){for(const e of await readdir(dir,{withFileTypes:true})){const f=path.join(dir,e.name);if(e.isDirectory())await walk(f);else{const s=await stat(f);out[path.relative(root,f)]=s.size+":"+s.mtimeMs;}}}
- await walk(root);return out;
-}
 
 test("cleanChatResult keeps only rewrites whose quote is unique in an attached paragraph",()=>{
  const attachments=[{paragraphId:"P1",quote:"맛있었어요",paragraph:"커피가 맛있었어요. 빵도 맛있었어요."},{paragraphId:"P2",quote:"쉬었어요",paragraph:"벤치에서 쉬었어요."}];

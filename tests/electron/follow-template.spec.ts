@@ -3,19 +3,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
 
 test("signed final card saves and exports a real standalone PNG without a place", async ({}, info) => {
   test.setTimeout(90_000);
   const profile = await makeProfile();
   const app = await launchApp(profile, false);
   try {
-    const runtime = process.env.REELS_ELECTRON_EXECUTABLE
-      ? path.resolve(
-          path.dirname(process.env.REELS_ELECTRON_EXECUTABLE),
-          "../Resources/editor-runtime",
-        )
-      : path.resolve("native/editor-engine/.build/runtime");
+    const runtime = editorRuntime();
     const input = path.join(profile, "follow-source.mp4");
     const output = path.join(profile, "follow-output.png");
     await promisify(execFile)(path.join(runtime, "bin/ffmpeg"), [

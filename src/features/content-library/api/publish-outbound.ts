@@ -13,6 +13,7 @@ import type {
   OutboundFile,
   ProjectOutbound,
 } from "../../../shared/icloud-delivery";
+import { isMissing } from "../../../shared/lib/fs";
 import type { ContentLibrary } from "./library";
 import { copyVerifiedFile, hash } from "./prepare-local-media";
 
@@ -20,7 +21,7 @@ const exists = async (p: string) => {
   try {
     return await lstat(p);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (isMissing(e)) return null;
     throw e;
   }
 };

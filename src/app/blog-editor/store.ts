@@ -1,4 +1,5 @@
 import { sha256Hex } from "../../shared/lib/hash";
+import { isMissing } from "../../shared/lib/fs";
 import { EDITOR_FRAME_CSS } from "./frame-theme";
 import {
   readFile,
@@ -205,7 +206,7 @@ export class CanonicalStore {
         };
       });
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      if (!isMissing(e)) throw e;
     }
     return {
       savedAt:(await stat(this.config.canon)).mtime.toISOString(),

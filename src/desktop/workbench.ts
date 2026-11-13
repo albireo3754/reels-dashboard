@@ -1,4 +1,5 @@
-import { writeFileAtomic } from "../shared/lib/fs";
+import { readJsonFile, writeFileAtomic } from "../shared/lib/fs";
+import { errorMessage } from "../shared/lib/errors";
 import { spawn, type IPty } from "node-pty";
 import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -153,8 +154,6 @@ export function terminalTitle(kind: TerminalKind, taken: Iterable<string> = []) 
   for (let n = 2; ; n++) if (!used.has(`${base} ${n}`)) return `${base} ${n}`;
 }
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
 
 type Entry = {
   session: WorkTerminal;
@@ -220,16 +219,12 @@ export class Workbench {
   }
 
   async initialize(candidate?: string) {
-    let saved: z.infer<typeof settingsSchema> | undefined;
-    try {
-      saved = settingsSchema.parse(
-        JSON.parse(
-          await readFile(path.join(this.root, "workbench.json"), "utf8"),
-        ),
+    const saved: z.infer<typeof settingsSchema> | undefined =
+      await readJsonFile(
+        path.join(this.root, "workbench.json"),
+        (value) => settingsSchema.parse(value),
+        () => undefined,
       );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
     // An unknown saved backend falls back to the default instead of breaking the workspace.
     this.savedBackend = isBackend(saved?.terminalBackend)
       ? saved.terminalBackend
@@ -458,10 +453,10 @@ export class Workbench {
             (closeError) =>
               isHerdrError(closeError, "server_not_running")
                 ? ""
-                : ` herdr에 남았을 수 있는 세션(${label})도 정리하지 못했어요. ${message(closeError)}`,
+                : ` herdr에 남았을 수 있는 세션(${label})도 정리하지 못했어요. ${errorMessage(closeError)}`,
           );
           throw new Error(
-            `herdr 세션을 시작하지 못했어요. ${message(error)}${cleanup}`,
+            `herdr 세션을 시작하지 못했어요. ${errorMessage(error)}${cleanup}`,
           );
         }
         // The workspace outlives an app that quit meanwhile and is restored next launch.
@@ -624,7 +619,7 @@ export class Workbench {
         throw new Error(
           isHerdrError(error, "server_not_running")
             ? "herdr 서버가 꺼져 있어 세션을 종료하지 못했어요. 다시 연결한 뒤 종료해주세요."
-            : `herdr 세션을 종료하지 못했어요. ${message(error)}`,
+            : `herdr 세션을 종료하지 못했어요. ${errorMessage(error)}`,
         );
       }
       entry.ended = true;
