@@ -336,6 +336,17 @@ export const toolDefinitions = {
     }),
     readOnly: true,
   },
+  reels_import_photos_bundle: {
+    description:
+      "Default way to bring one visit's Photos material to the dashboard: copy every photo and video of a current Photos group (or only the listed assetIds) into app storage and attach them all to one existing content card. Videos become edit projects linked to that card (no separate card per video, no merge needed); photos and Live Photo motion videos become footage resources on the card. Photos originals stay untouched: read and copy only, no deletion, move, album or metadata change. Idempotent: assets imported before are reused, not copied again, so rerunning after a partial failure is safe. A video already linked to another card stays there and is reported as linked-elsewhere with ownerId. Per-asset failures are reported, not retried. A large group or iCloud download can outlast one call; the import keeps running in the app, and repeating the same call later returns the result without copying again. Split very large groups with assetIds.",
+    input: z.strictObject({
+      projectId: z.string().min(1).max(160).describe("Existing content card ID, e.g. content:example."),
+      groupId: nativeID,
+      indexRunId: nativeID,
+      assetIds: z.array(nativeID).min(1).max(500).optional().describe("Subset of the group; omit to import the whole group."),
+    }),
+    readOnly: false,
+  },
   reels_import_photos_video: {
     description:
       "Import a selected video from the current Photos index into a new edit project. Copies the original into app storage through the checked materialization service; the Photos original stays untouched (no deletion, move, album or metadata change). Use this to put Photos videos on the dashboard.",

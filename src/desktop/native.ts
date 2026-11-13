@@ -166,7 +166,7 @@ export class NativeClient {
     }
   }
   async request(
-    method: CommandMethod | "editor.materialize",
+    method: CommandMethod | "editor.materialize" | "media.materialize",
     args: Arguments,
   ): Promise<unknown> {
     await this.ensureReady();
@@ -180,7 +180,7 @@ export class NativeClient {
 }
 export function sendNative(
   socketPath: string,
-  method: CommandMethod | "editor.materialize",
+  method: CommandMethod | "editor.materialize" | "media.materialize",
   args: Arguments,
   timeout = 3_700_000,
 ): Promise<unknown> {

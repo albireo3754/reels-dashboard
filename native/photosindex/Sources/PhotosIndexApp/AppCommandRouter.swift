@@ -140,7 +140,8 @@ final class AppCommandRouter: @unchecked Sendable {
                         assets: detail.assets.map(\.evidenceAsset)
                     )
                 )
-            case "editor.materialize":
+            case "editor.materialize", "media.materialize":
+                let anyKind = request.method == "media.materialize"
                 guard ["authorized", "limited"].contains(permission()) else {
                     return .failure(id: request.id, error: CommandFailure(
                         code: "photos-permission-required",
@@ -152,7 +153,7 @@ final class AppCommandRouter: @unchecked Sendable {
                       let id = request.arguments["id"], !id.isEmpty,
                       let expectedRunID = request.arguments["index-run"], !expectedRunID.isEmpty,
                       let assetID = request.arguments["asset-id"], !assetID.isEmpty else {
-                    return invalidArguments(request.id, "editor.materialize requires only id, index-run and asset-id")
+                    return invalidArguments(request.id, "\(request.method) requires only id, index-run and asset-id")
                 }
                 let detail = try runtime.group(id: id)
                 guard detail.runID == expectedRunID else { return staleIndexRun(request.id) }
@@ -162,7 +163,7 @@ final class AppCommandRouter: @unchecked Sendable {
                         code: "editor-asset-not-in-group", message: "Select an asset from the current group."
                     ))
                 }
-                guard asset.mediaKind == .video else {
+                guard anyKind || asset.mediaKind == .video else {
                     return .failure(id: request.id, error: CommandFailure(
                         code: "editor-video-required", message: "The video editor requires a video asset."
                     ))
@@ -172,7 +173,9 @@ final class AppCommandRouter: @unchecked Sendable {
                         code: "editor-unavailable", message: "This helper has no configured editor source cache."
                     ))
                 }
-                return try .success(id: request.id, payload: editorSourceService.materialize(asset: asset))
+                return anyKind
+                    ? try .success(id: request.id, payload: editorSourceService.materializeMedia(asset: asset))
+                    : try .success(id: request.id, payload: editorSourceService.materialize(asset: asset))
             case "groups.inspect":
                 guard let id = request.arguments["id"],
                       let expectedRunID = request.arguments["index-run"],

@@ -5,6 +5,7 @@ import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { CANONICAL_EDITOR_HELP_URL, DesktopCanonicalEditor } from "./canonical-editor";
 import { BlogResults } from "./blog-results";
+import { demoMaterializer } from "./demo-photos-materializer";
 import { BlogComments } from "./blog-comments";
 import { workflowRequest } from "../app/workflow/client";
 import { workflowAction, type WorkflowAction } from "../shared/workflow";
@@ -51,7 +52,7 @@ import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
 import { GifConverter } from "../features/gif-convert";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
-import { EditorService } from "../features/reel-editing";
+import { EditorService, type BundleAsset, type MaterializedMedia } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
 import { CardNewsService } from "./card-news";
 import type { EditorBridge } from "../shared/editor";
@@ -124,6 +125,9 @@ function forwardHostShortcuts(
   });
 }
 const fixture = process.env.REELS_DEMO === "1";
+// QA only: Photos calls use the demo library while the rest of the app (agent
+// MCP, store, editor) stays real. Never set by the packaged launch.
+const photosDemo = fixture || process.env.REELS_PHOTOS_DEMO_QA === "1";
 const grants = new Set<string>();
 const imageGrants = new Set<string>();
 const destinations = new Set<string>();
@@ -298,6 +302,33 @@ async function awaitReady() {
     paths => native.request("icloud.status", { paths: JSON.stringify(paths) }) as Promise<ICloudUploadStatus>,
     path.join(root,"outbound-history"),
   );
+  // Read-only group membership for the Photos bundle import.
+  const photosGroupAssets = async (selection: {
+    groupID: string;
+    indexRunID: string;
+  }) => {
+    const args = { id: selection.groupID, "index-run": selection.indexRunID };
+    const detail = (await (photosDemo
+      ? demo.request("groups.show", args)
+      : native.request("groups.show", args))) as {
+      indexRunID: string;
+      assets: BundleAsset[];
+    };
+    if (detail.indexRunID !== selection.indexRunID)
+      throw new Error("stale-index-run: 날짜를 다시 색인하고 그룹을 다시 조회해주세요.");
+    return detail.assets;
+  };
+  const demoMedia = demoMaterializer({
+    supportRoot: path.join(root, "native"),
+    ffmpeg: path.join(
+      app.isPackaged
+        ? path.join(process.resourcesPath, "editor-runtime")
+        : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+      "bin/ffmpeg",
+    ),
+    assets: async () =>
+      ((await demo.request("groups.show", {})) as { assets: BundleAsset[] }).assets,
+  });
   const editorService = new EditorService({
     logs,
     dashboardChanged: (value) => emit("dashboard:changed", value),
@@ -328,6 +359,15 @@ async function awaitReady() {
         "index-run": selection.indexRunID,
         "asset-id": selection.assetID,
       })) as { sourcePath: string },
+    materializeMedia: async (selection) =>
+      photosDemo
+        ? demoMedia(selection)
+        : ((await native.request("media.materialize", {
+            id: selection.groupID,
+            "index-run": selection.indexRunID,
+            "asset-id": selection.assetID,
+          })) as MaterializedMedia),
+    groupAssets: photosGroupAssets,
     reveal: (file) => shell.showItemInFolder(file),
     changed: (project) => emit("agent:project-changed", project),
     renderStarted: (job) => emit("agent:render-started", job),
@@ -684,7 +724,7 @@ async function awaitReady() {
         });
         if (result.response !== 1) throw new Error("이동을 취소했어요.");
       }
-      if (method === "groups.inspect" && !fixture) {
+      if (method === "groups.inspect" && !photosDemo) {
         const base = path.join(root, "evidence");
         await mkdir(base, { recursive: true, mode: 0o700 });
         input.output = await realpath(await mkdtemp(path.join(base, "page-")));
@@ -693,10 +733,10 @@ async function awaitReady() {
       for (const key of ["file", "decision", "plan"])
         if (demoDocuments.has(demoInput[key]))
           demoInput[key] = demoDocuments.get(demoInput[key])!;
-      const result = fixture
+      const result = photosDemo
         ? await demo.request(method, demoInput)
         : await native.request(method, input);
-      if (method === "groups.inspect" && !fixture) {
+      if (method === "groups.inspect" && !photosDemo) {
         const inspection = result as Inspection;
         for (const sample of inspection.sampleFiles) {
           const resolved = await realpath(sample);

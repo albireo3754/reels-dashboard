@@ -108,6 +108,73 @@ final class EditorSourceServiceTests: XCTestCase {
         XCTAssertEqual(fixture.materializer.calls, 2)
     }
 
+    func testMediaMaterializeCopiesPhotoAndLivePhotoMotionWithoutChangingOriginal() throws {
+        let fixture = try makeFixture(paired: .copy)
+        let response = fixture.router.handle(mediaRequest(fixture, asset: fixture.photo))
+        XCTAssertTrue(response.ok, String(describing: response.error))
+        let result = try response.decodePayload(MediaMaterializationPayload.self)
+        XCTAssertEqual(result.assetID, fixture.photo.id)
+        XCTAssertEqual(result.mediaKind, .photo)
+        XCTAssertEqual(result.originalFilename, "IMG_EDITOR.HEIC")
+        let still = URL(fileURLWithPath: result.sourcePath)
+        let motion = URL(fileURLWithPath: try XCTUnwrap(result.pairedVideoPath))
+        XCTAssertEqual(still.deletingLastPathComponent(), motion.deletingLastPathComponent())
+        XCTAssertEqual(still.deletingLastPathComponent().deletingLastPathComponent(), fixture.support.resolvingSymlinksInPath().appendingPathComponent("editor-sources", isDirectory: true))
+        XCTAssertEqual(try Data(contentsOf: still), fixture.originalBytes)
+        XCTAssertEqual(try Data(contentsOf: motion), Data("synthetic live motion".utf8))
+        XCTAssertEqual(try mode(still), 0o600)
+        XCTAssertEqual(try mode(motion), 0o600)
+        XCTAssertEqual(try Data(contentsOf: fixture.original), fixture.originalBytes)
+        XCTAssertEqual(fixture.materializer.pairedCalls, 1)
+        XCTAssertFalse(String(decoding: try CanonicalJSON.encode(result), as: UTF8.self).contains(fixture.photo.localIdentifier))
+    }
+
+    func testMediaMaterializeCopiesVideoWithoutPairedLookup() throws {
+        let fixture = try makeFixture(paired: .copy)
+        let result = try fixture.router.handle(mediaRequest(fixture, asset: fixture.video))
+            .decodePayload(MediaMaterializationPayload.self)
+        XCTAssertEqual(result.mediaKind, .video)
+        XCTAssertNil(result.pairedVideoPath)
+        XCTAssertEqual(fixture.materializer.pairedCalls, 0)
+    }
+
+    func testMediaMaterializeStillPhotoHasNoMotion() throws {
+        let fixture = try makeFixture(paired: .none)
+        let result = try fixture.router.handle(mediaRequest(fixture, asset: fixture.photo))
+            .decodePayload(MediaMaterializationPayload.self)
+        XCTAssertNil(result.pairedVideoPath)
+        XCTAssertEqual(fixture.materializer.pairedCalls, 1)
+    }
+
+    func testMediaMaterializeRejectsMotionOutsideWorkspaceAndCleansUp() throws {
+        let fixture = try makeFixture(paired: .outside)
+        let response = fixture.router.handle(mediaRequest(fixture, asset: fixture.photo))
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(try cachedWorkspaces(fixture), [])
+        XCTAssertEqual(try Data(contentsOf: fixture.original), fixture.originalBytes)
+    }
+
+    func testMediaMaterializeKeepsGroupAndRunChecks() throws {
+        let fixture = try makeFixture(paired: .copy)
+        var arguments = mediaRequest(fixture, asset: fixture.otherVideo).arguments
+        XCTAssertEqual(fixture.router.handle(CommandRequest(method: "media.materialize", arguments: arguments)).error?.code, "editor-asset-not-in-group")
+        arguments = mediaRequest(fixture, asset: fixture.photo).arguments
+        arguments["index-run"] = "old-run"
+        XCTAssertEqual(fixture.router.handle(CommandRequest(method: "media.materialize", arguments: arguments)).error?.code, "stale-index-run")
+        arguments = mediaRequest(fixture, asset: fixture.photo).arguments
+        arguments["output"] = "/tmp/renderer-output"
+        XCTAssertEqual(fixture.router.handle(CommandRequest(method: "media.materialize", arguments: arguments)).error?.code, "invalid-arguments")
+        XCTAssertEqual(fixture.materializer.calls, 0)
+    }
+
+    private func mediaRequest(_ fixture: Fixture, asset: PhotoAsset) -> CommandRequest {
+        CommandRequest(method: "media.materialize", arguments: [
+            "id": fixture.group.id,
+            "index-run": fixture.runID,
+            "asset-id": asset.id,
+        ])
+    }
+
     private func mode(_ url: URL) throws -> Int {
         (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as! NSNumber).intValue
     }
@@ -124,7 +191,11 @@ final class EditorSourceServiceTests: XCTestCase {
         ])
     }
 
-    private func makeFixture(permission: String = "authorized", behavior: FakeMaterializer.Behavior = .copy) throws -> Fixture {
+    private func makeFixture(
+        permission: String = "authorized",
+        behavior: FakeMaterializer.Behavior = .copy,
+        paired: FakeMaterializer.Paired = .none
+    ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("reels-editor-test-\(UUID().uuidString)", isDirectory: true)
             .resolvingSymlinksInPath()
@@ -151,7 +222,7 @@ final class EditorSourceServiceTests: XCTestCase {
         let group = runtime.groups(level: .fine).groups.first(where: { $0.assetIDs.contains(video.id) })!
         XCTAssertFalse(group.assetIDs.contains(otherVideo.id))
         let support = root.appendingPathComponent("Private Support", isDirectory: true)
-        let materializer = FakeMaterializer(original: original, behavior: behavior)
+        let materializer = FakeMaterializer(original: original, behavior: behavior, paired: paired)
         let router = AppCommandRouter(
             runtime: runtime, permission: { permission }, requestAuthorization: { permission },
             editorSourceService: EditorSourceService(supportRoot: support, materializer: materializer)
@@ -183,19 +254,36 @@ private struct EditorFakeLibrary: PhotoLibraryReading {
     func assets(from start: Date, to end: Date) throws -> [PhotoAsset] { storedAssets }
 }
 
-private final class FakeMaterializer: PhotoAssetMaterializing, @unchecked Sendable {
+private final class FakeMaterializer: PhotoAssetMaterializing, PairedVideoMaterializing, @unchecked Sendable {
     enum Behavior { case copy, outside, partialFailure }
+    enum Paired { case none, copy, outside }
     let original: URL
     let behavior: Behavior
+    let paired: Paired
     private(set) var calls = 0
-    init(original: URL, behavior: Behavior) { self.original = original; self.behavior = behavior }
+    private(set) var pairedCalls = 0
+    init(original: URL, behavior: Behavior, paired: Paired = .none) {
+        self.original = original; self.behavior = behavior; self.paired = paired
+    }
+    func stagePairedVideo(asset: PhotoAsset, into stagingRoot: URL) throws -> URL? {
+        pairedCalls += 1
+        switch paired {
+        case .none: return nil
+        case .outside: return original
+        case .copy:
+            let destination = stagingRoot.appendingPathComponent("IMG_EDITOR-live.mov")
+            try Data("synthetic live motion".utf8).write(to: destination)
+            return destination
+        }
+    }
     func stage(asset: PhotoAsset, into stagingRoot: URL) throws -> StagedExportAsset {
         calls += 1
-        let destination = behavior == .outside ? original : stagingRoot.appendingPathComponent("IMG_EDITOR.MOV")
+        let name = asset.mediaKind == .video ? "IMG_EDITOR.MOV" : "IMG_EDITOR.HEIC"
+        let destination = behavior == .outside ? original : stagingRoot.appendingPathComponent(name)
         if behavior != .outside { try FileManager.default.copyItem(at: original, to: destination) }
         if behavior == .partialFailure { throw CocoaError(.fileWriteUnknown) }
         return StagedExportAsset(assetID: asset.id, mediaKind: asset.mediaKind,
-                                 safeFilename: "IMG_EDITOR.MOV", stagedURL: destination,
+                                 safeFilename: name, stagedURL: destination,
                                  bytes: Int64(try Data(contentsOf: destination).count), sha256: "fixture")
     }
 }

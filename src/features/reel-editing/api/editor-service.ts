@@ -1,5 +1,5 @@
 import { CoverPreferencesStore } from "../../../shared/lib/cover-preferences";
-import { writeFileAtomic } from "../../../shared/lib/fs";
+import { readJsonFile, writeFileAtomic, writeJsonAtomic } from "../../../shared/lib/fs";
 import { errorMessage } from "../../../shared/lib/errors";
 import { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
@@ -29,6 +29,14 @@ import { validateEditSettings } from "../../../shared/editor-model";
 import type { LocalStore } from "../../../shared/lib/storage";
 import type { LocalResource, Dashboard } from "../../../shared/contracts";
 import { safeID, serveMedia } from "./media-handler";
+import {
+  emptyPhotosImportLedger,
+  importPhotosBundle,
+  type BundleAsset,
+  type MaterializedMedia,
+  type PhotosBundleInput,
+  type PhotosImportLedger,
+} from "../model/photos-bundle";
 interface RecordData {
   project: EditorProject;
   sourcePath: string;
@@ -54,6 +62,14 @@ interface Options {
     indexRunID: string;
     assetID: string;
   }) => Promise<{ sourcePath: string }>;
+  /** Native `media.materialize`: photo or video copy (Live Photo motion included). */
+  materializeMedia?: (v: {
+    groupID: string;
+    indexRunID: string;
+    assetID: string;
+  }) => Promise<MaterializedMedia>;
+  /** Read-only `groups.show` for the current index run. */
+  groupAssets?: (v: { groupID: string; indexRunID: string }) => Promise<BundleAsset[]>;
   reveal: (file: string) => void;
   changed?: (project: EditorProject) => void;
   renderStarted?: (job: RenderJob) => void;
@@ -302,7 +318,11 @@ export class EditorService implements EditorBridge {
     );
     this.options.dashboardChanged?.(dashboard);
   }
-  private async importFile(input: string): Promise<EditorProject> {
+  /** `card: false` creates the edit project without a dashboard card of its own. */
+  private async importFile(
+    input: string,
+    { card = true }: { card?: boolean } = {},
+  ): Promise<EditorProject> {
     const sourcePath = await realpath(input);
     const info = await stat(sourcePath);
     if (!info.isFile()) throw new Error("영상 파일을 선택해주세요.");
@@ -338,7 +358,7 @@ export class EditorService implements EditorBridge {
         size: info.size,
         mtimeMs: info.mtimeMs,
       });
-      await this.updateStage(project, "editing");
+      if (card) await this.updateStage(project, "editing");
       return project;
     } catch (e) {
       await rm(dir, { recursive: true, force: true });
@@ -365,8 +385,115 @@ export class EditorService implements EditorBridge {
       )
         throw new Error("선택한 촬영본을 확인해주세요.");
       const result = await this.options.materialize(selection);
-      return this.importFile(result.sourcePath);
+      const project = await this.importFile(result.sourcePath);
+      // A later bundle import of the same asset reuses this copy instead of
+      // copying again. Best effort: the import itself already succeeded.
+      await this.withPhotosLedger(async (ledger, save) => {
+        ledger.assets[selection.assetID] = {
+          assetId: selection.assetID,
+          mediaKind: "video",
+          sourcePath: (await this.record(project.id)).sourcePath,
+          editId: project.id,
+          name: project.source.name,
+          importedAt: new Date().toISOString(),
+        };
+        await save(ledger);
+      }).catch(() => {});
+      return project;
     });
+  }
+  private photosQueue: Promise<unknown> = Promise.resolve();
+  private get ledgerFile() {
+    return path.join(this.options.root, "photos-imports.json");
+  }
+  /** Serializes ledger readers and writers inside this process. */
+  private withPhotosLedger<T>(
+    fn: (
+      ledger: PhotosImportLedger,
+      save: (ledger: PhotosImportLedger) => Promise<void>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const run = this.photosQueue.then(async () => {
+      const ledger = await readJsonFile(
+        this.ledgerFile,
+        (value) => {
+          const v = value as PhotosImportLedger;
+          if (v?.schemaVersion !== 1 || typeof v.assets !== "object" || !v.assets)
+            throw new Error("Photos 가져오기 기록을 읽지 못했어요.");
+          return v;
+        },
+        emptyPhotosImportLedger,
+      );
+      return fn(ledger, (next) =>
+        writeJsonAtomic(this.ledgerFile, next, { mode: 0o600 }),
+      );
+    });
+    this.photosQueue = run.catch(() => {});
+    return run;
+  }
+  /**
+   * Copy every photo and video of one Photos group (or a subset) into app
+   * storage and attach them to an existing content card. Photos originals are
+   * only read; already-imported assets are reused, not copied again.
+   */
+  async importPhotosBundle(input: PhotosBundleInput) {
+    const { materializeMedia, groupAssets } = this.options;
+    if (!materializeMedia || !groupAssets)
+      throw new Error("UNSUPPORTED: Photos 묶음 가져오기를 쓸 수 없는 환경이에요.");
+    return this.exclusive(() =>
+      this.withPhotosLedger(async (ledger, save) =>
+        importPhotosBundle(input, {
+          groupAssets: () =>
+            groupAssets({ groupID: input.groupId, indexRunID: input.indexRunId }),
+          projectExists: async (id) =>
+            (await this.options.store.load()).projects.some((p) => p.id === id),
+          loadLedger: async () => ledger,
+          saveLedger: save,
+          isFile: async (file) => {
+            try {
+              return (await stat(file)).isFile();
+            } catch {
+              return false;
+            }
+          },
+          editExists: async (id) => {
+            try {
+              await this.record(id);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          materialize: async (assetID) => {
+            const copied = await materializeMedia({
+              groupID: input.groupId,
+              indexRunID: input.indexRunId,
+              assetID,
+            });
+            // Same path form as the edit record, so later edits do not add a duplicate resource.
+            return {
+              ...copied,
+              sourcePath: await realpath(copied.sourcePath),
+              ...(copied.pairedVideoPath
+                ? { pairedVideoPath: await realpath(copied.pairedVideoPath) }
+                : {}),
+            };
+          },
+          createEdit: (sourcePath) => this.importFile(sourcePath, { card: false }),
+          attach: async (mutate) => {
+            let owners = new Map<string, string>();
+            const dashboard = await this.options.store.update((current) => {
+              const next = mutate(current);
+              owners = next.owners;
+              return next.dashboard;
+            });
+            this.options.dashboardChanged?.(dashboard);
+            return { dashboard, owners };
+          },
+          now: () => new Date(),
+        }),
+      ),
+    );
   }
   async list() {
     const root = path.join(this.options.root, "editor");

@@ -9,7 +9,7 @@ public enum PhotoKitAssetMaterializerError: Error, Equatable {
     case outputCreationFailed
 }
 
-public final class PhotoKitAssetMaterializer: PhotoAssetMaterializing, @unchecked Sendable {
+public final class PhotoKitAssetMaterializer: PhotoAssetMaterializing, PairedVideoMaterializing, @unchecked Sendable {
     private let fileWriter: any ExportWriting
     private let requestTimeout: TimeInterval
 
@@ -45,6 +45,27 @@ public final class PhotoKitAssetMaterializer: PhotoAssetMaterializing, @unchecke
             bytes: bytes,
             sha256: sha256
         )
+    }
+
+    public func stagePairedVideo(asset: PhotoAsset, into stagingRoot: URL) throws -> URL? {
+        guard asset.mediaKind == .photo else { return nil }
+        try ExportSupport.validateRoot(stagingRoot)
+        let phAsset = try fetchAsset(identifier: asset.localIdentifier)
+        guard phAsset.mediaSubtypes.contains(.photoLive) else { return nil }
+        // The original motion first; the edited one only when no original exists.
+        let resources = PHAssetResource.assetResources(for: phAsset)
+        guard let resource = resources.first(where: { $0.type == .pairedVideo })
+            ?? resources.first(where: { $0.type == .fullSizePairedVideo }) else { return nil }
+        let still = ExportSupport.safeFilename(for: asset)
+        let stem = (still as NSString).deletingPathExtension
+        let stageURL = try ExportSupport.validatedChildURL(
+            root: stagingRoot, childName: "\(stem.isEmpty ? asset.id : stem)-live.mov"
+        )
+        if fileWriter.fileExists(at: stageURL) {
+            try fileWriter.removeItem(at: stageURL)
+        }
+        try write(resource: resource, to: stageURL)
+        return stageURL
     }
 
     private func fetchAsset(identifier: String) throws -> PHAsset {

@@ -76,6 +76,13 @@ public protocol PhotoAssetMaterializing: Sendable {
     func stage(asset: PhotoAsset, into stagingRoot: URL) throws -> StagedExportAsset
 }
 
+/// Copies a Live Photo's original motion video next to its still. Read-only on
+/// the Photos side: it only requests resource data.
+public protocol PairedVideoMaterializing: Sendable {
+    /// Returns the staged motion video, or nil when the photo is not a Live Photo.
+    func stagePairedVideo(asset: PhotoAsset, into stagingRoot: URL) throws -> URL?
+}
+
 public protocol ExportWriting: Sendable {
     func createDirectory(at url: URL) throws
     func fileExists(at url: URL) -> Bool

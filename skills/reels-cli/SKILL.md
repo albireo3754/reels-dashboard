@@ -24,7 +24,7 @@ A tool can be named `reels_get_project`, `get_project` or `get-project`. Flags c
 
 ## Photos
 
-Photos originals stay untouched by default. The `photos` group only reads (status, search, index, groups, inspect). To put a Photos video on the dashboard, use `reels import-photos-video`: it copies the original into app storage and leaves the Photos item unchanged. There is no move or delete command. Deleting originals is a desktop-only choice the user makes explicitly; "organize" or "정리" never means delete.
+Photos originals stay untouched by default. The `photos` group only reads (status, search, index, groups, inspect). To bring a visit's Photos material to the dashboard, use `reels import-photos-bundle --project-id <card> --group-id <id> --index-run-id <run>` (optional `--asset-ids '["<id>",...]'` as JSON): it copies every photo and video of the group, Live Photo motion included, into app storage and attaches them to that one card. Videos become linked edit projects without cards of their own. Rerunning is safe; earlier copies are reused. `reels import-photos-video` imports a single video as its own edit card. Both leave the Photos item unchanged. There is no move or delete command. Deleting originals is a desktop-only choice the user makes explicitly; "organize" or "정리" never means delete.
 
 ## Ids
 

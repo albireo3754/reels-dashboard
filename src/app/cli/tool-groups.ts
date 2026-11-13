@@ -55,6 +55,7 @@ export const toolGroupOf = {
   reels_photos_group: "photos",
   reels_photos_inspect: "photos",
   reels_import_photos_video: "photos",
+  reels_import_photos_bundle: "photos",
 
   reels_set_project_outbound: "delivery",
   reels_icloud_status: "delivery",

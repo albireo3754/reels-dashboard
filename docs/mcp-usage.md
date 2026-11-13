@@ -73,9 +73,22 @@ CLI: `reels set-publication` with the same fields.
 
 ## Photos and limits
 
-**Photos originals stay untouched by default.** To put Photos videos on the dashboard, use `reels_import_photos_video`: it copies the selected original into app storage and leaves the Photos item, its albums and metadata unchanged. Every `reels_photos_*` tool only reads. Deleting originals (the desktop "검증 후 이동" plan) happens only when the user explicitly chooses it in the desktop UI and confirms the native dialog; agents never select it on their own, and "정리해줘"/"organize" is not a request to delete.
+**Photos originals stay untouched by default.** The default way to bring one visit's Photos material to the dashboard is `reels_import_photos_bundle`: it copies every photo and video of a current group (or the listed `assetIds`) into app storage and attaches them to one existing content card. `reels_import_photos_video` remains for a single video that should get its own edit card. Both leave the Photos item, its albums and metadata unchanged. Every `reels_photos_*` tool only reads. Deleting originals (the desktop "검증 후 이동" plan) happens only when the user explicitly chooses it in the desktop UI and confirms the native dialog; agents never select it on their own, and "정리해줘"/"organize" is not a request to delete.
 
 `reels_photos_status`, `reels_photos_index`, `reels_photos_groups`, `reels_photos_group` and `reels_photos_inspect` use the app's validated native boundary. Inspection creates a bounded evidence page. `reels_import_photos_video` takes a group/index-run/asset selection and uses the same checked materialization as the UI. Existing macOS Photos permission is required; grant it through the app. Re-index after a native-helper restart rather than treating old index-run IDs as persistent project IDs.
+
+### Photos bundle import (default for blog and reels material)
+
+Input: `projectId` (existing content card, e.g. `content:example`), `groupId`, `indexRunId`, optional `assetIds` (subset of the group). Flow: `reels_photos_index` → `reels_photos_groups`/`reels_photos_group` (pick the visit's group, check `mediaKind`) → `reels_import_photos_bundle`.
+
+- Videos become edit projects linked to the card through `production.edits`. No card per video is created, so `reels_merge_projects` is not needed afterwards.
+- Photos become `footage` resources on the card. A Live Photo also copies its original motion video, registered as a second `footage` resource labelled `… (Live Photo 영상)`.
+- The card's stage, next action and other resources are not changed.
+- Idempotent: a ledger (`photos-imports.json` in the app profile) keyed by the stable public asset ID reuses earlier copies, including videos imported by `reels_import_photos_video`. A copy whose file or edit project is gone is copied again.
+- Output: `items[]` with `assetId`, `mediaKind`, `status` (`imported`, `already-imported`, `linked-elsewhere`, `failed`), `path`, `pairedVideoPath`, `editId`, `ownerId`, `error`; `counts` (per status plus `photos`, `videos`, `livePhotos`); `dashboardUpdatedAt`.
+- `linked-elsewhere`: the video's edit already belongs to another card (`ownerId`). It is left there; merge the cards if that was a mistake.
+- A missing card or an asset outside the group fails before anything is copied. One asset's failure (for example an iCloud download) is reported per item and the rest still attach; repeat the call to finish.
+- One call is limited to 180 seconds. A large group or iCloud download can outlast it; the import keeps running in the app, and the same call repeated later returns the result without copying again. Split very large groups with `assetIds`. A card holds at most 500 resources.
 
 The MCP does not expose arbitrary shell/IPC calls, Photos deletion or move execution, or social publication. Explicit iCloud copy/status operations are described below. Content documents remain authoritative for prose. Color grading, independent description-font controls, and multi-clip timeline editing are outside the current engine's interface.
 

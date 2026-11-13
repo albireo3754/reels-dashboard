@@ -19,6 +19,12 @@ import { toolDefinitions, type ToolName } from "../model/tools";
 export interface AgentEditorPort extends EditorBridge {
   busy: boolean;
   importVideo(path: string, settings?: EditSettings): Promise<EditorProject>;
+  importPhotosBundle?(input: {
+    projectId: string;
+    groupId: string;
+    indexRunId: string;
+    assetIds?: string[];
+  }): Promise<unknown>;
   activeJobs(): RenderJob[];
   previewArtifact(
     project: EditorProject,
@@ -313,6 +319,11 @@ export function createAgentDispatch(ports: AgentPorts) {
           "page-size": String(input.pageSize),
           samples: String(input.pageSize),
         });
+      case "reels_import_photos_bundle":
+        session.assertWritable();
+        if (editor.busy) throw new Error("BUSY");
+        if (!editor.importPhotosBundle) throw new Error("UNSUPPORTED");
+        return editor.importPhotosBundle(input);
       case "reels_import_photos_video":
         return editor.fromPhotos({
           groupID: input.groupId,

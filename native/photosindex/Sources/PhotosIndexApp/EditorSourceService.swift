@@ -15,17 +15,42 @@ enum EditorSourceError: Error, Equatable {
 struct EditorSourceService: Sendable {
     private let supportRoot: URL
     private let materializer: any PhotoAssetMaterializing
+    private let pairedVideo: (any PairedVideoMaterializing)?
 
     init(
         supportRoot: URL,
-        materializer: any PhotoAssetMaterializing = PhotoKitAssetMaterializer()
+        materializer: any PhotoAssetMaterializing = PhotoKitAssetMaterializer(),
+        pairedVideo: (any PairedVideoMaterializing)? = nil
     ) {
         self.supportRoot = supportRoot.standardizedFileURL
         self.materializer = materializer
+        self.pairedVideo = pairedVideo ?? (materializer as? any PairedVideoMaterializing)
     }
 
     func materialize(asset: PhotoAsset) throws -> EditorMaterializationPayload {
         guard asset.mediaKind == .video else { throw EditorSourceError.videoRequired }
+        let copied = try copy(asset: asset)
+        return EditorMaterializationPayload(
+            assetID: asset.id,
+            sourcePath: copied.source.path,
+            originalFilename: asset.publicFilename
+        )
+    }
+
+    /// Photo or video copy for a bundle import. A Live Photo also copies its
+    /// original motion video into the same private workspace.
+    func materializeMedia(asset: PhotoAsset) throws -> MediaMaterializationPayload {
+        let copied = try copy(asset: asset)
+        return MediaMaterializationPayload(
+            assetID: asset.id,
+            mediaKind: asset.mediaKind,
+            sourcePath: copied.source.path,
+            pairedVideoPath: copied.paired?.path,
+            originalFilename: asset.publicFilename
+        )
+    }
+
+    private func copy(asset: PhotoAsset) throws -> (source: URL, paired: URL?) {
         try privateDirectory(supportRoot)
         let sources = supportRoot.resolvingSymlinksInPath()
             .appendingPathComponent("editor-sources", isDirectory: true)
@@ -37,9 +62,24 @@ struct EditorSourceService: Sendable {
             if !completed { try? FileManager.default.removeItem(at: workspace) }
         }
         let staged = try materializer.stage(asset: asset, into: workspace)
-        let output = staged.stagedURL.standardizedFileURL
-        guard staged.assetID == asset.id, staged.mediaKind == .video,
-              output.deletingLastPathComponent().path == workspace.path else {
+        guard staged.assetID == asset.id, staged.mediaKind == asset.mediaKind else {
+            throw EditorSourceError.unsafeMaterializedFile
+        }
+        let output = try privateFile(staged.stagedURL, in: workspace)
+        var paired: URL?
+        if asset.mediaKind == .photo, let pairedVideo,
+           let motion = try pairedVideo.stagePairedVideo(asset: asset, into: workspace) {
+            let file = try privateFile(motion, in: workspace)
+            guard file.path != output.path else { throw EditorSourceError.unsafeMaterializedFile }
+            paired = file
+        }
+        completed = true
+        return (output, paired)
+    }
+
+    private func privateFile(_ url: URL, in workspace: URL) throws -> URL {
+        let output = url.standardizedFileURL
+        guard output.deletingLastPathComponent().path == workspace.path else {
             throw EditorSourceError.unsafeMaterializedFile
         }
         var info = stat()
@@ -50,12 +90,7 @@ struct EditorSourceService: Sendable {
             throw EditorSourceError.unsafeMaterializedFile
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)
-        completed = true
-        return EditorMaterializationPayload(
-            assetID: asset.id,
-            sourcePath: output.path,
-            originalFilename: asset.publicFilename
-        )
+        return output
     }
 
     private func privateDirectory(_ directory: URL) throws {

@@ -21,6 +21,9 @@ steps:
     kind: task
     instruction: >-
       brief.md와 작업 폴더의 자료 목록, 최신 사용자 정정을 읽는다.
+      촬영분은 방문 단위로 묶어 가져오는 것이 기본이다. 콘텐츠 카드에 이 방문의 Photos 원본이 아직 없으면
+      촬영 날짜를 색인(reels_photos_index)하고 방문 그룹을 고른 뒤 reels_import_photos_bundle로 그룹의 사진·영상·Live Photo 전체를 카드에 원본 복사로 가져온다.
+      Photos 원본은 복사만 하고 바꾸지 않는다. inspect 미리보기나 영상만 가져오기로 대신하지 않는다.
       촬영분 전체를 Dashboard 분석(reels_start_analysis)으로 확인하고 실제 미리보기를 함께 본다.
       이미지를 직접 잘라 정적으로 분석하는 것으로 앱 분석을 대신하지 않는다.
       고른 컷만이 아니라 촬영분 전체 장면을 evidence/media-scenes.json에 올린다
@@ -32,11 +35,14 @@ steps:
       물을 것이 하나도 없으면 질문을 지어내지 않고, 폼에는 "더 남기거나 바로잡을 경험이 있는지"를 묻는 확인 질문 하나만 둔다(폼은 질문이 하나 이상 있어야 한다).
     tools:
       - {server: reels_dashboard, name: reels_get_content, purpose: 콘텐츠 카드와 연결 자료 확인}
+      - {server: reels_dashboard, name: reels_photos_index, purpose: 촬영 날짜 색인}
+      - {server: reels_dashboard, name: reels_photos_group, purpose: 방문 그룹의 사진·영상 확인}
+      - {server: reels_dashboard, name: reels_import_photos_bundle, purpose: 방문 그룹 사진·영상·Live Photo 원본을 카드에 묶어 복사}
       - {server: reels_dashboard, name: reels_photos_search, purpose: 촬영 시각·위치로 빠진 원본 찾기}
       - {server: reels_dashboard, name: reels_start_analysis, purpose: 촬영분 장면·OCR·얼굴 분석}
     inputs: [brief.md]
     outputs: [evidence/media-scenes.json, experience-form.json]
-    completion: [촬영분 전체가 장면 목록에 있음, 확인되지 않은 경험은 질문으로 분리]
+    completion: [방문 Photos 묶음(사진·영상)이 카드에 원본 복사로 연결됨, 촬영분 전체가 장면 목록에 있음, 확인되지 않은 경험은 질문으로 분리]
     on: {done: experience}
   - id: experience
     title: 내 경험 입력

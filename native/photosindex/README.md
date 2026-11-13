@@ -55,7 +55,9 @@ The launcher locates its paired helper without an external `PHOTOSINDEX_APP_PATH
 
 ## Desktop editor source preparation
 
-The direct native bridge additionally supports `editor.materialize` with exactly three string arguments: `id` (group ID), `index-run`, and `asset-id` (public asset ID). It requires current Photos permission, a current index run, membership in the selected group, and a video asset. It does not add or alter the existing CLI commands.
+The direct native bridge additionally supports `media.materialize` with the same three arguments and checks. It accepts photos as well as videos, and for a Live Photo also copies the original motion video (`.pairedVideo`, else `.fullSizePairedVideo`) into the same private workspace. The response is `{assetID, mediaKind, sourcePath, pairedVideoPath?, originalFilename?}`. It only requests resource data; it never changes the Photos asset.
+
+The direct native bridge also supports `editor.materialize` with exactly three string arguments: `id` (group ID), `index-run`, and `asset-id` (public asset ID). It requires current Photos permission, a current index run, membership in the selected group, and a video asset. It does not add or alter the existing CLI commands.
 
 The command uses the existing PhotoKit original materializer to prepare one video under `<supportRoot>/editor-sources/<UUID>/`. The request cannot choose an output directory. Cache directories use mode `0700`, and the resulting regular file uses `0600`; returned paths are checked against the allocated directory. The response is `{assetID, sourcePath, originalFilename?}` and includes no PhotoKit local identifier or location metadata. `originalFilename` is the already-sanitized public filename, when present. Failed preparation removes its partial UUID cache. Existing successful caches remain available for editor jobs; deleting a cache is separate from deleting a Photos asset.
 

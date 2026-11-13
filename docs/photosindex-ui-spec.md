@@ -76,7 +76,7 @@ Electron + React 앱이 PhotosIndex의 사용자 기능 전체를 제공해야 �
 
 ## 5. 복사·이동·복구 UX
 
-**원칙 (2026-11-13): Photos 원본은 기본적으로 손대지 않아요.** 기본 실행은 복사예요. 촬영 보관함의 첫 번째(primary) 버튼은 `복사 계획 만들기`이고, `이동 계획 만들기`는 원본 삭제를 원할 때 사용자가 직접 고르는 보조 버튼이에요. 이동은 별도 확인 체크와 native 확인창(기본 선택 `취소`)을 모두 거쳐야 실행돼요. MCP·CLI·워크플로에는 이동 실행 도구가 없고, 영상 가져오기(`reels_import_photos_video`)는 앱 저장소로 복사만 해요. 회귀 검사: `tests/unit/photos-copy-default.test.ts`, `tests/web/workspace.spec.ts`의 기본 복사 검사.
+**원칙 (2026-11-13): Photos 원본은 기본적으로 손대지 않아요.** 기본 실행은 복사예요. 촬영 보관함의 첫 번째(primary) 버튼은 `복사 계획 만들기`이고, `이동 계획 만들기`는 원본 삭제를 원할 때 사용자가 직접 고르는 보조 버튼이에요. 이동은 별도 확인 체크와 native 확인창(기본 선택 `취소`)을 모두 거쳐야 실행돼요. MCP·CLI·워크플로에는 이동 실행 도구가 없고, 영상 가져오기(`reels_import_photos_video`)와 사진·영상 묶음 가져오기(`reels_import_photos_bundle`)는 앱 저장소로 복사만 해요. 회귀 검사: `tests/unit/photos-copy-default.test.ts`, `tests/web/workspace.spec.ts`의 기본 복사 검사.
 
 근거: `ExportCommandService.swift`, `Sources/PhotosIndexExport/{ExportPlanner,ExportApplier,MoveApplier,PendingMoveStore,ExportSupport,ExportTypes}.swift`.
 

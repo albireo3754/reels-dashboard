@@ -1,5 +1,15 @@
 # Reels Dashboard 진행 상태
 
+## Photos 묶음 가져오기(관련 데이터 기본 묶음) — 2026-11-13
+
+배경: 사용자 지시 "사진도 가져와. 블로그 때문에 관련된 데이터는 다 묶어서 가져오는 걸 기본으로". 기존에는 영상 1개씩(`reels_import_photos_video`) 가져와 카드가 영상마다 생겼고, 사진은 inspect 미리보기로만 썼다.
+
+- [x] native `media.materialize`: `editor.materialize`와 같은 인자·권한·그룹·index-run 검사로 사진·영상 모두 private `editor-sources/<UUID>/`에 복사. Live Photo는 원본 motion(`.pairedVideo`, 없으면 `.fullSizePairedVideo`)도 같은 폴더에 복사. PhotoKit은 resource 데이터 요청만. Swift 테스트 5개 추가.
+- [x] MCP·CLI `reels_import_photos_bundle`(`reels import-photos-bundle`): 입력 `projectId`·`groupId`·`indexRunId`·선택 `assetIds`. 영상은 카드 없는 편집 프로젝트로 만들어 대상 카드 `production.edits`에 연결, 사진·Live Photo 영상은 `footage` 자료로 등록. 카드 단계·다음 할 일은 바꾸지 않음.
+- [x] 멱등: 프로필 `photos-imports.json` ledger(공개 asset ID 기준). 단일 영상 가져오기도 ledger에 기록. 파일·편집이 사라진 항목만 다시 복사. 다른 카드에 이미 연결된 영상은 `linked-elsewhere`로 보고하고 옮기지 않음.
+- [x] 검증: 단위 `tests/unit/photos-bundle.test.ts`(8), `photos-copy-default`에 새 도구 분류, e2e `tests/electron/photos-bundle.spec.ts`(REELS_DEMO 합성 Photos, `REELS_EDITOR_QA=1`). 실제 Photos 보관함 QA는 하지 않음.
+- 문서: [MCP](docs/mcp-usage.md#photos-bundle-import-default-for-blog-and-reels-material)·[인터페이스](docs/agent-interface.md)·[CLI 스킬](skills/reels-cli/SKILL.md)·[native README](native/photosindex/README.md).
+
 ## Photos 원본 기본 불변(복사 기본) — 2026-11-13
 
 배경: 사용자 지시 "대시보드로 영상 정리할 때 기존 Photos는 손대지 마라". 처음에는 move 제거를 검토했으나 사용자 정정으로 move는 그대로 두고 복사를 기본으로 했다.
