@@ -34,7 +34,6 @@ import {
   type Guidance,
 } from "./outcome";
 import {
-  builtinCommands,
   didYouMean,
   issueSummary,
   localPath,
@@ -60,52 +59,6 @@ import {
   type CliIO,
 } from "./tool-command";
 
-const helpText = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
-Start:   reels status
-Find:    reels tools | reels tools update-project | reels help update-project
-List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
-Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
-Edit:    reels update-project --project-id <id> --expected-updated-at <rev> --patch '{"cover":{"time":7.25}}'
-Preview: reels preview-frame --project-id <id> --expected-updated-at <rev> --kind cover --out cover.png
-Render:  reels start-render --project-id <id> --expected-updated-at <rev> --target video --output-path /abs/new.mov --wait
-Resume:  reels get-render-job --job-id <id> --wait
-Any:     reels call <tool> --input - < input.json
-Copy:    reels prepare-media --list | reels prepare-media --help
-Env:     REELS_USER_DATA selects the app profile.
-Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.`;
-const usages = {
-  status: "reels status [--timeout <s>]",
-  tools: "reels tools [<name|slug>]",
-  call: "reels call <name|slug> [--input <json|-> | --input-file <path> | schema flags]",
-  prepareMedia:
-    "reels prepare-media --project-id <id> --selection <file|-> --destination <abs> | --list [--project-id <id>]",
-};
-const prepareMediaHelp = `Usage: reels prepare-media --project-id <id> --selection <file|-> --destination <abs>
-       reels prepare-media --list [--project-id <id>]
-Copies registered media to a new folder with receipt.json. Works without the app.
---selection    File holding a JSON array of absolute registered paths, or - for stdin.
---destination  New folder: it must not exist, and its parent must exist and not be a symlink.
---list         Read-only. Projects, or one project's registered paths. Works without the app.
-Select files, not folders; for a folder resource list the files inside it. Media: ${mediaExtensions.join(" ")}
-Example: reels prepare-media --list --project-id sample
-Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`;
-const statusHelp = `Usage: ${usages.status}
-Reports whether the app can be called. Exit 0 even when it cannot.
-Example: reels status --timeout 2`;
-const toolsHelp = `Usage: ${usages.tools}
-Lists every tool and built-in command, or prints one tool's input schema and flags.
-Example: reels tools start-render`;
-const callHelp = `Usage: ${usages.call}
-Calls any tool. List them with: reels tools
-Example: reels call reels_get_project --input '{"projectId":"<uuid>"}'
-Example: reels call reels_update_project --input - < input.json`;
-const builtinSummaries = [
-  { command: "reels status", summary: "Whether the app can be called." },
-  {
-    command: "reels prepare-media",
-    summary: "Copy registered media to a new folder. Works without the app.",
-  },
-];
 const statusOptions = { timeout: { type: "string" } } as const;
 const prepareMediaOptions = {
   "project-id": { type: "string" },
@@ -236,8 +189,8 @@ async function status(
   scope: Scope,
 ): Promise<Success> {
   scope.readOnly = true;
-  if (wantsHelp(args, statusOptions)) return showHelp(statusHelp);
-  const { timeout } = parseOptions(args, statusOptions, usages.status);
+  if (wantsHelp(args, statusOptions)) return showHelp(statusCommand.help);
+  const { timeout } = parseOptions(args, statusOptions, statusCommand.usage);
   const cli = { version };
   const timeoutMs =
     secondsOption(timeout, "--timeout", maxCallSeconds) ??
@@ -292,10 +245,10 @@ const firstSentence = (text: string) =>
 
 function tools(args: string[], scope: Scope): Success {
   scope.readOnly = true;
-  if (wantsHelp(args)) return showHelp(toolsHelp);
+  if (wantsHelp(args)) return showHelp(toolsCommand.help);
   if (args.length > 1 || args[0]?.startsWith("-"))
     throw new CliError("USAGE", "tools takes at most one tool name.", {
-      usage: usages.tools,
+      usage: toolsCommand.usage,
     });
   if (!args.length)
     return {
@@ -589,8 +542,9 @@ async function prepareMedia(
 ): Promise<Success> {
   // Before parsing, so a bad option in a read-only listing also reads as one.
   scope.readOnly = args.includes("--list");
-  if (wantsHelp(args, prepareMediaOptions)) return showHelp(prepareMediaHelp);
-  const usage = usages.prepareMedia;
+  if (wantsHelp(args, prepareMediaOptions))
+    return showHelp(prepareMediaCommand.help);
+  const usage = prepareMediaCommand.usage;
   const options = parseOptions(args, prepareMediaOptions, usage);
   const projectId = options["project-id"];
   const { selection, destination, list } = options;
@@ -677,6 +631,148 @@ function exitCodeHelp(): Success {
   };
 }
 
+async function call(args: string[], io: CliIO, scope: Scope): Promise<Success> {
+  if (args[0] === undefined || args[0].startsWith("-")) {
+    if (wantsHelp(args)) return showHelp(callCommand.help);
+    throw new CliError("USAGE", "call needs a tool name.", {
+      usage: callCommand.usage,
+    });
+  }
+  return runTool(requireTool(args[0]), args.slice(1), io, scope);
+}
+
+/** What a built-in gets from the router besides its arguments. */
+type BuiltinContext = {
+  io: CliIO;
+  scope: Scope;
+  /** Dispatches another argv, as `help <name>` does. */
+  route(argv: string[]): Promise<Success>;
+};
+/**
+ * A built-in command or global flag. To add one, define an entry and list it in
+ * `builtins`: the router, `reels tools` and the unknown-name suggestions all read it.
+ */
+type Builtin = {
+  /** argv[0]. A name starting with `-` is a global flag, not a command word. */
+  name: string;
+  /** Other argv[0] spellings that run this entry. */
+  aliases?: readonly string[];
+  /** Attached to its usage errors. */
+  usage?: string;
+  /** What `reels help <name>` and `--help` print, ending in an example. */
+  help?: string;
+  /** Set on commands that do work; `reels tools` lists them in data.builtins. */
+  summary?: string;
+  run(args: string[], context: BuiltinContext): Promise<Success> | Success;
+};
+/** `reels help <topic>`: help that belongs to no command. */
+type HelpTopic = { name: string; run(): Success };
+
+const globalHelp = `reels - Reels Dashboard agent CLI. stdout: one JSON document. Diagnostics: stderr.
+Start:   reels status
+Find:    reels tools | reels tools update-project | reels help update-project
+List:    reels list-projects     (.data.editorProjects[].id for editing, .data.dashboard.projects[].id for content)
+Read:    reels get-project --project-id <id>     (.data.updatedAt is the revision)
+Edit:    reels update-project --project-id <id> --expected-updated-at <rev> --patch '{"cover":{"time":7.25}}'
+Preview: reels preview-frame --project-id <id> --expected-updated-at <rev> --kind cover --out cover.png
+Render:  reels start-render --project-id <id> --expected-updated-at <rev> --target video --output-path /abs/new.mov --wait
+Resume:  reels get-render-job --job-id <id> --wait
+Any:     reels call <tool> --input - < input.json
+Copy:    reels prepare-media --list | reels prepare-media --help
+Env:     REELS_USER_DATA selects the app profile.
+Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.`;
+const helpFlag = {
+  name: "--help",
+  aliases: ["-h"],
+  help: globalHelp,
+  run: () => showHelp(globalHelp),
+} satisfies Builtin;
+const versionFlag = {
+  name: "--version",
+  run: () => ({ data: { version } }),
+} satisfies Builtin;
+const statusUsage = "reels status [--timeout <s>]";
+const statusCommand = {
+  name: "status",
+  usage: statusUsage,
+  help: `Usage: ${statusUsage}
+Reports whether the app can be called. Exit 0 even when it cannot.
+Example: reels status --timeout 2`,
+  summary: "Whether the app can be called.",
+  run: (args, { io, scope }) => status(args, io, scope),
+} satisfies Builtin;
+const toolsUsage = "reels tools [<name|slug>]";
+const toolsCommand = {
+  name: "tools",
+  usage: toolsUsage,
+  help: `Usage: ${toolsUsage}
+Lists every tool and built-in command, or prints one tool's input schema and flags.
+Example: reels tools start-render`,
+  run: (args, { scope }) => tools(args, scope),
+} satisfies Builtin;
+const callUsage =
+  "reels call <name|slug> [--input <json|-> | --input-file <path> | schema flags]";
+const callCommand = {
+  name: "call",
+  usage: callUsage,
+  help: `Usage: ${callUsage}
+Calls any tool. List them with: reels tools
+Example: reels call reels_get_project --input '{"projectId":"<uuid>"}'
+Example: reels call reels_update_project --input - < input.json`,
+  run: (args, { io, scope }) => call(args, io, scope),
+} satisfies Builtin;
+const prepareMediaCommand = {
+  name: "prepare-media",
+  usage:
+    "reels prepare-media --project-id <id> --selection <file|-> --destination <abs> | --list [--project-id <id>]",
+  help: `Usage: reels prepare-media --project-id <id> --selection <file|-> --destination <abs>
+       reels prepare-media --list [--project-id <id>]
+Copies registered media to a new folder with receipt.json. Works without the app.
+--selection    File holding a JSON array of absolute registered paths, or - for stdin.
+--destination  New folder: it must not exist, and its parent must exist and not be a symlink.
+--list         Read-only. Projects, or one project's registered paths. Works without the app.
+Select files, not folders; for a folder resource list the files inside it. Media: ${mediaExtensions.join(" ")}
+Example: reels prepare-media --list --project-id sample
+Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`,
+  summary: "Copy registered media to a new folder. Works without the app.",
+  run: (args, { io, scope }) => prepareMedia(args, io, scope),
+} satisfies Builtin;
+export const helpTopics: readonly HelpTopic[] = [
+  { name: "exit-codes", run: exitCodeHelp },
+];
+const helpCommand = {
+  name: "help",
+  /** A topic first; anything else is `<args> --help`. */
+  run: (args, { route }) => {
+    const topic = helpTopics.find(({ name }) => name === args[0]);
+    if (topic) return topic.run();
+    return route(args.length ? [...args, "--help"] : ["--help"]);
+  },
+} satisfies Builtin;
+
+/** Every built-in. The order of commands is the order of suggestions and of data.builtins. */
+export const builtins: readonly Builtin[] = [
+  helpFlag,
+  versionFlag,
+  statusCommand,
+  toolsCommand,
+  callCommand,
+  prepareMediaCommand,
+  helpCommand,
+];
+/** Command words: never tool names, and offered when a name is mistyped. */
+export const builtinCommands = builtins
+  .map(({ name }) => name)
+  .filter((name) => !name.startsWith("-"));
+const builtinSummaries = builtins.flatMap(({ name, summary }) =>
+  summary ? [{ command: `reels ${name}`, summary }] : [],
+);
+const builtinsByName = new Map(
+  builtins.flatMap((entry) =>
+    [entry.name, ...(entry.aliases ?? [])].map((name) => [name, entry]),
+  ),
+);
+
 async function route(
   argv: string[],
   io: CliIO,
@@ -685,24 +781,13 @@ async function route(
   const [command, ...rest] = argv;
   if (command === undefined)
     throw new CliError("USAGE", "Missing command.", { usage: "reels --help" });
-  if (command === "--help" || command === "-h") return showHelp(helpText);
-  if (command === "help")
-    return rest[0] === "exit-codes"
-      ? exitCodeHelp()
-      : route(rest.length ? [...rest, "--help"] : ["--help"], io, scope);
-  if (command === "--version") return { data: { version } };
-  if (command === "status") return status(rest, io, scope);
-  if (command === "tools") return tools(rest, scope);
-  if (command === "prepare-media") return prepareMedia(rest, io, scope);
-  if (command === "call") {
-    if (rest[0] === undefined || rest[0].startsWith("-")) {
-      if (wantsHelp(rest)) return showHelp(callHelp);
-      throw new CliError("USAGE", "call needs a tool name.", {
-        usage: usages.call,
-      });
-    }
-    return runTool(requireTool(rest[0]), rest.slice(1), io, scope);
-  }
+  const builtin = builtinsByName.get(command);
+  if (builtin)
+    return builtin.run(rest, {
+      io,
+      scope,
+      route: (next) => route(next, io, scope),
+    });
   const tool = resolveTool(command);
   if (tool) return runTool(tool, rest, io, scope);
   throw new CliError("USAGE", `Unknown command: ${command}`, {

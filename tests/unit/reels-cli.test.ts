@@ -32,9 +32,13 @@ import {
 import { callAgent, startAgentSocket } from "../../src/shared/lib/agent-socket";
 import { LocalStore } from "../../src/shared/lib/storage";
 import type { RenderJob } from "../../src/shared/editor";
-import { run } from "../../src/app/cli/run";
 import {
   builtinCommands,
+  builtins,
+  helpTopics,
+  run,
+} from "../../src/app/cli/run";
+import {
   cliOptions,
   parseToolArgs,
   propertyFlag,
@@ -233,6 +237,29 @@ test("tools list and schemas match the shared definitions and the real MCP serve
       await transport.close();
     }
   });
+});
+
+test("the built-in table keeps names unique and help reachable", () => {
+  const names = builtins.flatMap(({ name, aliases }) => [
+    name,
+    ...(aliases ?? []),
+  ]);
+  assert.equal(new Set(names).size, names.length);
+  // A topic is matched before routing, so it would hide a command or tool of the same name.
+  const topics = helpTopics.map(({ name }) => name);
+  assert.equal(new Set(topics).size, topics.length);
+  for (const topic of topics) {
+    assert.ok(!names.includes(topic), topic);
+    assert.ok(!toolSlugs.includes(topic), topic);
+  }
+  for (const entry of builtins) {
+    const flag = entry.name.startsWith("-");
+    assert.equal(builtinCommands.includes(entry.name), !flag, entry.name);
+    // data.builtins lists commands an agent runs, never a flag.
+    if (entry.summary) assert.ok(!flag, entry.name);
+    if (entry.help) assert.match(entry.help, /Example: reels |\nStart: /);
+    if (entry.usage) assert.match(entry.usage, /^reels /);
+  }
 });
 
 test("generated names never collide with built-ins or CLI options", async () => {

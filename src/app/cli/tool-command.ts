@@ -37,13 +37,6 @@ export const cliOptions = {
 export const toolCliOption = (name: ToolName): ToolCliOption =>
   (cliOptions as Partial<Record<ToolName, ToolCliOption>>)[name] ?? {};
 
-export const builtinCommands = [
-  "status",
-  "tools",
-  "call",
-  "prepare-media",
-  "help",
-];
 export const reservedOptions = {
   input: { type: "string" },
   "input-file": { type: "string" },
