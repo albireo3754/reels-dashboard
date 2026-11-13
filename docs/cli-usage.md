@@ -36,6 +36,7 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |
 | `reels help --plain [<topic\|command\|tool>]` | no | The same help as [text for people](#text-for-people) instead of JSON. A tool shows the detail of `reels tools --plain <tool>`. |
 | `reels tools --plain [<name\|slug> \| --group <id>]` | no | The tool list grouped by domain, or one tool's usage, flags, example and group, as [text for people](#text-for-people). |
+| `reels completion <bash\|zsh\|fish>` | no | A [shell completion](#shell-completion) script as text. Installs nothing. |
 
 ### Agent guide
 
@@ -51,6 +52,21 @@ A tool can be named as `reels_get_project`, `get_project` (the form the guidance
 - `reels help --plain <tool>` and `reels tools --plain <tool>`: usage, every flag with its type, allowed values, format and whether it is required, the CLI options, an example and the group.
 - `reels tools --plain [--group <id>]`: the built-in commands, then each group as `<id>: <summary> (<count>)` followed by `  reels <slug>  <summary>` lines; read-only tools end in `(read-only)`.
 - `reels help --plain exit-codes`: the exit code table with names. `reels help --plain agent`: the Markdown guide as it is.
+
+### Shell completion
+
+`reels completion bash`, `zsh` or `fish` prints a completion script on stdout: the first word completes to the commands, tool slugs, `--help` and `--version`; after `help` come help topics, commands and tools; after a command or a tool (also as `call <tool>`) come its own flags; after `--group` come the group ids. The script is generated when the command runs from the built-in commands and the tool schemas, so it matches the installed CLI version. It is static: re-run it after updating the app. The CLI installs nothing and never edits shell files; a person sets it up once, for example:
+
+```sh
+# bash: in ~/.bashrc
+source <(reels completion bash)
+# zsh: save it on $fpath before compinit runs (the folder is an example)
+reels completion zsh > ~/.zfunc/_reels   # with fpath=(~/.zfunc $fpath) in ~/.zshrc
+# fish
+reels completion fish > ~/.config/fish/completions/reels.fish
+```
+
+A missing or unknown shell exits 2 with `didYouMean` and the valid shells. The bash and zsh scripts are checked with `bash -n` and `zsh -n` in the tests; the fish script is checked only where `fish` is installed.
 
 ### Tool groups
 
@@ -75,7 +91,7 @@ Use one input source: schema flags, `--input` or `--input-file`. With none, the 
 
 stdout is one line holding one JSON document, including for failures, `--help` and SIGHUP, SIGINT or SIGTERM at any point of a command. Four things can still leave it empty: SIGKILL, SIGQUIT (which keeps its core-dump meaning), a signal in the first moments before the CLI has finished loading, and a second signal after the first. Treat an empty stdout from a write as `writeOutcome: "unknown"`. If the document cannot be written in full, for example on a full disk, the CLI says so in one stderr line and exits non-zero, keeping the command's own failure code and using 11 if the command had succeeded. stdout then holds cut-off JSON, so treat it like an empty one. A reader closing the pipe early is not such a failure. stderr carries a one-line diagnostic and `--wait` progress for people; `--help` writes only to stdout. There are no prompts, colors or spinners.
 
-The only exception is opt-in text for people: `reels help --plain ...` and `reels tools --plain ...` write plain text instead of the JSON document. Nothing else writes text, and without `--plain` these two commands print JSON as before. A failure of either, including a bad `--plain` form, is still the one-line JSON document with its usual exit code, and text that cannot be written in full exits 11 like JSON does.
+The only exceptions are three opt-in text forms for people: `reels help --plain ...` and `reels tools --plain ...` write plain text instead of the JSON document, and `reels completion <shell>` writes a shell script. Nothing else writes text, and without `--plain` `help` and `tools` print JSON as before. A failure of any of them, including a bad `--plain` form or an unknown shell, is still the one-line JSON document with its usual exit code, and text that cannot be written in full exits 11 like JSON does.
 
 ```json
 {"ok":true,"tool":"reels_get_project","data":{"id":"…","updatedAt":"…"}}

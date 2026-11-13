@@ -26,6 +26,11 @@ import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
 import { engines, version } from "../../../package.json";
 import { agentGuide } from "./agent-guide";
 import { runtimeCheck, setupChecks, type Check } from "./doctor";
+import {
+  completionScript,
+  completionShells,
+  type CompletionShell,
+} from "./completion";
 import { checkOutputPath, saveImage } from "./image-output";
 import {
   plainExitCodes,
@@ -115,6 +120,13 @@ const shellArg = (value: unknown) => {
 };
 
 const showHelp = (text: string): Success => ({ data: { help: text } });
+
+/** Words for `reels completion`: a command's own options, plus --help. */
+const optionWords = (options: object) => [
+  ...Object.keys(options).map((name) => `--${name}`),
+  "--help",
+];
+const toolSlugs = () => toolNames.map(toolSlug);
 
 type Input = Record<string, any>;
 
@@ -851,6 +863,8 @@ type Builtin = {
   help?: string;
   /** Set on commands that do work; `reels tools` lists them in data.builtins. */
   summary?: string;
+  /** Words `reels completion` offers after this command. */
+  completions?: () => readonly string[];
   run(args: string[], context: BuiltinContext): Promise<Success> | Success;
 };
 /** `reels help <topic>`: help that belongs to no command. `plain` asks for text. */
@@ -898,6 +912,7 @@ const statusCommand = {
 Reports whether the app can be called. Exit 0 even when it cannot.
 Example: reels status --timeout 2`,
   summary: "Whether the app can be called.",
+  completions: () => optionWords(statusOptions),
   run: (args, { io, scope }) => status(args, io, scope),
 } satisfies Builtin;
 const doctorUsage = "reels doctor [--timeout <s>]";
@@ -910,6 +925,7 @@ Read-only checks of why reels cannot be used right now: runtime, profile, app,
 and fix advice that the CLI never applies. Exit 0 whatever it finds.
 Example: reels doctor`,
   summary: "Read-only checks of runtime, profile, app, launcher and PATH.",
+  completions: () => optionWords(statusOptions),
   run: (args, { io, scope }) => doctor(args, io, scope),
 } satisfies Builtin;
 const toolsUsage = "reels tools [<name|slug> | --group <id>]";
@@ -923,6 +939,7 @@ Lists every tool and built-in command, or prints one tool's input schema and fla
 --plain       Text for people instead of JSON; failures stay JSON. Also: reels help --plain [<name>].
 Example: reels tools start-render
 Example: reels tools --group render`,
+  completions: () => ["--plain", ...optionWords(toolsOptions), ...toolSlugs()],
   run: (args, { scope }) => tools(args, scope),
 } satisfies Builtin;
 const callUsage =
@@ -934,6 +951,7 @@ const callCommand = {
 Calls any tool. List them with: reels tools
 Example: reels call reels_get_project --input '{"projectId":"<uuid>"}'
 Example: reels call reels_update_project --input - < input.json`,
+  completions: toolSlugs,
   run: (args, { io, scope }) => call(args, io, scope),
 } satisfies Builtin;
 const prepareMediaCommand = {
@@ -950,6 +968,7 @@ Select files, not folders; for a folder resource list the files inside it. Media
 Example: reels prepare-media --list --project-id sample
 Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`,
   summary: "Copy registered media to a new folder. Works without the app.",
+  completions: () => optionWords(prepareMediaOptions),
   run: (args, { io, scope }) => prepareMedia(args, io, scope),
 } satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
@@ -967,6 +986,12 @@ export const helpTopics: readonly HelpTopic[] = [
 const helpUsage = "reels help [--plain] [<topic|command|tool>]";
 const helpCommand = {
   name: "help",
+  completions: () => [
+    "--plain",
+    ...helpTopics.map(({ name }) => name),
+    ...builtinCommands,
+    ...toolSlugs(),
+  ],
   /** A topic first; anything else is `<args> --help`. `--plain` is taken off first. */
   run: async (argv, { route }) => {
     const { plain, rest: args } = takePlain(argv, helpUsage);
@@ -980,6 +1005,19 @@ const helpCommand = {
   },
 } satisfies Builtin;
 
+const completionUsage = "reels completion <bash|zsh|fish>";
+const completionCommand = {
+  name: "completion",
+  usage: completionUsage,
+  help: `Usage: ${completionUsage}
+Prints a shell completion script as text, not JSON. It installs nothing.
+The script lists this version's commands and flags: re-run it after updating the app.
+Example: reels completion zsh > ~/.zfunc/_reels
+Example: source <(reels completion bash)`,
+  completions: () => completionShells,
+  run: (args, { scope }) => completion(args, scope),
+} satisfies Builtin;
+
 /** Every built-in. The order of commands is the order of suggestions and of data.builtins. */
 export const builtins: readonly Builtin[] = [
   helpFlag,
@@ -990,6 +1028,7 @@ export const builtins: readonly Builtin[] = [
   callCommand,
   prepareMediaCommand,
   helpCommand,
+  completionCommand,
 ];
 /** Command words: never tool names, and offered when a name is mistyped. */
 export const builtinCommands = builtins
@@ -998,6 +1037,63 @@ export const builtinCommands = builtins
 const builtinSummaries = builtins.flatMap(({ name, summary }) =>
   summary ? [{ command: `reels ${name}`, summary }] : [],
 );
+/** Read from the built-in table and the tool definitions each time, so it matches this version. */
+function completionSpec() {
+  return {
+    version,
+    first: [
+      ...builtinCommands,
+      ...toolSlugs(),
+      ...builtins.flatMap(({ name }) => (name.startsWith("-") ? [name] : [])),
+    ],
+    commands: [
+      ...builtins.flatMap(({ name, completions }) =>
+        completions && !name.startsWith("-")
+          ? [{ names: [name], words: completions() }]
+          : [],
+      ),
+      ...toolNames.map((name) => ({
+        names: [toolSlug(name), name],
+        words: [
+          ...toolFlags(name).map(({ flag }) => flag),
+          ...toolOptionDocs(name).map(({ flag }) => flag),
+          "--help",
+        ],
+      })),
+    ],
+    groups: toolGroupIds,
+  };
+}
+
+function completion(args: string[], scope: Scope): Success {
+  scope.readOnly = true;
+  if (wantsHelp(args)) return showHelp(completionCommand.help);
+  const [shell, ...extra] = args;
+  const usage = completionCommand.usage;
+  if (shell === undefined || shell.startsWith("-"))
+    throw new CliError(
+      "USAGE",
+      shell === undefined
+        ? `completion needs a shell: ${completionShells.join(", ")}.`
+        : `Unknown option '${shell}'`,
+      { didYouMean: [...completionShells], usage },
+    );
+  if (!(completionShells as readonly string[]).includes(shell)) {
+    const near = closest(shell, completionShells);
+    throw new CliError(
+      "USAGE",
+      `Unknown shell: ${shell}. Shells: ${completionShells.join(", ")}.`,
+      { didYouMean: near.length ? near : [...completionShells], usage },
+    );
+  }
+  if (extra.length)
+    throw new CliError("USAGE", "completion takes one shell.", { usage });
+  return {
+    data: null,
+    raw: completionScript(shell as CompletionShell, completionSpec()),
+  };
+}
+
 const builtinsByName = new Map(
   builtins.flatMap((entry) =>
     [entry.name, ...(entry.aliases ?? [])].map((name) => [name, entry]),
