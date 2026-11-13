@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## main 통합·정식 경로 패키지 실행 — 2026-11-13
+
+- [x] 남은 콘텐츠 평가 이력·OpenCut 준비 변경을 main `a1d84dc`에 통합. 미병합 로컬 브랜치 없음. 별도 build worktree는 같은 기존 main에서 만든 무변경 빌드용 checkout이었으며 새 코드가 없었음.
+- [x] 정본 checkout에서 `npm run package:mac`으로 웹·Electron·PhotosIndex·편집 엔진을 다시 빌드. 기존 main 패키지를 `release/backups/main-before-20261113-161423`에 보존하고 새 패키지는 `release/mac-arm64/Reels Dashboard.app`에 생성.
+- [x] 패키지 UI·IPC·저장/재열기 8개 통과·opt-in 2개 skip. 검토 엔진 1개는 테스트 프로세스의 OpenTelemetry CJS 로딩 오류 후 `NODE_OPTIONS=--require=@opentelemetry/api`로 재실행 통과. 타입/FSD·작업본/전체 이력 공개 소스 검사·공개 감사/OpenCut 단위6개 통과. 직전 전체 단위607 통과·5 skip 결과를 재사용.
+- [x] 기존 worktree 앱 정상 종료 → main 패키지 실제 실행. 같은 사용자 profile 유지, 편집 엔진 준비·앱 online 확인. 앱의 관리형 `reels` 런처도 main 패키지 경로로 갱신됐고 doctor의 런타임·프로필·앱·런처·PATH 검사 통과.
+- [x] 패키지 `main.cjs`·CLI 바이트와 main 빌드 출력의 해시 일치. 운영 콘텐츠 쓰기·외부 게시·push는 하지 않음. 앞 절의 평가 수집 기능은 이 패키지부터 적용됨.
+
+
 ## 블로그 저장 이력·콘텐츠 평가 파이프라인 — 2026-11-13
 
 - [x] 실제 마크업 저장 경로에 불변 원문 revision·정확한 diff·저장 시도/영수증을 추가. no-op, 중복 피드백, 중단 복구, 외부 변경의 unknown 관측, 기존 병합·충돌 사본 보존. 오래된 base를 불변 이력에서 복구하면 이전 중간 수정도 충돌로 정확히 보고.
