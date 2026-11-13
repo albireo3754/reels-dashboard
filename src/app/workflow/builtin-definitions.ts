@@ -58,6 +58,7 @@ steps:
       모든 장면을 evidence/story-media-plan.json에 use/omit/hold로 결정하고 article.markup.md와 story-layout.md에 반영한다.
       채택한 사진·GIF는 바로 앞이나 뒤의 문장 또는 블록과 짝을 이룬다. 짝 문장은 사진만으로는 알 수 없는 경험·정보를 더하는 문장이고,
       사용자 답 문장이 그 사진 옆에 오면 그 문장이 짝이다. 메뉴 박스·표처럼 같은 내용을 전하는 블록 옆의 증빙 사진(영수증·메뉴판)은 그 블록이 짝이다.
+      같은 장면 묶음(Bundle·Collage)은 묶음의 이야기 문장 하나가 묶음 전체의 짝이다. 짝을 만들려고 사진마다 문장을 새로 쓰지 않는다.
       사진을 가리키기만 하는 문장("~는 이렇게 나왔어요", "~ 사진이에요")과 사진·영수증에서 읽히는 품목명·상표·수량을 옮겨 적은 줄은 짝으로 세지 않고 쓰지 않는다.
       문장은 사진에 보이는 것과 사용자 답에 근거하고 감상을 지어내지 않는다.
       맛집 글은 촬영분에서 메뉴판·영수증 컷을 찾아보고, 없으면 확인한 메뉴·가격 근거를 작업 폴더에 남긴다. 외부 자료를 본문에 쓸지는 로컬 가이드를 따른다.
@@ -67,7 +68,7 @@ steps:
       - {server: reels_dashboard, name: reels_convert_gif, purpose: 동작 영상 무음 GIF}
     inputs: [evidence/media-scenes.json]
     outputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json]
-    completion: [모든 장면 결정, 채택한 사진마다 짝 문장 또는 블록(가리키기 문장 없음), 사용자 원문 기반 문장, blog-markup check 통과]
+    completion: [모든 장면 결정, 채택한 사진·묶음마다 짝 문장 또는 블록(가리키기 문장 없음), 사용자 원문 기반 문장, blog-markup check 통과]
     on: {done: image_review}
   - id: image_review
     title: 이미지 구성 검토
