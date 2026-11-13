@@ -57,6 +57,11 @@ export function instagramShortcode(value) {
   if (!match) throw new Error("Invalid Instagram permalink");
   return match[1];
 }
+function publicPermalink(value) {
+  const shortcode = instagramShortcode(value);
+  const kind = new URL(value).pathname.includes("/reel/") ? "reel" : "p";
+  return `https://www.instagram.com/${kind}/${shortcode}/`;
+}
 export class InstagramInsightsClient {
   #token;
   #fetch;
@@ -201,11 +206,11 @@ export class InstagramInsightsClient {
         seen.has(item.id)
       )
         throw new Error("Invalid or duplicate media metadata");
-      instagramShortcode(item.permalink);
+      const permalink = publicPermalink(item.permalink);
       seen.add(item.id);
       return {
         id: item.id,
-        permalink: item.permalink,
+        permalink,
         mediaType: item.media_type,
         mediaProductType: item.media_product_type,
         publishedAt: new Date(item.timestamp).toISOString(),
@@ -221,6 +226,7 @@ export class InstagramInsightsClient {
       metrics.some((m) => ![...CORE_METRICS, ...REEL_METRICS].includes(m))
     )
       throw new Error("Invalid insights request");
+    const permalink = publicPermalink(media.permalink);
     const names = [...new Set(metrics)];
     const parse = (metric, data) => {
       const item = data.find((x) => x.name === metric);
@@ -243,7 +249,7 @@ export class InstagramInsightsClient {
         throw new Error("Invalid insights response");
       return {
         mediaId: media.id,
-        permalink: media.permalink,
+        permalink,
         apiVersion: this.apiVersion,
         metrics: names.map((m) => parse(m, response.data)),
       };
@@ -285,7 +291,7 @@ export class InstagramInsightsClient {
     }
     return {
       mediaId: media.id,
-      permalink: media.permalink,
+      permalink,
       apiVersion: this.apiVersion,
       metrics: values,
     };

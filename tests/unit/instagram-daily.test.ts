@@ -152,3 +152,31 @@ test("fixed error summaries distinguish authentication, permissions, limits and 
     !JSON.stringify(instagramFailure(new Error(secret))).includes(secret),
   );
 });
+
+test("collection reports persistence boundaries and preserves history when index replacement fails", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "instagram-boundary-"));
+  try {
+    const file = path.join(root, "credential");
+    await writeFile(file, credential, { mode: 0o600 });
+    const store = new InstagramInsightsStore(root, api());
+    await store.connect({username: "creator_demo", login: "unified"}, file);
+    const stages: string[] = [];
+    await store.refresh("manual", undefined, value => stages.push(value));
+    assert.deepEqual(stages, ["unknown", "applied"]);
+    const historyFile = path.join(root, "instagram-history.json");
+    const history = await readFile(historyFile, "utf8");
+    // Corrupt history must never be replaced by a truncated new index.
+    await writeFile(historyFile, "{broken");
+    stages.length = 0;
+    await assert.rejects(store.refresh("scheduled", undefined, value => stages.push(value)));
+    assert.deepEqual(stages, ["unknown"]);
+    assert.equal(await readFile(historyFile, "utf8"), "{broken");
+    await writeFile(historyFile, history);
+    const failed = new InstagramInsightsStore(root, async () => Response.json({error: {code: 190}}, {status: 401}));
+    stages.length = 0;
+    await assert.rejects(failed.refresh("scheduled", undefined, value => stages.push(value)));
+    assert.deepEqual(stages, []);
+    assert.equal(await readFile(historyFile, "utf8"), history);
+    assert.match(instagramFailure(new InstagramApiError(401,190)).message, /Codex.*갱신/);
+  } finally { await rm(root, {recursive:true, force:true}); }
+});

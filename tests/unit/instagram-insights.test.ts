@@ -24,3 +24,19 @@ test('permalink and pagination do not allow arbitrary origins or credential-bear
  let count=0;const urls:string[]=[];const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'fixture',fetchImpl:async(url:URL)=>{urls.push(url.toString());count++;return count===1?response({data:[],paging:{next:'https://evil.example/?access_token=leak',cursors:{after:'cursor'}}}):response({data:[]});}});
  await client.media({userId:'123',username:'creator_demo'});assert.equal(urls.length,2);assert.ok(urls.every(u=>u.startsWith('https://graph.instagram.com/')));assert.ok(urls[1].includes('after=cursor'));
 });
+
+test('credential-bearing permalink query and fragment never leave the SDK',async()=>{
+ const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'fixture',fetchImpl:async()=>response({data:[{id:'123',permalink:'https://www.instagram.com/creator_demo/reel/Example01/?access_token=private#credential',timestamp:'2026-11-01T00:00:00Z',media_type:'VIDEO',media_product_type:'REELS'}]})});
+ const media=await client.media({userId:'1',username:'creator_demo'});
+ assert.equal(media[0].permalink,'https://www.instagram.com/reel/Example01/');
+ assert.ok(!JSON.stringify(media).includes('private'));
+});
+
+test('direct insights calls normalize permalinks in batch and unsupported-metric results',async()=>{
+ for (const unsupported of [false,true]) {
+  const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'fixture',fetchImpl:async()=>unsupported?response({error:{code:100}},400):response({data:[]})});
+  const result=await client.insights({id:'123',permalink:'https://www.instagram.com/p/Example01/?access_token=private#credential'},['views']);
+  assert.equal(result.permalink,'https://www.instagram.com/p/Example01/');
+  assert.ok(!JSON.stringify(result).includes('private'));
+ }
+});

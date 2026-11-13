@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## Instagram headless CLI 적대적 리뷰 보강 — 2026-11-14
+
+- [x] 기존 `prepare-media`/render/status의 오류 계약과 비교: 저장 전 실패와 SIGTERM은 `not_applied`, 저장 시작 뒤는 `unknown`, history 교체 뒤는 `applied`. 불확실한 결과에는 같은 프로필의 앱을 연 뒤 조회하는 `next`/`hint`, busy에는 기존 `retry: wait`와 소유 프로세스 확인 안내를 제공.
+- [x] 인증 만료·취소는 Codex에 Instagram 조회 토큰 갱신 요청을 안내(message/CLI hint). 기존 비공개 파일·계정 연결 경로를 유지하며 OAuth·자동 갱신·실토큰 교체는 추가하지 않음.
+- [x] SDK의 credential-bearing permalink query/fragment가 저장·반환되던 경로를 공개 게시물 URL로 정규화. `REELS_DEMO=1` CLI의 비공개 수집을 차단. 내장 CLI skill에 앱 없는 수집 경로와 복구 절차 반영.
+- [x] 관련 단위/기존 CLI 99개 중 98 통과·fish 미설치 1 skip, 독립 CLI 번들 4개, background Electron 관련 7개(headless 5·기존 연동/데모 2) 통과. 타입/FSD/build/public audit/diff 검사 통과. 저장 실패에서도 기존 index 바이트 보존과 앱 필요 조건을 명시한 복구 지침을 확인.
+- [x] Astra(gpt-6-astra) 적대적 리뷰 수정 뒤 root 통합 확인: 새 패키지 background Electron 7개·최신 독립 CLI 번들 4개 통과. 검증한 설치본을 기존 경로에 백업 없이 갱신·재실행하고 운영 토큰·연결 설정·history/snapshot 및 다른 세션 변경 보존 확인. main 로컬 병합, origin push 없음.
+- 제한: SIGKILL 뒤 잠금 수동 확인 계약 유지. 개별 파일 atomic rename은 보장하지만 snapshot+history 두 파일의 트랜잭션은 아니므로 실패 시 참조 없는 새 snapshot이 남을 수 있음. 기존 history를 덮어 지우지 않으며 자동 재시도·새 DB·대체 스케줄러는 추가하지 않음. 실계정 API·운영 토큰·main의 다른 세션 변경은 건드리지 않음.
+
 ## Instagram headless 1회 수집 · Codex 예약 등록 차단 — 2026-11-14
 
 - [x] main 기준 새 worktree에서 사용자가 승인한 미커밋 Instagram 선행 변경만 기반 커밋으로 보존. OpenCut과 다른 세션의 작업은 포함하지 않음.

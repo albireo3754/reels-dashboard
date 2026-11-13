@@ -41,7 +41,7 @@ export function instagramFailure(error: unknown): {
     if (error.status === 401 || [102, 190].includes(Number(error.code)))
       return {
         code: "INSTAGRAM_AUTH",
-        message: "인증 실패: 토큰 만료·취소 여부를 확인하고 다시 연결해주세요.",
+        message: "인증 실패: 토큰이 만료되거나 취소됐을 수 있어요. Codex에 Instagram 조회 토큰 갱신을 요청해주세요. 기존 비공개 토큰 파일과 계정 연결을 통해 갱신을 도울 수 있어요.",
       };
     if (error.status === 403 || [10, 200].includes(Number(error.code)))
       return {
@@ -282,6 +282,8 @@ export class InstagramInsightsStore {
   async refresh(
     source: InstagramCollectionSource = "manual",
     signal?: AbortSignal,
+    // CLI signals must distinguish an aborted request from a possibly committed snapshot.
+    onWrite?: (outcome: "unknown" | "applied") => void,
   ) {
     instagramCollectionSource.parse(source);
     this.lastError = null;
@@ -352,6 +354,7 @@ export class InstagramInsightsStore {
         ownedMediaCount: media.length,
         media: results,
       });
+      onWrite?.("unknown");
       const directory = path.join(this.root, "instagram-snapshots");
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await writeJsonAtomic(
@@ -374,6 +377,7 @@ export class InstagramInsightsStore {
         ],
         { mode: 0o600 },
       );
+      onWrite?.("applied");
       result = await this.get();
       result.busy = false;
     });

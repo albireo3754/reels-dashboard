@@ -2165,6 +2165,7 @@ test("a relative profile with no working folder is explained, not a crash", asyn
     for (const args of [
       ["get-project", "--project-id", projectId],
       ["prepare-media", "--list"],
+      ["collect-instagram-insights"],
     ]) {
       const { code, document } = await cli(root, args, options);
       assert.equal(code, 2, args.join(" "));

@@ -74,10 +74,14 @@ reels collect-instagram-insights --source scheduled
 
 실패는 0이 아닌 종료 코드와 고정 원인 요약으로 반환한다. `INSTAGRAM_AUTH`(만료·취소 등 인증 실패), `INSTAGRAM_PERMISSION`, `INSTAGRAM_RATE_LIMIT`, `INSTAGRAM_NETWORK`를 구분한다(종료 4). `INSTAGRAM_BUSY`는 종료 6이다. 실패 원문·credential URL을 노출하지 않으며 수집을 자동 반복하지 않는다. 미지원 지표에 대한 기존 개별 지표 확인은 유지하되 인증·권한·제한·네트워크·서버 장애에는 즉시 중단한다. 이전 성공 history/snapshot은 유지한다. SIGTERM은 종료 143이며 저장 도중 중단된 경우 결과를 먼저 확인한다.
 
-연결 설정의 **확인된 토큰 만료 시각 (선택)** 에 검증된 시각을 입력할 수 있다. 이 값은 발급 화면에서 확인한 메타데이터이며 실제 토큰 유효성을 보장하지 않는다. 7일 이내는 `expiring`, 경과한 시각은 `expired`다. 시각을 모르면 `unknown`을 반환하며 60일 또는 무기한으로 추정하지 않는다. API가 거부한 인증 실패는 이 경고와 별도로 보고한다. 자동 토큰 갱신은 하지 않는다.
+연결 설정의 **확인된 토큰 만료 시각 (선택)** 에 검증된 시각을 입력할 수 있다. 이 값은 발급 화면에서 확인한 메타데이터이며 실제 토큰 유효성을 보장하지 않는다. 7일 이내는 `expiring`, 경과한 시각은 `expired`다. 시각을 모르면 `unknown`을 반환하며 60일 또는 무기한으로 추정하지 않는다. API가 거부한 인증 실패는 이 경고와 별도로 보고한다. 자동 토큰 갱신은 하지 않는다. 인증 만료·취소 오류는 **Codex에 Instagram 조회 토큰 갱신을 요청**하라고 안내한다. Codex는 기존 비공개 토큰 파일 교체 또는 계정 연결의 새 파일 선택을 도울 수 있으며, 토큰 값을 채팅·명령 인자로 전달하지 않는다.
 
 ## Codex 예약 등록 상태
 
 **2026-11-14: 미등록.** 이 세션의 도구 목록에 Codex scheduler/automation 생성·조회 API가 없고, 컴퓨터 사용 도구의 Codex 앱 접근도 차단됐다. 다음 실행 시각과 실패 알림을 확인할 수 없어 예약이 동작한다고 표시하지 않는다. launchd·앱 타이머·Claude 워크플로로 대체하지 않는다.
 
 등록 가능한 Codex 환경에서 사용할 설정은 매일 **09:00 Asia/Seoul**, 작업 폴더 `~/side/reels-dashboard`, 실행 명령 `~/.local/bin/reels collect-instagram-insights --source scheduled`다. Codex 작업은 명령을 한 번만 실행하고, 성공 시 스냅샷 ID·수집 시각을 남기며, nonzero 종료면 원인을 사용자에게 보이는 실패 결과/알림으로 남겨야 한다. 실패 후 자동 재실행·토큰 출력·앱 실행은 하지 않는다. 등록 후 활성 상태·다음 실행 시각·알림 경로를 확인해야 예약 설정 완료다. Mac 자체가 꺼져 있는 동안의 실행은 보장하지 않는다.
+
+### CLI 적대적 검토 보강 · 2026-11-14
+
+저장 전 인증·권한·네트워크·입력 실패는 `writeOutcome: not_applied`다. 저장이 시작된 뒤 실패는 `unknown`, history 교체가 끝났다면 `applied`로 보고하며 `next`와 `hint`로 같은 프로필의 앱을 열어 기존 기록을 확인하도록 안내한다. 잠금 충돌은 기존 CLI와 같은 `retry: wait`이며 자동으로 기다리거나 반복하지 않는다. SIGKILL의 잔여 잠금을 시간만으로 회수하지 않는다. `REELS_DEMO=1`에서는 실제 비공개 수집을 거절한다. API permalink의 query/fragment는 저장 전에 제거하고 공개 게시물 주소만 보존한다.

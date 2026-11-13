@@ -113,6 +113,11 @@ test("built CLI collects without Electron, keeps manual/scheduled history and ex
       expect(failed.code).toBe(4);
       expect(failed.data.error.code).toBe(code);
       expect(failed.data.error.retry).toBe("no");
+      expect(failed.data.error.writeOutcome).toBe("not_applied");
+      if (code === "INSTAGRAM_AUTH") {
+        expect(failed.data.error.message).toContain("Codex");
+        expect(failed.data.error.hint).toContain("갱신");
+      }
       expect(JSON.stringify(failed)).not.toContain("access_token");
       expect(JSON.stringify(failed)).not.toContain("synthetic-private-token");
       expect(
@@ -245,6 +250,7 @@ test("interrupting a headless collection releases the shared lock and preserves 
     running.child.kill("SIGTERM");
     const stopped = await running.done;
     expect(stopped.code).toBe(143);
+    expect(stopped.data.error.writeOutcome).toBe("not_applied");
     expect(
       await access(path.join(root, "instagram-collection.lock")).then(
         () => true,
@@ -261,4 +267,46 @@ test("interrupting a headless collection releases the shared lock and preserves 
     running?.child.kill();
     await cleanProfile(root);
   }
+});
+
+test("demo refuses private collection and killed owner leaves a protected lock", async () => {
+  const root = await makeProfile();
+  let running: ReturnType<typeof collect> | undefined;
+  try {
+    await seed(root);
+    const demo = await collect(root, "manual", {REELS_DEMO: "1"}).done;
+    expect(demo.code).toBe(4);
+    expect(demo.data.error.writeOutcome).toBe("not_applied");
+    expect(await access(path.join(root,"test-api-calls")).then(()=>true,()=>false)).toBe(false);
+    running = collect(root, "manual", {INSTAGRAM_TEST_GATE: "1"});
+    const killed = running.done.catch(() => null);
+    await expect.poll(()=>access(path.join(root,"test-api-ready")).then(()=>true,()=>false)).toBe(true);
+    running.child.kill("SIGKILL");
+    await killed;
+    const before = await readFile(path.join(root,"test-api-calls"),"utf8");
+    const busy = await collect(root).done;
+    expect(busy.code).toBe(6);
+    expect(busy.data.error.retry).toBe("wait");
+    expect(busy.data.error.writeOutcome).toBe("not_applied");
+    expect(busy.data.error.hint).toContain("잠금");
+    expect(await readFile(path.join(root,"test-api-calls"),"utf8")).toBe(before);
+  } finally { running?.child.kill(); await cleanProfile(root); }
+});
+
+test("a persistence failure gives same-profile inspection guidance without losing history bytes", async () => {
+  const root = await makeProfile();
+  try {
+    await seed(root);
+    expect((await collect(root).done).code).toBe(0);
+    const file = path.join(root, "instagram-history.json");
+    await writeFile(file, "{broken-index");
+    const failed = await collect(root).done;
+    expect(failed.code).toBe(4);
+    expect(failed.data.error.writeOutcome).toBe("unknown");
+    expect(failed.data.error.retry).toBe("inspect_first");
+    expect(failed.data.error.next).toEqual(["reels get-instagram-insights"]);
+    expect(failed.data.error.hint).toContain("앱을 연 뒤");
+    expect(failed.data.error.hint).toContain("REELS_USER_DATA");
+    expect(await readFile(file,"utf8")).toBe("{broken-index");
+  } finally { await cleanProfile(root); }
 });

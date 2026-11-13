@@ -902,6 +902,7 @@ Render:  reels start-render --project-id <id> --expected-updated-at <rev> --targ
 Resume:  reels get-render-job --job-id <id> --wait
 Any:     reels call <tool> --input - < input.json
 Copy:    reels prepare-media --list | reels prepare-media --help
+Collect: reels collect-instagram-insights --source manual    (works without the app)
 Env:     REELS_USER_DATA selects the app profile.
 Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.
 Agents: reels help agent prints the usage guide for this version.`;
@@ -1003,9 +1004,18 @@ Example: reels collect-instagram-insights --source scheduled`,
     const checked = instagramCollectionSource.safeParse(options.source ?? "manual");
     if (!checked.success) throw new CliError("USAGE", "--source must be manual or scheduled.");
     scope.readOnly = false;
-    scope.inFlight = { retry: "no", writeOutcome: "unknown" };
+    if (io.env.REELS_DEMO === "1")
+      throw new CliError("UNSUPPORTED", "Demo mode cannot collect private Instagram insights.", { writeOutcome: "not_applied", retry: "no" });
+    const root = profileRoot(io);
+    scope.inFlight = { retry: "no", writeOutcome: "not_applied" };
     try {
-      const pending = new InstagramInsightsStore(profileRoot(io)).refresh(checked.data, scope.signal);
+      const pending = new InstagramInsightsStore(root).refresh(checked.data, scope.signal, (writeOutcome) => {
+        scope.inFlight = {
+          writeOutcome, retry: "inspect_first",
+          next: ["reels get-instagram-insights"],
+          hint: "같은 REELS_USER_DATA 프로필의 앱을 연 뒤 수집 기록을 확인해주세요. 확인 전에는 수집을 반복하지 마세요.",
+        };
+      });
       scope.settle = pending;
       const state = await pending;
       const snapshot = state.snapshot!;
@@ -1014,7 +1024,11 @@ Example: reels collect-instagram-insights --source scheduled`,
         count: snapshot.media.length, tokenHealth: snapshot.tokenHealth } };
     } catch (error) {
       const failure = instagramFailure(error);
-      throw new CliError(failure.code, failure.message, { retry: "no", writeOutcome: failure.code === "INSTAGRAM_BUSY" ? "not_applied" : "unknown" });
+      throw new CliError(failure.code, failure.message, {
+        ...scope.inFlight,
+        ...(failure.code === "INSTAGRAM_AUTH" ? { hint: "Codex에 Instagram 조회 토큰 갱신을 요청하세요. 기존 비공개 토큰 파일을 교체하거나 앱의 계정 연결에서 새 파일을 선택할 수 있어요. 토큰 값을 명령이나 채팅에 붙여 넣지 마세요." } : {}),
+        ...(failure.code === "INSTAGRAM_BUSY" ? { retry: "wait" as const, hint: "진행 중인 수집이 끝날 때까지 기다리세요. 비정상 종료 뒤에는 같은 프로필의 instagram-collection.lock에 기록된 pid가 종료됐고 수집이 없는지 확인한 뒤에만 잠금을 수동 제거하세요. 자동 재시도하지 않습니다." } : {}),
+      });
     }
   },
 } satisfies Builtin;
