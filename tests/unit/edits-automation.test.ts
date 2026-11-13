@@ -410,6 +410,7 @@ test("native child protocol validates IDs, errors and exit state without AX inte
     for (const body of [
       "JSON.stringify({protocol:1,id:r.id,ok:true,result:{parentPid:process.ppid}})",
       'JSON.stringify({protocol:1,id:r.id,ok:false,error:{code:"AX_PERMISSION_REQUIRED",message:"denied"}})',
+      'JSON.stringify({protocol:1,id:r.id,ok:false,error:{code:"EDITS_HOST_UNSUPPORTED",message:"Run Edits tools through Reels Dashboard main",details:{reason:"unsupported-parent-launch"}}})',
       'JSON.stringify({protocol:1,id:"wrong",ok:true,result:{}})',
       '"not JSON"',
     ]) {
@@ -424,6 +425,12 @@ test("native child protocol validates IDs, errors and exit state without AX inte
           (await client.invoke("status", {})).parentPid,
           process.pid,
         );
+      else if (body.includes("EDITS_HOST_UNSUPPORTED"))
+        await assert.rejects(client.invoke("status", {}), (error: any) => {
+          assert.equal(error.code, "EDITS_HOST_UNSUPPORTED");
+          assert.deepEqual(error.details, { reason: "unsupported-parent-launch" });
+          return true;
+        });
       else
         await assert.rejects(
           client.invoke("status", {}),

@@ -18,7 +18,9 @@ import EditsAXMac
             }
             id = Wire.requestID(in: input)
             let request = try Wire.Request(data: input)
-            let result = try await Engine(backend: MacBackend()).execute(request)
+            let result = try await HostedRequest.execute(request, observe: { MacParentHost.observe() }) { authorized in
+                try await Engine(backend: MacBackend()).execute(authorized)
+            }
             response = Wire.response(id: request.id, result: result)
         } catch let error as AXFailure {
             failed = true; response = Wire.response(id: id, error: error)

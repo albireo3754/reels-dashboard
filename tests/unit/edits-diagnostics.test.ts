@@ -6,6 +6,7 @@ import path from "node:path";
 import { startAgentSocket, callAgent } from "../../src/shared/lib/agent-socket";
 import {
   editsErrorDetails,
+  editsHostRejectionReason,
   type TreeDiagnostics,
 } from "../../src/shared/edits";
 import { agentFailure, failureDocument } from "../../src/app/cli/outcome";
@@ -83,6 +84,49 @@ test("Edits error diagnostics survive the private socket, CLI and MCP without ar
         return true;
       },
     );
+  } finally {
+    await stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("unsupported host code and bounded reasons survive socket to CLI/MCP without parent metadata", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "edits-host-error-"));
+  let reason = "unsupported-parent-launch";
+  const stop = await startAgentSocket(root, async () => {
+    throw Object.assign(new Error("EDITS_HOST_UNSUPPORTED: Run Edits tools through Reels Dashboard main"), {
+      code: "EDITS_HOST_UNSUPPORTED",
+      details: { reason, parentExecutable: "must-not-leak", argv: ["must-not-leak"], environment: "must-not-leak" },
+    });
+  });
+  try {
+    for (const value of editsHostRejectionReason.options) {
+      reason = value;
+      let error: unknown;
+      try { await callAgent(root, "reels_edits_status", {}); }
+      catch (failure) { error = failure; }
+      assert.ok(error instanceof Error);
+      assert.equal((error as any).code, "EDITS_HOST_UNSUPPORTED");
+      assert.deepEqual((error as any).details, { reason });
+      const cli = failureDocument(agentFailure(error, () => ({})), {
+        tool: "reels_edits_status", readOnly: true,
+      }).document;
+      assert.equal(cli.error.code, "EDITS_HOST_UNSUPPORTED");
+      assert.equal(cli.error.reason, reason);
+      assert.equal(cli.error.retry, "no");
+      const mcp = mcpError(error);
+      assert.equal((mcp.structuredContent as any).error.code, "EDITS_HOST_UNSUPPORTED");
+      assert.deepEqual((mcp.structuredContent as any).error.details, { reason });
+      assert.doesNotMatch(JSON.stringify([cli, mcp]), /must-not-leak|parentExecutable|argv|environment/);
+    }
+    reason = "/private/unrecognized-parent-path";
+    await assert.rejects(callAgent(root, "reels_edits_status", {}), error => {
+      assert.equal((error as any).code, "EDITS_HOST_UNSUPPORTED");
+      assert.equal((error as any).details, undefined);
+      return true;
+    });
+    assert.equal(editsErrorDetails({ reason: true }), undefined);
+    assert.equal(editsErrorDetails({ reason: "future-unreviewed-reason" }), undefined);
   } finally {
     await stop();
     await rm(root, { recursive: true, force: true });

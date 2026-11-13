@@ -13,6 +13,17 @@ These commands compile the macOS adapter; the tests use only a synthetic backend
 
 The build owner signs and atomically installs the release binary as `.build/editsax` for development and `resources/native/editsax` for packaging. SwiftPM's `.build/release/editsax` output is not that installed artifact. This package does not sign, install or replace either destination. Dashboard TCC attribution remains unverified until tested through the actual development and packaged app.
 
+## Supported Dashboard parent hosts
+
+After parsing a bounded request, the executable checks its immediate parent's passive process/application metadata before constructing the AX backend. This also applies to `status`. Unsupported, changed or unobservable hosts receive a normal error envelope with `EDITS_HOST_UNSUPPORTED` and a fixed `details.reason`; no AX backend is constructed. There is no caller flag, arbitrary helper path or environment override.
+
+- Packaged main: bundle ID `io.github.reelsdashboard.desktop`, actual executable and application executable both `<bundle>.app/Contents/MacOS/Reels Dashboard`, helper in that same bundle's `Contents/Resources/native/editsax`. Normal no-entry launch, macOS `-psn_<digits>_<digits>` and the observed QA `--inspect=0`/`--remote-debugging-port=0` switches are supported.
+- Development main: `com.github.Electron`, the exact canonical `<worktree>/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron`, and the stable helper `<worktree>/native/editsax/.build/editsax`. The worktree manifest must name `reels-dashboard`, use `dist-electron/main.cjs`, declare the packaged app ID and have that built main file. Kernel argv must identify that worktree as its sole app entry: `electron .` uses the parent's observed cwd, while QA uses the absolute worktree. The observed Playwright `-r` loader is allowed only at that worktree's canonical `node_modules/playwright-core/lib/server/electron/loader.js` path, with the two QA switches above. Canonical paths support the existing shared node_modules symlink without accepting another project's entry.
+
+Shell/Node/terminal parents, Electron renderer/helper roles, unrelated projects, Node-mode CLI scripts, mismatched bundle/helper locations and other unverified launch forms are rejected. CLI/MCP continue to contact Dashboard main over the existing socket. Parent PID is compared before/after metadata collection. Only argv up to the kernel's argc is decoded; environment bytes are never decoded, logged or serialized. Parent metadata/argv are internal non-Codable observations and error reasons never copy their contents. Status wire fields are unchanged.
+
+This recognizes **normal supported hosts**. It does not establish the TCC responsible app, verify host code signatures, provide a new authentication service or defend against a same-user process deliberately forging host/project metadata or modifying Dashboard main. Development and packaged runtime attribution remains a separate integration check. Metadata failure remains an explicit unsupported-host error rather than a guess that every Electron process is Dashboard.
+
 ## Protocol v2
 
 The envelope uses `protocol: 1`, a bounded string `id`, `operation` and object `args`. Supported operations are `status`, `tree`, `find`, `press`, `set-value`, `menu`, `key`, `drag` and `screenshot`. Native `menu` takes an array such as `["File", "Import Media"]`.

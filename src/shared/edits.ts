@@ -263,7 +263,22 @@ export const treeDiagnosticsSchema = z.object({
     .max(16),
 });
 export type TreeDiagnostics = z.infer<typeof treeDiagnosticsSchema>;
+export const editsHostRejectionReason = z.enum([
+  "parent-unavailable-or-changed",
+  "parent-metadata-unavailable",
+  "parent-executable-mismatch",
+  "parent-arguments-unavailable",
+  "packaged-layout-mismatch",
+  "unsupported-parent-launch",
+  "development-project-unverified",
+  "development-electron-mismatch",
+  "development-entry-mismatch",
+  "unsupported-parent-bundle",
+  "parent-working-directory-unavailable",
+]);
+export type EditsHostRejectionReason = z.infer<typeof editsHostRejectionReason>;
 export const editsErrorDetailsSchema = z.object({
+  reason: editsHostRejectionReason.optional(),
   attempted: z.boolean().optional(),
   fallback: z.enum(["coordinate"]).nullable().optional(),
   diagnostics: treeDiagnosticsSchema.optional(),
