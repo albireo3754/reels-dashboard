@@ -24,8 +24,32 @@ export function developerIdentity(output, requested) {
   return [...identities.keys()][0];
 }
 
+// Match PhotosIndex's disposable-CI signing contract. Never silently downgrade a
+// local/production build when a Developer ID certificate is missing.
+export function signingIdentity(env, identities) {
+  const mode = env.PHOTOSINDEX_SIGNING_MODE ?? "developer-id";
+  if (mode === "ci-adhoc") {
+    if (env.CI !== "true")
+      throw new Error("ci-adhoc signing requires disposable CI artifacts (CI=true)");
+    return "-";
+  }
+  if (mode !== "developer-id")
+    throw new Error(`Unsupported PHOTOSINDEX_SIGNING_MODE '${mode}'`);
+  return developerIdentity(
+    identities(),
+    env.EDITSAX_SIGNING_IDENTITY ?? env.PHOTOSINDEX_SIGNING_IDENTITY,
+  );
+}
+
 export function buildEditsNative() {
   if (process.platform !== "darwin") throw new Error("Edits AX requires macOS");
+  const identity = signingIdentity(process.env, () =>
+    execFileSync(
+      "/usr/bin/security",
+      ["find-identity", "-v", "-p", "codesigning"],
+      { encoding: "utf8" },
+    ),
+  );
   const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const native = path.join(repo, "native/editsax");
   execFileSync(
@@ -38,15 +62,6 @@ export function buildEditsNative() {
     ["build", "-c", "release", "--show-bin-path"],
     { cwd: native, encoding: "utf8" },
   ).trim();
-  const identity = developerIdentity(
-    execFileSync(
-      "/usr/bin/security",
-      ["find-identity", "-v", "-p", "codesigning"],
-      { encoding: "utf8" },
-    ),
-    process.env.EDITSAX_SIGNING_IDENTITY ??
-      process.env.PHOTOSINDEX_SIGNING_IDENTITY,
-  );
   const staged = path.join(native, ".build", `.editsax-stage-${randomUUID()}`);
   try {
     copyFileSync(path.join(bin, "editsax"), staged, constants.COPYFILE_EXCL);

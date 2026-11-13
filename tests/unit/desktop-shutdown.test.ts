@@ -18,6 +18,10 @@ function app(shutdown: ShutdownSequence, cleanup: (quit: () => boolean) => Promi
       log.push("held");
       return !prevented;
     }
+    if (shutdown.busy) {
+      log.push("busy");
+      return !prevented;
+    }
     void shutdown.run(() => cleanup(quit), () => quit());
     return !prevented;
   };
@@ -71,4 +75,44 @@ test("dialogs never get a destroyed window as parent", () => {
   assert.equal(liveWindow(alive), alive);
   assert.equal(liveWindow(dead), undefined);
   assert.equal(liveWindow(undefined), undefined);
+});
+
+test("an Edits request holds quit/restart and native cleanup until the entire operation settles", async () => {
+  const shutdown = new ShutdownSequence();
+  const steps: string[] = [];
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  // One high-level request can span several native children and verification polls.
+  const edits = { request: async () => { steps.push("export started"); await pending; steps.push("output verified+copied"); } };
+  const request = shutdown.track(() => edits.request());
+  const { quit, log } = app(shutdown, async () => { steps.push("socket closed"); steps.push("native disposed"); });
+  assert.equal(shutdown.busy, true, "shared workBusy guard also blocks relaunch");
+  assert.equal(quit(), false);
+  await shutdown.run(async () => { steps.push("unexpected cleanup"); }, () => steps.push("unexpected exit"));
+  assert.equal(shutdown.started, false);
+  assert.deepEqual(steps, ["export started"]);
+  finish();
+  await request;
+  assert.equal(shutdown.busy, false);
+  assert.equal(quit(), false);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(steps, ["export started", "output verified+copied", "socket closed", "native disposed"]);
+  assert.deepEqual(log, ["busy", "exit"]);
+  let invoked = false;
+  await assert.rejects(shutdown.track(async () => { invoked = true; }), /shutting down/);
+  assert.equal(invoked, false, "socket requests admitted during cleanup cannot start another child");
+});
+
+test("a failed Edits request releases the close/restart guard", async () => {
+  const shutdown = new ShutdownSequence();
+  let fail!: (error: Error) => void;
+  const pending = new Promise<void>((_, reject) => { fail = reject; });
+  const request = shutdown.track(() => pending);
+  assert.equal(shutdown.busy, true);
+  fail(new Error("EDITS_VERIFICATION_FAILED: outcome unknown"));
+  await assert.rejects(request, /outcome unknown/);
+  assert.equal(shutdown.busy, false);
+  let disposed = false;
+  await shutdown.run(async () => { disposed = true; }, () => {});
+  assert.equal(disposed, true);
 });

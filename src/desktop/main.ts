@@ -481,7 +481,7 @@ async function awaitReady() {
       : dialog.showMessageBoxSync(options);
   };
   const workBusy = () =>
-    activeOperations > 0 || editorService.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
+    activeOperations > 0 || shutdown.busy || editorService.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
   const confirmAbortJobs = () =>
     messageBox({
       type: "warning",
@@ -1098,7 +1098,7 @@ async function awaitReady() {
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
-      edits,
+      edits: { request: (name, input) => shutdown.track(() => edits.request(name, input)) },
       coverPreferences,
       planning,
       instagramInsights: { get: input => instagramInsights.get(input), refresh: refreshInstagramInsights, setTopics: input => instagramInsights.setTopics(input) },
