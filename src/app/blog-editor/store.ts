@@ -23,6 +23,7 @@ import {
   type CanonicalReview,
 } from "../../shared/canonical-blog";
 export interface EditorConfig {
+  projectId?: string;
   format?: "markup";
   review?: string;
   reviewGuidance?: string[];

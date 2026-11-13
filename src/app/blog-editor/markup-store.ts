@@ -24,7 +24,7 @@ import {blogSuggestRequest,fitSuggestInput,inlineSuggestInput,SUGGEST_LIMITS,typ
 import {blogChatInput,blogChatRequest,fitChatInput,CHAT_LIMITS,type BlogChatInput} from "../../shared/blog-chat";
 const stickerSchema=z.strictObject({id:z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/),preset:z.enum(STICKER_PRESETS.map(p=>p.id)),bundleId:z.string(),before:z.number().int().nonnegative(),note:z.string().max(120).optional()});
 const photoSchema=z.strictObject({id:z.string().regex(EVIDENCE_ID),imageId:z.string().regex(EVIDENCE_ID),bundleId:z.string(),before:z.number().int().nonnegative(),alt:z.string().min(1).max(PHOTO_ALT_LIMIT)});
-const patchSchema=z.strictObject({photos:z.array(photoSchema).max(30).optional(),deleteBundles:z.array(z.string()).max(100).optional(),deleteParagraphs:z.array(z.string()).max(500).optional(),stickers:z.array(stickerSchema).max(30).optional(),revision:z.string(),baseText:z.string().optional(),edits:z.array(z.strictObject({id:z.string(),source:z.string().max(200000),base:z.string().optional(),after:z.string().optional()})).max(1000),title:z.string().optional(),titleBase:z.string().optional()});
+const patchSchema=z.strictObject({photos:z.array(photoSchema).max(30).optional(),deleteBundles:z.array(z.string()).max(100).optional(),deleteParagraphs:z.array(z.string()).max(500).optional(),stickers:z.array(stickerSchema).max(30).optional(),decisionIds:z.array(z.string().uuid()).max(200).optional(),revision:z.string(),baseText:z.string().optional(),edits:z.array(z.strictObject({id:z.string(),source:z.string().max(200000),base:z.string().optional(),after:z.string().optional()})).max(1000),title:z.string().optional(),titleBase:z.string().optional()});
 type Patch=z.infer<typeof patchSchema>;
 /** A part of the patch that could not be applied; everything else is still saved. */
 export type SaveSkip={kind:"paragraph"|"photo"|"sticker"|"delete"|"title";id:string;reason:string};
@@ -340,7 +340,7 @@ ${EDITOR_FRAME_CSS}
           const doc=parse(base.text),applied=await this.applyPatch(doc,patch,{...context,used:new Set(used)});
           const text=serialize(doc);
           if(text===normalize(base.text))return this.saved(patch,applied,[]);
-          const result=await save(this.config.canon,text,base,{...USER_SAVE,moved:splitFrom(applied),conflictCopy:applied.conflicts.length>0});
+          const result=await save(this.config.canon,text,base,{...USER_SAVE,evaluationContext:{projectId:this.config.projectId??null,decisionIds:patch.decisionIds??[],requestedRevision:patch.revision,skipped:applied.skipped,conflicts:applied.conflicts},moved:splitFrom(applied),conflictCopy:applied.conflicts.length>0});
           if(result.ok)return this.saved(patch,applied,result.warnings);
           const first=result.conflicts[0] as {kind?:string;errors?:Array<{where:string;message:string}>};
           if(raced(first?.kind))continue;
@@ -348,7 +348,7 @@ ${EDITOR_FRAME_CSS}
         }
         // The line merge could not settle it: re-apply onto the current file, writer's text first.
         const doc=parse(current.text),applied=await this.applyPatch(doc,patch,{...context,from,used:new Set(used)});
-        const result=await save(this.config.canon,serialize(doc),current,{...USER_SAVE,moved:splitFrom(applied),conflictCopy:true});
+        const result=await save(this.config.canon,serialize(doc),current,{...USER_SAVE,evaluationContext:{projectId:this.config.projectId??null,decisionIds:patch.decisionIds??[],requestedRevision:patch.revision,skipped:applied.skipped,conflicts:applied.conflicts},moved:splitFrom(applied),conflictCopy:true});
         if(result.ok)return this.saved(patch,applied,[...result.warnings,...(base?[]:["저장 기준을 찾지 못해 현재 파일에 바로 반영했어요."])]);
         const first=result.conflicts[0] as {kind?:string;errors?:Array<{where:string;message:string}>};
         if(raced(first?.kind))continue;

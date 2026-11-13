@@ -67,7 +67,9 @@ test("a base survives a restart: from the page's text, from .history, and withou
  await store.save({revision:second.revision,edits:[{id:"P1",source:"Mine two"}]});
  await writeFile(config.canon,(await readFile(config.canon,"utf8")).replace("Outside","Outside again"));
  const third=await new MarkupStore(config).save({revision:second.revision,edits:[{id:"P1",source:"Mine three"}]});
- assert.deepEqual(third.conflicts,[],"recovered from .history, so P1 merges cleanly over the older save");
+ assert.deepEqual(third.conflicts,[{id:"P1"}],"durable history recovers the real older base, so the intervening P1 edit is reported as a conflict");
+ const alternatives=(await history(config.canon)).filter(n=>n.startsWith("conflict-"));
+ assert.ok((await Promise.all(alternatives.map(n=>readFile(path.join(path.dirname(config.canon),".history",path.basename(config.canon),n),"utf8")))).some(text=>text.includes("Mine two")));
  text=await readFile(config.canon,"utf8");assert.match(text,/Mine three/);assert.match(text,/Outside again/);
  const lost=await new MarkupStore(config).save({revision:"gone",edits:[{id:"P2",source:"Still lands"}]});
  assert.ok(lost.document.warnings?.some(w=>w.includes("저장 기준")));

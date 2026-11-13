@@ -26,7 +26,7 @@ test('blog projects are the content cards whose document is a blog-markup manusc
   await dashboard(root,[card('reel',[plain]),card('none',[]),card('blog',[plain,config.canon,path.join(root,'missing.md')])]);
   const projects=await readBlogProjects(root);
   assert.deepEqual(projects,[{id:'blog',title:'blog card',config:{
-    format:'markup',canon:config.canon,layers:config.layers,layout:config.layout,media:config.media,
+    projectId:'blog',format:'markup',canon:config.canon,layers:config.layers,layout:config.layout,media:config.media,
     review:path.join(config.layers,'bundle-review.json'),requests:config.requests,reviewGuidance:[path.join(root,'BLOG.md')],
   }}]);
   assert.deepEqual(await readBlogProjects(path.join(root,'empty')),[]);
@@ -42,7 +42,7 @@ test('frontmatter editor paths override the folder conventions',async t=>{
   assert.match(await readFile(config.canon,'utf8'),/^editor: \{"layout":"\.\.\/old-loop\/layout.html"/m);
   const [project]=await readBlogProjects(root);
   const {port:_,...expected}=moved;
-  assert.deepEqual(project.config,expected);
+  assert.deepEqual(project.config,{...expected,projectId:"old"});
 });
 
 test('cards that cannot be opened are reported, not listed',async t=>{

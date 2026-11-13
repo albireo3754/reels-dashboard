@@ -1,3 +1,4 @@
+import {collectFeedback} from "./content-feedback";
 import { readJsonBody } from "../lib/http";
 import { errorMessage } from "../../shared/lib/errors";
 import type {VisualEvidence} from "../../shared/markup-review";
@@ -67,6 +68,7 @@ export async function startCanonicalEditor(
         )
           return json(403, { error: "Same-origin JSON required" });
         const v: any = await readJsonBody(req, 8_000_000, "본문이 너무 커요.");
+        if (u.pathname === "/api/blog/feedback" && annotations) return json(200,await collectFeedback(config.canon,v,config.projectId));
         if (u.pathname === "/api/blog/annotations" && annotations) return json(200, await annotations.update(v));
         if (u.pathname === "/api/blog/copy-sticker-plan" && nativeClipboard) {
           if (typeof v.text !== "string" || !v.text.trim() || v.text.length > 20000) throw new Error("잘못된 배치 메모");

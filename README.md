@@ -60,6 +60,8 @@ Owner-private [mobile production briefing](https://example.chatgpt.site) stores 
 
 Existing footage folders, completed videos/covers and content documents can be linked locally through MCP without proxy generation or media copies. See [local content library](docs/local-content-library.md).
 
+Travel/restaurant caption videos can use the [OpenCut template package](docs/opencut-templates.md): select footage and a linked blog manuscript, prepare a reusable cut/caption recipe, and register the editing package on the same Dashboard project. `npm run opencut:prepare -- /absolute/request.json` uses the running app's existing API; OpenCut performs timeline editing and export.
+
 The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI's editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
 
 Agents working from a shell can use the `reels` CLI instead. It calls every MCP tool over the same socket, prints one JSON document on stdout, documents its exit codes, saves preview images to files and can wait for render jobs. Copying registered media to a local folder works without the app. Build it with `npm run build:desktop` and see [CLI usage](docs/cli-usage.md).
@@ -69,6 +71,10 @@ Agents working from a shell can use the `reels` CLI instead. It calls every MCP 
 ## Shared input forms
 
 Dashboard workflows and Codex sessions share the same versioned forms, user answers and application results. Sessions can create/open/wait/read forms through MCP or `npm run forms` without creating a workflow. See [shared forms and tools](docs/shared-input-forms.md).
+
+## Content evaluation history
+
+Markup saves and editor decisions can accumulate private revision evidence for repeatable imports and model/workflow comparisons. See [content history and evals](docs/content-evals.md); `npm run evals:demo` runs a synthetic comparison without a model.
 
 ## Headless workflows
 

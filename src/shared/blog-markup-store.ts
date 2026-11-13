@@ -1,3 +1,4 @@
+import { prepareRevision, finishRevision, recoverRevisions, recordContentEvent, snapshot, contentDiff } from "./content-history";
 import { readFile, writeFile, open, rename, mkdir, readdir, unlink, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -8,6 +9,18 @@ import { fingerprint, merge3, normalize, protectedText, paragraphNodes } from ".
 const historyDir = (file:string) => path.join(path.dirname(file),".history",path.basename(file));
 export async function load(file:string) {
   const text=await readFile(file,"utf8");
+  // The same lock as save prevents recovery from racing an in-flight rename.
+  let observationLock;
+  try { observationLock=await acquire(file+".lock"); } catch(e){if((e as Error).message!=="BUSY")throw e;}
+  if(observationLock)try{
+    const observed=await readFile(file,"utf8");
+    await recoverRevisions(file,observed);
+    const last=await readFile(path.join(historyDir(file),"last-tool.md"),"utf8").catch(e=>{if(isMissing(e))return undefined;throw e;});
+    if(last!==undefined&&last!==observed){
+      const before=await snapshot(file,last),after=await snapshot(file,observed);
+      await recordContentEvent(file,"external:"+before+":"+after,{kind:"external-observation",before,after,actor:"unknown",source:"disk-at-load",diff:contentDiff(last,observed)});
+    }
+  }finally{await observationLock.close();await unlink(file+".lock");}
   const warnings:string[]=[];
   try {
     const last=await readFile(path.join(historyDir(file),"last-tool.md"),"utf8");
@@ -30,6 +43,10 @@ async function acquire(lockFile:string){
 /** The text behind a fingerprint, when a save or tool kept it. Lets edits outlive a restart. */
 export async function recoverBase(file:string,wanted:string) {
   const dir=historyDir(file);
+  if(/^[a-f0-9]{64}$/.test(wanted)){
+    const durable=await readFile(path.join(dir,"content-evals","revisions",wanted+".json"),"utf8").catch(e=>{if(isMissing(e))return undefined;throw e;});
+    if(durable){const value=JSON.parse(durable);if(fingerprint(value.text)===wanted)return {text:value.text as string,fingerprint:wanted};}
+  }
   const names=await readdir(dir).catch(e=>{if(isMissing(e))return [] as string[];throw e;});
   for(const name of names.filter(n=>n.endsWith(".md")).sort().reverse()) {
     const text=await readFile(path.join(dir,name),"utf8").catch(()=>undefined);
@@ -46,12 +63,18 @@ export async function save(file:string,mine:string,base:{text:string;fingerprint
   /** Keep the version being replaced outside the rotating history (a conflict was resolved). */
   conflictCopy?:boolean;
   /** New paragraph id -> the paragraph it was split from: its old errors are still old. */
-  moved?:Record<string,string>}) {
+  moved?:Record<string,string>; evaluationContext?:Record<string,unknown>}) {
   if(fingerprint(base.text)!==base.fingerprint)throw new Error("INVALID_BASE");
   const lock=await acquire(file+".lock");
   const temp=file+"."+randomUUID()+".tmp";
   try {
     const current=await readFile(file,"utf8");
+    await recoverRevisions(file,current);
+    const previous=await readFile(path.join(historyDir(file),"last-tool.md"),"utf8").catch(e=>{if(isMissing(e))return undefined;throw e;});
+    if(previous!==undefined && previous!==current){
+      const before=await snapshot(file,previous),after=await snapshot(file,current);
+      await recordContentEvent(file,"external:"+before+":"+after,{kind:"external-observation",before,after,actor:"unknown",source:"disk-at-save",diff:contentDiff(previous,current)});
+    }
     let result:string;
     if(fingerprint(current)===base.fingerprint) result=normalize(mine);
     else { const merged=merge3(base.text,mine,current);if(!merged.ok)return merged;result=merged.text; }
@@ -87,7 +110,13 @@ export async function save(file:string,mine:string,base:{text:string;fingerprint
     await writeFile(temp,result,{flag:"wx"});
     // Obsidian does not honor our lock; close the main read/write race as far as possible.
     if(await readFile(file,"utf8")!==current)return {ok:false as const,conflicts:[{kind:"external-change-during-save"}]};
+    const transaction=await prepareRevision(file,current,result,opts.actor,{baseRevision:base.fingerprint,...opts.evaluationContext});
+    if(await readFile(file,"utf8")!==current){
+      await finishRevision(file,transaction,"not-observed");
+      return {ok:false as const,conflicts:[{kind:"external-change-during-save"}]};
+    }
     await rename(temp,file);
+    await finishRevision(file,transaction,await readFile(file,"utf8")===result?"committed":"overwritten");
     await writeFile(path.join(dir,"last-tool.md"),result);
     const verified=await readFile(file,"utf8")===result;
     const names=await readdir(dir);

@@ -1,3 +1,4 @@
+import {recordContentEvent,snapshot} from '../../shared/content-history';
 import {readFile,writeFile,open,rename,unlink} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -26,6 +27,7 @@ export class AnnotationStore {
     const temp=this.file+'.'+randomUUID()+'.tmp';
     try{
       const entries=await this.entries();
+      const before=JSON.stringify(entries);
       if(input.action==='add'){
         const paragraphs=paragraphNodes(parse(await readFile(this.canon,'utf8')));
         if(!paragraphs.some(p=>p.id===input.paragraphId)||!input.context.includes(input.quote))throw new Error('선택한 구절과 문단을 다시 확인해주세요.');
@@ -36,6 +38,8 @@ export class AnnotationStore {
       }else{
         const found=entries.find(a=>a.id===input.id);if(!found)throw new Error('주석을 찾을 수 없어요.');found.checked=input.checked;
       }
+      const revision=await snapshot(this.canon,await readFile(this.canon,'utf8'));
+      if(before!==JSON.stringify(entries))await recordContentEvent(this.canon,'annotation:'+randomUUID(),{kind:'annotation-intent',revision,actor:'user',actorEvidence:'annotation API action',input,before:JSON.parse(before),after:entries});
       await writeFile(temp,JSON.stringify(entries,null,2)+'\n',{flag:'wx'});await rename(temp,this.file);
       return await this.list();
     }finally{await unlink(temp).catch(e=>{if(e.code!=='ENOENT')throw e;});await lock.close();await unlink(this.file+'.lock');}

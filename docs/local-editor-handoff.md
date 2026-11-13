@@ -25,4 +25,6 @@ node --import tsx scripts/prepare-local-media.ts \
 
 현재 연결은 **Dashboard 서비스 + 로컬 CLI**(`reels prepare-media`)다. 설치 앱의 새 버튼이나 MCP 도구를 추가한 것은 아니다. 실행 앱 재시작 없이 같은 등록 자료를 읽는다. UI의 Photos 복사 기능은 기존 허용된 export root를 유지하며, 이 명령은 이미 연결된 파일의 편집용 사본을 만든다.
 
+2026-11-12: 촬영본뿐 아니라 원고·컷·자막·스타일을 함께 준비하고 기존 제작 프로젝트에 연결하는 [OpenCut 자막 소개 템플릿](opencut-templates.md)을 추가했다. `npm run opencut:prepare`는 이 사본 준비 함수를 재사용한다.
+
 검증: 등록 자료 복사·영수증, 미등록 자료 일괄 거부, 중복 선택, 원본 내부 출력, 기존 목적지 덮어쓰기 거부 단위 검사; 타입·FSD 검사. 실제 콘텐츠의 실행 근거는 콘텐츠 작업공간에서 관리한다.

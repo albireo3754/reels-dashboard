@@ -70,3 +70,7 @@ This adds local markup/preview support. It does not upload videos to Naver, crea
 Validation: parser/serialization, invalid inputs, caption text protection, unchanged media bytes, origin/path allowlists, range/HEAD, save persistence; Chromium actual playback/seeking at desktop/mobile widths; opted-in Electron playback of a real 8-second rotated HEVC 10-bit HLG/Dolby Vision source. Original source bytes were not edited.
 
 The installed active app was updated from its current worktree with existing UI/cover changes preserved; workflow protocol 4 was restored at the same time. The real blog editor displayed the new Video components, and a prepared sound-included clip played to its end with volume enabled. Private source paths, captures and deployment receipts remain in the content workspace.
+
+## Immutable evaluation history — 2026-11-13
+
+The rotating recovery copies above now coexist with an unrotated `content-evals` store under the same history directory. Every changed save prepares exact before/after snapshots and a transaction before replacing the manuscript; a separate receipt records the outcome. Loads/saves reconcile pending attempts and observe external drift relative to the last tool save. Durable snapshots can recover older merge bases, so an intervening edit that previously lost its base can now correctly report a conflict while preserving the overwritten alternative. See [data, feedback, recovery and evaluation contracts](content-evals.md).

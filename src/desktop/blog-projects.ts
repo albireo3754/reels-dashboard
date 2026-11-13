@@ -170,7 +170,7 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
       const owner=owners.get(file);
       if(owner){issue(`같은 원고가 ${owner} 카드에 이미 연결돼 있어요.`);continue;}
       owners.set(file,card.id);
-      projects.push({id:card.id,title:card.title,config:await manuscriptConfig(file)});
+      projects.push({id:card.id,title:card.title,config:{...await manuscriptConfig(file),projectId:card.id}});
     }catch(e){issue(errorMessage(e));}
   }
   return {projects,issues};

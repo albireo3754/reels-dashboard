@@ -48,7 +48,7 @@ test("store guards agent text, preserves concurrent user edits, locking/history/
     const result=await save(file,source.replace("적갈","갈색"),base,{actor:"agent"});assert.ok(result.ok);
     assert.match(await readFile(file,"utf8"),/user changed/);
     assert.deepEqual((await load(file)).warnings,[]);
-    assert.equal((await readdir(path.join(dir,".history","draft.md"))).length,2);
+    assert.equal((await readdir(path.join(dir,".history","draft.md"))).filter(n=>n.endsWith(".md")).length,2);
     await writeFile(file+".lock","");
     await assert.rejects(save(file,source,base,{actor:"user"}),/BUSY/);
     await rm(file+".lock");

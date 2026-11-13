@@ -26,7 +26,7 @@ if(parent!==window){
 }
 let selected, savedRange;
 // Transient AI ghost text (review-only; see the keyboard suggestion section below).
-let ghost=null;
+let ghost=null,ghostEvidence=null;
 const hex=v=>{const m=v?.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);return m?'#'+m.slice(1).map(x=>Number(x).toString(16).padStart(2,'0')).join(''):null;};
 
 const quick=document.createElement('div');
@@ -826,6 +826,7 @@ function suggestResult(m){
  const fresh=!m.stale&&document.contains(q.p)&&selected===q.p&&document.activeElement===q.p&&!review.locked&&q.p.isContentEditable&&runsKey(serialize(q.p))===q.key&&!!c&&c.p===q.p&&c.offset===q.offset&&c.start===q.start&&c.collapsed===q.collapsed&&!c.inLink;
  if(!fresh){send({type:'suggest-done',token:q.token,outcome:'stale'});return;}
  if(!list.length){send({type:'suggest-done',token:q.token,outcome:'empty'});updateNav();return;}
+ ghostEvidence={requestId:m.requestId,revision:m.revision,paragraphId:q.p.dataset.tid,offset:q.offset,suggestions:list};
  showGhost(q.p,q.offset,list,0);
  send({type:'suggest-done',token:q.token,outcome:'shown',count:list.length});
 }
@@ -884,6 +885,7 @@ function insertFromGhost(g,piece,rest,index){
  removeGhost();
  if(review.locked||!g.p.isContentEditable||!document.contains(g.p))return;
  setCaret(g.p,g.offset,g.offset,true);
+ send({type:'suggest-feedback',action:'suggest-accepted',evidence:ghostEvidence,piece});
  document.execCommand('insertText',false,piece);
  if(rest.length)showGhost(g.p,g.offset+piece.length,rest,index||0);
 }
@@ -901,7 +903,7 @@ function ghostKey(e){
  if(['Shift','Alt','Meta','Control','CapsLock'].includes(e.key))return true;
  const plain=!e.altKey&&!e.ctrlKey&&!e.metaKey;
  if(e.key==='Tab'&&plain&&!e.shiftKey){e.preventDefault();acceptGhost(true);return true;}
- if(e.key==='Escape'&&plain){e.preventDefault();removeGhost();announce('추천을 닫았어요.');updateNav();return true;}
+ if(e.key==='Escape'&&plain){e.preventDefault();send({type:'suggest-feedback',action:'suggest-dismissed',evidence:ghostEvidence});removeGhost();announce('추천을 닫았어요.');updateNav();return true;}
  if(e.key==='ArrowRight'&&(e.metaKey||e.ctrlKey)&&!e.altKey&&!e.shiftKey){e.preventDefault();acceptGhost(false);return true;}
  if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(e.code==='BracketRight'||e.code==='BracketLeft')){e.preventDefault();cycleGhost(e.code==='BracketRight'?1:-1);return true;}
  if(plain&&e.key.length===1){
@@ -1030,7 +1032,7 @@ document.addEventListener('click',e=>{
   else if(a==='word')acceptGhost(false);
   else if(a==='next')cycleGhost(1);
   else if(a==='again')startSuggest();
-  else if(a==='dismiss'){removeGhost();announce('추천을 닫았어요.');ghostReturnFocus();}
+  else if(a==='dismiss'){send({type:'suggest-feedback',action:'suggest-dismissed',evidence:ghostEvidence});removeGhost();announce('추천을 닫았어요.');ghostReturnFocus();}
   return;
  }
  // Click or tap on an inserted word / marker opens that proposal's popover.

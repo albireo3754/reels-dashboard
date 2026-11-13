@@ -104,6 +104,7 @@ export function CanonicalBlogEditor() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [changed, setChanged] = useState<string[]>([]);
+  const decisionIdsRef = useRef<string[]>([]);
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   const [reviewJobs,setReviewJobs]=useState<Array<{id:string;bundleIds:string[];status:string;error?:string}>>([]);
   const [reviewStatusError,setReviewStatusError]=useState("");
@@ -354,7 +355,7 @@ export function CanonicalBlogEditor() {
     if(!Object.keys(edits).length&&title===undefined&&!stickers&&!photos.length&&!deleteBundles.length&&!deleteParagraphs.length)return undefined;
     const sent={revision:d.revision,edits,title,stickers,photos,deleteBundles,deleteParagraphs};
     return {sent,body:{
-      revision:d.revision,baseText:d.sourceText,
+      revision:d.revision,baseText:d.sourceText,...(d.format==="markup"?{decisionIds:decisionIdsRef.current.slice(-200)}:{}),
       edits:Object.entries(edits).map(([id,source])=>({id,source,...(heldBaseRef.current[id]!==undefined?{base:heldBaseRef.current[id]}:{}),...(goneRef.current[id]?.after?{after:goneRef.current[id].after}:{})})),
       ...(title!==undefined?{title,...(heldBaseRef.current.$title!==undefined?{titleBase:heldBaseRef.current.$title}:{})}:{}),...(stickers?{stickers}:{}),...(photos.length?{photos}:{}),
       ...(deleteBundles.length?{deleteBundles}:{}),...(deleteParagraphs.length?{deleteParagraphs}:{}),
@@ -618,7 +619,7 @@ export function CanonicalBlogEditor() {
         (docRef.current?.format !== "markup" && docRef.current?.revision !== revision) ||
         (typeof result?.paragraphId === "string" && result.paragraphId !== paragraphId) ||
         (typeof result?.offset === "number" && result.offset !== offset);
-      send({ type: "suggest-result", token, suggestions, stale });
+      send({ type: "suggest-result", token, suggestions, stale, requestId, revision });
     } catch (e) {
       if (controller.signal.aborted || suggestRef.current?.requestId !== requestId) return;
       send({ type: "suggest-result", token, error: true });
@@ -859,6 +860,7 @@ export function CanonicalBlogEditor() {
           return;
         }
         if (m.action === "keep") {
+          recordDecision("keep",item.id,finding);
           // Keeping never touches the body; it only hides the proposal on this screen.
           handledRef.current.add(item.id);
           setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
@@ -911,6 +913,9 @@ export function CanonicalBlogEditor() {
       if (m.type === "suggest-error" && typeof m.message === "string") {
         setError("");
         setNotice(m.message);
+      }
+      if(m.type==="suggest-feedback" && ["suggest-accepted","suggest-dismissed"].includes(m.action) && typeof m.evidence?.requestId==="string"){
+        recordDecision(m.action,m.evidence.requestId,{...m.evidence,piece:m.piece??null});
       }
       if (m.type === "suggest-done") {
         if (m.outcome === "stale") setNotice(SUGGEST_STALE);
@@ -969,6 +974,24 @@ export function CanonicalBlogEditor() {
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
   }, [doc]);
+  function recordDecision(action:"accept-intent"|"keep"|"suggest-accepted"|"suggest-dismissed",proposalId:string,proposal:unknown){
+    const current=docRef.current;
+    if(!current||current.format!=="markup")return;
+    const event={id:crypto.randomUUID(),revision:current.revision,action,proposalId,proposal:{detail:proposal,reviewRuns:current.reviews.map(r=>({requestId:r.requestId??null,provider:r.provider??null,bundleId:r.bundleId}))}};
+    decisionIdsRef.current.push(event.id);
+    // Persist before sending; a reload retries the exact event id.
+    const key="blog-feedback:"+encodeURIComponent(current.path)+":"+event.id;
+    try{localStorage.setItem(key,JSON.stringify(event));}catch{setError("평가 기록의 재시도 사본을 저장하지 못했어요.");}
+    void api("feedback",event).then(()=>localStorage.removeItem(key)).catch(()=>setError("평가 기록 저장 실패: 화면을 다시 열면 재시도합니다."));
+  }
+  useEffect(()=>{
+    if(!doc?.path)return;
+    decisionIdsRef.current=[];
+    const prefix="blog-feedback:"+encodeURIComponent(doc.path)+":";
+    for(const key of Object.keys(localStorage).filter(k=>k.startsWith(prefix))){
+      try{const event=JSON.parse(localStorage.getItem(key)!);decisionIdsRef.current.push(event.id);void api("feedback",event).then(()=>localStorage.removeItem(key)).catch(()=>setError("평가 기록 재시도 실패"));}catch{setError("평가 기록 재시도 사본을 읽지 못했어요.");}
+    }
+  },[doc?.path]);
   function apply(f: CanonicalFinding, key = f.id): boolean {
     if (!doc || busy) return false;
     const p = f.proposal;
@@ -987,6 +1010,7 @@ export function CanonicalBlogEditor() {
       setEdits(old=>({...old,[original.id]:source}));
       send({ type: "replace", id: original.id, html: inlineHtml(source) });
       markChanged(original.id);
+      recordDecision("accept-intent",key,f);
       setDecisions((old) => ({ ...old, [key]: "적용 · 저장 전" }));
       setNotice(doc.format==="markup"?"본문에 반영했어요. 곧 자동으로 저장돼요.":"본문에 반영했어요. 아직 저장 전입니다. 정본 저장 또는 저장 후 검토를 눌러주세요.");
       return true;
@@ -1359,6 +1383,7 @@ export function CanonicalBlogEditor() {
                                 className="small"
                                 disabled={busy}
                                 onClick={() => {
+                                  recordDecision("keep",item.id,item);
                                   handledRef.current.add(item.id);
                                   setDecisions((old) => ({ ...old, [item.id]: "현재 유지" }));
                                 }}

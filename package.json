@@ -43,7 +43,10 @@
     "test:workflow": "node --import tsx --test tests/unit/workflow*.test.ts",
     "test:workflow-ui": "npm run build:web && playwright test --config playwright.workflow.config.ts",
     "blog:editor": "node --import tsx src/app/blog-editor/main.ts",
-    "forms": "node --import tsx src/app/workflow/forms-cli.ts"
+    "forms": "node --import tsx src/app/workflow/forms-cli.ts",
+    "evals": "node --import tsx scripts/content-evals.ts",
+    "evals:demo": "node --import tsx scripts/content-evals-demo.ts",
+    "opencut:prepare": "node --import tsx scripts/prepare-opencut.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.6.0",
