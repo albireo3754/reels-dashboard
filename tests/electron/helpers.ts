@@ -1,4 +1,9 @@
-import { _electron, type ElectronApplication } from "@playwright/test";
+import {
+  _electron,
+  test,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,6 +74,66 @@ export async function launchApp(
     env,
     timeout: 30_000,
   });
+}
+
+export type SharedApp = {
+  readonly app: ElectronApplication;
+  readonly page: Page;
+  readonly profile: string;
+};
+
+/**
+ * One demo app for every test in the calling file (or describe). Use it only for tests whose
+ * state lives in the renderer and in workbench sessions: before each test every session is
+ * closed, the window size and renderer storage are reset and the page reloads. Tests that seed
+ * the profile, stub main-process handlers or dialogs, or restart the app keep their own launch.
+ */
+export function useSharedApp(
+  envOverrides: Record<string, string | undefined> = {},
+): SharedApp {
+  let current: { app: ElectronApplication; page: Page; profile: string } | undefined;
+  const get = () => {
+    if (!current) throw new Error("The shared app is only available inside a test.");
+    return current;
+  };
+  test.beforeAll(async () => {
+    const profile = await makeProfile();
+    const app = await launchApp(profile, true, envOverrides);
+    current = { app, profile, page: await app.firstWindow() };
+  });
+  test.beforeEach(async () => {
+    const { app, page } = get();
+    await page.evaluate(async () => {
+      const workbench = window.reels?.workbench;
+      if (!workbench) return;
+      for (const session of (await workbench.state()).sessions)
+        await workbench.close(session.id);
+    });
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.setSize(1600, 1000);
+    });
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await page.reload();
+  });
+  test.afterAll(async () => {
+    await closeApp(current?.app);
+    if (current) await cleanProfile(current.profile);
+    current = undefined;
+  });
+  return {
+    get app() {
+      return get().app;
+    },
+    get page() {
+      return get().page;
+    },
+    get profile() {
+      return get().profile;
+    },
+  };
 }
 
 export async function closeApp(

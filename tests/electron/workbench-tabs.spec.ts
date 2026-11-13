@@ -5,6 +5,7 @@ import {
   launchApp,
   makeProfile,
   pressWorkbenchKey,
+  useSharedApp,
 } from "./helpers";
 
 const state = (page: Page) =>
@@ -20,12 +21,56 @@ const write = (page: Page, id: string, text: string) =>
     { id, text },
   );
 
-test("drawer shortcuts retain editor content and mounted terminal tabs", async ({}, info) => {
+test("normal mode does not install workbench keyboard shortcuts", async () => {
   const profile = await makeProfile();
   let app;
   try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
+    app = await launchApp(profile, true, { REELS_DEV_MODE: undefined });
     const page = await app.firstWindow();
+    const heading = page.getByRole("heading", {
+      name: "작업의 흐름을 한눈에",
+      exact: true,
+    });
+    await expect(heading).toBeVisible();
+    await pressWorkbenchKey(app, "n");
+    await pressWorkbenchKey(app, "t");
+    await pressWorkbenchKey(app, "3");
+    await expect(heading).toBeVisible();
+    await expect(page.locator("[data-drawer-state]")).toHaveCount(0);
+    expect(await page.evaluate(() => window.reels!.workbench)).toBeUndefined();
+  } finally {
+    await closeApp(app);
+    await cleanProfile(profile);
+  }
+});
+
+// Each ⌘-hold hint names the control it sits on; pressing the key must act on it.
+const hintTargets = async (page: Page) => {
+  await page.keyboard.down("Meta");
+  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
+  const targets = await page.evaluate(() =>
+    Object.fromEntries(
+      [...document.querySelectorAll<HTMLElement>("[data-shortcut-hint]")].map(
+        (hint) => {
+          const owner = hint.closest("button")!;
+          return [
+            hint.dataset.shortcutHint!,
+            owner.id || owner.getAttribute("aria-label") || "",
+          ];
+        },
+      ),
+    ),
+  );
+  await page.keyboard.up("Meta");
+  await expect(page.locator("[data-shortcut-hint]")).toHaveCount(0);
+  return targets as Record<string, string>;
+};
+
+test.describe("one development app", () => {
+  const shared = useSharedApp({ REELS_DEV_MODE: "1" });
+
+  test("drawer shortcuts retain editor content and mounted terminal tabs", async ({}, info) => {
+    const { app, page } = shared;
     await page.getByRole("button", { name: "영상 편집", exact: true }).click();
     const heading = page.getByRole("heading", {
       name: "선택한 장면을 완성해요",
@@ -215,18 +260,10 @@ test("drawer shortcuts retain editor content and mounted terminal tabs", async (
     await page.screenshot({
       path: info.outputPath("workbench-drawer-setup-760.png"),
     });
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
+  });
 
-test("folding blurs the terminal and preserves its PTY size until reopened", async () => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+  test("folding blurs the terminal and preserves its PTY size until reopened", async () => {
+    const { app, page } = shared;
     await expect(
       page.getByRole("button", { name: "대시보드", exact: true }),
     ).toBeVisible();
@@ -294,18 +331,10 @@ test("folding blurs the terminal and preserves its PTY size until reopened", asy
         `.dev-terminal[data-session-id="${session.id}"] .xterm-helper-textarea`,
       ),
     ).toBeFocused();
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
+  });
 
-test("Cmd W closes the selected process and tab, then hides a folded drawer without killing remaining sessions", async () => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+  test("Cmd W closes the selected process and tab, then hides a folded drawer without killing remaining sessions", async () => {
+    const { app, page } = shared;
     await expect(
       page.getByRole("button", { name: "대시보드", exact: true }),
     ).toBeVisible();
@@ -377,63 +406,10 @@ test("Cmd W closes the selected process and tab, then hides a folded drawer with
         ({ BrowserWindow }) => BrowserWindow.getAllWindows().length,
       ),
     ).toBe(1);
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
+  });
 
-test("normal mode does not install workbench keyboard shortcuts", async () => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: undefined });
-    const page = await app.firstWindow();
-    const heading = page.getByRole("heading", {
-      name: "작업의 흐름을 한눈에",
-      exact: true,
-    });
-    await expect(heading).toBeVisible();
-    await pressWorkbenchKey(app, "n");
-    await pressWorkbenchKey(app, "t");
-    await pressWorkbenchKey(app, "3");
-    await expect(heading).toBeVisible();
-    await expect(page.locator("[data-drawer-state]")).toHaveCount(0);
-    expect(await page.evaluate(() => window.reels!.workbench)).toBeUndefined();
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
-
-// Each ⌘-hold hint names the control it sits on; pressing the key must act on it.
-const hintTargets = async (page: Page) => {
-  await page.keyboard.down("Meta");
-  await expect(page.locator('[data-shortcut-hint="quickOpen"]')).toHaveCount(1);
-  const targets = await page.evaluate(() =>
-    Object.fromEntries(
-      [...document.querySelectorAll<HTMLElement>("[data-shortcut-hint]")].map(
-        (hint) => {
-          const owner = hint.closest("button")!;
-          return [
-            hint.dataset.shortcutHint!,
-            owner.id || owner.getAttribute("aria-label") || "",
-          ];
-        },
-      ),
-    ),
-  );
-  await page.keyboard.up("Meta");
-  await expect(page.locator("[data-shortcut-hint]")).toHaveCount(0);
-  return targets as Record<string, string>;
-};
-
-test("Cmd-hold hints mark exactly what Cmd 1-9 and Cmd W act on", async () => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+  test("Cmd-hold hints mark exactly what Cmd 1-9 and Cmd W act on", async () => {
+    const { app, page } = shared;
     await expect(page.locator(".dev-connect code")).toContainText(
       "reels-dashboard",
     );
@@ -482,8 +458,5 @@ test("Cmd-hold hints mark exactly what Cmd 1-9 and Cmd W act on", async () => {
     await expect(
       page.getByRole("button", { name: "영상 편집", exact: true }),
     ).toHaveAttribute("aria-current", "page");
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
+  });
 });
