@@ -29,6 +29,13 @@ type ToolCliOption = {
 };
 /** The only hand-written tool metadata; everything else derives from the schemas. */
 export const cliOptions = {
+  reels_edits_ax_find: { sample: { selector: `'{"identifier":"editor.timecode"}'` } },
+  reels_edits_ax_press: { sample: { target: `'{"pid":1,"root":"application","path":[0],"fingerprint":"observed-target"}'` } },
+  reels_edits_ax_set_value: { sample: { target: `'{"pid":1,"root":"application","path":[0],"fingerprint":"observed-target"}'`, intent: "clip-volume", value: "0" } },
+  reels_edits_open_project: { sample: { name: "'Example project'" } },
+  reels_edits_menu: { sample: { path: "'File>Import Media'" } },
+  reels_edits_clip_trim: { sample: { inSeconds: "0", outSeconds: "1" } },
+  reels_edits_screenshot: { imageField: "image" },
   reels_preview_frame: { imageField: "image", sample: { kind: "cover" } },
   reels_form_media: { imageField: "dataUrl" },
   reels_start_render: { wait: true, sample: { outputPath: "/abs/new.mov" } },

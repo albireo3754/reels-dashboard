@@ -25,6 +25,12 @@ export function createMcpServer(
       async (args: unknown): Promise<CallToolResult> => {
         try {
           const result = await call(name, args);
+          if (name === "reels_edits_screenshot") {
+            const image = parseDataUrl(result.image);
+            if (image?.mimeType !== "image/png") throw new Error("Invalid Edits screenshot");
+            const { image: _image, ...metadata } = result;
+            return { content: [{ type: "image", data: image.data, mimeType: "image/png" }], structuredContent: metadata };
+          }
           if (name === "reels_preview_frame") {
             const image = parseDataUrl(result.image);
             if (image?.mimeType !== "image/png")

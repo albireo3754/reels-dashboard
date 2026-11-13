@@ -18,7 +18,7 @@
     "build:desktop": "node scripts/build-desktop.mjs",
     "build:icons": "node scripts/build-icons.mjs",
     "build": "npm run build:web && npm run build:desktop",
-    "build:native": "node scripts/build-native.mjs",
+    "build:native": "node scripts/build-native.mjs && npm run build:edits-native",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/unit/*.test.ts",
@@ -46,7 +46,9 @@
     "forms": "node --import tsx src/app/workflow/forms-cli.ts",
     "evals": "node --import tsx scripts/content-evals.ts",
     "evals:demo": "node --import tsx scripts/content-evals-demo.ts",
-    "opencut:prepare": "node --import tsx scripts/prepare-opencut.ts"
+    "opencut:prepare": "node --import tsx scripts/prepare-opencut.ts",
+    "build:edits-native": "node scripts/build-edits-native.mjs",
+    "test:edits-native": "swift test --package-path native/editsax"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.6.0",
@@ -130,6 +132,10 @@
       {
         "from": "dist-cli/reels.mjs",
         "to": "cli/reels.mjs"
+      },
+      {
+        "from": "native/editsax/.build/editsax",
+        "to": "native/editsax"
       }
     ],
     "mac": {

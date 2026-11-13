@@ -1,3 +1,5 @@
+import { EditsAutomation } from "../features/edits-automation";
+import { EditsNativeClient } from "./edits-native";
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import { PlanningStore } from "../shared/lib/planning-store";
 import {InputFormWindows} from "./input-form-window";
@@ -171,6 +173,10 @@ async function awaitReady() {
     support: path.join(root, "native"),
     exportRoot: process.env.PHOTOSINDEX_EXPORT_ROOT,
   });
+  const editsNative = new EditsNativeClient(app.isPackaged
+    ? path.join(process.resourcesPath, "native/editsax")
+    : path.join(app.getAppPath(), "native/editsax/.build/editsax"));
+  const edits = new EditsAutomation(editsNative);
   const demo = createDemoBridge();
   const agentSession = new AgentSession();
   const inputForms = new InputFormWindows(backgroundQA);
@@ -559,7 +565,7 @@ async function awaitReady() {
               .catch((error) => console.error("Workflow server close failed:", error)),
           )
           .then(() => closeAgent?.())
-          .then(() => native.dispose()),
+          .then(() => { editsNative.dispose(); return native.dispose(); }),
       () => app.quit(),
     );
   });
@@ -1066,6 +1072,7 @@ async function awaitReady() {
   app.on("second-instance", showWindow);
   if (!fixture)
     closeAgent = await connectAgent(root, {
+      edits,
       coverPreferences,
       planning,
       clipUpload: { create: createClipBundle },

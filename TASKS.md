@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## Edits 외부 앱 자동화 — 2026-11-14
+
+- [x] main 기준 격리 worktree에서 TS 서비스·공통 MCP/CLI 도구·edits 필터·main 주입 경로 작성. 앱을 우회하는 독립 CLI/helper 실행 경로 없음.
+- [x] dryRun·stale/모호성·실제 후조건·DB 읽기 전용 경계 및 금지 동작 계약. [사용법·구현/실기 검증 구분](docs/edits-automation.md).
+- [x] native 전담 47개 순수 테스트·release 빌드 인계, Developer ID 서명·원자 배치, background Dashboard status/읽기/dryRun 스모크. 실기 -25200 진단과 한정 Subrole 부재 정책 후속 읽기는 root cycle로 incomplete였다. 쓰기 guard를 유지하고 새 근거로 native 원인 분석을 이어간다.
+- [ ] terra 독립 코드리뷰·최신 main 통합/재검증·main 병합·빌드 반영.
+- [ ] 실제 GUI 수용: 관찰된 Mac 잠금 때문에 잠금 해제 전 live AX/음악/앱 UI 검사를 대기. 마지막 목록은 clips=0·complete=false, 원인 미확정·일반 설치 앱 TCC 미검증. 잠금 해제/로그인/질문 화면 조작 없이 독립 코드/통합/패키징을 진행.
+
+
 ## Photos 묶음 가져오기(관련 데이터 기본 묶음) — 2026-11-13
 
 배경: 사용자 지시 "사진도 가져와. 블로그 때문에 관련된 데이터는 다 묶어서 가져오는 걸 기본으로". 기존에는 영상 1개씩(`reels_import_photos_video`) 가져와 카드가 영상마다 생겼고, 사진은 inspect 미리보기로만 썼다.

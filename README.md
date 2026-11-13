@@ -52,6 +52,10 @@ All shortcuts come from one keymap (`src/shared/keymap.ts`), match the physical 
 
 Project photo/frame metadata analysis supports a replaceable image analyzer, source timestamps, human corrections and search through the desktop/MCP. See [metadata analysis](docs/media-analysis.md).
 
+## Edits app automation
+
+External Meta Edits automation is implemented through the shared `edits` tool filter (`reels tools --group edits`), with flat command slugs such as `reels edits-status`. The running Dashboard main owns the native AX child; permission and real UI behavior require runtime verification. See [Edits tools, validation and limits](docs/edits-automation.md).
+
 ## Agent integration
 
 The desktop **터미널** is enabled explicitly with `REELS_DEV_MODE=1 npm start` after building, or in any build (including the packaged app) with **설정 → 터미널 사용**, which applies on the next launch. It connects this source checkout to Codex and shell PTY sessions, a local web preview, verification commands and the existing briefing site. It is absent from normal desktop startup and the shared web app. Codex is the default; the provider boundary reserves Claude Code for a later release. Design → implement → review → fix prompts support a user-directed improvement loop. See [architecture, usage and validation](docs/development-workspace.md).

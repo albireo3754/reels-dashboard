@@ -1,4 +1,5 @@
 import { errorMessage } from "./errors";
+import { editsErrorDetails } from "../edits";
 import { createConnection, createServer, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
 import {
@@ -88,6 +89,7 @@ export async function startAgentSocket(
       if (newline < 0) return;
       received = true;
       void (async () => {
+        let allowEditsDetails = false;
         try {
           const request = JSON.parse(
             data.subarray(0, newline).toString("utf8"),
@@ -98,6 +100,7 @@ export async function startAgentSocket(
             typeof request.name !== "string"
           )
             throw new Error("Unauthorized agent request");
+          allowEditsDetails = request.name.startsWith("reels_edits_");
           const result = await dispatch(request.name, request.args);
           const response = JSON.stringify({ result }) + "\n";
           if (Buffer.byteLength(response) > responseLimit)
@@ -105,10 +108,14 @@ export async function startAgentSocket(
           socket.end(response);
         } catch (error) {
           const code = (error as { code?: unknown } | null)?.code;
+          const details = allowEditsDetails
+            ? editsErrorDetails((error as { details?: unknown })?.details)
+            : undefined;
           socket.end(
             JSON.stringify({
               error: errorMessage(error) || emptyErrorMessage,
               ...(typeof code === "string" ? { code } : {}),
+              ...(details && Object.keys(details).length ? { details } : {}),
             }) + "\n",
           );
         }
@@ -292,6 +299,10 @@ export async function callAgent(
                 new Error(String(response.error) || emptyErrorMessage),
                 typeof response.code === "string"
                   ? { code: response.code }
+                  : {},
+                name.startsWith("reels_edits_") &&
+                  editsErrorDetails(response.details)
+                  ? { details: editsErrorDetails(response.details) }
                   : {},
               )
             : undefined,

@@ -1,3 +1,4 @@
+import type { EditsBridge, EditsToolName } from "../../../shared/edits";
 import type { BlogCommentCreateInput, BlogCommentDeleteInput, BlogCommentListInput, BlogCommentUpdateInput } from "../../../shared/blog-comments";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import type { MergeProjectsInput, LinkEditInput } from "../../../shared/production-project";
@@ -38,6 +39,7 @@ export interface AgentEditorPort extends EditorBridge {
   ): Promise<RenderJob | null>;
 }
 export interface AgentPorts {
+  edits?: EditsBridge;
   planning?: import("../../../shared/planning").PlanningBridge;
   coverPreferences?: import("../../../shared/clip-upload").CoverPreferencesBridge;
   clipUpload?: import("../../../shared/clip-upload").ClipUploadBridge;
@@ -109,6 +111,10 @@ export function createAgentDispatch(ports: AgentPorts) {
     if (!Object.hasOwn(toolDefinitions, name))
       throw new Error("UNKNOWN_TOOL: 지원하지 않는 도구예요.");
     const input = toolDefinitions[name as ToolName].input.parse(args) as any;
+    if (name.startsWith("reels_edits_")) {
+      if (!ports.edits) throw new Error("EDITS_UNAVAILABLE: desktop Edits service is not connected");
+      return ports.edits.request(name as EditsToolName, input);
+    }
     const formTool = inputFormTools.find(tool=>tool[1]===name);
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {

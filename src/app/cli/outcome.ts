@@ -1,6 +1,7 @@
 import { AgentCallError } from "../../shared/lib/agent-socket";
 import { parseDataUrl } from "../../shared/lib/data-url";
 import { errorMessage } from "../../shared/lib/errors";
+import { editsErrorDetails, type TreeDiagnostics } from "../../shared/edits";
 
 export type Retry =
   | "safe"
@@ -144,6 +145,18 @@ function remoteRule(code: string): Rule {
 export type Guidance = { next?: string[]; hint?: string };
 
 export type ErrorDetails = Guidance & {
+  attempted?: boolean;
+  fallback?: "coordinate" | null;
+  diagnostics?: TreeDiagnostics;
+  before?: { diagnostics: TreeDiagnostics };
+  after?: { diagnostics: TreeDiagnostics };
+  axErrorCode?: number;
+  axAPI?: string;
+  axAttribute?: string;
+  axRole?: string;
+  axAttributeListed?: boolean;
+  axAttributeListErrorCode?: number;
+  outcome?: "unknown";
   exitCode?: number;
   retry?: Retry;
   writeOutcome?: WriteOutcome;
@@ -190,7 +203,11 @@ export function agentFailure(
   return new CliError(
     code,
     text.replace(/^[A-Z][A-Z0-9_]+:\s*/, "") || text,
-    { ...(reason ? { reason } : {}), ...guidance(code) },
+    {
+      ...(reason ? { reason } : {}),
+      ...guidance(code),
+      ...editsErrorDetails((error as { details?: unknown })?.details),
+    },
     true,
   );
 }
