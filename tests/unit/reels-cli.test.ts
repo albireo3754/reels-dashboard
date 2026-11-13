@@ -574,6 +574,35 @@ test("completion scripts parse in their shells and complete as listed", async (t
     assert.deepEqual(complete("reels", "call", "reels_get_project", "--pro"), ["--project-id"]);
     assert.deepEqual(complete("reels", "photos-search", "--te"), ["--text"]);
     assert.deepEqual(complete("reels", "help", "--pl"), ["--plain"]);
+    // Past the command, only a word starting with - gets flags. A path, or the value of a
+    // flag that takes one, gets an empty reply, so `complete -o default` offers file names.
+    const empty = [""];
+    assert.deepEqual(complete("reels", "preview-frame", "--out", ""), empty);
+    assert.deepEqual(complete("reels", "preview-frame", "--out", "-"), empty);
+    assert.deepEqual(complete("reels", "call", "preview-frame", "--out", ""), empty);
+    assert.deepEqual(complete("reels", "prepare-media", "--selection", "./"), empty);
+    assert.deepEqual(complete("reels", "prepare-media", "--list", ""), empty);
+    assert.deepEqual(complete("reels", "status", "--timeout", ""), empty);
+    assert.deepEqual(complete("reels", "status", "--t"), ["--timeout"]);
+    assert.deepEqual(complete("reels", "prepare-media", "--li"), ["--list"]);
+    // A command's own words still come before files.
+    assert.ok(complete("reels", "tools", "").includes("get-project"));
+    assert.ok(!complete("reels", "tools", "").includes("--group"));
+    assert.ok(complete("reels", "help", "").includes("exit-codes"));
+    assert.match(await readFile(bash, "utf8"), /^complete -o default -F _reels reels$/m);
+    assert.match(await readFile(bash, "utf8"), /^# Load it with: eval "\$\(reels completion bash\)"$/m);
+
+    // zsh falls back to _files in the same cases; fish keeps -f for the command position only.
+    const zshScript = await readFile(await script("zsh"), "utf8");
+    assert.match(zshScript, /if \(\( \$\{values\[\(Ie\)\$prev\]\} \)\); then\n\s+_files\n\s+return/);
+    assert.match(zshScript, /elif \[\[ \$PREFIX == -\* \]\]; then\n\s+candidates=\(\$flags\)/);
+    assert.match(zshScript, /else\n\s+_files\n\s+return/);
+    assert.match(zshScript, /preview-frame\|reels_preview_frame\) flags=\([^)]*--out[^)]*\) args=\(\) values=\([^)]*--out[^)]*\)/);
+    const fishScript = await readFile(await script("fish"), "utf8");
+    assert.doesNotMatch(fishScript, /^complete -c reels -f$/m);
+    for (const line of fishScript.split("\n").filter((text) => text.startsWith("complete") && / -f /.test(text)))
+      assert.match(line, /-n (__fish_use_subcommand|__reels_after_group) /, line);
+    assert.match(fishScript, /^complete -c reels -f -n __fish_use_subcommand -a /m);
 
     await t.test("zsh -n", { skip: !hasShell("zsh") && "zsh is not installed" }, async () => {
       assert.equal(spawnSync("zsh", ["-n", await script("zsh")]).status, 0);
@@ -2897,7 +2926,10 @@ async function doctorSetup(root: string) {
   const launcher = path.join(binDir, "reels");
   const bundle = path.join(root, "app", "reels.mjs");
   const other = path.join(root, "other-bin");
+  // The runtime a managed launcher execs; it stands in for the app's Electron binary.
+  const runtime = path.join(root, "app", "Reels Dashboard's", "Electron");
   await mkdir(binDir, { recursive: true });
+  await mkdir(path.dirname(runtime), { recursive: true });
   await mkdir(path.dirname(bundle), { recursive: true });
   await mkdir(other, { recursive: true });
   await writeFile(bundle, "// bundle\n");
@@ -2905,8 +2937,9 @@ async function doctorSetup(root: string) {
     await writeFile(file, text);
     await chmod(file, 0o755);
   };
-  const managed = (target = bundle) =>
-    executable(launcher, cliLauncher("/Apps/Reels Dashboard's/Electron", target));
+  await executable(runtime, "#!/bin/sh\n");
+  const managed = (target = bundle, runs = runtime) =>
+    executable(launcher, cliLauncher(runs, target));
   const doctor = async (
     options: { pathEnv?: string; script?: string; extra?: string[] } = {},
   ) => {
@@ -2930,7 +2963,7 @@ async function doctorSetup(root: string) {
     );
     return { ...result, data: result.document.data, checks };
   };
-  return { home, binDir, launcher, bundle, other, executable, managed, doctor };
+  return { home, binDir, launcher, bundle, other, runtime, executable, managed, doctor };
 }
 
 const listTree = async (dir: string): Promise<string[]> =>
@@ -2938,7 +2971,7 @@ const listTree = async (dir: string): Promise<string[]> =>
 
 test("doctor reports a managed setup with the app closed, and writes nothing", async () => {
   await offlineRoot(async (root) => {
-    const { managed, doctor, launcher, bundle } = await doctorSetup(root);
+    const { managed, doctor, launcher, bundle, runtime } = await doctorSetup(root);
     await managed();
     const before = await listTree(root);
     const { data, checks, document } = await doctor();
@@ -2966,7 +2999,12 @@ test("doctor reports a managed setup with the app closed, and writes nothing", a
     assert.equal(checks.app_version.ok, null);
     assert.deepEqual(data.app, { online: false, reason: "no_connection_file" });
     assert.equal(data.userData, root);
-    assert.deepEqual(data.launcher, { path: launcher, state: "managed", bundle });
+    assert.deepEqual(data.launcher, {
+      path: launcher,
+      state: "managed",
+      bundle,
+      executable: runtime,
+    });
     assert.deepEqual(data.cli, { version: data.cli.version, bundle, node: "22.12.0" });
     // The app verdict is the one `reels status` prints.
     const status = await cli(root, ["status"]);
@@ -3022,6 +3060,19 @@ test("doctor tells a missing, foreign and symlinked launcher apart", async () =>
     const elsewhere = await doctor({ pathEnv: `${binDir}:${other}` });
     assert.equal(elsewhere.checks.launcher.ok, null);
     assert.equal(elsewhere.checks.path_command.ok, true);
+    // ~/.local/bin off PATH is not a failure then either: the npm-link setup is healthy.
+    const linkedOnly = await doctor({ pathEnv: other });
+    assert.equal(linkedOnly.checks.launcher.ok, null);
+    assert.equal(linkedOnly.checks.path_dir.ok, null);
+    assert.match(linkedOnly.checks.path_dir.detail, /instead/);
+    assert.equal(linkedOnly.checks.path_command.ok, true);
+    // Only the closed app is a failure, so healthy follows the app alone.
+    assert.deepEqual(
+      linkedOnly.data.checks
+        .filter(({ ok }: { ok: boolean | null }) => ok === false)
+        .map(({ id }: { id: string }) => id),
+      ["app"],
+    );
     assert.equal(elsewhere.data.command.onPath, path.join(other, "reels"));
 
     await executable(launcher, "#!/bin/sh\necho mine\n");
@@ -3090,6 +3141,27 @@ test("doctor compares the launcher's bundle with the running one", async () => {
     assert.equal(moved.checks.launcher.ok, false);
     assert.match(moved.checks.launcher.detail, /does not exist/);
     assert.equal(moved.checks.launcher_bundle.ok, null);
+  });
+});
+
+test("doctor checks that the launcher's runtime exists and is executable", async () => {
+  await offlineRoot(async (root) => {
+    const { doctor, managed, runtime, bundle } = await doctorSetup(root);
+    await managed(bundle, path.join(root, "gone", "Electron"));
+    const gone = await doctor();
+    assert.equal(gone.checks.launcher.ok, false);
+    assert.match(gone.checks.launcher.detail, /runtime .*gone.* is missing or not executable/);
+    assert.match(gone.checks.launcher.fix, /rewrites the launcher/);
+    assert.equal(gone.data.healthy, false);
+
+    await managed();
+    await chmod(runtime, 0o644);
+    const notExecutable = await doctor();
+    assert.equal(notExecutable.checks.launcher.ok, false);
+    assert.match(notExecutable.checks.launcher.detail, /not executable/);
+
+    await chmod(runtime, 0o755);
+    assert.equal((await doctor()).checks.launcher.ok, true);
   });
 });
 

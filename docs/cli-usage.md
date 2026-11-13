@@ -46,7 +46,7 @@ A tool can be named as `reels_get_project`, `get_project` (the form the guidance
 
 ### Text for people
 
-`--plain` belongs to `reels help` and `reels tools` only; it is not a global option, so a tool flag such as `reels photos-search --text` keeps its meaning, and `--plain` on any other command is a usage error (exit 2). Agents should keep reading the JSON forms.
+`--plain` belongs to `reels help` and `reels tools` only; it is not a global option, so a tool flag such as `reels photos-search --text` keeps its meaning, and `--plain` on any other command is a usage error (exit 2). The exceptions are `--help` and `--version`, which are read before anything else: `reels --help --plain`, `reels --version --plain` and `reels status --help --plain` ignore `--plain` and print their JSON with exit 0. For help as text use `reels help --plain [<command>]`. Agents should keep reading the JSON forms.
 
 - `reels help --plain`: the top-level help. `reels help --plain <command>` prints that command's help text; `--plain` may come before or after the name.
 - `reels help --plain <tool>` and `reels tools --plain <tool>`: usage, every flag with its type, allowed values, format and whether it is required, the CLI options, an example and the group.
@@ -55,11 +55,11 @@ A tool can be named as `reels_get_project`, `get_project` (the form the guidance
 
 ### Shell completion
 
-`reels completion bash`, `zsh` or `fish` prints a completion script on stdout: the first word completes to the commands, tool slugs, `--help` and `--version`; after `help` come help topics, commands and tools; after a command or a tool (also as `call <tool>`) come its own flags; after `--group` come the group ids. The script is generated when the command runs from the built-in commands and the tool schemas, so it matches the installed CLI version. It is static: re-run it after updating the app. The CLI installs nothing and never edits shell files; a person sets it up once, for example:
+`reels completion bash`, `zsh` or `fish` prints a completion script on stdout: the first word completes to the commands, tool slugs, `--help` and `--version`; after `help` come help topics, commands and tools; after a command or a tool (also as `call <tool>`) come its own flags for a word that starts with `-`; after `--group` come the group ids. Any other word past the command, and the value of a flag that takes one (such as `--out` or `--selection`), gets the command's own words (help topics, tool names, shells) or else the shell's file-name completion, so paths still complete. The script is generated when the command runs from the built-in commands and the tool schemas, so it matches the installed CLI version. It is static: re-run it after updating the app. The CLI installs nothing and never edits shell files; a person sets it up once, for example:
 
 ```sh
-# bash: in ~/.bashrc
-source <(reels completion bash)
+# bash: in ~/.bashrc (eval works in the macOS /bin/bash 3.2, where source <(...) silently loads nothing)
+eval "$(reels completion bash)"
 # zsh: save it on $fpath before compinit runs (the folder is an example)
 reels completion zsh > ~/.zfunc/_reels   # with fpath=(~/.zfunc $fpath) in ~/.zshrc
 # fish
@@ -124,9 +124,9 @@ The only exceptions are three opt-in text forms for people: `reels help --plain 
 | `profile` | The profile folder, from `REELS_USER_DATA` or the default | it cannot be resolved (`user_data_unresolved`) or is not a folder |
 | `app` | The `reels status` verdict | the app cannot be called, or answers without its state. `null` when the profile is unresolved |
 | `app_version` | Always `null`: the app does not report its version to the CLI | never |
-| `launcher` | `<HOME>/.local/bin/reels`: `missing`, `managed` (carries the marker), `foreign` (a file of your own) or `symlink` (with its `target`) | missing with no other `reels` on `PATH`, managed but its bundle is gone, or a dangling symlink. `null` for a foreign file, a working symlink, or a missing launcher while another `reels` is on `PATH` |
+| `launcher` | `<HOME>/.local/bin/reels`: `missing`, `managed` (carries the marker; with its `bundle` and `executable`), `foreign` (a file of your own) or `symlink` (with its `target`) | missing with no other `reels` on `PATH`, managed but its bundle is gone or the executable it runs (the app's Electron binary) is missing or not executable, or a dangling symlink. `null` for a foreign file, a working symlink, or a missing launcher while another `reels` is on `PATH` |
 | `launcher_bundle` | Whether the bundle this process runs (`process.argv[1]`) is the one the launcher runs, after resolving symlinks | they differ. `null` when there is nothing to compare |
-| `path_dir` | `<HOME>/.local/bin` is a `PATH` entry | it is not |
+| `path_dir` | `<HOME>/.local/bin` is a `PATH` entry | it is not. `null` when there is no launcher and another `reels` is on `PATH` (such as `npm link`) |
 | `path_command` | The first executable `reels` on `PATH` (absolute entries only) | there is none, or another one comes before the launcher |
 
 `ok: null` means the check could not decide. `healthy` is true when no check is `false`. `fix` is advice for a person or agent, such as opening the app or editing `PATH`; the CLI never applies it, and `doctor` has no `next`. The result also carries `cli` (`version`, `bundle`, `node`, and `electron` under the launcher), `userData`, `app` as `reels status` prints it, `launcher` and `command` (`onPath`, `binDir`, `binDirOnPath`).

@@ -31,7 +31,7 @@ A tool can be named `reels_get_project`, `get_project` or `get-project`. Flags c
 
 ## Read before write
 
-Every write takes the revision you last read. The CLI never fills it in.
+A write that takes `--expected-updated-at` needs the revision you last read; the CLI never fills it in. Some writes, such as `cancel-render`, `import-video`, `set-cover-preferences` and `open-project`, take no revision: `reels tools <name>` shows whether a tool has the flag.
 
 ```sh
 reels get-project --project-id <uuid>        # .data.updatedAt is the revision

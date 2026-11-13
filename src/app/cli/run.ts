@@ -126,6 +126,11 @@ const optionWords = (options: object) => [
   ...Object.keys(options).map((name) => `--${name}`),
   "--help",
 ];
+/** Options that take a value: after one, completion offers file names, not flags. */
+const valueWords = (options: Record<string, { type: string }>) =>
+  Object.entries(options)
+    .filter(([, { type }]) => type !== "boolean")
+    .map(([name]) => `--${name}`);
 const toolSlugs = () => toolNames.map(toolSlug);
 
 type Input = Record<string, any>;
@@ -865,6 +870,8 @@ type Builtin = {
   summary?: string;
   /** Words `reels completion` offers after this command. */
   completions?: () => readonly string[];
+  /** Its options that take a value, for `reels completion`. */
+  completionValues?: () => readonly string[];
   run(args: string[], context: BuiltinContext): Promise<Success> | Success;
 };
 /** `reels help <topic>`: help that belongs to no command. `plain` asks for text. */
@@ -913,6 +920,7 @@ Reports whether the app can be called. Exit 0 even when it cannot.
 Example: reels status --timeout 2`,
   summary: "Whether the app can be called.",
   completions: () => optionWords(statusOptions),
+  completionValues: () => valueWords(statusOptions),
   run: (args, { io, scope }) => status(args, io, scope),
 } satisfies Builtin;
 const doctorUsage = "reels doctor [--timeout <s>]";
@@ -926,6 +934,7 @@ and fix advice that the CLI never applies. Exit 0 whatever it finds.
 Example: reels doctor`,
   summary: "Read-only checks of runtime, profile, app, launcher and PATH.",
   completions: () => optionWords(statusOptions),
+  completionValues: () => valueWords(statusOptions),
   run: (args, { io, scope }) => doctor(args, io, scope),
 } satisfies Builtin;
 const toolsUsage = "reels tools [<name|slug> | --group <id>]";
@@ -969,6 +978,7 @@ Example: reels prepare-media --list --project-id sample
 Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --selection - --destination /abs/new-dir`,
   summary: "Copy registered media to a new folder. Works without the app.",
   completions: () => optionWords(prepareMediaOptions),
+  completionValues: () => valueWords(prepareMediaOptions),
   run: (args, { io, scope }) => prepareMedia(args, io, scope),
 } satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
@@ -1013,7 +1023,7 @@ const completionCommand = {
 Prints a shell completion script as text, not JSON. It installs nothing.
 The script lists this version's commands and flags: re-run it after updating the app.
 Example: reels completion zsh > ~/.zfunc/_reels
-Example: source <(reels completion bash)`,
+Example: eval "$(reels completion bash)"`,
   completions: () => completionShells,
   run: (args, { scope }) => completion(args, scope),
 } satisfies Builtin;
@@ -1047,9 +1057,15 @@ function completionSpec() {
       ...builtins.flatMap(({ name }) => (name.startsWith("-") ? [name] : [])),
     ],
     commands: [
-      ...builtins.flatMap(({ name, completions }) =>
+      ...builtins.flatMap(({ name, completions, completionValues }) =>
         completions && !name.startsWith("-")
-          ? [{ names: [name], words: completions() }]
+          ? [
+              {
+                names: [name],
+                words: completions(),
+                values: completionValues?.() ?? [],
+              },
+            ]
           : [],
       ),
       ...toolNames.map((name) => ({
@@ -1058,6 +1074,14 @@ function completionSpec() {
           ...toolFlags(name).map(({ flag }) => flag),
           ...toolOptionDocs(name).map(({ flag }) => flag),
           "--help",
+        ],
+        values: [
+          ...toolFlags(name)
+            .filter(({ type }) => type !== "boolean")
+            .map(({ flag }) => flag),
+          ...toolOptionDocs(name).flatMap(({ flag, value }) =>
+            value ? [flag] : [],
+          ),
         ],
       })),
     ],

@@ -65,11 +65,27 @@ const exists = (file: string) =>
     () => true,
     () => false,
   );
+const runnable = (file: string) =>
+  stat(file).then(
+    (info) =>
+      info.isFile() &&
+      access(file, constants.X_OK).then(
+        () => true,
+        () => false,
+      ),
+    () => false,
+  );
 const real = (file: string) => realpath(file).catch(() => path.resolve(file));
 
 export type LauncherInfo =
   | { path: string; state: "missing" }
-  | { path: string; state: "managed"; bundle: string | null }
+  | {
+      path: string;
+      state: "managed";
+      bundle: string | null;
+      /** The runtime the launcher execs (the app's Electron binary). */
+      executable: string | null;
+    }
   | { path: string; state: "foreign" }
   | { path: string; state: "symlink"; target: string };
 
@@ -87,10 +103,12 @@ async function inspectLauncher(file: string): Promise<LauncherInfo> {
   // The same test `installCli` uses before it rewrites a launcher.
   if (!content.includes(CLI_LAUNCHER_MARKER))
     return { path: file, state: "foreign" };
+  const read = readCliLauncher(content);
   return {
     path: file,
     state: "managed",
-    bundle: readCliLauncher(content)?.bundle ?? null,
+    bundle: read?.bundle ?? null,
+    executable: read?.executable ?? null,
   };
 }
 
@@ -140,6 +158,11 @@ export async function setupChecks({ home, pathEnv, script }: SetupFacts) {
         ? launcher.target
         : undefined;
   const runsExists = runs !== undefined && (await exists(runs));
+  // A managed launcher also needs its runtime (the app's Electron binary) to run.
+  const runtimeOk =
+    launcher.state === "managed" && launcher.executable
+      ? await runnable(launcher.executable)
+      : true;
 
   if (launcher.state === "missing")
     checks.push({
@@ -162,24 +185,32 @@ export async function setupChecks({ home, pathEnv, script }: SetupFacts) {
       detail: `${launcher.path} is a symlink to ${launcher.target}${runsExists ? "" : ", which does not exist"}. The app never replaces a symlink.`,
       fix: "Remove the symlink once to switch to the app's launcher.",
     });
-  else if (!launcher.bundle)
+  else if (!launcher.bundle || !launcher.executable)
     checks.push({
       id: "launcher",
       ok: false,
-      detail: `${launcher.path} is managed by the app but names no bundle.`,
+      detail: `${launcher.path} is managed by the app but names no ${launcher.bundle ? "executable" : "bundle"}.`,
       fix: openAppOnce,
     });
-  else
+  else {
+    const ok = runsExists && runtimeOk;
+    const problems = [
+      ...(runsExists ? [] : [`${launcher.bundle} does not exist`]),
+      ...(runtimeOk
+        ? []
+        : [`its runtime ${launcher.executable} is missing or not executable`]),
+    ];
     checks.push({
       id: "launcher",
-      ok: runsExists,
-      detail: `${launcher.path} is the app's launcher for ${launcher.bundle}${runsExists ? "" : ", which does not exist"}.`,
-      ...(runsExists
+      ok,
+      detail: `${launcher.path} is the app's launcher for ${launcher.bundle}${ok ? "" : `, but ${problems.join(" and ")}`}.`,
+      ...(ok
         ? {}
         : {
             fix: "Open the packaged Reels Dashboard from its current location; it rewrites the launcher on launch.",
           }),
     });
+  }
 
   if (runs === undefined || !runsExists || script === undefined)
     checks.push({
@@ -206,11 +237,22 @@ export async function setupChecks({ home, pathEnv, script }: SetupFacts) {
     });
   }
 
+  // Without the app's launcher, another reels on PATH (say, npm link) does the job,
+  // so ~/.local/bin being off PATH is not a failure then.
+  const otherCommand = !onPath && launcher.state === "missing" && !!found;
   checks.push({
     id: "path_dir",
-    ok: onPath,
-    detail: onPath ? `${binDir} is on PATH.` : `${binDir} is not on PATH.`,
-    ...(onPath ? {} : { fix: "Add ~/.local/bin to PATH." }),
+    ok: onPath ? true : otherCommand ? null : false,
+    detail: onPath
+      ? `${binDir} is on PATH.`
+      : `${binDir} is not on PATH.${otherCommand ? ` reels on PATH is ${found} instead.` : ""}`,
+    ...(onPath
+      ? {}
+      : {
+          fix: otherCommand
+            ? "Add ~/.local/bin to PATH only to use the app's launcher; the reels on PATH works without it."
+            : "Add ~/.local/bin to PATH.",
+        }),
   });
 
   if (!found)
