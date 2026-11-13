@@ -108,7 +108,8 @@ type Scope = {
 };
 /**
  * `raw` replaces the JSON document with text for people. Only the opt-in text
- * forms set it (`help --plain`, `tools --plain`); failures are always JSON.
+ * forms set it (`help --plain`, `tools --plain`, `completion`); failures are
+ * always JSON.
  */
 type Success = { tool?: ToolName; data: unknown; raw?: string };
 
