@@ -1,3 +1,5 @@
+import { InstagramInsightsStore, instagramFailure } from "../../shared/lib/instagram-insights-store";
+import { instagramCollectionSource } from "../../shared/instagram-insights";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -99,6 +101,7 @@ type JobWait = ErrorDetails & { jobId: string; job: RenderJob };
 type Scope = {
   /** Aborted by SIGHUP, SIGINT or SIGTERM. */
   signal: AbortSignal;
+  settle?: Promise<unknown>;
   tool?: ToolName;
   readOnly?: boolean;
   /** Set once work may have reached the app or the disk: how an interruption reads from then on. */
@@ -982,6 +985,39 @@ Example: echo '["/abs/clip.mov"]' | reels prepare-media --project-id sample --se
   completionValues: () => valueWords(prepareMediaOptions),
   run: (args, { io, scope }) => prepareMedia(args, io, scope),
 } satisfies Builtin;
+const collectInstagramOptions = { source: { type: "string" } } as const;
+const collectInstagramCommand = {
+  name: "collect-instagram-insights",
+  usage: "reels collect-instagram-insights [--source manual|scheduled]",
+  help: `Usage: reels collect-instagram-insights [--source manual|scheduled]
+Collects once directly into the app's private profile, even when the app is closed.
+Waits for completion. Nonzero exit on failure; no retries. Default source: manual.
+REELS_USER_DATA selects the same profile as the app. Never pass a token here.
+Example: reels collect-instagram-insights --source scheduled`,
+  summary: "Collect private Instagram insights once without the app; wait for completion.",
+  completions: () => optionWords(collectInstagramOptions),
+  completionValues: () => valueWords(collectInstagramOptions),
+  run: async (args, { io, scope }): Promise<Success> => {
+    if (wantsHelp(args, collectInstagramOptions)) return showHelp(collectInstagramCommand.help);
+    const options = parseOptions(args, collectInstagramOptions, collectInstagramCommand.usage);
+    const checked = instagramCollectionSource.safeParse(options.source ?? "manual");
+    if (!checked.success) throw new CliError("USAGE", "--source must be manual or scheduled.");
+    scope.readOnly = false;
+    scope.inFlight = { retry: "no", writeOutcome: "unknown" };
+    try {
+      const pending = new InstagramInsightsStore(profileRoot(io)).refresh(checked.data, scope.signal);
+      scope.settle = pending;
+      const state = await pending;
+      const snapshot = state.snapshot!;
+      return { data: { snapshotId: snapshot.id, collectedAt: snapshot.collectedAt,
+        completedAt: snapshot.completedAt, source: snapshot.source,
+        count: snapshot.media.length, tokenHealth: snapshot.tokenHealth } };
+    } catch (error) {
+      const failure = instagramFailure(error);
+      throw new CliError(failure.code, failure.message, { retry: "no", writeOutcome: failure.code === "INSTAGRAM_BUSY" ? "not_applied" : "unknown" });
+    }
+  },
+} satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
   { name: "exit-codes", run: exitCodeHelp },
   {
@@ -1038,6 +1074,7 @@ export const builtins: readonly Builtin[] = [
   toolsCommand,
   callCommand,
   prepareMediaCommand,
+  collectInstagramCommand,
   helpCommand,
   completionCommand,
 ];
@@ -1225,6 +1262,7 @@ export async function run(argv: string[], io: CliIO): Promise<number> {
   } catch (error) {
     signals.stop();
     const signal = signals.received();
+    if (signal && scope.settle) await scope.settle.catch(() => {});
     const failure = signal
       ? interruption(signal, scope)
       : error instanceof CliError

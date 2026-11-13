@@ -22,7 +22,7 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 
 ## Features
 
-- Desktop **Instagram 인사이트** connects an owner-verified read token file, manually collects private metric history and compares reach-based reaction/save/share rates by weekday, time and topic. Recent reels and date exclusions stay explicit; credentials and insights never enter shared snapshots. See [Instagram integration](docs/instagram-insights.md).
+- Desktop **Instagram 인사이트** connects an owner-verified read token file, collects private metric history manually or through a one-shot headless CLI (Codex scheduling is not yet registered) and compares reach-based reaction/save/share rates by weekday, time and topic. Recent reels and date exclusions stay explicit; credentials and insights never enter shared snapshots. See [Instagram integration](docs/instagram-insights.md).
 
 - A private **캘린더** tab shows this/next week's posting goal, completed publications, imported Google Calendar events and Linear issue links. Providers own edits; connector sessions import bounded snapshots (no app OAuth or automatic sync). See [calendar integration](docs/publication-calendar.md).
 

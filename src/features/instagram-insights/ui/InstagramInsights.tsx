@@ -44,6 +44,7 @@ export function InstagramInsights({
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
   const [login, setLogin] = useState<"unified" | "instagram">("unified");
+  const [expiresAt, setExpiresAt] = useState("");
   const [matureOnly, setMatureOnly] = useState(true);
   const [excludeFrom, setExcludeFrom] = useState("");
   const [excludeTo, setExcludeTo] = useState("");
@@ -63,6 +64,17 @@ export function InstagramInsights({
         setError(next.lastError ?? "");
         setUsername(next.connection?.username ?? "");
         setLogin(next.connection?.login ?? "unified");
+        const expiry = next.connection?.tokenHealth?.expiresAt;
+        setExpiresAt(
+          expiry
+            ? new Date(
+                Date.parse(expiry) -
+                  new Date(expiry).getTimezoneOffset() * 60000,
+              )
+                .toISOString()
+                .slice(0, 16)
+            : "",
+        );
       } catch (e) {
         setError(errorMessage(e));
       } finally {
@@ -150,7 +162,16 @@ export function InstagramInsights({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (api) void run(() => api.connect({ username, login }));
+            if (api)
+              void run(() =>
+                api.connect({
+                  username,
+                  login,
+                  ...(expiresAt
+                    ? { tokenExpiresAt: new Date(expiresAt).toISOString() }
+                    : {}),
+                }),
+              );
           }}
         >
           <label>
@@ -175,6 +196,15 @@ export function InstagramInsights({
               <option value="instagram">Instagram 로그인</option>
             </select>
           </label>
+          <label>
+            확인된 토큰 만료 시각 (선택)
+            <input
+              type="datetime-local"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              disabled={busy}
+            />
+          </label>
           <button disabled={!api || busy || demo || !username.trim()}>
             조회 토큰 파일 연결
           </button>
@@ -190,6 +220,20 @@ export function InstagramInsights({
           연결해주세요.
         </p>
       )}
+      {state.connection?.tokenHealth && (
+        <p role="status">
+          {
+            {
+              unknown:
+                "토큰 만료 시각 미확인 · 60일 또는 만료 없음으로 추정하지 않아요.",
+              valid: "확인된 토큰 만료 시각까지 7일 이상 남았어요.",
+              expiring: "토큰 만료 임박 · 7일 이내에 다시 연결해주세요.",
+              expired:
+                "등록된 토큰 만료 시각이 지났어요. 실제 인증 실패 여부는 수집 결과로 확인해요.",
+            }[state.connection.tokenHealth.status]
+          }
+        </p>
+      )}
       <div className="ig-source">
         <span>
           {state.connection
@@ -198,7 +242,7 @@ export function InstagramInsights({
         </span>
         <span>
           {snapshot
-            ? `${stamp(snapshot.collectedAt)}에 수집 · KST`
+            ? `${stamp(snapshot.collectedAt)}에 수집 · KST · ${snapshot.source === "scheduled" ? "예약" : "수동"}`
             : "아직 수집한 지표가 없어요"}
         </span>
         {snapshot && (
@@ -218,7 +262,8 @@ export function InstagramInsights({
             >
               {state.history.map((h) => (
                 <option key={h.id} value={h.id}>
-                  {stamp(h.collectedAt)} · {h.count}개
+                  {stamp(h.collectedAt)} ·{" "}
+                  {h.source === "scheduled" ? "예약" : "수동"} · {h.count}개
                 </option>
               ))}
             </select>

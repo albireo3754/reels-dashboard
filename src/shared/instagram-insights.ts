@@ -9,6 +9,7 @@ export const instagramConnectionInput = z.strictObject({
     .transform((v) => v.replace(/^@/, "").toLowerCase())
     .pipe(z.string().regex(/^[a-z0-9._]{1,30}$/)),
   login: z.enum(["unified", "instagram"]),
+  tokenExpiresAt: z.string().datetime().optional(),
 });
 export const instagramTopicsInput = z
   .record(z.string().regex(/^\d+$/), z.string().trim().max(60))
@@ -30,11 +31,21 @@ export const instagramMetricSchema = z.object({
     .optional(),
   errorSubcode: z.number().nullable().optional(),
 });
+export const instagramCollectionSource = z.enum(["manual", "scheduled"]);
+export type InstagramCollectionSource = z.infer<
+  typeof instagramCollectionSource
+>;
+export const instagramTokenHealthSchema = z.strictObject({
+  status: z.enum(["unknown", "valid", "expiring", "expired"]),
+  expiresAt: z.string().datetime().nullable(),
+});
 export const instagramSnapshotSchema = z.strictObject({
   schemaVersion: z.literal(1),
   id: z.string().uuid(),
   collectedAt: z.string().datetime(),
   completedAt: z.string().datetime(),
+  source: instagramCollectionSource.default("manual"),
+  tokenHealth: instagramTokenHealthSchema.optional(),
   apiVersion: z.string(),
   login: z.enum(["unified", "instagram"]),
   ownedMediaCount: z.number().int().nonnegative(),
@@ -69,9 +80,15 @@ export interface InstagramInsightsState {
     username: string;
     login: "unified" | "instagram";
     tokenReady: boolean;
+    tokenHealth?: z.infer<typeof instagramTokenHealthSchema>;
   } | null;
   snapshot: InstagramSnapshot | null;
-  history: { id: string; collectedAt: string; count: number }[];
+  history: {
+    id: string;
+    collectedAt: string;
+    count: number;
+    source?: InstagramCollectionSource;
+  }[];
   topics: Record<string, string>;
   busy: boolean;
   lastError?: string | null;

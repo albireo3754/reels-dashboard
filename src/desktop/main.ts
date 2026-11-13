@@ -1,3 +1,4 @@
+import { watch as watchFiles } from "node:fs";
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import { PlanningStore } from "../shared/lib/planning-store";
 import { InstagramInsightsStore } from "../shared/lib/instagram-insights-store";
@@ -280,6 +281,11 @@ async function awaitReady() {
   const coverPreferences = new CoverPreferencesStore(root);
   const planning = new PlanningStore(root);
   const instagramInsights = new InstagramInsightsStore(root, undefined, () => emit("instagram:changed", null));
+  watchFiles(root, { persistent: false }, (_event, file) => {
+    if (String(file) === "instagram-history.json") instagramInsights.clearError();
+    if (["instagram-history.json", "instagram-connection.json", "instagram-collection.lock"].includes(String(file)))
+      emit("instagram:changed", null);
+  });
   const refreshInstagramInsights = () => fixture ? demo.instagramInsights!.refresh() : instagramInsights.startRefresh();
   const clipUpload = new ClipUpload(contentLibrary, async bytes => {
     const image = nativeImage.createFromBuffer(Buffer.from(bytes));

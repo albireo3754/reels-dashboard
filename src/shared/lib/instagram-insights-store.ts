@@ -1,14 +1,17 @@
 import path from "node:path";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   InstagramInsightsClient,
   InstagramApiError,
   CORE_METRICS,
+  REEL_METRICS,
 } from "../../../packages/instagram-insights/index.mjs";
 import {
   instagramConnectionInput,
+  instagramCollectionSource,
+  type InstagramCollectionSource,
   instagramSnapshotSchema,
   instagramTopicsInput,
   type InstagramInsightsState,
@@ -25,9 +28,78 @@ const indexSchema = z.array(
     username: z.string(),
     collectedAt: z.string().datetime(),
     count: z.number().int(),
+    source: instagramCollectionSource.default("manual"),
   }),
 );
 const stateInput = z.strictObject({ snapshotId: z.string().uuid().optional() });
+/** Only fixed summaries cross the credential boundary, never server messages or URLs. */
+export function instagramFailure(error: unknown): {
+  code: string;
+  message: string;
+} {
+  if (error instanceof InstagramApiError) {
+    if (error.status === 401 || [102, 190].includes(Number(error.code)))
+      return {
+        code: "INSTAGRAM_AUTH",
+        message: "인증 실패: 토큰 만료·취소 여부를 확인하고 다시 연결해주세요.",
+      };
+    if (error.status === 403 || [10, 200].includes(Number(error.code)))
+      return {
+        code: "INSTAGRAM_PERMISSION",
+        message:
+          "조회 권한이 부족해요. Instagram 인사이트 읽기 권한을 확인해주세요.",
+      };
+    if (
+      error.status === 429 ||
+      [4, 17, 32, 613, 80002].includes(Number(error.code))
+    )
+      return {
+        code: "INSTAGRAM_RATE_LIMIT",
+        message: "요청 제한에 도달했어요 (HTTP 429). 자동 재시도하지 않아요.",
+      };
+    if (error.status === 0)
+      return {
+        code: "INSTAGRAM_NETWORK",
+        message: "네트워크 연결 또는 요청 시간 초과로 수집하지 못했어요.",
+      };
+    return {
+      code: "INSTAGRAM_API",
+      message: "Instagram API가 정상 결과를 제공하지 않았어요.",
+    };
+  }
+  const code =
+    error instanceof Error
+      ? /^(INSTAGRAM_[A-Z_]+):/.exec(error.message)?.[1]
+      : undefined;
+  const messages: Record<string, string> = {
+    INSTAGRAM_BUSY:
+      "다른 앱 또는 CLI가 Instagram 저장소를 사용 중이에요. 자동 재시도하지 않아요. 비정상 종료 후라면 잠금 소유 프로세스를 확인해주세요.",
+    INSTAGRAM_TOKEN: "실제 조회 토큰 파일과 파일 권한(600)을 확인해주세요.",
+    INSTAGRAM_NOT_CONNECTED: "먼저 앱에서 조회 토큰 파일을 연결해주세요.",
+    INSTAGRAM_PERMISSION: "인사이트 조회 권한이 부족해요.",
+    INSTAGRAM_INSIGHTS_UNAVAILABLE:
+      "사용 가능한 인사이트 지표가 없어요. 이전 성공 기록은 유지돼요.",
+  };
+  return code && messages[code]
+    ? { code, message: messages[code]! }
+    : {
+        code: "INSTAGRAM_COLLECTION_FAILED",
+        message:
+          "수집·저장을 완료하지 못했어요. 이전 성공 기록을 확인해주세요. 자동 재시도하지 않아요.",
+      };
+}
+function tokenHealth(expiresAt?: string) {
+  return {
+    status: !expiresAt
+      ? ("unknown" as const)
+      : Date.parse(expiresAt) <= Date.now()
+        ? ("expired" as const)
+        : Date.parse(expiresAt) - Date.now() <= 7 * 86400000
+          ? ("expiring" as const)
+          : ("valid" as const),
+    expiresAt: expiresAt ?? null,
+  };
+}
 export class InstagramInsightsStore {
   private running = false;
   private lastError: string | null = null;
@@ -36,6 +108,9 @@ export class InstagramInsightsStore {
     private fetchImpl?: (url: URL, init: RequestInit) => Promise<Response>,
     private changed: () => void = () => {},
   ) {}
+  clearError() {
+    this.lastError = null;
+  }
   get busy() {
     return this.running;
   }
@@ -67,16 +142,41 @@ export class InstagramInsightsStore {
       );
     }
   }
+  private get lockFile() {
+    return path.join(this.root, "instagram-collection.lock");
+  }
   private async exclusive<T>(work: () => Promise<T>): Promise<T> {
     if (this.running)
       throw new Error(
         "INSTAGRAM_BUSY: 현재 가져오기가 끝난 뒤 다시 시도해주세요.",
       );
     this.running = true;
+    let lock;
     try {
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      try {
+        lock = await open(this.lockFile, "wx", 0o600);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST")
+          throw new Error("INSTAGRAM_BUSY: Instagram 저장소 사용 중");
+        throw error;
+      }
+      await lock.writeFile(
+        JSON.stringify({
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+        }),
+      );
       return await work();
     } finally {
-      this.running = false;
+      try {
+        if (lock) {
+          await lock.close();
+          await unlink(this.lockFile);
+        }
+      } finally {
+        this.running = false;
+      }
     }
   }
   async get(value: unknown = {}): Promise<InstagramInsightsState> {
@@ -114,12 +214,25 @@ export class InstagramInsightsStore {
       : false;
     return {
       connection: settings
-        ? { username: settings.username, login: settings.login, tokenReady }
+        ? {
+            username: settings.username,
+            login: settings.login,
+            tokenReady,
+            tokenHealth: tokenHealth(settings.tokenExpiresAt),
+          }
         : null,
       snapshot,
       history: history.slice(0, 50).map(({ username: _, ...entry }) => entry),
       topics: settings?.topics ?? {},
-      busy: this.running,
+      busy:
+        this.running ||
+        (await stat(this.lockFile).then(
+          () => true,
+          (error) => {
+            if (error.code === "ENOENT") return false;
+            throw error;
+          },
+        )),
       lastError: this.lastError,
     };
   }
@@ -131,10 +244,8 @@ export class InstagramInsightsStore {
     this.lastError = null;
     void this.refresh()
       .catch((error) => {
-        this.lastError =
-          error instanceof InstagramApiError
-            ? error.message
-            : "Instagram 가져오기를 완료하지 못했어요. 계정 연결을 확인해주세요. 이전 수집 기록은 유지돼요.";
+        const failure = instagramFailure(error);
+        this.lastError = `${failure.code}: ${failure.message}`;
       })
       .finally(() => this.changed());
     this.changed();
@@ -168,7 +279,13 @@ export class InstagramInsightsStore {
     this.changed();
     return this.get();
   }
-  async refresh() {
+  async refresh(
+    source: InstagramCollectionSource = "manual",
+    signal?: AbortSignal,
+  ) {
+    instagramCollectionSource.parse(source);
+    this.lastError = null;
+    let result!: InstagramInsightsState;
     await this.exclusive(async () => {
       const settings = await this.settings();
       if (!settings)
@@ -180,8 +297,15 @@ export class InstagramInsightsStore {
         accessToken: await this.token(settings.tokenFile),
         login: settings.login,
         expectedUsername: settings.username,
-        fetchImpl: this.fetchImpl,
+        fetchImpl: (url, init) =>
+          (this.fetchImpl ?? fetch)(url, {
+            ...init,
+            signal: signal
+              ? AbortSignal.any([signal, init.signal!])
+              : init.signal,
+          }),
       });
+      signal?.throwIfAborted();
       const account = await client.account();
       const media = (await client.media(account)).sort(
         (a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt),
@@ -190,14 +314,37 @@ export class InstagramInsightsStore {
       for (const post of media.slice(0, 100))
         results.push({
           ...post,
-          metrics: (await client.insights(post, CORE_METRICS)).metrics,
+          metrics: (
+            await client.insights(
+              post,
+              post.mediaProductType === "REELS"
+                ? [...CORE_METRICS, ...REEL_METRICS]
+                : CORE_METRICS,
+            )
+          ).metrics,
         });
-      if (results.length && results.every(post => post.metrics.every(metric => metric.status !== "available")))
-        throw new Error("INSTAGRAM_INSIGHTS_UNAVAILABLE: 조회 권한과 지표 제공 여부를 확인해주세요.");
+      if (
+        results.length &&
+        results.every((post) =>
+          post.metrics.every((metric) => metric.status !== "available"),
+        )
+      )
+        throw new Error(
+          "INSTAGRAM_INSIGHTS_UNAVAILABLE: 조회 권한과 지표 제공 여부를 확인해주세요.",
+        );
+      if (
+        results.some((post) =>
+          post.metrics.some((metric) => metric.status === "permission_denied"),
+        )
+      )
+        throw new Error("INSTAGRAM_PERMISSION: 인사이트 조회 권한 부족");
+      signal?.throwIfAborted();
       const snapshot = instagramSnapshotSchema.parse({
         schemaVersion: 1,
         id: randomUUID(),
         collectedAt,
+        source,
+        tokenHealth: tokenHealth(settings.tokenExpiresAt),
         completedAt: new Date().toISOString(),
         apiVersion: client.apiVersion,
         login: settings.login,
@@ -220,14 +367,18 @@ export class InstagramInsightsStore {
             id: snapshot.id,
             username: account.username,
             collectedAt,
+            source,
             count: results.length,
           },
           ...history,
         ],
         { mode: 0o600 },
       );
+      result = await this.get();
+      result.busy = false;
     });
-    return this.get();
+    this.changed();
+    return result;
   }
   async setTopics(value: unknown) {
     const input = instagramTopicsInput.parse(value);

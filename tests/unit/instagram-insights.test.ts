@@ -15,9 +15,9 @@ test('verifies expected owner, resolves permalink from owned media and sends cre
 test('wrong account is rejected before requesting media',async()=>{
  let calls=0;const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'fixture',fetchImpl:async()=>{calls++;return response({user_id:'123',username:'someone_else'});}});await assert.rejects(client.inspectPermalink('https://www.instagram.com/reel/Example01/'),/ACCOUNT_MISMATCH/);assert.equal(calls,1);
 });
-test('missing metrics and denied metrics are not turned into zero and errors redact server messages',async()=>{
- const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'secret',fetchImpl:async(url:URL)=>url.searchParams.get('metric')==='views'?response({data:[]}):response({error:{code:200,message:'secret echo'}},400)});
- const r=await client.insights({id:'123',permalink:'https://www.instagram.com/reel/Example01/'},['views','saved']);assert.equal(r.metrics[0].status,'unavailable');assert.equal(r.metrics[0].value,null);assert.equal(r.metrics[1].status,'permission_denied');assert.ok(!JSON.stringify(r).includes('secret'));
+test('unsupported metrics stay empty and errors redact server messages',async()=>{
+ const client=new InstagramInsightsClient({expectedUsername:'creator_demo',accessToken:'secret',fetchImpl:async(url:URL)=>url.searchParams.get('metric')==='views'?response({data:[]}):response({error:{code:100,message:'secret echo'}},400)});
+ const r=await client.insights({id:'123',permalink:'https://www.instagram.com/reel/Example01/'},['views','saved']);assert.equal(r.metrics[0].status,'unavailable');assert.equal(r.metrics[0].value,null);assert.equal(r.metrics[1].status,'api_error');assert.ok(!JSON.stringify(r).includes('secret'));
 });
 test('permalink and pagination do not allow arbitrary origins or credential-bearing next URLs',async()=>{
  assert.throws(()=>instagramShortcode('https://evil.example/reel/abc/'));

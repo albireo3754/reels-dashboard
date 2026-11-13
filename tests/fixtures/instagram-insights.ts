@@ -37,6 +37,7 @@ export function fixturePost(
 export function fixtureSnapshot(): InstagramSnapshot {
   return {
     schemaVersion: 1,
+    source: "manual",
     id: snapshotId,
     collectedAt: "2026-11-13T08:00:00.000Z",
     completedAt: "2026-11-13T08:01:00.000Z",

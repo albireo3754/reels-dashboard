@@ -17,6 +17,16 @@ const origins = {
 };
 export class InstagramApiError extends Error {
   constructor(status, code, subcode) {
+    code =
+      typeof code === "number" && Number.isFinite(code)
+        ? code
+        : ["NETWORK_OR_TIMEOUT", "INVALID_RESPONSE"].includes(code)
+          ? code
+          : undefined;
+    subcode =
+      typeof subcode === "number" && Number.isFinite(subcode)
+        ? subcode
+        : undefined;
     super(
       `Instagram API request failed (HTTP ${status}, code ${code ?? "unknown"})`,
     );
@@ -28,9 +38,12 @@ export class InstagramApiError extends Error {
 }
 const fatal = (error) =>
   error instanceof InstagramApiError &&
-  (error.status === 401 ||
+  (error.status === 0 ||
+    error.status === 401 ||
+    error.status === 403 ||
+    error.status >= 500 ||
     error.status === 429 ||
-    [4, 17, 32, 102, 190, 613, 80002].includes(error.code));
+    [4, 10, 17, 32, 102, 190, 200, 613, 80002].includes(error.code));
 export function instagramShortcode(value) {
   const url = new URL(value);
   if (
@@ -238,7 +251,8 @@ export class InstagramInsightsClient {
       if (
         !(error instanceof InstagramApiError) ||
         fatal(error) ||
-        error.status === 0
+        error.status !== 400 ||
+        error.code !== 100
       )
         throw error;
     }
@@ -253,7 +267,8 @@ export class InstagramInsightsClient {
         if (
           !(error instanceof InstagramApiError) ||
           fatal(error) ||
-          error.status === 0
+          error.status !== 400 ||
+          error.code !== 100
         )
           throw error;
         values.push({

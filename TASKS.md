@@ -1,5 +1,14 @@
 # Reels Dashboard 진행 상태
 
+## Instagram headless 1회 수집 · Codex 예약 등록 차단 — 2026-11-14
+
+- [x] main 기준 새 worktree에서 사용자가 승인한 미커밋 Instagram 선행 변경만 기반 커밋으로 보존. OpenCut과 다른 세션의 작업은 포함하지 않음.
+- [x] 앱 없이 완료까지 기다리는 `reels collect-instagram-insights --source manual|scheduled`. 기존 private history/UUID snapshot·프로필 경로 유지, 출처·시각·릴스 시청시간/스킵률 저장, 앱/CLI 간 파일 잠금과 화면 갱신.
+- [x] 인증/권한/제한/네트워크별 고정 오류·nonzero 종료, 자동 재시도 없음·이전 성공 보존·SIGTERM 잠금 정리. 확인된 만료 시각의 7일 경고와 미확인 상태를 실제 인증 거부와 구분.
+- [x] diff 코드 검토, 타입/FSD/빌드/공개 소스 검사, 전체 단위 637개(632 통과·5 조건부 skip), headless 웹 3개, background Electron 관련 5개 및 새 패키지 같은 5개, 독립 CLI 번들 4개 통과. 기존 Photos `verify:spec` 해시 불일치는 변경 전 main과 같은 파일·해시임을 확인했으며 이번 범위에서 변경하지 않음.
+- [ ] Codex 예약 등록·다음 실행·실패 알림 확인: 이 세션에 scheduler 생성/조회 도구가 없고 Codex UI 접근도 차단됨. 미등록 상태를 유지하며 대체 스케줄러를 만들지 않음. 제안 설정: 매일 09:00 Asia/Seoul, `reels collect-instagram-insights --source scheduled`.
+- [x] 운영 앱이 idle인 것을 확인하고 종료한 뒤 새 패키지 CLI로 실계정 1회 수집 성공(29개). 기존 dashboard·연결 설정·이전 snapshot 해시 불변, history에 새 UUID 추가와 릴스 시청시간/스킵률 필드 확인. 개인 ID/시각 증거는 저장소 밖 비공개 검증 폴더에 보관. 새 패키지를 기존 설치 경로에 백업 없이 적용·재실행. main에 로컬 병합하며 origin push는 하지 않음. [CLI·잠금·예약 상태](docs/instagram-insights.md#앱-없이-1회-수집--2026-11-14).
+
 ## Photos 묶음 가져오기(관련 데이터 기본 묶음) — 2026-11-13
 
 배경: 사용자 지시 "사진도 가져와. 블로그 때문에 관련된 데이터는 다 묶어서 가져오는 걸 기본으로". 기존에는 영상 1개씩(`reels_import_photos_video`) 가져와 카드가 영상마다 생겼고, 사진은 inspect 미리보기로만 썼다.

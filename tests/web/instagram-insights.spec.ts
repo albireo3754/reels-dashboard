@@ -63,3 +63,15 @@ test("unconnected view never invents account metrics", async ({ page }) => {
     page.getByRole("button", { name: "Instagram에서 가져오기" }),
   ).toBeDisabled();
 });
+
+test("scheduled source and an approaching known token expiry are visible", async ({ page }) => {
+  const state = fixtureInsightsState();
+  state.snapshot!.source = "scheduled";
+  state.history[0]!.source = "scheduled";
+  state.connection!.tokenHealth = { status: "expiring", expiresAt: "2026-11-15T00:00:00Z" };
+  await page.addInitScript(state => localStorage.setItem("reels-instagram-demo-v1", JSON.stringify(state)), state);
+  await page.goto("/?demo=1");
+  await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "Instagram 인사이트", exact: true }).click();
+  await expect(page.getByText(/토큰 만료 임박/)).toBeVisible();
+  await expect(page.getByText(/에 수집 · KST · 예약/)).toBeVisible();
+});

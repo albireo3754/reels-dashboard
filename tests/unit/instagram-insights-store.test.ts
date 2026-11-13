@@ -162,7 +162,7 @@ test("rate limit preserves the last successful snapshot and concurrent refresh c
     assert.equal((await store.get()).history.length, 1);
     control.fail = false;
     control.deny = true;
-    await assert.rejects(store.refresh(),/INSTAGRAM_INSIGHTS_UNAVAILABLE/);
+    await assert.rejects(store.refresh(),/HTTP 400/);
     assert.equal((await store.get()).snapshot?.id,previous.snapshot?.id);
     control.deny = false;
     let release!: () => void;
