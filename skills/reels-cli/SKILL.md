@@ -5,9 +5,11 @@ description: Operate a running Reels Dashboard app from a shell with the `reels`
 
 # Reels CLI
 
-`reels` is a thin client of the running Reels Dashboard app. It calls the same tools as the MCP server over a private socket. The app owns projects, Photos access and render jobs. The CLI has no store, no queue and no retry logic, and it never launches the app. If `reels` is not on `PATH`, run `node <repo>/dist-cli/reels.mjs` instead.
+Most `reels` commands call the running Reels Dashboard app through the same private socket tools as MCP. The app owns projects, Photos access and render jobs. `prepare-media` and `collect-instagram-insights` work directly with local files without the app. The CLI has no queue or retry logic, and it never launches the app. If `reels` is not on `PATH`, run `node <repo>/dist-cli/reels.mjs` instead.
 
 ## Start
+
+For app-backed operations:
 
 1. `reels status`: `data.app.online` says whether the app can be called. It exits 0 either way. When it is `false`, ask the user to open Reels Dashboard. Never launch the app yourself.
 2. `reels doctor` when something is off: read-only checks of runtime, profile, app, the `~/.local/bin/reels` launcher and `PATH`. Each check has `ok` true, false or null and a `fix` that the CLI never applies.
@@ -74,6 +76,12 @@ reels get-render-job --job-id <id> --wait    # attach later
 ## Local media copy
 
 `reels prepare-media --list` shows content projects and their registered media; `reels prepare-media --help` explains copying them into a new folder. It works without the app.
+
+## Instagram collection without the app
+
+`reels collect-instagram-insights --source manual|scheduled` writes one private snapshot and waits until saved. It uses the same `REELS_USER_DATA` profile, requires an existing token-file connection, never retries and refuses `REELS_DEMO=1`. The app need not be opened first. `refresh-instagram-insights` instead starts the running app's asynchronous collection.
+
+On `INSTAGRAM_AUTH`, ask Codex to help renew the Instagram read token through the existing private token file/account connection. Never paste a token into chat or CLI arguments. No app OAuth or automatic renewal is provided. Before persistence, failures say `not_applied`; once persistence starts, inspect `next` and `hint` before repeating. A busy lock says `retry: wait`; a lock left by SIGKILL requires verifying the owner is gone before manual removal, never age-based takeover.
 
 ## More
 

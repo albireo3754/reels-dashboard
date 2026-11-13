@@ -98,6 +98,13 @@ test(
       assert.equal(tools.code, 0);
       assert.ok(tools.document.data.count > 0);
 
+      const collect = await reels(cwd, root, ["collect-instagram-insights"]);
+      assert.equal(collect.code, 4);
+      assert.equal(collect.document.error.code, "INSTAGRAM_NOT_CONNECTED");
+      assert.equal(collect.document.error.writeOutcome, "not_applied");
+      const invalid = await reels(cwd, root, ["collect-instagram-insights", "--source", "invalid"]);
+      assert.equal(invalid.code, 2);
+      assert.ok(tools.document.data.builtins.some((v: any) => v.command === "reels collect-instagram-insights"));
       const offline = await reels(cwd, root, ["get-app-state"]);
       assert.equal(offline.code, 3);
 

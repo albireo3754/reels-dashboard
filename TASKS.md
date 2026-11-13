@@ -8,6 +8,23 @@
 - [ ] terra 독립 코드리뷰·최신 main 통합/재검증·main 병합·빌드 반영.
 - [ ] 실제 GUI 수용: 관찰된 Mac 잠금 때문에 잠금 해제 전 live AX/음악/앱 UI 검사를 대기. 마지막 목록은 clips=0·complete=false, 원인 미확정·일반 설치 앱 TCC 미검증. 잠금 해제/로그인/질문 화면 조작 없이 독립 코드/통합/패키징을 진행.
 
+## Instagram headless CLI 적대적 리뷰 보강 — 2026-11-14
+
+- [x] 기존 `prepare-media`/render/status의 오류 계약과 비교: 저장 전 실패와 SIGTERM은 `not_applied`, 저장 시작 뒤는 `unknown`, history 교체 뒤는 `applied`. 불확실한 결과에는 같은 프로필의 앱을 연 뒤 조회하는 `next`/`hint`, busy에는 기존 `retry: wait`와 소유 프로세스 확인 안내를 제공.
+- [x] 인증 만료·취소는 Codex에 Instagram 조회 토큰 갱신 요청을 안내(message/CLI hint). 기존 비공개 파일·계정 연결 경로를 유지하며 OAuth·자동 갱신·실토큰 교체는 추가하지 않음.
+- [x] SDK의 credential-bearing permalink query/fragment가 저장·반환되던 경로를 공개 게시물 URL로 정규화. `REELS_DEMO=1` CLI의 비공개 수집을 차단. 내장 CLI skill에 앱 없는 수집 경로와 복구 절차 반영.
+- [x] 관련 단위/기존 CLI 99개 중 98 통과·fish 미설치 1 skip, 독립 CLI 번들 4개, background Electron 관련 7개(headless 5·기존 연동/데모 2) 통과. 타입/FSD/build/public audit/diff 검사 통과. 저장 실패에서도 기존 index 바이트 보존과 앱 필요 조건을 명시한 복구 지침을 확인.
+- [x] Astra(gpt-6-astra) 적대적 리뷰 수정 뒤 root 통합 확인: 새 패키지 background Electron 7개·최신 독립 CLI 번들 4개 통과. 검증한 설치본을 기존 경로에 백업 없이 갱신·재실행하고 운영 토큰·연결 설정·history/snapshot 및 다른 세션 변경 보존 확인. main 로컬 병합, origin push 없음.
+- 제한: SIGKILL 뒤 잠금 수동 확인 계약 유지. 개별 파일 atomic rename은 보장하지만 snapshot+history 두 파일의 트랜잭션은 아니므로 실패 시 참조 없는 새 snapshot이 남을 수 있음. 기존 history를 덮어 지우지 않으며 자동 재시도·새 DB·대체 스케줄러는 추가하지 않음. 실계정 API·운영 토큰·main의 다른 세션 변경은 건드리지 않음.
+
+## Instagram headless 1회 수집 · Codex 예약 등록 차단 — 2026-11-14
+
+- [x] main 기준 새 worktree에서 사용자가 승인한 미커밋 Instagram 선행 변경만 기반 커밋으로 보존. OpenCut과 다른 세션의 작업은 포함하지 않음.
+- [x] 앱 없이 완료까지 기다리는 `reels collect-instagram-insights --source manual|scheduled`. 기존 private history/UUID snapshot·프로필 경로 유지, 출처·시각·릴스 시청시간/스킵률 저장, 앱/CLI 간 파일 잠금과 화면 갱신.
+- [x] 인증/권한/제한/네트워크별 고정 오류·nonzero 종료, 자동 재시도 없음·이전 성공 보존·SIGTERM 잠금 정리. 확인된 만료 시각의 7일 경고와 미확인 상태를 실제 인증 거부와 구분.
+- [x] diff 코드 검토, 타입/FSD/빌드/공개 소스 검사, 전체 단위 637개(632 통과·5 조건부 skip), headless 웹 3개, background Electron 관련 5개 및 새 패키지 같은 5개, 독립 CLI 번들 4개 통과. 기존 Photos `verify:spec` 해시 불일치는 변경 전 main과 같은 파일·해시임을 확인했으며 이번 범위에서 변경하지 않음.
+- [ ] Codex 예약 등록·다음 실행·실패 알림 확인: 이 세션에 scheduler 생성/조회 도구가 없고 Codex UI 접근도 차단됨. 미등록 상태를 유지하며 대체 스케줄러를 만들지 않음. 제안 설정: 매일 09:00 Asia/Seoul, `reels collect-instagram-insights --source scheduled`.
+- [x] 운영 앱이 idle인 것을 확인하고 종료한 뒤 새 패키지 CLI로 실계정 1회 수집 성공(29개). 기존 dashboard·연결 설정·이전 snapshot 해시 불변, history에 새 UUID 추가와 릴스 시청시간/스킵률 필드 확인. 개인 ID/시각 증거는 저장소 밖 비공개 검증 폴더에 보관. 새 패키지를 기존 설치 경로에 백업 없이 적용·재실행. main에 로컬 병합하며 origin push는 하지 않음. [CLI·잠금·예약 상태](docs/instagram-insights.md#앱-없이-1회-수집--2026-11-14).
 
 ## Photos 묶음 가져오기(관련 데이터 기본 묶음) — 2026-11-13
 
@@ -29,6 +46,15 @@
 - [x] MCP 안내·`reels_import_photos_video` 설명에 "Photos 원본은 기본적으로 그대로, 가져오기는 복사"를 명시. [MCP](docs/mcp-usage.md#photos-and-limits)·[인터페이스](docs/agent-interface.md)·[UI 명세](docs/photosindex-ui-spec.md#5-복사이동복구-ux)·README 반영.
 - [x] 회귀 검사: `tests/unit/photos-copy-default.test.ts`(Photos 도구는 읽기 메서드만, 가져오기는 복사, move 실행 도구 없음, 복사 버튼 primary, move 확인창 기본 취소, PhotoKit 쓰기는 move 경로에만), web `copy is the default plan…`.
 - 범위 밖: move·deleter 코드와 기존 pending move 복구는 변경하지 않음. 실제 Photos 보관함 쓰기 QA는 하지 않음.
+
+## Instagram 인사이트 연결 — 2026-11-13
+
+- [x] 기존 조회 SDK에 명시적 Unified Login·소유 계정 ID 확인·v27·배치 조회·날짜 정규화·인증/요청 제한 중단을 연결. 계정별 기본값·토큰 값·운영 데이터를 공개 소스에 넣지 않음.
+- [x] 데스크톱 **Instagram 인사이트** 화면, 조회 토큰 파일 선택, 비동기 수동 수집, 비공개 불변 기록·재열기, 콘텐츠 URL 연결, 주제 분류, 48시간·기간 제외, 반응/저장/공유율·요일/시간대/주제 비교. 공유 snapshot 제외.
+- [x] MCP/CLI 조회·수집 시작·주제 부분 변경. 불확실한 시작 재시도 없음, 인증·요청 제한·전체 지표 실패 때 마지막 성공 기록 유지.
+- [x] 타입/FSD/빌드/공개 소스 검사 통과. 전체 단위 619개 중 614 통과·5 조건부 skip·실패 0(초기 macOS locale 실패는 UTF-8 locale을 지정해 재실행). 웹 9개 및 날짜 필드 배치 조정 후 해당 화면 2개 재검증. background Electron IPC/MCP/비공개 저장·재열기, 패키지 앱의 데모/비공개 프로필 분리 2개 통과. 소유 실계정의 앱 서비스 수집·패키지 UI 표시도 확인했고 개인 증거는 공개 저장소 밖에 보관.
+- [x] main 기준 코드와 이번 변경만 격리한 폴더에서 패키지 생성, 진행 중 OpenCut 미커밋 변경 제외 확인. `release/pending/instagram-20261113/Reels Dashboard.app`에 적용할 설치본 준비.
+- [x] 2026-11-14 운영 설치본 확인·실행 완료. 11/13 23:35 설치본에 Instagram 연동과 이후 Photos·블로그 변경이 이미 포함돼 있어 이전 대기 패키지로 덮어쓰지 않음. 해당 설치본의 background Electron 검증 2개 통과, 실제 화면과 CLI에서 게시물 29개·연결 정상 확인. 대시보드 80개·편집 프로젝트 51개를 유지했고 dashboard·Instagram 설정/기록 파일 해시도 실행 전후 동일. 사용자 정정에 따라 설치본 백업은 만들지 않았고 이후에도 별도 요청 없이 만들지 않도록 `AGENTS.md`에 기록. OAuth 자체 발급·자동 수집 예약·외부 게시·push는 범위 밖. [계약과 사용법](docs/instagram-insights.md).
 
 ## main 통합·정식 경로 패키지 실행 — 2026-11-13
 

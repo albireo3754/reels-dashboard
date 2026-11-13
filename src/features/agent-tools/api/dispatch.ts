@@ -40,6 +40,7 @@ export interface AgentEditorPort extends EditorBridge {
 }
 export interface AgentPorts {
   edits?: EditsBridge;
+  instagramInsights?: Pick<import("../../../shared/instagram-insights").InstagramInsightsBridge, "get" | "refresh" | "setTopics">;
   planning?: import("../../../shared/planning").PlanningBridge;
   coverPreferences?: import("../../../shared/clip-upload").CoverPreferencesBridge;
   clipUpload?: import("../../../shared/clip-upload").ClipUploadBridge;
@@ -93,7 +94,7 @@ export interface AgentPorts {
 }
 export function createAgentDispatch(ports: AgentPorts) {
   const { editor, session } = ports;
-  const port = <K extends "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis">(
+  const port = <K extends "instagramInsights" | "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis">(
     name: K,
   ): NonNullable<AgentPorts[K]> => {
     const value = ports[name];
@@ -118,6 +119,14 @@ export function createAgentDispatch(ports: AgentPorts) {
     const formTool = inputFormTools.find(tool=>tool[1]===name);
     if(formTool){if(!ports.forms)throw new Error("UNSUPPORTED");return ports.forms.request(formTool[0],input);}
     switch (name as ToolName) {
+      case "reels_get_instagram_insights":
+        return port("instagramInsights").get(input);
+      case "reels_refresh_instagram_insights":
+        session.assertWritable();
+        return port("instagramInsights").refresh();
+      case "reels_set_instagram_topics":
+        session.assertWritable();
+        return port("instagramInsights").setTopics(input.topics);
       case "reels_get_planning":
         return port("planning").get();
       case "reels_sync_planning":

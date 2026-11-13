@@ -1,7 +1,10 @@
 import { EditsAutomation } from "../features/edits-automation";
 import { EditsNativeClient } from "./edits-native";
+import { watch as watchFiles } from "node:fs";
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import { PlanningStore } from "../shared/lib/planning-store";
+import { InstagramInsightsStore } from "../shared/lib/instagram-insights-store";
+import { instagramConnectionInput } from "../shared/instagram-insights";
 import {InputFormWindows} from "./input-form-window";
 import { sha256Hex } from "../shared/lib/hash";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
@@ -283,6 +286,13 @@ async function awaitReady() {
   );
   const coverPreferences = new CoverPreferencesStore(root);
   const planning = new PlanningStore(root);
+  const instagramInsights = new InstagramInsightsStore(root, undefined, () => emit("instagram:changed", null));
+  watchFiles(root, { persistent: false }, (_event, file) => {
+    if (String(file) === "instagram-history.json") instagramInsights.clearError();
+    if (["instagram-history.json", "instagram-connection.json", "instagram-collection.lock"].includes(String(file)))
+      emit("instagram:changed", null);
+  });
+  const refreshInstagramInsights = () => fixture ? demo.instagramInsights!.refresh() : instagramInsights.startRefresh();
   const clipUpload = new ClipUpload(contentLibrary, async bytes => {
     const image = nativeImage.createFromBuffer(Buffer.from(bytes));
     if (image.isEmpty()) throw new Error("UPLOAD_COVER_INVALID: 표지 이미지를 읽지 못했어요.");
@@ -471,7 +481,7 @@ async function awaitReady() {
       : dialog.showMessageBoxSync(options);
   };
   const workBusy = () =>
-    activeOperations > 0 || editorService.busy || cardNews.busy || icloudDelivery.busy;
+    activeOperations > 0 || editorService.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
   const confirmAbortJobs = () =>
     messageBox({
       type: "warning",
@@ -783,6 +793,22 @@ async function awaitReady() {
   handle("cover-preferences:get", () => coverPreferences.get());
   handle("planning:get", () => planning.get());
   handle("planning:update", (input: unknown) => planning.update(input));
+  handle("instagram:get", (input: unknown) => fixture ? demo.instagramInsights!.get() : instagramInsights.get(input ?? {}));
+  handle("instagram:topics", (input: unknown) => fixture ? demo.instagramInsights!.setTopics(input as Record<string,string>) : instagramInsights.setTopics(input));
+  handle("instagram:refresh", refreshInstagramInsights);
+  handle("instagram:connect", async (value: unknown) => {
+    const input = instagramConnectionInput.parse(value);
+    if (fixture) return demo.instagramInsights!.connect(input);
+    const selected = await dialog.showOpenDialog(window, {
+      title: "Instagram 조회 토큰 파일 선택",
+      properties: ["openFile", "showHiddenFiles"],
+      defaultPath: path.join(os.homedir(), ".private", "meta-ig-token"),
+    });
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    activeOperations++;
+    try { return await instagramInsights.connect(input, selected.filePaths[0]); }
+    finally { activeOperations--; }
+  });
   handle("cover-preferences:set", (input: unknown) => coverPreferences.set(input));
   handle("clip-upload:create", createClipBundle);
   handle("icloud:status", (value: unknown) => icloudDelivery.status(icloudStatusInput.parse(value).paths));
@@ -1075,6 +1101,7 @@ async function awaitReady() {
       edits,
       coverPreferences,
       planning,
+      instagramInsights: { get: input => instagramInsights.get(input), refresh: refreshInstagramInsights, setTopics: input => instagramInsights.setTopics(input) },
       clipUpload: { create: createClipBundle },
       gif: { convert: convertGif },
       icloud: icloudDelivery,

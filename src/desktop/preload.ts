@@ -15,6 +15,13 @@ const subscribe = (name: string, callback: (value: any) => void) => {
 };
 const workbench = createWorkbenchBridge(ipcRenderer);
 const bridge: DashboardBridge = {
+  instagramInsights: {
+    get: input => invoke("instagram:get", input),
+    connect: input => invoke("instagram:connect", input),
+    refresh: () => invoke("instagram:refresh"),
+    setTopics: input => invoke("instagram:topics", input),
+    onChanged: callback => subscribe("instagram:changed", callback),
+  },
   planning: { get: () => invoke("planning:get"), update: input => invoke("planning:update", input) },
   executionLogs: { list: () => invoke("executionLogs:list") },
   workflow: {

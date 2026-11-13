@@ -237,3 +237,9 @@ npm run test:cli
 ```
 
 `tests/unit/reels-cli.test.ts` drives the CLI against a real private socket under a temporary profile, mostly with a fake dispatch and once with the real `createAgentDispatch` over stub ports, and compares every schema with a real stdio MCP server. The same file checks `reels doctor` against a temporary `HOME` and `PATH`, and parses the generated completion scripts with `bash -n` and `zsh -n` (`fish -n` where installed) and runs the bash function. `npm run test:cli` copies the built bundle to a temporary folder with no `node_modules` and runs the copy, including `reels doctor` and the embedded `reels help agent`; run `npm run build:desktop` (or `npm run build`) first so the bundle carries the current [agent guide](#agent-guide). Neither touches a running app.
+
+## Instagram one-shot headless collection
+
+`reels collect-instagram-insights --source manual|scheduled` waits for one collection into the same private profile without a running app. The default source is `manual`; every collection gets its own UUID and timestamps. It never retries. Success prints only collection metadata; authentication, permission, rate limit and network failures exit 4 with a redacted cause; a profile lock conflict exits 6. `refresh-instagram-insights` remains the app's asynchronous manual tool. See [Instagram storage, locking, token status and Codex scheduling status](instagram-insights.md#앱-없이-1회-수집--2026-11-14).
+
+The collection command refuses `REELS_DEMO=1`. Failures before snapshot persistence (including authentication) report `not_applied`; persistence failures report `unknown`, or `applied` after the history commit, with `next`/`hint` to inspect the same profile in the app. Busy reports `retry: wait` without automatically waiting. `INSTAGRAM_AUTH` explicitly asks the user to request Instagram read-token renewal from Codex through the existing private token file/account connection; never pass credentials in chat or CLI arguments.
