@@ -36,7 +36,7 @@ test('blog completion follows its channel and keeps stage-only completed cards a
   const root=await temp(t);
   const states=[
     {id:'draft',extra:{}},
-    {id:'blog-live',extra:{publications:[{channel:'blog',status:'published',url:''},{channel:'naver-clip',status:'planned',url:''}]}},
+    {id:'blog-live',extra:{publications:[{channel:'blog',status:'published',url:'https://blog.example/1',publishedAt:'2026-11-10'},{channel:'naver-clip',status:'planned',url:''}]}},
     {id:'other-live',extra:{stage:'published',publications:[{channel:'naver-clip',status:'published',url:''}]}},
     {id:'blog-planned',extra:{stage:'published',publications:[{channel:'blog',status:'planned',url:''}]}},
     {id:'stage-only',extra:{stage:'published'}},
@@ -58,6 +58,15 @@ test('blog completion follows its channel and keeps stage-only completed cards a
     {id:'blog-planned',published:false},
     {id:'stage-only',published:true},
     {id:'no-channels',published:true},
+  ]);
+  // The row carries the card's own blog record, so the list can say why a row is still in progress.
+  assert.deepEqual(projects.map(({id,blog})=>({id,blog})),[
+    {id:'draft',blog:undefined},
+    {id:'blog-live',blog:{status:'published',publishedAt:'2026-11-10',url:'https://blog.example/1'}},
+    {id:'other-live',blog:undefined},
+    {id:'blog-planned',blog:{status:'planned'}},
+    {id:'stage-only',blog:undefined},
+    {id:'no-channels',blog:undefined},
   ]);
 });
 

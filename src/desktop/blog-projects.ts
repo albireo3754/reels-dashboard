@@ -5,7 +5,7 @@ import {z} from "zod";
 import {parse} from "../shared/blog-markup";
 import type {Project} from "../shared/contracts";
 import type {CanonicalBlogProject} from "../shared/blog";
-import {isPublishedOn} from "../shared/publications";
+import {isPublishedOn,publicationOn} from "../shared/publications";
 import {errorMessage} from "../shared/lib/errors";
 import {LocalStore} from "../shared/lib/storage";
 import type {EditorConfig} from "../app/blog-editor/store";
@@ -174,7 +174,9 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
       owners.set(file,card.id);
       // Channel records own blog completion; cards without them still use the project stage.
       const published=isPublishedOn(card,"blog")||(!card.publications?.length&&card.stage==="published");
-      projects.push({id:card.id,title:card.title,published,config:{...await manuscriptConfig(file),projectId:card.id}});
+      const record=publicationOn(card,"blog");
+      const blog=record&&{status:record.status,...(record.publishedAt?{publishedAt:record.publishedAt}:{}),...(record.url?{url:record.url}:{})};
+      projects.push({id:card.id,title:card.title,published,...(blog?{blog}:{}),config:{...await manuscriptConfig(file),projectId:card.id}});
     }catch(e){issue(errorMessage(e));}
   }
   return {projects,issues};

@@ -659,7 +659,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
         <div hidden={tab !== "cards"}>
           <CardNews api={bridge.cardNews} active={tab === "cards"} />
         </div>
-        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects}
+        <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects} active={tab === "blog"}
           onOpenTerminal={bridge.workbench ? () => setDrawerMode("open") : undefined}
           onStartTerminal={bridge.workbench ? async (task, permission) => {
             const session = await bridge.workbench!.start({kind: "codex", phase: "implement", task, permission});

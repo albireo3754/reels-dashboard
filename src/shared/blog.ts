@@ -13,7 +13,11 @@ export type BlogBlock = z.infer<typeof blogBlock>;
 export type BlogDraft = z.infer<typeof blogDraft>;
 /** An opened project editor: the blog tab embeds `url` (its own loopback server) under `title`. */
 export interface CanonicalEditorTab {projectId:string;title:string;url:string}
-export interface CanonicalBlogProject {id:string;title:string;published:boolean}
+/**
+ * A blog project row. `published` is the list's completion state; `blog` is the card's own blog
+ * channel record, left out when the card has none, so the list can say why a row is in progress.
+ */
+export interface CanonicalBlogProject {id:string;title:string;published:boolean;blog?:{status:'planned'|'published';publishedAt?:string;url?:string}}
 export interface BlogBridge {
   canonicalProjects?():Promise<CanonicalBlogProject[]>;
   /** Cards with a blog-markup manuscript that are left out of the list, and why. */

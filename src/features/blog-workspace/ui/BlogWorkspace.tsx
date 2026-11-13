@@ -135,7 +135,9 @@ function WorkspaceTabs({mode,editors,closing,onSelect,onClose}:{mode:string;edit
   </div>;
 }
 
-export function BlogWorkspace({api,media,projects,onStartTerminal}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[];
+export function BlogWorkspace({api,media,projects,active=true,onStartTerminal}:{api?:BlogBridge;media?:ContentMediaBridge;projects:Project[];
+  /** 블로그 탭이 보이는지. 프로젝트 목록은 보일 때 다시 읽는다. */
+  active?:boolean;
   /** @deprecated 터미널 패널은 상단 툴바의 터미널 버튼·⌘N으로 연다. 호환을 위해 받기만 한다. */
   onOpenTerminal?:()=>void;onStartTerminal?:(task:string,permission:import('../../../shared/workbench').AgentPermission)=>Promise<void>}) {
   const [mode,setMode]=useState<string>('projects');
@@ -173,7 +175,7 @@ export function BlogWorkspace({api,media,projects,onStartTerminal}:{api?:BlogBri
     </div>
     {/* 상태·오류는 패널 위에 둔다. 편집기 탭은 창 높이를 채우므로 아래에 두면 보이지 않는다. */}
     {notice&&<p role="status" className="ui-meta blog-notice">{notice}</p>}{error&&<Notice tone="danger" className="blog-error">{error}</Notice>}
-    <div role="tabpanel" id="blog-panel-projects" aria-labelledby="blog-tab-projects" hidden={mode!=='projects'}><BlogProjects api={api} onOpen={openEditor} openIds={editors.map(e=>e.projectId)}/></div>
+    <div role="tabpanel" id="blog-panel-projects" aria-labelledby="blog-tab-projects" hidden={mode!=='projects'}><BlogProjects api={api} onOpen={openEditor} openIds={editors.map(e=>e.projectId)} active={active&&mode==='projects'} revision={projects}/></div>
     <EmbeddedEditors editors={editors} mode={mode}/>
     <div role="tabpanel" id="blog-panel-reference" aria-labelledby="blog-tab-reference" hidden={mode!=='reference'}><BlogReferences api={api}/></div>
     <div role="tabpanel" id="blog-panel-draft" aria-labelledby="blog-tab-draft" className="blog-draft" hidden={mode!=='draft'}>
