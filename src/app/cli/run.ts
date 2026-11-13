@@ -34,6 +34,7 @@ import {
   type Guidance,
 } from "./outcome";
 import {
+  closest,
   didYouMean,
   issueSummary,
   localPath,
@@ -58,6 +59,12 @@ import {
   wantsHelp,
   type CliIO,
 } from "./tool-command";
+import {
+  toolGroupIds,
+  toolGroupOf,
+  toolGroups,
+  type ToolGroup,
+} from "./tool-groups";
 
 const statusOptions = { timeout: { type: "string" } } as const;
 const prepareMediaOptions = {
@@ -243,27 +250,66 @@ async function status(
 const firstSentence = (text: string) =>
   text.split(/(?<=[.!?])(?<!\b(?:e\.g|i\.e)\.)\s/)[0];
 
+const toolEntry = (name: ToolName) => ({
+  name,
+  command: `reels ${toolSlug(name)}`,
+  readOnly: toolDefinitions[name].readOnly,
+  summary: firstSentence(toolDefinitions[name].description),
+  group: toolGroupOf[name],
+});
+const groupSummaries = toolGroupIds.map((id) => ({
+  id,
+  summary: toolGroups[id],
+  count: toolNames.filter((name) => toolGroupOf[name] === id).length,
+}));
+const isGroupFlag = (arg: string) =>
+  arg === "--group" || arg.startsWith("--group=");
+
+/** `--group <id>`, or undefined when the list is not filtered. */
+function groupFilter(args: string[]): ToolGroup | undefined {
+  const usage = toolsCommand.usage;
+  if (!args.some(isGroupFlag)) {
+    if (args.length > 1 || args[0]?.startsWith("-"))
+      throw new CliError("USAGE", "tools takes at most one tool name.", {
+        usage,
+      });
+    return undefined;
+  }
+  if (args.some((arg, i) => !arg.startsWith("-") && args[i - 1] !== "--group"))
+    throw new CliError(
+      "USAGE",
+      "--group filters the tool list; it does not take a tool name.",
+      { usage },
+    );
+  const { group } = parseOptions(args, toolsOptions, usage);
+  if (group !== undefined && Object.hasOwn(toolGroups, group))
+    return group as ToolGroup;
+  throw new CliError(
+    "USAGE",
+    `Unknown group: ${group}. Groups: ${toolGroupIds.join(", ")}.`,
+    { didYouMean: closest(group ?? "", toolGroupIds), usage },
+  );
+}
+
 function tools(args: string[], scope: Scope): Success {
   scope.readOnly = true;
   if (wantsHelp(args)) return showHelp(toolsCommand.help);
-  if (args.length > 1 || args[0]?.startsWith("-"))
-    throw new CliError("USAGE", "tools takes at most one tool name.", {
-      usage: toolsCommand.usage,
-    });
-  if (!args.length)
+  const group = groupFilter(args);
+  if (!args.length || group) {
+    const names = group
+      ? toolNames.filter((name) => toolGroupOf[name] === group)
+      : toolNames;
     return {
       data: {
         guidance: agentGuidance,
         builtins: builtinSummaries,
-        count: toolNames.length,
-        tools: toolNames.map((name) => ({
-          name,
-          command: `reels ${toolSlug(name)}`,
-          readOnly: toolDefinitions[name].readOnly,
-          summary: firstSentence(toolDefinitions[name].description),
-        })),
+        count: names.length,
+        tools: names.map(toolEntry),
+        groups: groupSummaries,
+        ...(group ? { group } : {}),
       },
     };
+  }
   const name = requireTool(args[0]);
   return {
     data: {
@@ -275,6 +321,7 @@ function tools(args: string[], scope: Scope): Success {
       flags: toolFlags(name),
       cliOptions: toolOptionDocs(name),
       example: toolExample(name),
+      group: toolGroupOf[name],
     },
   };
 }
@@ -306,6 +353,7 @@ function toolHelp(name: ToolName) {
         `  ${flag}${value ? ` ${value}` : ""}  ${summary}`,
     ),
     `Schema: reels tools ${toolSlug(name)}`,
+    `Group: ${toolGroupOf[name]} (reels tools --group ${toolGroupOf[name]})`,
   ].join("\n");
 }
 
@@ -701,13 +749,16 @@ Example: reels status --timeout 2`,
   summary: "Whether the app can be called.",
   run: (args, { io, scope }) => status(args, io, scope),
 } satisfies Builtin;
-const toolsUsage = "reels tools [<name|slug>]";
+const toolsUsage = "reels tools [<name|slug> | --group <id>]";
+const toolsOptions = { group: { type: "string" } } as const;
 const toolsCommand = {
   name: "tools",
   usage: toolsUsage,
   help: `Usage: ${toolsUsage}
 Lists every tool and built-in command, or prints one tool's input schema and flags.
-Example: reels tools start-render`,
+--group <id>  Only the tools in one domain group. Groups: ${toolGroupIds.join(", ")}.
+Example: reels tools start-render
+Example: reels tools --group render`,
   run: (args, { scope }) => tools(args, scope),
 } satisfies Builtin;
 const callUsage =

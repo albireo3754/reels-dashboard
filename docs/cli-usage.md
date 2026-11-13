@@ -24,8 +24,9 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | Command | Needs the app | Purpose |
 | --- | --- | --- |
 | `reels status [--timeout <s>]` | no | Whether the app can be called. Exit 0 even when it cannot, or when it answers with an error. Default limit 5 s. |
-| `reels tools` | no | Every tool with its command, read-only flag and summary, plus the built-in commands that do work (`builtins`). |
-| `reels tools <name\|slug>` | no | Input schema, generated flags, CLI options and an example. |
+| `reels tools` | no | Every tool with its command, read-only flag, summary and `group`, plus the built-in commands that do work (`builtins`) and the domain groups (`groups`: `id`, `summary`, `count`). |
+| `reels tools --group <id>` | no | The same list, only the tools in one [group](#tool-groups); `data.group` names it. |
+| `reels tools <name\|slug>` | no | Input schema, generated flags, CLI options, an example and the tool's `group`. |
 | `reels <slug> [options]` | yes | Any tool. `reels_get_project` is `reels get-project`. |
 | `reels call <name\|slug> [options]` | yes | The same, by full tool name. |
 | `reels prepare-media ...` | no | [Local media copy](#local-media-copy). |
@@ -33,6 +34,10 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
 
 A tool can be named as `reels_get_project`, `get_project` (the form the guidance text uses) or `get-project`, in every place that takes a tool name.
+
+### Tool groups
+
+Every tool belongs to one domain group, so an agent can read a short list instead of all of them: `reels tools --group render`. Groups are a filter of `reels tools`, not commands, and the MCP tool definitions do not carry them. The ids are `editor`, `render`, `content`, `photos`, `delivery`, `forms`, `analysis`, `blog` and `planning`; `data.groups` lists each with its summary and tool count, and `reels <slug> --help` ends with the tool's group. An unknown id exits 2 with `didYouMean` and the valid ids in the message. `--group` does not combine with a tool name, and `reels tools` still rejects any other option with exit 2.
 
 Flags come from the tool's input schema: `expectedUpdatedAt` is `--expected-updated-at`. Strings and enums pass through, numbers are converted, a boolean is a flag without a value, and objects and arrays take JSON. A value starting with a dash needs `=`, as in `--after-revision=-1`. Repeating a flag is an error. `--help` and `-h` mean help only as options of their own: as the value of another option they are a usage error, so `--patch --help` exits 2 and never reads as a successful write. Usage lines and `reels tools <name>` show allowed values and formats, as in `--kind <video|cover>`, `--project-id <uuid>`, `--folder <abs-path>` and `--date <YYYY-MM-DD>`. In `flags`, a format that has no name of its own keeps its regular expression in `pattern`. `inputSchema` is the MCP schema unchanged, so it still carries Zod's `starts_with`.
 

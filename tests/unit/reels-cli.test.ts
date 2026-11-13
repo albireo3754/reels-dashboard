@@ -51,6 +51,11 @@ import {
   toolUsage,
   type CliIO,
 } from "../../src/app/cli/tool-command";
+import {
+  toolGroupIds,
+  toolGroupOf,
+  toolGroups,
+} from "../../src/app/cli/tool-groups";
 
 const toolSlugs = toolNames.map(toolSlug);
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -274,6 +279,110 @@ test("generated names never collide with built-ins or CLI options", async () => 
   for (const name of Object.keys(cliOptions))
     assert.ok(Object.hasOwn(toolDefinitions, name));
   assert.equal(propertyFlag("expectedUpdatedAt"), "expected-updated-at");
+});
+
+test("every tool sits in exactly one group, and group ids name nothing else", () => {
+  assert.deepEqual(
+    Object.keys(toolGroupOf).sort(),
+    Object.keys(toolDefinitions).sort(),
+  );
+  for (const [name, group] of Object.entries(toolGroupOf))
+    assert.ok(Object.hasOwn(toolGroups, group), name);
+  for (const id of toolGroupIds) {
+    assert.match(id, /^[a-z]+$/);
+    assert.ok(
+      toolNames.some((name) => toolGroupOf[name] === id),
+      id,
+    );
+    assert.ok(toolGroups[id].length <= 80, id);
+    // A group is a filter value, never a command word or a tool.
+    assert.ok(!builtinCommands.includes(id), id);
+    assert.ok(!toolSlugs.includes(id), id);
+    assert.ok(!helpTopics.some(({ name }) => name === id), id);
+  }
+});
+
+test("reels tools lists groups and filters by --group", async () => {
+  await offlineRoot(async (root) => {
+    const all = (await cli(root, ["tools"])).document.data;
+    assert.deepEqual(
+      all.groups.map(({ id }: { id: string }) => id),
+      toolGroupIds,
+    );
+    assert.equal(
+      all.groups.reduce(
+        (sum: number, { count }: { count: number }) => sum + count,
+        0,
+      ),
+      all.count,
+    );
+    for (const tool of all.tools)
+      assert.equal(
+        tool.group,
+        toolGroupOf[tool.name as keyof typeof toolGroupOf],
+      );
+    assert.ok(!Object.hasOwn(all, "group"));
+    for (const args of [["--group", "render"], ["--group=render"]]) {
+      const filtered = await cli(root, ["tools", ...args]);
+      assert.equal(filtered.code, 0, args.join(" "));
+      const { data } = filtered.document;
+      assert.equal(data.group, "render");
+      assert.deepEqual(
+        data.tools.map(({ name }: { name: string }) => name),
+        toolNames.filter((name) => toolGroupOf[name] === "render"),
+      );
+      assert.equal(data.count, data.tools.length);
+      assert.deepEqual(data.groups, all.groups);
+      assert.deepEqual(
+        data.tools[0],
+        all.tools.find(
+          ({ name }: { name: string }) => name === data.tools[0].name,
+        ),
+      );
+    }
+    const detail = (await cli(root, ["tools", "start-render"])).document.data;
+    assert.equal(detail.group, "render");
+    assert.match(
+      (await cli(root, ["start-render", "--help"])).document.data.help,
+      /^Group: render \(reels tools --group render\)$/m,
+    );
+    assert.match(
+      (await cli(root, ["tools", "--help"])).document.data.help,
+      /^Example: reels tools --group render$/m,
+    );
+  });
+});
+
+test("reels tools --group rejects unknown ids, tool names and other flags", async () => {
+  await offlineRoot(async (root) => {
+    const unknown = await cli(root, ["tools", "--group", "rendr"]);
+    assert.equal(unknown.code, 2);
+    assert.equal(unknown.document.error.code, "USAGE");
+    assert.equal(unknown.document.error.writeOutcome, "none");
+    assert.deepEqual(unknown.document.error.didYouMean, ["render"]);
+    assert.match(unknown.document.error.message, /Groups: editor, render/);
+    assert.match(unknown.document.error.usage, /--group <id>/);
+    for (const args of [
+      ["tools", "--group"],
+      ["tools", "--group", ""],
+      ["tools", "start-render", "--group", "render"],
+      ["tools", "--group", "render", "start-render"],
+      ["tools", "--group", "render", "--group", "forms"],
+      ["tools", "--group", "render", "--bogus"],
+      ["tools", "--bogus"],
+    ]) {
+      const { code, document } = await cli(root, args);
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(document.error.code, "USAGE", args.join(" "));
+      assert.equal(document.error.writeOutcome, "none", args.join(" "));
+    }
+    const named = (
+      await cli(root, ["tools", "get-project", "--group", "editor"])
+    ).document.error;
+    assert.match(named.message, /does not take a tool name/);
+    const other = (await cli(root, ["tools", "--bogus"])).document.error;
+    assert.equal(other.message, "tools takes at most one tool name.");
+  });
 });
 
 test("tool detail, help and version need no app", async () => {

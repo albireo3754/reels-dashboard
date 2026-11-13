@@ -77,6 +77,11 @@ function editDistance(from: string, to: string) {
 }
 
 export function didYouMean(value: string, extra: string[] = []) {
+  return closest(value, [...extra, ...slugs.keys()]);
+}
+
+/** Up to three candidates near `value`, nearest first. */
+export function closest(value: string, candidates: readonly string[]) {
   if (value.startsWith("-")) return [];
   const query = toolSlug(value.toLowerCase());
   const limit = Math.min(3, Math.max(1, Math.floor(query.length / 3)));
@@ -84,7 +89,7 @@ export function didYouMean(value: string, extra: string[] = []) {
     query.length >= 3 && (name.includes(query) || query.includes(name));
   const prefix = (name: string) => Number(name.startsWith(query));
   const gap = (name: string) => Math.abs(name.length - query.length);
-  return [...extra, ...slugs.keys()]
+  return candidates
     .map((name) => ({
       name,
       distance: contains(name) ? 0 : editDistance(query, name),
