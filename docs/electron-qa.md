@@ -27,6 +27,14 @@ REELS_ELECTRON_EXECUTABLE="$PWD/release/mac-arm64/Reels Dashboard.app/Contents/M
 REELS_ELECTRON_EXECUTABLE="$PWD/release/mac-arm64/Reels Dashboard.app/Contents/MacOS/Reels Dashboard" REELS_NATIVE_QA=1 npm run test:electron -- tests/electron/native.spec.ts
 ```
 
+## 테스트 helpers 계약 — 2026-11-13
+
+`tests/electron/helpers.ts`의 `launchApp`만 써서 앱을 띄워요. 기본은 background QA(창 숨김·포커스 불가)이고, 창 표시는 `REELS_ELECTRON_HEADED=1`일 때만이에요.
+
+- **셸 프로필 격리:** `launchApp`은 빈 `.zshenv`만 있는 임시 `ZDOTDIR`을 넘겨요. 제품의 직접 터미널은 그대로 `/bin/zsh -l`/`-lc`로 실행되고 `/etc/zprofile`의 `path_helper`와 앱의 PATH 보강도 그대로 타지만, 개발자의 `~/.zshenv`·`~/.zprofile`·`~/.zshrc`(conda, `ssh-add`, prompt 등)는 읽지 않아요. 로그인 셸 하나의 시작 비용이 이 Mac에서 약 2.0초 CPU(2.9초)에서 0.01초로 줄었어요. 터미널 spec은 셸 내장 명령(`printf`, `stty`, `pwd`, `exit`)만 기대해요. 미리보기 서버 spec은 `npm run dev`를 실행하므로 `path_helper` 이후 PATH에 Node 22.12 이상의 `npm`이 있어야 해요.
+- **앱 재사용:** `useSharedApp(env)`를 `test.describe` 안에서 부르면 그 describe가 데모 앱 하나를 같이 써요. 테스트마다 워크벤치 세션을 모두 닫고, 창을 1600×1000으로 되돌리고, renderer `localStorage`·`sessionStorage`를 지운 뒤 페이지를 다시 불러와요. profile을 미리 채우거나, main 핸들러·dialog를 바꾸거나, 앱을 다시 시작·종료하거나, 환경변수 조합이 다른 테스트는 기존처럼 자기 앱을 띄워요. 실패한 테스트 뒤에는 Playwright가 worker를 새로 만들어 남은 테스트용 앱을 다시 띄워요.
+- 2026-11-13 전체 `npm run test:electron`: 기준선 422초·80 통과·5 실패·18 건너뜀 → 245초·85 통과·0 실패·18 건너뜀. 터미널 관련 11개 파일의 테스트 시간 합은 148초에서 72초로 줄었어요. 두 실행 모두 다른 작업으로 기계 부하가 높았던 상태라 load average는 비교 근거로 쓰지 않아요.
+
 ## 자동 검증 항목
 
 | 범위 | 증거 |
