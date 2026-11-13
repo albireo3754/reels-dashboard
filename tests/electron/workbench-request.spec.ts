@@ -57,8 +57,8 @@ test('request Enter starts the selected tool once, preserves failures and allows
       return qa.requestInputs;
     });
     expect(requests).toEqual([
-      { kind: 'claude', phase: 'fix', task: '버튼 간격 수정\n\n' },
-      { kind: 'claude', phase: 'fix', task: '버튼 간격 수정\n\n' },
+      { kind: 'claude', phase: 'fix', permission: 'ask', task: '버튼 간격 수정\n\n' },
+      { kind: 'claude', phase: 'fix', permission: 'ask', task: '버튼 간격 수정\n\n' },
     ]);
     await expect(page.getByRole('tab')).toHaveCount(1);
     await expect(page.getByRole('tab')).toHaveAttribute('aria-selected', 'true');

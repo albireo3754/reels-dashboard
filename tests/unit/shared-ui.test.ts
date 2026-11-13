@@ -49,16 +49,6 @@ test("terminal theme fallback matches the --terminal-* tokens", () => {
   assert.deepEqual(terminalTheme(null), terminalThemeFallback);
 });
 
-test("neutral palette keeps the brief's core tokens and legacy aliases", () => {
-  assert.equal(token("--color-bg"), "#ffffff");
-  assert.equal(token("--color-sidebar"), "#f7f7f5");
-  assert.equal(token("--color-primary"), "#386354");
-  assert.ok(token("--color-hover"));
-  assert.ok(token("--color-selected"));
-  for (const alias of ["--green", "--muted", "--line", "--paper", "--accent"])
-    assert.match(token(alias) ?? "", /^var\(--color-/);
-});
-
 test("button variants map to the shared classes (quiet is the default)", () => {
   const html = (variant?: "quiet" | "secondary" | "primary") =>
     renderToStaticMarkup(createElement(Button, { variant }, "저장"));

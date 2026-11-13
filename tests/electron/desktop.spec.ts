@@ -77,6 +77,12 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
       "saveDashboard",
       "saveDocument",
       "syncSnapshot",
+      "clipUpload",
+      "coverPreferences",
+      "devBuild",
+      "icloud",
+      "planning",
+      "terminalSetting",
     ].sort(),
   );
   expect(
@@ -94,6 +100,7 @@ test("loads built React UI with an isolated, typed preload bridge", async ({}, t
       "job",
       "cancel",
       "reveal",
+      "playbackCopy",
     ].sort(),
   );
   expect(errors).toEqual([]);

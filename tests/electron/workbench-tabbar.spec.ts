@@ -1,14 +1,14 @@
-import { test, expect, type Page } from "@playwright/test";
 import {
-  cleanProfile,
-  closeApp,
-  launchApp,
-  makeProfile,
-} from "./helpers";
+  test,
+  expect,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
+import { useSharedApp } from "./helpers";
 
 const state = (page: Page) =>
   page.evaluate(() => window.reels!.workbench!.state());
-const resize = (app: Awaited<ReturnType<typeof launchApp>>, width: number) =>
+const resize = (app: ElectronApplication, width: number) =>
   app.evaluate(
     ({ BrowserWindow }, width) =>
       BrowserWindow.getAllWindows()[0]!.setSize(width, 900),
@@ -32,7 +32,9 @@ async function expectOneLineBar(page: Page) {
   const width = await page.evaluate(() => innerWidth);
   for (const item of [plus, menu, fold, close]) {
     expect(item.y).toBeGreaterThanOrEqual(barBox.y);
-    expect(item.y + item.height).toBeLessThanOrEqual(barBox.y + barBox.height + 1);
+    expect(item.y + item.height).toBeLessThanOrEqual(
+      barBox.y + barBox.height + 1,
+    );
     expect(item.x + item.width).toBeLessThanOrEqual(width);
   }
   expect(menu.x).toBeGreaterThan(plus.x);
@@ -47,12 +49,11 @@ async function expectOneLineBar(page: Page) {
   }
 }
 
-test("empty panel offers terminal, Codex and Claude, with the settings behind a gear", async ({}, info) => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+test.describe("one development app", () => {
+  const shared = useSharedApp({ REELS_DEV_MODE: "1" });
+
+  test("empty panel offers terminal, Codex and Claude, with the settings behind a gear", async ({}, info) => {
+    const { app, page } = shared;
     await page.getByRole("button", { name: "터미널", exact: true }).click();
     const drawer = page.getByRole("region", { name: "터미널", exact: true });
     await expect(drawer).toHaveAttribute("data-drawer-state", "open");
@@ -71,7 +72,9 @@ test("empty panel offers terminal, Codex and Claude, with the settings behind a 
     await expect(
       page.getByRole("button", { name: /^(Codex|Claude Code) 시작/ }),
     ).toHaveCount(0);
-    await expect(drawer).not.toContainText("세션을 시작하면 이곳에 터미널이 열려요");
+    await expect(drawer).not.toContainText(
+      "세션을 시작하면 이곳에 터미널이 열려요",
+    );
     await expectOneLineBar(page);
 
     // Settings: collapsed by default, one toggle, every old control reachable.
@@ -92,10 +95,14 @@ test("empty panel offers terminal, Codex and Claude, with the settings behind a 
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(settings.getByRole("button", { name: /세션 시작$/ })).toBeVisible();
+    await expect(
+      settings.getByRole("button", { name: /세션 시작$/ }),
+    ).toBeVisible();
     await expect(settings.getByLabel(/개선 요청/)).toBeVisible();
     await expect(settings.getByTestId("dev-backend-setting")).toBeVisible();
-    await expect(settings.getByRole("group", { name: "개선 단계" })).toBeVisible();
+    await expect(
+      settings.getByRole("group", { name: "개선 단계" }),
+    ).toBeVisible();
     await expect(
       settings.getByRole("combobox", { name: "코딩 도구" }).locator("option"),
     ).toHaveText(["Codex", "Claude Code"]);
@@ -105,7 +112,9 @@ test("empty panel offers terminal, Codex and Claude, with the settings behind a 
     await gear.click();
     await expect(page.getByTestId("dev-settings")).toBeHidden();
 
-    await page.screenshot({ path: info.outputPath("tabbar-0-tabs-desktop.png") });
+    await page.screenshot({
+      path: info.outputPath("tabbar-0-tabs-desktop.png"),
+    });
     await resize(app, 760);
     await expect(empty).toBeVisible();
     await expectOneLineBar(page);
@@ -117,26 +126,22 @@ test("empty panel offers terminal, Codex and Claude, with the settings behind a 
     await gear.click();
 
     // The empty-screen terminal button starts a real shell tab.
-    await empty.getByRole("button", { name: "터미널 열기", exact: true }).click();
+    await empty
+      .getByRole("button", { name: "터미널 열기", exact: true })
+      .click();
     await expect(page.getByRole("tab")).toHaveCount(1);
     await expect(page.getByTestId("dev-empty")).toHaveCount(0);
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
+  });
 
-test("tabs, plus and menu share one row with roles, roving focus and arrow keys", async ({}, info) => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+  test("tabs, plus and menu share one row with roles, roving focus and arrow keys", async ({}, info) => {
+    const { app, page } = shared;
     await page.getByRole("button", { name: "터미널", exact: true }).click();
     const plus = page.getByRole("button", { name: "새 터미널", exact: true });
     for (let i = 1; i <= 3; i++) {
       await plus.click();
-      await expect.poll(async () => (await state(page)).sessions.length).toBe(i);
+      await expect
+        .poll(async () => (await state(page)).sessions.length)
+        .toBe(i);
     }
     const tablist = page.getByRole("tablist", { name: "터미널 세션" });
     const tabs = tablist.getByRole("tab");
@@ -187,10 +192,16 @@ test("tabs, plus and menu share one row with roles, roving focus and arrow keys"
     await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem").first()).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitem", { name: "Codex 열기" })).toBeFocused();
+    await expect(
+      menu.getByRole("menuitem", { name: "Codex 열기" }),
+    ).toBeFocused();
     await page.keyboard.press("End");
-    await expect(menu.getByRole("menuitem", { name: "검증 실행" })).toBeFocused();
-    await page.screenshot({ path: info.outputPath("tabbar-3-tabs-menu-desktop.png") });
+    await expect(
+      menu.getByRole("menuitem", { name: "검증 실행" }),
+    ).toBeFocused();
+    await page.screenshot({
+      path: info.outputPath("tabbar-3-tabs-menu-desktop.png"),
+    });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(toggle).toBeFocused();
@@ -218,34 +229,34 @@ test("tabs, plus and menu share one row with roles, roving focus and arrow keys"
 
     await plus.click();
     await expect.poll(async () => (await state(page)).sessions.length).toBe(3);
-    await page.screenshot({ path: info.outputPath("tabbar-3-tabs-desktop.png") });
+    await page.screenshot({
+      path: info.outputPath("tabbar-3-tabs-desktop.png"),
+    });
     await resize(app, 760);
     await expectOneLineBar(page);
     await page.screenshot({ path: info.outputPath("tabbar-3-tabs-760.png") });
     await toggle.click();
-    await page.screenshot({ path: info.outputPath("tabbar-3-tabs-menu-760.png") });
+    await page.screenshot({
+      path: info.outputPath("tabbar-3-tabs-menu-760.png"),
+    });
     await page.keyboard.press("Escape");
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
-});
+  });
 
-test("twelve tabs stay on one row and scroll instead of wrapping", async ({}, info) => {
-  const profile = await makeProfile();
-  let app;
-  try {
-    app = await launchApp(profile, true, { REELS_DEV_MODE: "1" });
-    const page = await app.firstWindow();
+  test("twelve tabs stay on one row and scroll instead of wrapping", async ({}, info) => {
+    const { app, page } = shared;
     await page.getByRole("button", { name: "터미널", exact: true }).click();
     const plus = page.getByRole("button", { name: "새 터미널", exact: true });
     for (let i = 1; i <= 12; i++) {
       await plus.click();
-      await expect.poll(async () => (await state(page)).sessions.length).toBe(i);
+      await expect
+        .poll(async () => (await state(page)).sessions.length)
+        .toBe(i);
     }
     await expect(page.getByRole("tab")).toHaveCount(12);
     await expectOneLineBar(page);
-    await page.screenshot({ path: info.outputPath("tabbar-12-tabs-desktop.png") });
+    await page.screenshot({
+      path: info.outputPath("tabbar-12-tabs-desktop.png"),
+    });
     await resize(app, 760);
     await expectOneLineBar(page);
     // At 760px the tab strip overflows horizontally; keyboard selection scrolls the tab into view.
@@ -262,15 +273,16 @@ test("twelve tabs stay on one row and scroll instead of wrapping", async ({}, in
     expect(strip.overflow).toBe(true);
     expect(strip.scrollLeft).toBeGreaterThan(0);
     const last = await box(page.getByRole("tab").nth(11));
-    const strip2 = await box(page.getByRole("tablist", { name: "터미널 세션" }));
-    expect(last.x + last.width).toBeLessThanOrEqual(strip2.x + strip2.width + 1);
+    const strip2 = await box(
+      page.getByRole("tablist", { name: "터미널 세션" }),
+    );
+    expect(last.x + last.width).toBeLessThanOrEqual(
+      strip2.x + strip2.width + 1,
+    );
     await page.screenshot({ path: info.outputPath("tabbar-12-tabs-760.png") });
     // The twelfth session is the limit; the plus button reports it instead of failing silently.
     await plus.click();
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByRole("tab")).toHaveCount(12);
-  } finally {
-    await closeApp(app);
-    await cleanProfile(profile);
-  }
+  });
 });
