@@ -4,6 +4,8 @@ import {parseDocument} from "yaml";
 import {z} from "zod";
 import {parse} from "../shared/blog-markup";
 import type {Project} from "../shared/contracts";
+import type {CanonicalBlogProject} from "../shared/blog";
+import {isPublishedOn} from "../shared/publications";
 import {errorMessage} from "../shared/lib/errors";
 import {LocalStore} from "../shared/lib/storage";
 import type {EditorConfig} from "../app/blog-editor/store";
@@ -25,7 +27,7 @@ import type {EditorConfig} from "../app/blog-editor/store";
  *   assetFiles      the real files behind the photos and videos the manuscript references
  */
 export type BlogProjectConfig=EditorConfig&{format:"markup"};
-export interface BlogProject{id:string;title:string;config:BlogProjectConfig}
+export interface BlogProject extends CanonicalBlogProject{config:BlogProjectConfig}
 /** Why a card that looks like a blog project is not listed. */
 export interface BlogProjectIssue{id:string;title:string;reason:string}
 
@@ -152,7 +154,7 @@ export async function manuscriptConfig(canon:string):Promise<BlogProjectConfig>{
 }
 
 /** Blog projects among the content cards, plus the cards that point at a manuscript but cannot open. */
-export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|"resources">[]){
+export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|"resources"|"stage"|"publications">[]){
   const projects:BlogProject[]=[],issues:BlogProjectIssue[]=[],owners=new Map<string,string>();
   for(const card of cards){
     const issue=(reason:string)=>issues.push({id:card.id,title:card.title,reason});
@@ -170,7 +172,9 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
       const owner=owners.get(file);
       if(owner){issue(`같은 원고가 ${owner} 카드에 이미 연결돼 있어요.`);continue;}
       owners.set(file,card.id);
-      projects.push({id:card.id,title:card.title,config:{...await manuscriptConfig(file),projectId:card.id}});
+      // Channel records own blog completion; cards without them still use the project stage.
+      const published=isPublishedOn(card,"blog")||(!card.publications?.length&&card.stage==="published");
+      projects.push({id:card.id,title:card.title,published,config:{...await manuscriptConfig(file),projectId:card.id}});
     }catch(e){issue(errorMessage(e));}
   }
   return {projects,issues};

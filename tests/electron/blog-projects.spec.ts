@@ -6,6 +6,69 @@ import {launchApp,makeProfile,closeApp,cleanProfile} from './helpers';
 import {closeEditorTab,editorIframe,openBlogEditor,windowCount} from './blog-editor-helpers';
 import { writeBlogCards } from '../fixtures/blog-cards';
 
+test('blog projects default to in-progress, show completed projects on request and refresh their status',async({},testInfo)=>{
+  const profile=await makeProfile();let app;
+  try{
+    const projects=[];
+    for(const id of ['draft','blog-live','other-live','stage-only']){
+      const root=path.join(profile,id);await mkdir(root);
+      projects.push({id,title:`${id} project`,config:await markupFixture(root)});
+    }
+    await writeBlogCards(profile,projects);
+    const file=path.join(profile,'dashboard.json');
+    const dashboard=JSON.parse(await readFile(file,'utf8'));
+    dashboard.projects[1].publications=[{channel:'blog',status:'published',url:''},{channel:'naver-clip',status:'planned',url:''}];
+    dashboard.projects[2].stage='published';
+    dashboard.projects[2].publications=[{channel:'naver-clip',status:'published',url:''}];
+    dashboard.projects[3].stage='published';
+    await writeFile(file,JSON.stringify(dashboard));
+
+    app=await launchApp(profile);const main=await app.firstWindow();
+    await main.getByRole('button',{name:'블로그',exact:true}).click();
+    const list=main.getByRole('region',{name:'블로그 프로젝트 목록'});
+    const filter=list.getByRole('combobox',{name:'블로그 진행 필터'});
+    const card=(id:string)=>list.getByRole('article',{name:`${id} project`,exact:true});
+    await expect(filter).toHaveValue('active');
+    await expect(card('draft')).toBeVisible();await expect(card('other-live')).toBeVisible();
+    await expect(card('blog-live')).toHaveCount(0);await expect(card('stage-only')).toHaveCount(0);
+    await expect(list.getByText('프로젝트 2개',{exact:true})).toBeVisible();
+    await main.screenshot({path:testInfo.outputPath('blog-active.png')});
+
+    await filter.selectOption('all');
+    await expect(list.getByRole('article')).toHaveCount(4);
+    await expect(card('blog-live').getByText('게시 완료',{exact:true})).toBeVisible();
+    await expect(card('stage-only').getByText('게시 완료',{exact:true})).toBeVisible();
+    await expect(card('other-live').getByText('게시 완료',{exact:true})).toHaveCount(0);
+    await expect(list.getByText('프로젝트 4개',{exact:true})).toBeVisible();
+    await main.screenshot({path:testInfo.outputPath('blog-all.png')});
+    const editor=await openBlogEditor(app,main,'blog-live',card('blog-live'));
+    await expect(editor.getByText('✓ 저장 완료',{exact:true})).toBeVisible();
+    await main.getByRole('tab',{name:'프로젝트',exact:true}).click();
+    await list.getByRole('button',{name:'프로젝트 새로고침',exact:true}).click();
+    await expect(filter).toHaveValue('all');
+    await expect(list.getByRole('article')).toHaveCount(4);
+
+    await filter.selectOption('active');
+    await expect(list.getByRole('article')).toHaveCount(2);
+    // Updates come from the content table, even while this screen is mounted.
+    for(const project of dashboard.projects)project.publications=[{channel:'blog',status:'published',url:''}];
+    await writeFile(file,JSON.stringify(dashboard));
+    await list.getByRole('button',{name:'프로젝트 새로고침',exact:true}).click();
+    await expect(list.getByText('진행 중인 블로그 프로젝트가 없어요.',{exact:true})).toBeVisible();
+    await expect(list.getByText('아직 연결된 블로그 프로젝트가 없어요.',{exact:true})).toHaveCount(0);
+    await expect(list.getByText('프로젝트 0개',{exact:true})).toBeVisible();
+    await list.getByRole('button',{name:'전체 보기',exact:true}).click();
+    await expect(filter).toHaveValue('all');
+    await expect(list.getByRole('article')).toHaveCount(4);
+
+    await closeApp(app);app=await launchApp(profile);
+    const reopened=await app.firstWindow();
+    await reopened.getByRole('button',{name:'블로그',exact:true}).click();
+    await expect(reopened.getByRole('combobox',{name:'블로그 진행 필터'})).toHaveValue('active');
+    await expect(reopened.getByText('진행 중인 블로그 프로젝트가 없어요.',{exact:true})).toBeVisible();
+  }finally{await closeApp(app);await cleanProfile(profile);}
+});
+
 test('blog projects open isolated editors, reuse tabs and retain connections after restart',async({},testInfo)=>{
   const profile=await makeProfile();let app;
   try{

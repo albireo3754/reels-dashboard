@@ -69,7 +69,7 @@ test("blog projects open as tabs inside the blog workspace, keep edits across me
     expect(await first.evaluate(() => { try { return String(window.top!.location.href); } catch { return "blocked"; } })).toBe("blocked");
     expect(await main.evaluate(() => typeof window.reels!.blog!.closeCanonical)).toBe("function");
     // The main process accepts the dashboard main frame and refuses the editor subframe.
-    expect(await invokeAs(app, "blog:canonicalProjects", "main")).toEqual({ ok: true, value: JSON.stringify(projects.map(({ id, title }) => ({ id, title }))) });
+    expect(await invokeAs(app, "blog:canonicalProjects", "main")).toEqual({ ok: true, value: JSON.stringify(projects.map(({ id, title }) => ({ id, title, published: false }))) });
     expect(await invokeAs(app, "blog:canonicalProjects", "editor")).toEqual({ ok: false, value: "Untrusted IPC sender" });
     expect(await invokeAs(app, "loadDashboard", "editor")).toEqual({ ok: false, value: "Untrusted IPC sender" });
 

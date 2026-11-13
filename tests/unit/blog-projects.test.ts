@@ -25,11 +25,40 @@ test('blog projects are the content cards whose document is a blog-markup manusc
   const plain=path.join(root,'plain.md');await writeFile(plain,'---\ntitle: x\n---\nplain');
   await dashboard(root,[card('reel',[plain]),card('none',[]),card('blog',[plain,config.canon,path.join(root,'missing.md')])]);
   const projects=await readBlogProjects(root);
-  assert.deepEqual(projects,[{id:'blog',title:'blog card',config:{
+  assert.deepEqual(projects,[{id:'blog',title:'blog card',published:false,config:{
     projectId:'blog',format:'markup',canon:config.canon,layers:config.layers,layout:config.layout,media:config.media,
     review:path.join(config.layers,'bundle-review.json'),requests:config.requests,reviewGuidance:[path.join(root,'BLOG.md')],
   }}]);
   assert.deepEqual(await readBlogProjects(path.join(root,'empty')),[]);
+});
+
+test('blog completion follows its channel and keeps stage-only completed cards available',async t=>{
+  const root=await temp(t);
+  const states=[
+    {id:'draft',extra:{}},
+    {id:'blog-live',extra:{publications:[{channel:'blog',status:'published',url:''},{channel:'naver-clip',status:'planned',url:''}]}},
+    {id:'other-live',extra:{stage:'published',publications:[{channel:'naver-clip',status:'published',url:''}]}},
+    {id:'blog-planned',extra:{stage:'published',publications:[{channel:'blog',status:'planned',url:''}]}},
+    {id:'stage-only',extra:{stage:'published'}},
+    {id:'no-channels',extra:{stage:'published',publications:[]}},
+  ];
+  const cards=[];
+  for(const {id,extra} of states){
+    const article=path.join(root,id);await mkdir(article);
+    const config=await markupFixture(article);
+    cards.push(card(id,[config.canon],extra));
+  }
+  await dashboard(root,cards);
+  const {projects,issues}=await scanBlogProjects(root);
+  assert.deepEqual(issues,[]);
+  assert.deepEqual(projects.map(({id,published})=>({id,published})),[
+    {id:'draft',published:false},
+    {id:'blog-live',published:true},
+    {id:'other-live',published:false},
+    {id:'blog-planned',published:false},
+    {id:'stage-only',published:true},
+    {id:'no-channels',published:true},
+  ]);
 });
 
 test('frontmatter editor paths override the folder conventions',async t=>{

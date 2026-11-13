@@ -40,7 +40,7 @@ export class DesktopCanonicalEditor{
   private releases=new Map<string,ReturnType<typeof setTimeout>>();
   /** `background`: proceed without dialogs (background QA; see main.ts for the stubbed-dialog QA switch). */
   constructor(private root:string,private webRoot:string,private background:boolean){}
-  async projects(){return (await readBlogProjects(this.root)).map(({id,title})=>({id,title}));}
+  async projects(){return (await readBlogProjects(this.root)).map(({id,title,published})=>({id,title,published}));}
   /** Content cards that point at a manuscript but cannot be listed, with the reason. */
   async issues(){return (await scanBlogProjects(this.root)).issues;}
   /**

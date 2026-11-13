@@ -13,8 +13,9 @@ export type BlogBlock = z.infer<typeof blogBlock>;
 export type BlogDraft = z.infer<typeof blogDraft>;
 /** An opened project editor: the blog tab embeds `url` (its own loopback server) under `title`. */
 export interface CanonicalEditorTab {projectId:string;title:string;url:string}
+export interface CanonicalBlogProject {id:string;title:string;published:boolean}
 export interface BlogBridge {
-  canonicalProjects?():Promise<Array<{id:string;title:string}>>;
+  canonicalProjects?():Promise<CanonicalBlogProject[]>;
   /** Cards with a blog-markup manuscript that are left out of the list, and why. */
   canonicalIssues?():Promise<Array<{id:string;title:string;reason:string}>>;
   openCanonical?(projectId:string):Promise<CanonicalEditorTab>;
