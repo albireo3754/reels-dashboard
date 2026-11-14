@@ -6,7 +6,7 @@ import path from "node:path";
 import { parse, serialize } from "../../src/shared/blog-markup";
 import { textOf, classify, bundleHashes, reviewFresh, merge3, normalize } from "../../src/shared/blog-markup-source";
 import { load, save } from "../../src/shared/blog-markup-store";
-import { renderHtml } from "../../src/shared/blog-markup-render";
+import { renderHtml, MARKUP_STYLE_CSS } from "../../src/shared/blog-markup-render";
 const source = '<Bundle id="B1" name="test" question="q">\n\n¶ P1\n⟦alpha⟧^1  \nbeta\ngamma\n  ^1 적갈 · focus\n</Bundle>\n';
 test("normalization preserves text whitespace, YAML comments/order, omits derived notes",()=>{
   const raw='---\n# keep\ntitle: "Title" # title comment\nmarkup: 1\ncustom: [a, b]\n---\n'+source;
@@ -63,6 +63,13 @@ test("renderer snapshot, escaping, media paths, component structure",()=>{
   assert.equal(renderHtml(parse(source)), '<article><p data-bundle="B1" data-bundle-start data-bundle-name="test" class="paragraph"><span style="color: #a64132;">alpha</span>  <br>beta<br>gamma</p></article>');
   const doc=parse('<Bundle id="b" name="n" question="q">\n<Photo file="a.jpg" alt="&quot;x&quot;"/>\n<Heading>&lt;caption&gt;</Heading>\n<Map place="x" href="javascript:alert(1)"/>\n</Bundle>');
   const html=renderHtml(doc,{media:"../media/"});assert.match(html,/src="..\/media\/a.jpg"/);assert.ok(!html.includes("javascript:"));assert.ok(html.includes('class="section-heading"'));
+});
+test("section headings render like Naver quotation_line: left-aligned with a 6px left bar",()=>{
+  const rule=(sel:string)=>MARKUP_STYLE_CSS.split("\n").find(l=>l.startsWith(sel+"{"))??"";
+  assert.match(rule("article .section-heading"),/text-align:left/);
+  assert.match(rule("article .section-heading"),/padding:0 0 0 20px/);
+  assert.match(rule("article .section-heading::before"),/border-left:6px solid #515151/);
+  assert.match(rule("article .section-heading h2"),/text-align:left/);
 });
 test("layout reorder is structural and preserves agent wording guard",async()=>{
   const first='<Bundle id="b" name="n" question="q">\n\n¶ P1\nfirst\n\n¶ P2\nsecond\n</Bundle>\n';

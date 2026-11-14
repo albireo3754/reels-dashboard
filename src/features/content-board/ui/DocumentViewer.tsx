@@ -244,8 +244,6 @@ article img{display:block;max-width:100%;height:auto;margin:0 auto;background:#f
 article img:not([src]),article img[src=""]{width:100%;aspect-ratio:4/3}
 article .photo-grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 article .photo-grid4 img{width:100%;height:100%;object-fit:cover}
-article .section-heading{margin:40px 0 20px;padding:0;border:0}
-article .section-heading h2{margin:0}
 article .price-box,article .visit-card,article .native-card{margin:24px 0;padding:16px 18px;border:1px solid #e5e5e5;border-radius:4px;background:#fafafa;text-align:left}
 article .card-label{margin-bottom:6px;font-weight:700}
 article .source,article .tags{font-size:13px;color:#888}
