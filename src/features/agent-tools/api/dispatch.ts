@@ -95,7 +95,7 @@ export interface AgentPorts {
 }
 export function createAgentDispatch(ports: AgentPorts) {
   const { editor, session } = ports;
-  const port = <K extends "instagramInsights" | "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis">(
+  const port = <K extends "instagramInsights" | "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis" | "analysisSelection">(
     name: K,
   ): NonNullable<AgentPorts[K]> => {
     const value = ports[name];

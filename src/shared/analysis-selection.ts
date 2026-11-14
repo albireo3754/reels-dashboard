@@ -12,6 +12,6 @@ export interface SelectionDocument {
   schemaVersion: 1; projectId: string; revision: number; analysisRevision?: number;
   candidates: { sampleId: string; usable: boolean; reason: string; human: boolean }[];
   groups: { id: string; sampleIds: string[]; representative: string; reason: string; human: boolean }[];
-  usage: { sampleId: string; contentId: string; editId?: string }[];
+  usage: { sampleId: string; contentId: string; editId?: string; source?: "linked-edit" }[];
 }
 export interface SelectionPort { search(value: unknown): Promise<unknown>; execute(value: unknown): Promise<unknown>; update(value: unknown): Promise<unknown> }

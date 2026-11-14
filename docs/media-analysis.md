@@ -116,8 +116,7 @@ Selection is a separate, explicit operation: `reels_get_analysis_selection`,
 own numeric revision before writes. Private `media-selection/<project hash>.json`
 records candidates (usable/reason/human), groups (all member IDs, representative,
 reason/human), and actual usage (sample/content/edit IDs). No member is deleted or
-hidden. A model-success result is conservatively retained as usable with its scene
-and uncertainties as evidence; humans can reject it with a reason. This deliberately
+hidden. New model results supply usable/unusable and a visible-evidence reason. Older results without this field are conservatively retained as unassessed candidates with scene/uncertainty evidence; humans can reject any candidate with a reason. This deliberately
 avoids silently dropping useful footage based on an unverified quality classifier.
 
 Grouping runs independently of paid image analysis. It computes 64-bit dHash from
@@ -127,5 +126,4 @@ anchor; groups are suggestions, not proof of the same scene. The higher grayscal
 variance is the representative heuristic (stable sample ID tie break), with the
 reason recorded. Human representatives survive regrouping while still members.
 Explicit actual-use updates record content/edit attribution; mere folder membership
-never counts as usage. UI controls and automatic reconciliation with existing edit
-source/copy mappings remain follow-up work in TASKS.md.
+never counts as usage. Execution also compares source bytes with linked video edit source records and selected card-news image/overlay asset copies to derive usage. Missing edit files are skipped; mere registered resources never count. UI controls remain follow-up work in TASKS.md.

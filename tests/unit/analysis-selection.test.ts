@@ -10,7 +10,7 @@ test("selection retains all candidates, groups copies, protects human representa
   const root = await mkdtemp(path.join(tmpdir(), "selection-"));
   try {
     const image = path.join(root, "synthetic.jpg"); await writeFile(image, "synthetic pixels");
-    const matches = ["b", "a"].map(id => ({ sample: { id, imagePath: image }, effective: { description: id, uncertainties: [] } }));
+    const matches = ["b", "a"].map(id => ({ sample: { id, imagePath: image, sourcePath: image }, effective: { description: id, uncertainties: [] } }));
     const service = new AnalysisSelection(new LocalStore(root), { search: async () => ({ revision: 7, matches }) as unknown as AnalysisView });
     let d = await service.execute({ projectId: "p", expectedRevision: 0 });
     assert.equal(d.candidates.length, 2); assert.equal(d.groups.length, 1); assert.equal(d.groups[0].representative, "a");
@@ -21,6 +21,8 @@ test("selection retains all candidates, groups copies, protects human representa
     await assert.rejects(service.update({ projectId: "p", expectedRevision: d.revision, representative: { groupId: d.groups[0].id, sampleId: "missing", reason: "bad" } }), /GROUP_MEMBER/);
     d = await service.update({ projectId: "p", expectedRevision: d.revision, usage: { sampleId: "b", contentId: "p", editId: "edit", used: true } });
     assert.equal(d.usage.length, 1);
+    d = await service.update({ projectId: "p", expectedRevision: d.revision, candidate: { sampleId: "b", usable: false, reason: "out of focus" } });
+    assert.deepEqual(d.groups[0].sampleIds, ["a"]); assert.equal(d.groups[0].representative, "a");
     assert.equal((await service.search({ projectId: "other" })).usage.length, 0);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
