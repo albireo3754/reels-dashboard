@@ -9,6 +9,7 @@ import path from "node:path";
 import { z } from "zod";
 import {
   analysisFields,
+  type AnalysisUsage,
   type AnalysisFields,
   type AnalysisSample,
 } from "../shared/media-analysis";
@@ -19,6 +20,7 @@ export interface ImageAnalyzer {
     samples: AnalysisSample[],
     context: string,
     request: string,
+    options?: { model: string; reasoning: string; recordUsage: (usage: AnalysisUsage) => void },
   ): Promise<AnalysisFields[]>;
 }
 export function runFile(
@@ -51,7 +53,9 @@ export class CodexImageAnalyzer implements ImageAnalyzer {
     private executable = process.env.REELS_CODEX_BIN || "codex",
     private serverPath = path.resolve("dist-electron/analysis-context-mcp.cjs"),
   ) {}
-  async analyze(samples: AnalysisSample[], context: string, request: string) {
+  async analyze(samples: AnalysisSample[], context: string, request: string, options?: { model: string; reasoning: string; recordUsage: (usage: AnalysisUsage) => void }) {
+    const started = Date.now();
+    let recorded = false;
     const dir = await mkdtemp(path.join(this.cache, "codex-"));
     try {
       const schema = path.join(dir, "schema.json"),
@@ -129,6 +133,8 @@ The MCP response contains context, request, and image IDs/filenames in attachmen
           "--sandbox",
           "read-only",
           "--json",
+          "--model", options?.model ?? process.env.REELS_ANALYSIS_MODEL ?? "gpt-6.1-sol",
+          "-c", `model_reasoning_effort=${JSON.stringify(options?.reasoning ?? process.env.REELS_ANALYSIS_REASONING ?? "high")}`,
           ...analysisCodexSettings(this.serverPath, manifest, receipt),
           "--output-schema",
           schema,
@@ -147,6 +153,8 @@ The MCP response contains context, request, and image IDs/filenames in attachmen
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line));
+      options?.recordUsage(parseAnalysisUsage(events, Date.now() - started, samples.length));
+      recorded = true;
       if (
         !events.some(
           (e) =>
@@ -193,7 +201,17 @@ The MCP response contains context, request, and image IDs/filenames in attachmen
         "Codex 분석 실패: CLI 로그인·사용량·시간 제한 또는 출력 형식을 확인해주세요.",
       );
     } finally {
+      if (!recorded) options?.recordUsage(parseAnalysisUsage([], Date.now() - started, samples.length));
       await rm(dir, { recursive: true, force: true });
     }
   }
+}
+
+// Absent event fields remain unknown, including on CLI versions without usage.
+export function parseAnalysisUsage(events: any[], durationMs: number, imageCount: number): AnalysisUsage {
+  const usages = events.filter(e => e.type === "turn.completed" && e.usage).map(e => e.usage);
+  const sum = (key: string) => usages.length && usages.every(u => typeof u[key] === "number") ? usages.reduce((n, u) => n + u[key], 0) : null;
+  const model = events.map(e => e.model ?? e.turn?.model).find(v => typeof v === "string") ?? null;
+  const effort = events.map(e => e.reasoning_effort ?? e.turn?.reasoning_effort).find(v => typeof v === "string") ?? null;
+  return { inputTokens: sum("input_tokens"), cachedInputTokens: sum("cached_input_tokens"), outputTokens: sum("output_tokens"), reasoningTokens: sum("reasoning_tokens"), actualModel: model, actualReasoning: effort, durationMs, imageCount };
 }

@@ -39,6 +39,9 @@ export const analysisStart = z.strictObject({
     ),
   context: analysisContext.optional(),
   expectedRevision: analysisRevision.optional(),
+  model: z.string().min(1).max(160).optional(),
+  reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  force: z.boolean().default(false),
   maxFiles: z.number().int().min(1).max(200).default(100),
 });
 export const analysisQuery = z.strictObject({
@@ -59,7 +62,14 @@ export interface AnalysisSample {
   time: number | null;
   imagePath: string;
 }
+export interface AnalysisUsage {
+  inputTokens: number | null; cachedInputTokens: number | null;
+  outputTokens: number | null; reasoningTokens: number | null;
+  actualModel: string | null; actualReasoning: string | null;
+  durationMs: number; imageCount: number;
+}
 export interface AnalysisResult {
+  reuseKey?: string;
   sample: AnalysisSample;
   provider: string;
   runId: string;
@@ -67,6 +77,13 @@ export interface AnalysisResult {
   fields: AnalysisFields;
 }
 export interface AnalysisRun {
+  requestedModel?: string;
+  requestedReasoning?: string;
+  settingsDigest?: string;
+  force?: boolean;
+  skippedSamples?: number;
+  calls?: AnalysisUsage[];
+  usage?: AnalysisUsage;
   context?: AnalysisContext;
   promptVersion?: string;
   id: string;
