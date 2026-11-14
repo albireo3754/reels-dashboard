@@ -84,6 +84,9 @@ export const toolGroupOf = {
   reels_form_sync: "forms",
   reels_open_input_form: "forms",
 
+  reels_get_analysis_selection: "analysis",
+  reels_run_analysis_selection: "analysis",
+  reels_update_analysis_selection: "analysis",
   reels_start_analysis: "analysis",
   reels_search_analysis: "analysis",
   reels_correct_analysis: "analysis",

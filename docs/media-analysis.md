@@ -108,3 +108,24 @@ The previous production-projects app was backed up to `release/production-projec
 Every prepared sample is identified by SHA-256 of the entire original byte stream plus media kind and frame time. Paths and filesystem modification times are excluded, so byte-identical copies reuse results; any byte edit changes identity. The existing size/mtime version is retained separately for source-change and mosaic guards. Full hashing reads sequentially with bounded memory. Reuse additionally binds provider, requested model/effort, prompt version, exact serialized project context (including title/date/date basis) and request. Legacy results without reuse keys are analyzed once. Successful results are reused; failed/missing samples continue. `force: true` on `reels_start_analysis` explicitly bypasses reuse. Human overrides remain separate and win for the same content sample ID. Runs report `skippedSamples` and `analyzedSamples`.
 
 `reels_start_analysis` accepts `model` and `reasoning`; precedence is MCP argument, `REELS_ANALYSIS_MODEL` / `REELS_ANALYSIS_REASONING`, then `gpt-6.1-sol` / `high`. No model picker is added. The CLI receives explicit `--model` and `model_reasoning_effort`. Runs expose requested values, per-call `calls`, and `usage` totals through search. Calls record input, cached input, output and reasoning tokens, observed actual model/effort, elapsed milliseconds and attached-image count. Missing event counters/model/effort are `null`, never inferred from requested settings or recorded as zero. Counter totals remain unknown if any call lacks that counter; no-call runs have no token total. CLI failures without observable events record unknown usage. No pricing/cost inference is made.
+
+## Three selection stages — 2026-11-14
+
+Selection is a separate, explicit operation: `reels_get_analysis_selection`,
+`reels_run_analysis_selection` and `reels_update_analysis_selection`. Read its
+own numeric revision before writes. Private `media-selection/<project hash>.json`
+records candidates (usable/reason/human), groups (all member IDs, representative,
+reason/human), and actual usage (sample/content/edit IDs). No member is deleted or
+hidden. A model-success result is conservatively retained as usable with its scene
+and uncertainties as evidence; humans can reject it with a reason. This deliberately
+avoids silently dropping useful footage based on an unverified quality classifier.
+
+Grouping runs independently of paid image analysis. It computes 64-bit dHash from
+9×8 grayscale samples using the bundled FFmpeg, grouping within four differing bits
+and mean brightness within 12/255. Each member is compared to the current group
+anchor; groups are suggestions, not proof of the same scene. The higher grayscale
+variance is the representative heuristic (stable sample ID tie break), with the
+reason recorded. Human representatives survive regrouping while still members.
+Explicit actual-use updates record content/edit attribution; mere folder membership
+never counts as usage. UI controls and automatic reconciliation with existing edit
+source/copy mappings remain follow-up work in TASKS.md.

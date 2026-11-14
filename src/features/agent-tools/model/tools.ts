@@ -1,3 +1,4 @@
+import { selectionQuery, selectionExecute, selectionUpdate } from "../../../shared/analysis-selection";
 import { editsTools } from "../../../shared/edits";
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import { gifConvertInput } from "../../../shared/gif-convert";
@@ -96,6 +97,9 @@ export const toolDefinitions = {
   },
   ...formDefinitions,
   reels_open_input_form: {description:"Open or focus the shared input form/result window in the Dashboard. Requires a form created by the common forms service; does not start a workflow or edit answers.",input:formIdInput,readOnly:false},
+  reels_get_analysis_selection: { description: "Read independent candidate, group/representative and actual-use records.", input: selectionQuery, readOnly: true },
+  reels_run_analysis_selection: { description: "Collect every successful analysis as a candidate, then group identical sample JPEGs and select stable representatives. Separate from paid analysis. Revision protected.", input: selectionExecute, readOnly: false },
+  reels_update_analysis_selection: { description: "Record human usability, representative choice or actual content/edit usage. Nothing is deleted or hidden.", input: selectionUpdate, readOnly: false },
   reels_start_analysis: {
     description:
       "Analyze a linked project folder with the selected image analyzer. Sends sampled images to the provider using existing CLI login. Async: query analysis for progress; never automatically retry uncertain starts. Photos and three video stills per source, no motion/audio claims.",
