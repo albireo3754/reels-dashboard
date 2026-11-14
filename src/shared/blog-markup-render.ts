@@ -94,6 +94,9 @@ ${STICKER_CSS}
 article{font-family:var(--bodyFont,se-nanumbareunhipi);font-size:var(--bodyPx,16px);text-align:var(--align,center);line-height:var(--lineHeight,1.8)}
 article .info,article .source,article .price-box,article .visit-card,article .native-card,article .tags,article h2{font-family:var(--infoFont,se-nanumgothic)}
 article .section-heading h2,main.mobile article .section-heading h2{font-size:var(--headingPx,19px);color:var(--headingColor,#85613f)}
+article .section-heading{position:relative;box-sizing:border-box;display:flex;align-items:center;min-height:36px;margin:30px 0 20px;padding:0 0 0 20px;border:0;text-align:left}
+article .section-heading::before{content:"";position:absolute;left:0;top:0;height:36px;border-left:6px solid #515151}
+article .section-heading h2{margin:0;text-align:left;line-height:1.4}
 main.mobile article{font-size:var(--mobileBodyPx,17px)}
 article .video-block{margin:30px 0;max-width:100%}
 article .video-block video{display:block;width:100%;height:auto;max-width:100%;background:#111}
