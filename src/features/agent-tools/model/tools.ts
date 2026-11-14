@@ -98,7 +98,7 @@ export const toolDefinitions = {
   ...formDefinitions,
   reels_open_input_form: {description:"Open or focus the shared input form/result window in the Dashboard. Requires a form created by the common forms service; does not start a workflow or edit answers.",input:formIdInput,readOnly:false},
   reels_get_analysis_selection: { description: "Read independent candidate, group/representative and actual-use records.", input: selectionQuery, readOnly: true },
-  reels_run_analysis_selection: { description: "Collect every successful analysis as a candidate, then group identical sample JPEGs and select stable representatives. Separate from paid analysis. Revision protected.", input: selectionExecute, readOnly: false },
+  reels_run_analysis_selection: { description: "Collect conservative usability candidates from analysis, group perceptually similar sample images and select representatives with recorded reasons. Separate from paid analysis. Revision protected.", input: selectionExecute, readOnly: false },
   reels_update_analysis_selection: { description: "Record human usability, representative choice or actual content/edit usage. Nothing is deleted or hidden.", input: selectionUpdate, readOnly: false },
   reels_start_analysis: {
     description:
