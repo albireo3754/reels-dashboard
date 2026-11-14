@@ -294,17 +294,34 @@ export class MediaAnalysis {
       throw e;
     }
   }
+  private contentDigest = analysisContentDigest;
   private async prepare(
     projectId: string,
     file: string,
     runId: string,
+    settingsDigest?: string,
+    force = false,
   ): Promise<AnalysisSample[]> {
     const { info } = await this.library.resolveMedia(projectId, file);
     const sourceVersion = versionOf(info),
       kind = videos.has(path.extname(file).toLowerCase())
         ? "video-frame"
         : "photo";
-    const contentDigest = await analysisContentDigest(file);
+    // stat does not open/download the media. inode/device avoid unrelated equal-size files.
+    const metadataKey = sha256Hex(JSON.stringify([info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs, kind]));
+    const doc = await this.load(projectId);
+    const reliableIdentity = Number.isSafeInteger(info.ino) && info.ino > 0 && Number.isSafeInteger(info.dev) && info.dev > 0;
+    const cached = reliableIdentity ? doc.digestCache?.[metadataKey] : undefined;
+    const contentDigest = cached?.contentDigest ?? await this.contentDigest(file);
+    const reusable = cached?.samples.map(sample => ({ ...sample, sourcePath: file, sourceVersion }));
+    if (!force && reusable?.length && reusable.every(sample => doc.results.some(result => result.reuseKey === sha256Hex(`${sample.id}:${settingsDigest}`)))) return reusable;
+    if (cached && reusable?.length) {
+      try {
+        await Promise.all(reusable.map(sample => stat(sample.imagePath)));
+        return reusable;
+      } catch { /* Missing derived images must be regenerated. */ }
+    }
+    let duration: number | undefined, width: number | undefined, height: number | undefined;
     let times: (number | null)[] = [null];
     if (kind === "video-frame") {
       const { stdout } = await loggedExecFile(
@@ -313,15 +330,19 @@ export class MediaAnalysis {
         [
           "-v",
           "error",
+          "-select_streams", "v:0",
           "-show_entries",
-          "format=duration",
+          "format=duration:stream=width,height",
           "-of",
           "json",
           file,
         ],
         { timeout: 60000, maxBuffer: 1024 * 1024 },
       );
-      const duration = Number(JSON.parse(stdout).format.duration);
+      const metadata = JSON.parse(stdout);
+      duration = Number(metadata.format.duration);
+      width = metadata.streams?.[0]?.width;
+      height = metadata.streams?.[0]?.height;
       if (!Number.isFinite(duration) || duration <= 0)
         throw new Error("영상 길이를 확인하지 못했어요.");
       times = [
@@ -369,6 +390,12 @@ export class MediaAnalysis {
         imagePath,
       });
     }
+    // Cache only a stable file version, never bytes observed during a concurrent edit.
+    const current = await stat(file);
+    if (current.size !== info.size || current.mtimeMs !== info.mtimeMs || current.ctimeMs !== info.ctimeMs) throw new Error("분석 중 원본 변경");
+    await this.update(projectId, d => {
+      if (reliableIdentity) (d.digestCache ??= {})[metadataKey] = { contentDigest, samples, duration, width, height };
+    });
     return samples;
   }
   private async execute(
@@ -384,12 +411,13 @@ export class MediaAnalysis {
         d.runs[i] = structuredClone(run);
       });
     try {
+      run.settingsDigest = sha256Hex(JSON.stringify([adapter.id, run.requestedModel, run.requestedReasoning, run.promptVersion, context, run.request]));
       // Three source files per model invocation; each frame remains independently attributable.
       for (let offset = 0; offset < files.length; offset += 3) {
         let samples: AnalysisSample[] = [];
         for (const file of files.slice(offset, offset + 3)) {
           try {
-            samples.push(...(await this.prepare(projectId, file, run.id)));
+            samples.push(...(await this.prepare(projectId, file, run.id, run.settingsDigest, run.force)));
           } catch {
             run.errors.push({
               sourcePath: file,

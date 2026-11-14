@@ -263,3 +263,43 @@ test("usage-less completed turns make aggregate counters unknown", async () => {
   const usage = parseAnalysisUsage([{ type: "turn.completed", usage: { input_tokens: 8 } }, { type: "turn.completed" }], 1, 1);
   assert.equal(usage.inputTokens, null);
 });
+
+test("metadata cache skips original digest and extraction across service restarts", async () => {
+  const { chmod, utimes } = await import("node:fs/promises");
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "analysis-cache-")));
+  try {
+    const media = path.join(root, "media"), bin = path.join(root, "bin");
+    await mkdir(media); await mkdir(bin);
+    const source = path.join(media, "photo.jpg");
+    await writeFile(source, "synthetic");
+    // The fake extractor records invocations and creates its last output argument.
+    const marker = path.join(root, "extract-count");
+    const ffmpeg = path.join(bin, "ffmpeg");
+    await writeFile(ffmpeg, `#!${process.execPath}\nconst fs=require('fs');fs.appendFileSync(${JSON.stringify(marker)},'x');fs.writeFileSync(process.argv.at(-1),'jpeg');`);
+    await chmod(ffmpeg, 0o755);
+    const store = new LocalStore(root); await store.initialize();
+    await store.update(d => ({ ...d, projects: [{ id: "cache", title: "cache", date: "2026-11-14", stage: "captured", nextAction: "", publicURL: "", shared: false, resources: [{ role: "folder", path: media, label: "synthetic" }] }] }));
+    let calls = 0;
+    const make = () => new MediaAnalysis(store, new ContentLibrary(store), root, new ExecutionLogs(root), [{ id: "fake", label: "fake", async analyze(samples) { calls++; return samples.map(() => fields); } }]);
+    const run = async (service: MediaAnalysis) => {
+      await service.start({projectId:"cache", folder:media, provider:"fake"});
+      for(let i=0;i<500;i++) { const view=await service.search({projectId:"cache"}); if(view.runs.at(-1)?.finishedAt) { assert.equal(view.runs.at(-1)?.status,"completed"); await new Promise(r=>setTimeout(r,20)); return view; } await new Promise(r=>setTimeout(r,10)); }
+      throw Error("timeout");
+    };
+    await run(make());
+    // Removing the extractor and forbidding digest reads proves the warm path does not need them.
+    await rm(ffmpeg);
+    const warmService = make();
+    (warmService as any).contentDigest = () => { throw Error("original read forbidden"); };
+    const warm = await run(warmService);
+    assert.equal(warm.runs.at(-1)?.skippedSamples,1); assert.equal(calls,1);
+    const {readFile}=await import("node:fs/promises"); assert.equal(await readFile(marker,"utf8"),"x");
+
+    // Recreate the synthetic extractor; metadata changes must invalidate the cached digest.
+    await writeFile(ffmpeg, `#!${process.execPath}\nconst fs=require('fs');fs.appendFileSync(${JSON.stringify(marker)},'x');fs.writeFileSync(process.argv.at(-1),'jpeg');`); await chmod(ffmpeg,0o755);
+    await utimes(source,1,1); await run(make());
+    assert.equal(await readFile(marker,"utf8"),"xx"); assert.equal(calls,1);
+    await writeFile(source,"synthetic changed size"); await run(make());
+    assert.equal(calls,2); assert.equal(await readFile(marker,"utf8"),"xxx");
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
