@@ -14,6 +14,7 @@ export const faceRegion = z.strictObject({
   width: z.number().positive().max(1), height: z.number().positive().max(1),
 }).refine((r) => r.x + r.width <= 1 && r.y + r.height <= 1);
 export const analysisFields = z.strictObject({
+  usability: z.strictObject({ usable: z.boolean(), reason: z.string().min(1).max(1000) }).optional(),
   faceRegions: z.array(faceRegion).max(100).optional(),
   contextNotes: z.array(z.string().max(1000)).max(20).optional(),
   description: z.string().max(4000),

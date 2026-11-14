@@ -112,7 +112,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
     assert.equal((await service.search({projectId:"one",query:"소금바베큐"})).matches.length,0);
     assert.equal(d.context?.menus, "확인한 소금바베큐");
     assert.equal(d.runs[0].context?.venue, "테스트 식당");
-    assert.equal(d.runs[0].promptVersion, "context-v3-mcp");
+    assert.equal(d.runs[0].promptVersion, "context-v4-selection-mcp");
     assert.equal(JSON.parse(received[0]).facts.menus, "확인한 소금바베큐");
     assert.equal(JSON.parse(received[0]).dateBasis, "unknown");
     await assert.rejects(
@@ -172,6 +172,12 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
         .length,
       1,
     );
+    const { rename } = await import("node:fs/promises");
+    await rename(path.join(media, "photo.jpg"), path.join(media, "renamed.jpg"));
+    await service.start({ projectId: "one", folder: media, provider: "fake" });
+    d = await finish();
+    assert.equal(received.length, 3);
+    assert.equal(d.matches[0].sample.sourcePath, path.join(media, "renamed.jpg"));
     for (const name of ["second.jpg", "third.jpg", "fourth.jpg"])
       await writeFile(path.join(media, name), "fixture");
     let calls = 0;
@@ -250,4 +256,10 @@ test("content identity survives copy/mtime changes and detects same-size edits",
     await writeFile(copy, "synthetic-b");
     assert.notEqual(await analysisContentDigest(first), await analysisContentDigest(copy));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("usage-less completed turns make aggregate counters unknown", async () => {
+  const { parseAnalysisUsage } = await import("../../src/desktop/analysis-provider");
+  const usage = parseAnalysisUsage([{ type: "turn.completed", usage: { input_tokens: 8 } }, { type: "turn.completed" }], 1, 1);
+  assert.equal(usage.inputTokens, null);
 });

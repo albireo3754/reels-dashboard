@@ -248,7 +248,7 @@ export class MediaAnalysis {
         requestedReasoning: input.reasoning ?? process.env.REELS_ANALYSIS_REASONING ?? "high",
         force: input.force, skippedSamples: 0, calls: [],
         context,
-        promptVersion: "context-v3-mcp",
+        promptVersion: "context-v4-selection-mcp",
         id: randomUUID(),
         provider: adapter.id,
         request: input.request,
@@ -400,10 +400,20 @@ export class MediaAnalysis {
         run.settingsDigest ??= sha256Hex(JSON.stringify([adapter.id, run.requestedModel, run.requestedReasoning, run.promptVersion, context, run.request]));
         const previous = await this.load(projectId);
         const seen = new Set(previous.results.filter(r => r.reuseKey).map(r => r.reuseKey));
+        const unique = new Set<string>();
+        const reused: AnalysisSample[] = [];
         samples = samples.filter(sample => {
           const key = sha256Hex(`${sample.id}:${run.settingsDigest}`);
-          if (!run.force && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; return false; }
-          seen.add(key); return true;
+          if (unique.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; return false; }
+          unique.add(key);
+          if (!run.force && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; reused.push(sample); return false; }
+          return true;
+        });
+        if (reused.length) await this.update(projectId, d => {
+          for (const sample of reused) {
+            const cached = [...d.results].reverse().find(r => r.reuseKey === sha256Hex(`${sample.id}:${run.settingsDigest}`));
+            if (cached && (cached.sample.sourcePath !== sample.sourcePath || cached.sample.sourceVersion !== sample.sourceVersion)) d.results.push({ ...cached, sample });
+          }
         });
         let providerFailed = false;
         if (samples.length) {
