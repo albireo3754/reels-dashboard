@@ -723,3 +723,10 @@
 - [x] MCP/CLI 생성·조회·저장·제출·변경대기·결과출력·반영·앱창 열기, 기존 워크플로 바인딩.
 - [x] 동일 ID/답변 공유·충돌 보호·워크플로 없는 세션 폼·네이티브 입력창 경로 검증.
 - 계약과 검증: [공통 입력폼](docs/shared-input-forms.md).
+
+## 분석 후 3단계 선별 — 2026-11-14
+
+- [x] 별도 private 후보/묶음·대표/사용 데이터와 revision 보호 MCP 조회·실행·사람 수정. 후보 전부 보존, dHash·명암 기준 그룹, 분산 기준 대표와 이유, 수동 대표 유지.
+- [ ] 후보·대표·사용 UI, 촬영 시각/컬러로 그룹 오탐 개선.
+- [x] 연결된 video edit 원본/선택된 card-news asset의 바이트 일치로 사용 연결 재사용, MCP로 명시적 사용 기록도 지원.
+- 분석 개선 검증: 전체 단위 679개(674 통과·5 조건부 skip), 타입/FSD/build, 개발 및 새 패키지 background Electron 분석·selection MCP 각 1개 통과. 실제 Codex/유료 호출·개인 미디어 없이 검증. 독립 리뷰 지적 반영 완료. 새 앱 `release/analysis-stages-20261114/mac-arm64/Reels Dashboard.app` (기존 실행 앱 유지; QA 패키지 Edits native binary 미포함 경고).

@@ -3,7 +3,8 @@ import { errorMessage } from "../shared/lib/errors";
 import { readJsonFile } from "../shared/lib/fs";
 import { ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedExecFile } from "../shared/lib/logged-process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { sourceVersion as versionOf } from "../shared/lib/hash";
 import {
   mkdir,
@@ -243,8 +244,11 @@ export class MediaAnalysis {
           "CONTEXT_REVISION_REQUIRED: 맥락 수정 전 분석 상태를 조회해주세요.",
         );
       const run: AnalysisRun = {
+        requestedModel: input.model ?? process.env.REELS_ANALYSIS_MODEL ?? "gpt-6.1-sol",
+        requestedReasoning: input.reasoning ?? process.env.REELS_ANALYSIS_REASONING ?? "high",
+        force: input.force, skippedSamples: 0, calls: [],
         context,
-        promptVersion: "context-v3-mcp",
+        promptVersion: "context-v4-selection-mcp",
         id: randomUUID(),
         provider: adapter.id,
         request: input.request,
@@ -300,6 +304,7 @@ export class MediaAnalysis {
       kind = videos.has(path.extname(file).toLowerCase())
         ? "video-frame"
         : "photo";
+    const contentDigest = await analysisContentDigest(file);
     let times: (number | null)[] = [null];
     if (kind === "video-frame") {
       const { stdout } = await loggedExecFile(
@@ -333,7 +338,7 @@ export class MediaAnalysis {
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const samples: AnalysisSample[] = [];
     for (const time of times) {
-      const id = sha256Hex(`${file}:${sourceVersion}:${time}`),
+      const id = sha256Hex(`${contentDigest}:${kind}:${time}`),
         imagePath = path.join(dir, id + ".jpg");
       const args = [
         "-nostdin",
@@ -381,7 +386,7 @@ export class MediaAnalysis {
     try {
       // Three source files per model invocation; each frame remains independently attributable.
       for (let offset = 0; offset < files.length; offset += 3) {
-        const samples: AnalysisSample[] = [];
+        let samples: AnalysisSample[] = [];
         for (const file of files.slice(offset, offset + 3)) {
           try {
             samples.push(...(await this.prepare(projectId, file, run.id)));
@@ -392,10 +397,31 @@ export class MediaAnalysis {
             });
           }
         }
+        run.settingsDigest ??= sha256Hex(JSON.stringify([adapter.id, run.requestedModel, run.requestedReasoning, run.promptVersion, context, run.request]));
+        const previous = await this.load(projectId);
+        const seen = new Set(previous.results.filter(r => r.reuseKey).map(r => r.reuseKey));
+        const unique = new Set<string>();
+        const reused: AnalysisSample[] = [];
+        samples = samples.filter(sample => {
+          const key = sha256Hex(`${sample.id}:${run.settingsDigest}`);
+          if (unique.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; return false; }
+          unique.add(key);
+          if (!run.force && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; reused.push(sample); return false; }
+          return true;
+        });
+        if (reused.length) await this.update(projectId, d => {
+          for (const sample of reused) {
+            const cached = [...d.results].reverse().find(r => r.reuseKey === sha256Hex(`${sample.id}:${run.settingsDigest}`));
+            if (cached && (cached.sample.sourcePath !== sample.sourcePath || cached.sample.sourceVersion !== sample.sourceVersion)) d.results.push({ ...cached, sample });
+          }
+        });
         let providerFailed = false;
         if (samples.length) {
           try {
-            const fields = await adapter.analyze(samples, context, run.request);
+            const fields = await adapter.analyze(samples, context, run.request, {
+              model: run.requestedModel!, reasoning: run.requestedReasoning!,
+              recordUsage: usage => { (run.calls ??= []).push(usage); },
+            });
             if (fields.length !== samples.length)
               throw new Error("분석 응답 수 불일치");
             // Refuse results if any source changed while the analyzer was running.
@@ -411,6 +437,7 @@ export class MediaAnalysis {
               d.results.push(
                 ...samples.map((sample, i) => ({
                   sample,
+                  reuseKey: sha256Hex(`${sample.id}:${run.settingsDigest}`),
                   provider: adapter.id,
                   runId: run.id,
                   analyzedAt: new Date().toISOString(),
@@ -444,7 +471,17 @@ export class MediaAnalysis {
       run.status = "failed";
       run.errors.push({ sourcePath: "", message: "분석 결과 저장 실패" });
     }
+    if (run.calls?.length) {
+      const total = (key: "inputTokens" | "cachedInputTokens" | "outputTokens" | "reasoningTokens") => run.calls!.every(c => c[key] !== null) ? run.calls!.reduce((n,c) => n + c[key]!, 0) : null;
+      run.usage = { inputTokens: total("inputTokens"), cachedInputTokens: total("cachedInputTokens"), outputTokens: total("outputTokens"), reasoningTokens: total("reasoningTokens"), actualModel: null, actualReasoning: null, durationMs: run.calls.reduce((n,c) => n+c.durationMs,0), imageCount: run.calls.reduce((n,c) => n+c.imageCount,0) };
+    }
     run.finishedAt = new Date().toISOString();
     await saveRun();
   }
+}
+
+export async function analysisContentDigest(file: string) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest("hex");
 }

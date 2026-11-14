@@ -118,6 +118,10 @@ test("project analysis UI searches, corrects and persists through IPC; MCP reads
       "직접 수정한 야외 맥주잔",
     );
     expect(result.matches[0].fields.description).toBe("테이블 위 맥주잔 두 개");
+    const selection = await callAgent(profile, "reels_get_analysis_selection", { projectId: project.id }) as any;
+    expect(selection.candidates).toEqual([]);
+    expect(selection.groups).toEqual([]);
+    expect(selection.usage).toEqual([]);
     await expect(
       page.evaluate(() =>
         window.reels!.analysis!.start({

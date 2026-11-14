@@ -102,3 +102,32 @@ Isolation verification: the full unit suite passed (81 tests at this checkout), 
 The shared main worktree was built without discarding other in-progress changes; no separate branch merge or commit was made. Type/architecture checks, 81 unit tests and two isolated packaged Electron checks passed. The face-mosaic package is under `release/face-mosaic/mac-arm64/`.
 
 The previous production-projects app was backed up to `release/production-projects-before-face-mosaic/mac-arm64/` and replaced. After restart the observed running application was `release/media-analysis-isolated/mac-arm64/Reels Dashboard.app`; its app.asar and editor-runtime executable SHA-256 were identical to the face-mosaic package, so it was not needlessly restarted again. The live UI exposes media analysis, all 66 project IDs are retained, and MCP reports runtime ready with no unsaved editor or active jobs. Real Codex face detection accuracy remains unverified.
+
+## Idempotent analysis and usage — 2026-11-14
+
+Every prepared sample is identified by SHA-256 of the entire original byte stream plus media kind and frame time. Paths and filesystem modification times are excluded, so byte-identical copies reuse results; any byte edit changes identity. The existing size/mtime version is retained separately for source-change and mosaic guards. Full hashing reads sequentially with bounded memory. Reuse additionally binds provider, requested model/effort, prompt version, exact serialized project context (including title/date/date basis) and request. Legacy results without reuse keys are analyzed once. Successful results are reused; failed/missing samples continue. `force: true` on `reels_start_analysis` explicitly bypasses reuse. Human overrides remain separate and win for the same content sample ID. Runs report `skippedSamples` and `analyzedSamples`.
+
+`reels_start_analysis` accepts `model` and `reasoning`; precedence is MCP argument, `REELS_ANALYSIS_MODEL` / `REELS_ANALYSIS_REASONING`, then `gpt-6.1-sol` / `high`. No model picker is added. The CLI receives explicit `--model` and `model_reasoning_effort`. Runs expose requested values, per-call `calls`, and `usage` totals through search. Calls record input, cached input, output and reasoning tokens, observed actual model/effort, elapsed milliseconds and attached-image count. Missing event counters/model/effort are `null`, never inferred from requested settings or recorded as zero. Counter totals remain unknown if any call lacks that counter; no-call runs have no token total. CLI failures without observable events record unknown usage. No pricing/cost inference is made.
+
+## Three selection stages — 2026-11-14
+
+Selection is a separate, explicit operation: `reels_get_analysis_selection`,
+`reels_run_analysis_selection` and `reels_update_analysis_selection`. Read its
+own numeric revision before writes. Private `media-selection/<project hash>.json`
+records candidates (usable/reason/human), groups (all member IDs, representative,
+reason/human), and actual usage (sample/content/edit IDs). No member is deleted or
+hidden. New model results supply usable/unusable and a visible-evidence reason. Older results without this field are conservatively retained as unassessed candidates with scene/uncertainty evidence; humans can reject any candidate with a reason. This deliberately
+avoids silently dropping useful footage based on an unverified quality classifier.
+
+Grouping runs independently of paid image analysis. It computes 64-bit dHash from
+9×8 grayscale samples using the bundled FFmpeg, grouping within four differing bits
+and mean brightness within 12/255. Each member is compared to the current group
+anchor; groups are suggestions, not proof of the same scene. The higher grayscale
+variance is the representative heuristic (stable sample ID tie break), with the
+reason recorded. Human representatives survive regrouping while still members.
+Explicit actual-use updates record content/edit attribution; mere folder membership
+never counts as usage. Execution also compares source bytes with linked video edit source records and selected card-news image/overlay asset copies to derive usage. Missing edit files are skipped; mere registered resources never count. UI controls remain follow-up work in TASKS.md.
+
+New usability-producing runs use `promptVersion: context-v4-selection-mcp`; legacy analysis remains readable and legacy candidates remain eligible pending review. Independent code review fixes cover duplicate forced batch IDs, reused-copy provenance, usage on failed subprocesses, partially unknown turn totals, excluded candidates in groups, manual representative preservation and refreshing linked-edit usage. Selection tests use synthetic files and actual FFmpeg dHash extraction; no live Codex call or personal media was used. Development Electron validates analysis UI persistence and selection MCP lookup. The separate app build is `release/analysis-stages-20261114/mac-arm64/Reels Dashboard.app`; the running Dashboard was not restarted. This QA package is ad-hoc/unsigned; the preexisting native Edits automation binary was absent from the source build directory and is not claimed to be included or validated.
+
+Final validation: full unit suite passed with bounded test concurrency (see TASKS.md for counts), plus development and packaged background Electron analysis/MCP checks (one each), type/FSD checks and build. An earlier unrestricted parallel unit run hit the existing execution-log progress timing assertion; its five tests passed alone and the entire suite passed with concurrency four. Five environment-conditional unit tests remain skipped.

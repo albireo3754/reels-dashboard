@@ -29,6 +29,7 @@ type ToolCliOption = {
 };
 /** The only hand-written tool metadata; everything else derives from the schemas. */
 export const cliOptions = {
+  reels_update_analysis_selection: { sample: { candidate: `'{"sampleId":"sample","usable":true,"reason":"human review"}'` } },
   reels_edits_ax_find: { sample: { selector: `'{"identifier":"editor.timecode"}'` } },
   reels_edits_ax_press: { sample: { target: `'{"pid":1,"root":"application","path":[0],"fingerprint":"observed-target"}'` } },
   reels_edits_ax_set_value: { sample: { target: `'{"pid":1,"root":"application","path":[0],"fingerprint":"observed-target"}'`, intent: "clip-volume", value: "0" } },

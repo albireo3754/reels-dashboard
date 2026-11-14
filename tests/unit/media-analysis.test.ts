@@ -112,7 +112,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
     assert.equal((await service.search({projectId:"one",query:"소금바베큐"})).matches.length,0);
     assert.equal(d.context?.menus, "확인한 소금바베큐");
     assert.equal(d.runs[0].context?.venue, "테스트 식당");
-    assert.equal(d.runs[0].promptVersion, "context-v3-mcp");
+    assert.equal(d.runs[0].promptVersion, "context-v4-selection-mcp");
     assert.equal(JSON.parse(received[0]).facts.menus, "확인한 소금바베큐");
     assert.equal(JSON.parse(received[0]).dateBasis, "unknown");
     await assert.rejects(
@@ -150,16 +150,34 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
     );
     await service.start({ projectId: "one", folder: media, provider: "fake" });
     d = await finish();
-    assert.equal(d.results.length, 2);
-    assert.equal(JSON.parse(received[1]).facts.menus, "확인한 소금바베큐");
+    assert.equal(d.results.length, 1);
+    assert.equal(received.length, 1);
+    assert.equal(d.runs[1].skippedSamples, 1);
+    assert.equal(d.runs[1].analyzedSamples, 0);
     assert.equal(d.runs[1].context?.menus, d.runs[0].context?.menus);
     assert.equal(d.matches[0].effective.description, "내가 고친 설명");
     assert.equal(d.matches[0].fields.description, fields.description);
+    await service.start({ projectId: "one", folder: media, provider: "fake", force: true });
+    d = await finish();
+    assert.equal(received.length, 2);
+    assert.equal(d.results.length, 2);
+    assert.equal(d.matches[0].effective.description, "내가 고친 설명");
+    await service.start({ projectId: "one", folder: media, provider: "fake", model: "different-model" });
+    d = await finish();
+    assert.equal(received.length, 3);
+    assert.equal(d.runs.at(-1)?.requestedModel, "different-model");
+
     assert.equal(
       (await service.search({ projectId: "one", query: "고친" })).matches
         .length,
       1,
     );
+    const { rename } = await import("node:fs/promises");
+    await rename(path.join(media, "photo.jpg"), path.join(media, "renamed.jpg"));
+    await service.start({ projectId: "one", folder: media, provider: "fake" });
+    d = await finish();
+    assert.equal(received.length, 3);
+    assert.equal(d.matches[0].sample.sourcePath, path.join(media, "renamed.jpg"));
     for (const name of ["second.jpg", "third.jpg", "fourth.jpg"])
       await writeFile(path.join(media, name), "fixture");
     let calls = 0;
@@ -211,4 +229,37 @@ test("noninteractive subprocess receives EOF instead of hanging on piped stdin",
     { timeout: 2000 },
   );
   assert.equal(stdout, "EOF:");
+});
+
+test("usage preserves missing counters and sums only observed turns", async () => {
+  const { parseAnalysisUsage } = await import("../../src/desktop/analysis-provider");
+  assert.deepEqual(parseAnalysisUsage([], 12, 3), { inputTokens: null, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, actualModel: null, actualReasoning: null, durationMs: 12, imageCount: 3 });
+  const usage = parseAnalysisUsage([{ type: "turn.started", model: "observed", reasoning_effort: "high" }, { type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 2, output_tokens: 7 } }, { type: "turn.completed", usage: { input_tokens: 5, cached_input_tokens: 1, output_tokens: 3 } }], 24, 2);
+  assert.equal(usage.inputTokens, 15);
+  assert.equal(usage.cachedInputTokens, 3);
+  assert.equal(usage.outputTokens, 10);
+  assert.equal(usage.reasoningTokens, null);
+  assert.equal(usage.actualModel, "observed");
+});
+
+
+test("content identity survives copy/mtime changes and detects same-size edits", async () => {
+  const { analysisContentDigest } = await import("../../src/desktop/media-analysis");
+  const { copyFile, utimes } = await import("node:fs/promises");
+  const dir = await mkdtemp(path.join(tmpdir(), "analysis-hash-"));
+  try {
+    const first = path.join(dir, "one.jpg"), copy = path.join(dir, "copy.jpg");
+    await writeFile(first, "synthetic-a");
+    await copyFile(first, copy);
+    await utimes(copy, 0, 0);
+    assert.equal(await analysisContentDigest(first), await analysisContentDigest(copy));
+    await writeFile(copy, "synthetic-b");
+    assert.notEqual(await analysisContentDigest(first), await analysisContentDigest(copy));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("usage-less completed turns make aggregate counters unknown", async () => {
+  const { parseAnalysisUsage } = await import("../../src/desktop/analysis-provider");
+  const usage = parseAnalysisUsage([{ type: "turn.completed", usage: { input_tokens: 8 } }, { type: "turn.completed" }], 1, 1);
+  assert.equal(usage.inputTokens, null);
 });

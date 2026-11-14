@@ -60,6 +60,7 @@ export interface AgentPorts {
     update(input: BlogCommentUpdateInput): Promise<unknown>;
     remove(input: BlogCommentDeleteInput): Promise<unknown>;
   };
+  analysisSelection?: import("../../../shared/analysis-selection").SelectionPort;
   analysis?: Pick<import("../../../shared/media-analysis").AnalysisBridge, "providers" | "start" | "search" | "correct">;
   editor: AgentEditorPort;
   session: AgentSession;
@@ -94,7 +95,7 @@ export interface AgentPorts {
 }
 export function createAgentDispatch(ports: AgentPorts) {
   const { editor, session } = ports;
-  const port = <K extends "instagramInsights" | "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis">(
+  const port = <K extends "instagramInsights" | "planning" | "coverPreferences" | "icloud" | "blog" | "blogComments" | "analysis" | "analysisSelection">(
     name: K,
   ): NonNullable<AgentPorts[K]> => {
     const value = ports[name];
@@ -174,6 +175,12 @@ export function createAgentDispatch(ports: AgentPorts) {
         return port("blogComments").update(input);
       case "reels_remove_blog_comment":
         return port("blogComments").remove(input);
+      case "reels_get_analysis_selection":
+        return port("analysisSelection").search(input);
+      case "reels_run_analysis_selection":
+        return port("analysisSelection").execute(input);
+      case "reels_update_analysis_selection":
+        return port("analysisSelection").update(input);
       case "reels_start_analysis":
         return port("analysis").start(input);
       case "reels_search_analysis":

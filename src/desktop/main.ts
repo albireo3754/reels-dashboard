@@ -1,3 +1,4 @@
+import { AnalysisSelection } from "./analysis-selection";
 import { EditsAutomation } from "../features/edits-automation";
 import { EditsNativeClient } from "./edits-native";
 import { watch as watchFiles } from "node:fs";
@@ -1112,6 +1113,7 @@ async function awaitReady() {
       inputForms,
       forms: { request: requestWorkflow },
       analysis,
+      analysisSelection: new AnalysisSelection(store, analysis, path.join(app.isPackaged ? path.join(process.resourcesPath, "editor-runtime") : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"), "bin/ffmpeg")),
       blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
       blogComments,
       preview: async (project, time, kind) => {
