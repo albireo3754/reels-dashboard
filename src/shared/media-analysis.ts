@@ -100,6 +100,7 @@ export interface AnalysisRun {
   errors: { sourcePath: string; message: string }[];
 }
 export interface AnalysisDocument {
+  digestCache?: Record<string, { contentDigest: string; samples: AnalysisSample[]; duration?: number; width?: number; height?: number }>;
   context?: AnalysisContext;
   schemaVersion: 1;
   projectId: string;
