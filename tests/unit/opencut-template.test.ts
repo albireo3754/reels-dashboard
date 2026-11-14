@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildOpenCutProject,
+  foodFocusTemplate,
   openCutRecipeSchema,
   travelCaptionTemplate,
 } from "../../src/features/opencut-template";
@@ -128,6 +129,31 @@ test("browser builder is standalone and package script is executable JavaScript"
     typeof new Function(`return (${openCutApplyScript(recipe())})`)(),
     "function",
   );
+});
+
+test("food focus keeps the header off food shots without changing cuts or cue times", () => {
+  const input = openCutRecipeSchema.parse({
+    ...recipe(),
+    templateId: "food-focus-v1",
+    cuts: [
+      { file: "door.jpg", length: 3 },
+      { file: "toast.mov", length: 5 },
+    ],
+  });
+  const baseline = buildOpenCutProject(
+    seed(), media, { ...input, templateId: "travel-caption-v1" }, travelCaptionTemplate,
+  ).scenes[0].tracks;
+  const food = buildOpenCutProject(seed(), media, input, foodFocusTemplate).scenes[0].tracks;
+  for (const header of food.overlay.slice(0, 2)) {
+    assert.deepEqual(
+      header.elements.map((e: any) => [e.startTime, e.duration]),
+      [[0, 360000], [600000, 360000]],
+    );
+  }
+  const timing = (track: any) =>
+    track.elements.map((e: any) => [e.startTime, e.duration, e.content, e.mediaId]);
+  assert.deepEqual(timing(food.main), timing(baseline.main));
+  assert.deepEqual(timing(food.overlay[2]), timing(baseline.overlay[2]));
 });
 
 test("schema, missing/duplicate media, long stills and out-of-source slow motion fail before touching seed", () => {

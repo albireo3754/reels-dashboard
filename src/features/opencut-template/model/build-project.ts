@@ -91,16 +91,21 @@ export function buildOpenCutProject(
     cursor += c.length;
     return e;
   });
+  const edge = "titleOnEdgesSeconds" in style ? style.titleOnEdgesSeconds : 0;
+  const headerWindows =
+    edge > 0 && cursor > edge * 2
+      ? [{ start: 0, end: edge }, { start: cursor - edge, end: cursor }]
+      : [{ start: 0, end: cursor }];
   const layers = [
     {
       name: "상단 제목",
       style: style.layers.title,
-      cues: [{ start: 0, end: cursor, text: recipe.title }],
+      cues: headerWindows.map((window) => ({ ...window, text: recipe.title })),
     },
     {
       name: "상단 장소",
       style: style.layers.place,
-      cues: [{ start: 0, end: cursor, text: recipe.place }],
+      cues: headerWindows.map((window) => ({ ...window, text: recipe.place })),
     },
     { name: "본문 자막", style: style.layers.caption, cues: recipe.captions },
     { name: "부가 정보", style: style.layers.note, cues: recipe.notes },

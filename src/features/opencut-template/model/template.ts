@@ -38,4 +38,46 @@ export const travelCaptionTemplate = {
     },
   },
 } as const;
-export type OpenCutTemplate = typeof travelCaptionTemplate;
+
+export const foodFocusTemplate = {
+  ...travelCaptionTemplate,
+  id: "food-focus-v1",
+  name: "음식 중심 자막 소개",
+  titleOnEdgesSeconds: 3,
+  layers: {
+    title: {
+      y: -745,
+      size: 6.2,
+      scale: 0.64,
+      color: "#211610",
+      background: "#fff1dc",
+    },
+    place: {
+      y: -638,
+      size: 4.4,
+      scale: 0.63,
+      color: "#fff1dc",
+      background: "#1a1513e8",
+    },
+    caption: {
+      y: 486,
+      size: 4.9,
+      scale: 0.56,
+      color: "#ffffff",
+      background: "#1a1513db",
+    },
+    note: {
+      y: 605,
+      size: 4,
+      scale: 0.55,
+      color: "#ffe1af",
+      background: "#1a1513e8",
+    },
+  },
+} as const;
+
+export const openCutTemplates = {
+  [travelCaptionTemplate.id]: travelCaptionTemplate,
+  [foodFocusTemplate.id]: foodFocusTemplate,
+} as const;
+export type OpenCutTemplate = (typeof openCutTemplates)[keyof typeof openCutTemplates];

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { localPathSchema } from "../../../shared/local-resources";
+import { foodFocusTemplate, travelCaptionTemplate } from "./template";
 
 const cue = z
   .strictObject({
@@ -11,7 +12,7 @@ const cue = z
 
 export const openCutRecipeSchema = z
   .strictObject({
-    templateId: z.literal("travel-caption-v1"),
+    templateId: z.enum([travelCaptionTemplate.id, foodFocusTemplate.id]),
     title: z.string().trim().min(1).max(50),
     place: z.string().trim().min(1).max(50),
     cuts: z

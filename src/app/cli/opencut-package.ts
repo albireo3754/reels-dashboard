@@ -8,7 +8,8 @@ import {
 import {
   buildOpenCutProject,
   openCutPackageSchema,
-  travelCaptionTemplate,
+  openCutTemplates,
+  type OpenCutRecipe,
 } from "../../features/opencut-template";
 import { contentInputSchema } from "../../shared/local-resources";
 import { LocalStore } from "../../shared/lib/storage";
@@ -21,7 +22,7 @@ const stamp = (seconds: number) => {
   return `${String(Math.floor(ms / 3600000)).padStart(2, "0")}:${String(Math.floor(ms / 60000) % 60).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")},${String(ms % 1000).padStart(3, "0")}`;
 };
 
-export function openCutApplyScript(recipe: unknown) {
+export function openCutApplyScript(recipe: OpenCutRecipe) {
   // This is a Playwright function for an explicitly chosen, seeded editor project.
   // The browser still owns actual media IDs and checks their duration before any write.
   return `async (page) => {
@@ -40,7 +41,7 @@ export function openCutApplyScript(recipe: unknown) {
       await new Promise((ok,no)=>{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put(project);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});
       delete seed.metadata.thumbnail; delete project.metadata.thumbnail;
       return {before:seed,project,media:media.map(m=>({id:m.id,name:m.name,type:m.type,duration:m.duration}))};
-    }, {id,recipe:${JSON.stringify(recipe)},style:${JSON.stringify(travelCaptionTemplate)}});
+    }, {id,recipe:${JSON.stringify(recipe)},style:${JSON.stringify(openCutTemplates[recipe.templateId])}});
     await page.goto('https://opencut.app/editor?project='+id);
     return result;
   }`;
@@ -54,6 +55,7 @@ export async function prepareOpenCutPackage(
     callAgent(root, name, args),
 ) {
   const input = openCutPackageSchema.parse(value);
+  const template = openCutTemplates[input.recipe.templateId];
   const library = new ContentLibrary(new LocalStore(root));
   const blog = await library.documentText(input.projectId, input.blogPath);
   if (blog.truncated)
@@ -75,7 +77,7 @@ export async function prepareOpenCutPackage(
     });
   const duration = input.recipe.cuts.reduce((t, c) => t + c.length, 0);
   await write("recipe.json", JSON.stringify(input.recipe, null, 2));
-  await write("template.json", JSON.stringify(travelCaptionTemplate, null, 2));
+  await write("template.json", JSON.stringify(template, null, 2));
   await write("apply-opencut.js", openCutApplyScript(input.recipe));
   await write(
     "captions.srt",
@@ -141,7 +143,7 @@ export async function prepareOpenCutPackage(
       {
         role: "folder",
         path: input.destination,
-        label: `OpenCut ${travelCaptionTemplate.name} · 편집 패키지`,
+        label: `OpenCut ${template.name} · 편집 패키지`,
       },
       {
         role: "document",

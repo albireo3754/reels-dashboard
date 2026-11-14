@@ -109,7 +109,10 @@ current-download requirement. Status never invokes move/delete or asks for Photo
   below `PHOTOSINDEX_EXPORT_ROOT` (default: iCloud Drive `Naver Clip`). Returns
   `checkedAt`, `state` (`completed`, `pending`, `failed`) and per-file flags.
 - `reels_set_project_outbound {projectId, expectedUpdatedAt, directory}`:
-  bind **one persistent outbound directory per project** under the iCloud root.
+  bind **one persistent outbound directory per project** inside its single top-level
+  content folder, for example `Naver Clip/<date-content>/clip/`. Keep original
+  capture groups and channel outputs under that same content folder; do not add
+  separate top-level folders for receipts, capture groups, or output channels.
   Read `reels_get_content` first. The binding survives restart and subsequent
   content edits. Repeating the same binding is harmless; choosing another
   directory or overlapping another project's outbound is rejected. An existing
