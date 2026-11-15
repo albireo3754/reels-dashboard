@@ -44,6 +44,14 @@ test('blog terminal passes current context, retains failed requests and selects 
     await expect(blog.getByRole('button', { name: 'Claude와 함께 수정', exact: true })).toHaveCount(1);
     await expect(blog.getByRole('button', { name: 'Codex와 함께 수정', exact: true })).toHaveCount(1);
     await expect(blog.getByRole('button', { name: '맥락과 함께 수정', exact: true })).toHaveCount(0);
+    // Both agent buttons share the header row with the tabs instead of wrapping below them.
+    const claudeBox = (await blog.getByRole('button', { name: 'Claude와 함께 수정', exact: true }).boundingBox())!;
+    const codexBox = (await blog.getByRole('button', { name: 'Codex와 함께 수정', exact: true }).boundingBox())!;
+    const tabsBox = (await blog.getByRole('tablist', { name: '블로그 화면', exact: true }).boundingBox())!;
+    expect(Math.abs(claudeBox.y - codexBox.y)).toBeLessThan(1);
+    expect(claudeBox.x + claudeBox.width).toBeLessThanOrEqual(codexBox.x);
+    expect(claudeBox.y).toBeLessThan(tabsBox.y + tabsBox.height);
+    await page.locator('.blog-workspace-header').screenshot({ path: info.outputPath('blog-terminal-header.png') });
     await page.getByRole('button', { name: '터미널', exact: true }).click();
     const drawer = page.getByRole('region', { name: '터미널', exact: true });
     await expect(drawer).toBeVisible();

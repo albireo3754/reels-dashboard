@@ -15,7 +15,7 @@
   margin: var(--space-2) 0;
 }
 
-/* ---------- Header: 제목 + 모드 탭 | 열린 문서 탭 + 맥락과 함께 수정 ---------- */
+/* ---------- Header: 제목 + 모드 탭 | 열린 문서 탭 + Claude·Codex와 함께 수정 ---------- */
 .blog-workspace-header {
   display: flex;
   align-items: center;
