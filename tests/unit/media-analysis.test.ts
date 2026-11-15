@@ -198,6 +198,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
       ],
     );
     (failing as any).prepare = (service as any).prepare;
+    failing.retryDelaysMs = [0, 0, 0];
     await failing.start({
       projectId: "one",
       folder: media,
@@ -212,7 +213,9 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
     assert.equal(failed?.status, "failed");
     assert.equal(failed?.processedFiles, 3);
     assert.equal(failed?.totalFiles, 4);
-    assert.equal(calls, 1);
+    // The first batch is retried three times, then the run stops instead of trying the next batch.
+    assert.equal(calls, 4);
+    assert.ok(failed?.errors.every((error) => error.message.endsWith("(4회 시도 후 중단)")));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -79,8 +79,9 @@ test("a correction re-analyzes only its images under the new context, preserving
 });
 test("provider failure stops before effective output; a rerun retries only what failed", async (t) => {
   const f = await fixture(t), calls: string[][] = [];
-  const failed = await runEvidenceLoop(f.spec, f.out, analyzer(calls, undefined, true));
+  const failed = await runEvidenceLoop(f.spec, f.out, analyzer(calls, undefined, true), { retryDelaysMs: [0, 0, 0] });
   assert.equal(failed.stage, "base");assert.equal(failed.pass, false);
+  assert.equal(calls.length, 4); // one batch: first call plus three retries
   assert.equal((await readdir(f.out)).includes("effective"), false);
   assert.equal((await runEvidenceLoop(f.spec, f.out, analyzer(calls))).pass, true);
 });

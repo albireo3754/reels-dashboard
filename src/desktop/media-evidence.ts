@@ -10,7 +10,12 @@ import {
   type AnalysisFields,
   type AnalysisSample,
 } from "../shared/media-analysis";
-import type { ImageAnalyzer } from "./analysis-provider";
+import {
+  ANALYSIS_RETRY_DELAYS_MS,
+  AnalysisRetryError,
+  analyzeWithRetry,
+  type ImageAnalyzer,
+} from "./analysis-provider";
 
 const absolutePath = z
   .string()
@@ -129,6 +134,8 @@ export interface EvidenceOptions {
   checkOnly?: boolean;
   batchSize?: number;
   concurrency?: number;
+  /** Delay before each retry of a failed provider call; its length is the retry count. */
+  retryDelaysMs?: readonly number[];
   onProgress?: (progress: {
     completedBatches: number;
     totalBatches: number;
@@ -179,6 +186,7 @@ export async function analyzeEvidence(
       inputChanged: [] as string[],
       expectedCaptures: captures.length,
       resolvedCaptures: captures.length,
+      stoppedAfterBatch: null,
     };
     // Do not replace a completed analysis coverage report during a later input-only check.
     await writeJson(path.join(output, "input-check.json"), checked);
@@ -201,6 +209,8 @@ export async function analyzeEvidence(
     { fields: AnalysisFields; analyzedAt: string }
   >();
   const failed = new Map<string, string>();
+  // Set when a batch fails after its retries; workers then stop taking new batches.
+  let stopped: { batch: number; attempts: number } | undefined;
   let completedBatches = 0,
     failedBatches = 0,
     next = 0;
@@ -227,8 +237,12 @@ export async function analyzeEvidence(
   const workers = Array.from(
     { length: Math.min(concurrency, batches.length) },
     async () => {
+      // After a stop, saved batches are still read; only new provider calls are skipped.
       while (next < batches.length) {
-        const batch = batches[next++];
+        const batchIndex = next++;
+        const batch = batches[batchIndex];
+        // Calls made before the provider gave up; stays 0 for cache or input-change failures.
+        let providerAttempts = 0;
         const batchKey = digest(
           JSON.stringify({
             fingerprint,
@@ -254,6 +268,8 @@ export async function analyzeEvidence(
               )
             )
               throw new Error("Cached batch identity mismatch");
+          } else if (stopped) {
+            continue;
           } else {
             const samples: AnalysisSample[] = batch.map((image) => {
               const capture = captures.find(
@@ -281,13 +297,19 @@ export async function analyzeEvidence(
                 kind: image.kind,
               })),
             });
-            const fields = await analyzer.analyze(
+            const analyzed = await analyzeWithRetry(
+              analyzer,
               samples,
               context,
               manifest.request,
-            );
-            if (fields.length !== batch.length)
-              throw new Error("Analyzer result count mismatch");
+              undefined,
+              options.retryDelaysMs ?? ANALYSIS_RETRY_DELAYS_MS,
+            ).catch((error: unknown) => {
+              providerAttempts =
+                error instanceof AnalysisRetryError ? error.attempts : 1;
+              throw error;
+            });
+            const fields = analyzed.fields;
             saved = savedBatch.parse({
               fingerprint,
               provider: analyzer.id,
@@ -316,15 +338,26 @@ export async function analyzeEvidence(
           for (const image of batch)
             failed.set(
               image.id,
-              "Batch analysis or saved-result validation failed",
+              providerAttempts > 1
+                ? `Batch analysis failed after ${providerAttempts} attempts`
+                : "Batch analysis or saved-result validation failed",
             );
           failedBatches++;
+          // Stop the loop: a provider that keeps failing would fail every remaining batch too.
+          stopped ??= { batch: batchIndex + 1, attempts: providerAttempts };
         }
         await progress();
       }
     },
   );
   await Promise.all(workers);
+  if (stopped)
+    for (const image of images)
+      if (!results.has(image.id) && !failed.has(image.id))
+        failed.set(
+          image.id,
+          `Not analyzed: loop stopped after batch ${stopped.batch} failed`,
+        );
   const inputChanged: string[] = [];
   for (const capture of captures) {
     try {
@@ -372,6 +405,7 @@ export async function analyzeEvidence(
     inputChanged,
     expectedCaptures: captures.length,
     resolvedCaptures,
+    stoppedAfterBatch: stopped ?? null,
   };
   const resultDocument = {
     version: 1,
