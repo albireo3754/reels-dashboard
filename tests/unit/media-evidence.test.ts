@@ -130,6 +130,7 @@ test("failed batch cannot pass coverage and successful batch is reusable on expl
     };
     const result = await analyzeEvidence(f.manifest, f.output, analyzer, {
       batchSize: 1,
+      retryDelaysMs: [0, 0, 0],
     });
     assert.equal(result.status, "failed");
     assert.equal(result.analysisComplete, false);
@@ -377,7 +378,10 @@ test("analysis emits a complete metadata table even when a batch fails", async (
         return samples.map(() => fields);
       },
     };
-    await analyzeEvidence(f.manifest, f.output, analyzer, { batchSize: 1 });
+    await analyzeEvidence(f.manifest, f.output, analyzer, {
+      batchSize: 1,
+      retryDelaysMs: [0, 0, 0],
+    });
     const table = await readFile(
       path.join(f.output, "metadata-table.md"),
       "utf8",
@@ -388,6 +392,145 @@ test("analysis emits a complete metadata table even when a batch fails", async (
     );
     assert.ok(table.includes("| image-1 | failed |"));
     assert.ok(table.includes("전체 입력 2행 · 실패 1행"));
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("a failed provider call is retried and the batch passes when a retry succeeds", async () => {
+  const f = await fixture();
+  try {
+    let calls = 0;
+    const analyzer: ImageAnalyzer = {
+      id: "fake",
+      label: "fake",
+      async analyze(samples) {
+        calls++;
+        if (calls <= 2) throw new Error("transient provider failure");
+        return samples.map(() => fields);
+      },
+    };
+    const result = await analyzeEvidence(f.manifest, f.output, analyzer, {
+      retryDelaysMs: [0, 0, 0],
+    });
+    assert.equal(calls, 3);
+    assert.equal(result.analysisComplete, true);
+    assert.equal(result.stoppedAfterBatch, null);
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("a batch that fails all retries stops the loop before later batches", async () => {
+  const f = await fixture();
+  try {
+    const received: string[][] = [];
+    const analyzer: ImageAnalyzer = {
+      id: "fake",
+      label: "fake",
+      async analyze(samples) {
+        received.push(samples.map((sample) => sample.id));
+        throw new Error("private provider stderr");
+      },
+    };
+    const result = await analyzeEvidence(f.manifest, f.output, analyzer, {
+      batchSize: 1,
+      concurrency: 1,
+      retryDelaysMs: [0, 0, 0],
+    });
+    // Batch 1 is tried four times; batch 2 is never sent to the provider.
+    assert.deepEqual(received, [["image-0"], ["image-0"], ["image-0"], ["image-0"]]);
+    assert.equal(result.status, "failed");
+    assert.equal(result.resolved, 0);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.stoppedAfterBatch, { batch: 1, attempts: 4 });
+    assert.deepEqual(result.failed, [
+      { id: "image-0", message: "Batch analysis failed after 4 attempts" },
+      { id: "image-1", message: "Not analyzed: loop stopped after batch 1 failed" },
+    ]);
+    const report = await readFile(path.join(f.output, "coverage.json"), "utf8");
+    assert.ok(!report.includes("private provider stderr"));
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("with two workers a stop keeps the batch already running and never starts a later one", async () => {
+  const f = await fixture();
+  try {
+    const third = path.join(f.root, "three.jpg");
+    await writeFile(third, "fixture 2");
+    const manifest: EvidenceManifest = {
+      ...f.manifest,
+      captures: [...f.manifest.captures, { id: "capture-2", sourcePath: third }],
+      images: [
+        ...f.manifest.images,
+        { id: "image-2", captureId: "capture-2", path: third, kind: "photo", time: null },
+      ],
+    };
+    const received: string[] = [];
+    const failing: ImageAnalyzer = {
+      id: "fake",
+      label: "fake",
+      async analyze(samples) {
+        received.push(samples[0].id);
+        if (samples[0].id === "image-0") throw new Error("provider down");
+        // Batch 2 is still running when batch 1 gives up.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return samples.map(() => fields);
+      },
+    };
+    const first = await analyzeEvidence(manifest, f.output, failing, {
+      batchSize: 1,
+      concurrency: 2,
+      retryDelaysMs: [0, 0, 0],
+    });
+    assert.equal(received.filter((id) => id === "image-0").length, 4);
+    assert.equal(received.includes("image-2"), false);
+    assert.equal(first.resolved, 1);
+    assert.deepEqual(first.failed, [
+      { id: "image-0", message: "Batch analysis failed after 4 attempts" },
+      { id: "image-2", message: "Not analyzed: loop stopped after batch 1 failed" },
+    ]);
+
+    // A later stopped run still reads the saved batch 2 instead of reporting it as not analyzed.
+    received.length = 0;
+    const second = await analyzeEvidence(manifest, f.output, failing, {
+      batchSize: 1,
+      concurrency: 1,
+      retryDelaysMs: [0, 0, 0],
+    });
+    assert.deepEqual(received, ["image-0", "image-0", "image-0", "image-0"]);
+    assert.equal(second.resolved, 1);
+    assert.deepEqual(
+      second.failed.map((item) => item.id),
+      ["image-0", "image-2"],
+    );
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("an error marked not retryable is not retried", async () => {
+  const f = await fixture();
+  try {
+    const { permanentAnalysisError } = await import("../../src/desktop/analysis-provider");
+    let calls = 0;
+    const analyzer: ImageAnalyzer = {
+      id: "fake",
+      label: "fake",
+      async analyze() {
+        calls++;
+        throw permanentAnalysisError("CLI missing");
+      },
+    };
+    const result = await analyzeEvidence(f.manifest, f.output, analyzer, {
+      batchSize: 1,
+      concurrency: 1,
+      retryDelaysMs: [0, 0, 0],
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(result.stoppedAfterBatch, { batch: 1, attempts: 1 });
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

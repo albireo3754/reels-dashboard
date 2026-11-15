@@ -23,6 +23,53 @@ export interface ImageAnalyzer {
     options?: { model: string; reasoning: string; recordUsage: (usage: AnalysisUsage) => void },
   ): Promise<AnalysisFields[]>;
 }
+/** Waits before each retry of one provider batch. Three retries: four attempts in total. */
+export const ANALYSIS_RETRY_DELAYS_MS: readonly number[] = [2000, 5000, 10000];
+
+/** Thrown after the last attempt. Keeps the provider's (already redacted) message; the original error is `cause`. */
+export class AnalysisRetryError extends Error {
+  constructor(
+    readonly cause: unknown,
+    readonly attempts: number,
+  ) {
+    super(cause instanceof Error ? cause.message : "Analyzer failed");
+    this.name = "AnalysisRetryError";
+  }
+}
+/** Marks a failure that another attempt cannot fix, such as a missing CLI. */
+export function permanentAnalysisError(message: string) {
+  return Object.assign(new Error(message), { retryable: false });
+}
+
+/**
+ * Calls the provider for one batch, retrying a failed call up to `retryDelaysMs.length` times.
+ * A result with the wrong number of entries counts as a failed call; an error marked
+ * `retryable: false` is not retried. The final failure is an AnalysisRetryError whose `attempts`
+ * counts every call made.
+ */
+export async function analyzeWithRetry(
+  analyzer: ImageAnalyzer,
+  samples: AnalysisSample[],
+  context: string,
+  request: string,
+  options?: Parameters<ImageAnalyzer["analyze"]>[3],
+  retryDelaysMs: readonly number[] = ANALYSIS_RETRY_DELAYS_MS,
+): Promise<{ fields: AnalysisFields[]; attempts: number }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const fields = await analyzer.analyze(samples, context, request, options);
+      if (fields.length !== samples.length)
+        throw new Error("Analyzer result count mismatch");
+      return { fields, attempts: attempt };
+    } catch (error) {
+      const permanent = (error as { retryable?: boolean } | null)?.retryable === false;
+      if (permanent || attempt > retryDelaysMs.length)
+        throw new AnalysisRetryError(error, attempt);
+      await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt - 1]));
+    }
+  }
+}
+
 export function runFile(
   file: string,
   args: string[],
@@ -201,7 +248,7 @@ The MCP response contains context, request, and image IDs/filenames in attachmen
       }
       // CLI stderr may include sensitive context. Never expose it to UI or persisted errors.
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        throw new Error(
+        throw permanentAnalysisError(
           "Codex CLI를 찾지 못했어요. 설치 경로와 REELS_CODEX_BIN을 확인해주세요.",
         );
       throw new Error(

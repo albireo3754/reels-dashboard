@@ -229,12 +229,12 @@ async function finish(manifest: EvidenceManifest, spec: EvidenceLoopSpec, docume
  * Rerunnable loop: assemble → analyze → corrections → merge → table → verify.
  * Successful batches are reused, so fixing the spec and rerunning touches only what changed.
  */
-export async function runEvidenceLoop(specInput: unknown, outputDir: string, analyzer: ImageAnalyzer, options: { checkOnly?: boolean; onProgress?: (line: string) => void } = {}) {
+export async function runEvidenceLoop(specInput: unknown, outputDir: string, analyzer: ImageAnalyzer, options: { checkOnly?: boolean; onProgress?: (line: string) => void; retryDelaysMs?: readonly number[] } = {}) {
   const output = path.resolve(outputDir), say = options.onProgress ?? (() => {});
   const { spec, manifest, audit } = await assembleEvidence(specInput, output);
   say(`Assembled ${audit.uniqueInputs} images from ${audit.registeredImageEntries} entries`);
   const baseDir = path.join(output, "base");
-  const progress = (label: string) => ({ onProgress: ({ completedBatches, totalBatches, failedBatches }: { completedBatches: number; totalBatches: number; failedBatches: number }) => say(`${label} ${completedBatches}/${totalBatches}; failed ${failedBatches}`) });
+  const progress = (label: string) => ({ retryDelaysMs: options.retryDelaysMs, onProgress: ({ completedBatches, totalBatches, failedBatches }: { completedBatches: number; totalBatches: number; failedBatches: number }) => say(`${label} ${completedBatches}/${totalBatches}; failed ${failedBatches}`) });
   if (options.checkOnly) return { stage: "check", pass: true, ...await analyzeEvidence(manifest, baseDir, analyzer, { checkOnly: true }) };
   const base = await analyzeEvidence(manifest, baseDir, analyzer, progress("Base"));
   if (!base.analysisComplete) return { stage: "base", ...base, pass: false };

@@ -30,7 +30,10 @@ import {
   type AnalysisView,
 } from "../shared/media-analysis";
 import {
+  ANALYSIS_RETRY_DELAYS_MS,
+  AnalysisRetryError,
   CodexImageAnalyzer,
+  analyzeWithRetry,
   type ImageAnalyzer,
 } from "./analysis-provider";
 const photos = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
@@ -39,6 +42,8 @@ export class MediaAnalysis {
   private active = new Set<string>();
   private queue: Promise<unknown> = Promise.resolve();
   private adapters: Map<string, ImageAnalyzer>;
+  /** Delay before each retry of a failed provider call; its length is the retry count. */
+  retryDelaysMs: readonly number[] = ANALYSIS_RETRY_DELAYS_MS;
   readonly root: string;
   constructor(
     private store: LocalStore,
@@ -446,12 +451,10 @@ export class MediaAnalysis {
         let providerFailed = false;
         if (samples.length) {
           try {
-            const fields = await adapter.analyze(samples, context, run.request, {
+            const { fields } = await analyzeWithRetry(adapter, samples, context, run.request, {
               model: run.requestedModel!, reasoning: run.requestedReasoning!,
               recordUsage: usage => { (run.calls ??= []).push(usage); },
-            });
-            if (fields.length !== samples.length)
-              throw new Error("분석 응답 수 불일치");
+            }, this.retryDelaysMs);
             // Refuse results if any source changed while the analyzer was running.
             for (const sample of samples) {
               const current = await stat(sample.sourcePath);
@@ -480,7 +483,11 @@ export class MediaAnalysis {
               ...[...new Set(samples.map((s) => s.sourcePath))].map(
                 (sourcePath) => ({
                   sourcePath,
-                  message: errorMessage(e, "분석 실패"),
+                  message:
+                    errorMessage(e, "분석 실패") +
+                    (e instanceof AnalysisRetryError && e.attempts > 1
+                      ? ` (${e.attempts}회 시도 후 중단)`
+                      : ""),
                 }),
               ),
             );
@@ -488,7 +495,8 @@ export class MediaAnalysis {
         }
         run.processedFiles = Math.min(files.length, offset + 3);
         await saveRun();
-        if (providerFailed) break; // Do not repeat login/quota/provider failures across the folder.
+        // The provider already got its retries for this batch; stop instead of failing every remaining file.
+        if (providerFailed) break;
       }
       run.status = run.errors.length
         ? run.analyzedSamples
