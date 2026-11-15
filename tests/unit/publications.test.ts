@@ -54,6 +54,7 @@ test("stored channel state is validated and stays out of the shared snapshot", (
     { channel: "blog", status: "published", url: "" },
   ]);
   bad([{ channel: "blog", status: "planned", url: "", publishedAt: "2026-11-01" }]);
+  bad([{ channel: "blog", status: "draft", url: "", publishedAt: "2026-11-01" }]);
   bad([{ channel: "blog", status: "published", url: "javascript:alert(1)" }]);
   bad([{ channel: "youtube", status: "published", url: "" }]);
 });
@@ -117,8 +118,12 @@ test("setPublication changes one channel, promotes the stage only when every cha
       } as Parameters<typeof lib.setPublication>[0]));
     // Targets are registered first: a lone live channel would already complete the project.
     await set({ channel: "instagram", status: "planned" });
+    // A draft saved on the channel is still to come and does not complete the project.
+    await set({ channel: "blog", status: "draft" });
     await set({ channel: "naver-clip", status: "published", url: "https://example.com/clip", publishedAt: "2026-11-06" });
     assert.equal(state.project.stage, "review");
+    assert.equal(state.project.publications?.find((p) => p.channel === "blog")?.status, "draft");
+    await set({ channel: "blog", status: "none" });
     assert.deepEqual(state.project.publications?.map((p) => p.channel), ["instagram", "naver-clip"]);
     assert.equal(state.project.localNotes, "note");
     // A full upsert that does not mention channels keeps them.

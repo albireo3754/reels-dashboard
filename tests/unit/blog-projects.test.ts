@@ -39,6 +39,7 @@ test('blog completion follows its channel and keeps stage-only completed cards a
     {id:'blog-live',extra:{publications:[{channel:'blog',status:'published',url:'https://blog.example/1',publishedAt:'2026-11-10'},{channel:'naver-clip',status:'planned',url:''}]}},
     {id:'other-live',extra:{stage:'published',publications:[{channel:'naver-clip',status:'published',url:''}]}},
     {id:'blog-planned',extra:{stage:'published',publications:[{channel:'blog',status:'planned',url:''}]}},
+    {id:'blog-saved',extra:{stage:'published',publications:[{channel:'blog',status:'draft',url:''}]}},
     {id:'stage-only',extra:{stage:'published'}},
     {id:'no-channels',extra:{stage:'published',publications:[]}},
   ];
@@ -56,6 +57,7 @@ test('blog completion follows its channel and keeps stage-only completed cards a
     {id:'blog-live',published:true},
     {id:'other-live',published:false},
     {id:'blog-planned',published:false},
+    {id:'blog-saved',published:false},
     {id:'stage-only',published:true},
     {id:'no-channels',published:true},
   ]);
@@ -65,6 +67,7 @@ test('blog completion follows its channel and keeps stage-only completed cards a
     {id:'blog-live',blog:{status:'published',publishedAt:'2026-11-10',url:'https://blog.example/1'}},
     {id:'other-live',blog:undefined},
     {id:'blog-planned',blog:{status:'planned'}},
+    {id:'blog-saved',blog:{status:'draft'}},
     {id:'stage-only',blog:undefined},
     {id:'no-channels',blog:undefined},
   ]);

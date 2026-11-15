@@ -42,10 +42,14 @@ test('blog projects separate in-progress from published rows, refresh when shown
 
     // A card linked outside the app (MCP, CLI, another session) appears when the list is shown again.
     dashboard.projects.push({...late,stage:'published'});
+    // A Naver draft saved for the blog keeps the row in progress and says so.
+    dashboard.projects[0].publications=[{channel:'blog',status:'draft',url:''}];
     await writeFile(file,JSON.stringify(dashboard));
     await main.getByRole('tab',{name:'원고·배치',exact:true}).click();
     await main.getByRole('tab',{name:'프로젝트',exact:true}).click();
     await expect(option('게시 완료')).toHaveText('게시 완료 2');
+    await expect(option('진행 중')).toHaveText('진행 중 2');
+    await expect(card('draft').getByText('블로그 임시저장',{exact:true})).toBeVisible();
     await main.screenshot({path:testInfo.outputPath('blog-active.png')});
 
     await option('게시 완료').click();

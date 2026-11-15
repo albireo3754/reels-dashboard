@@ -64,7 +64,7 @@
 
 ### 채널별 게시 상태 — 2026-11-12 구현
 
-통합 산출물 모델 중 **게시 상태**만 먼저 구현했다. `Project.publications`는 채널(`instagram`·`naver-clip`·`blog`)당 한 항목이며 `status`(`planned`·`published`), `url`, `publishedAt`(게시 완료일 때만)을 가진다. 항목이 없는 채널은 그 프로젝트의 목표가 아니다. [타입·검증](../src/shared/publications.ts).
+통합 산출물 모델 중 **게시 상태**만 먼저 구현했다. `Project.publications`는 채널(`instagram`·`naver-clip`·`blog`)당 한 항목이며 `status`(`planned`·`draft`·`published`. `draft`는 채널에 임시저장만 된 상태로 완료로 치지 않는다), `url`, `publishedAt`(게시 완료일 때만)을 가진다. 항목이 없는 채널은 그 프로젝트의 목표가 아니다. [타입·검증](../src/shared/publications.ts).
 
 - 완료 기준: 채널마다 따로 본다. `reels_set_publication`으로 목표 채널이 전부 `published`가 되면 프로젝트 `stage`를 `published`로 올린다. 이후 채널을 더하거나 되돌려도 `stage`를 내리지 않는다. 남은 채널을 `planned`로 먼저 등록하지 않으면 채널 하나만으로 완료가 된다.
 - 보드의 채널 필터는 그 채널 항목이 있는 프로젝트만 보여주고, **진행 중**은 그 채널이 아직 게시 전인 것, **게시 완료**는 그 채널이 게시된 것으로 판정한다. 다른 진행 단계를 고르면 그 채널이 게시 전이면서 해당 단계인 프로젝트만 남는다.

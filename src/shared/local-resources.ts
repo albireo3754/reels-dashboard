@@ -66,6 +66,6 @@ export const setPublicationSchema = z
     (v) =>
       (v.status === "published" || !v.publishedAt) &&
       (v.status !== "none" || !v.url),
-    "게시일은 게시 완료에만, 링크는 예정·게시 완료에만 넣을 수 있어요.",
+    "게시일은 게시 완료에만, 링크는 예정·임시저장·게시 완료에만 넣을 수 있어요.",
   );
 export type SetPublicationInput = z.infer<typeof setPublicationSchema>;

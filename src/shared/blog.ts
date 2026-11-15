@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import type {PublicationStatus} from './publications';
 const color=z.string().regex(/^#[\da-f]{3}(?:[\da-f]{3})?$/i);
 export const blogSpan=z.strictObject({text:z.string().min(1).max(1000),color:color.optional(),background:color.optional(),weight:z.number().int().min(100).max(900).optional(),occurrence:z.enum(['first','all']).optional()});
 export const blogStyle=z.strictObject({bodyFont:z.string().regex(/^[\w -]{1,80}$/).optional(),infoFont:z.string().regex(/^[\w -]{1,80}$/).optional(),background:color.optional(),color:color.optional(),headingColor:color.optional(),paragraphSize:z.number().min(10).max(40).optional(),mobileParagraphSize:z.number().min(10).max(40).optional(),headingSize:z.number().min(10).max(60).optional(),lineHeight:z.number().min(1).max(3).optional(),align:z.enum(['left','center','right']).optional(),desktopWidth:z.number().min(250).max(1600).optional(),mobileWidth:z.number().min(250).max(900).optional(),padding:z.number().min(0).max(100).optional(),headingWeight:z.number().min(100).max(900).optional(),imageRadius:z.number().min(0).max(100).optional()});
@@ -17,7 +18,7 @@ export interface CanonicalEditorTab {projectId:string;title:string;url:string}
  * A blog project row. `published` is the list's completion state; `blog` is the card's own blog
  * channel record, left out when the card has none, so the list can say why a row is in progress.
  */
-export interface CanonicalBlogProject {id:string;title:string;published:boolean;blog?:{status:'planned'|'published';publishedAt?:string;url?:string}}
+export interface CanonicalBlogProject {id:string;title:string;published:boolean;blog?:{status:PublicationStatus;publishedAt?:string;url?:string}}
 export interface BlogBridge {
   canonicalProjects?():Promise<CanonicalBlogProject[]>;
   /** Cards with a blog-markup manuscript that are left out of the list, and why. */

@@ -308,6 +308,7 @@
                   "type": "string",
                   "enum": [
                     "planned",
+                    "draft",
                     "published"
                   ]
                 },

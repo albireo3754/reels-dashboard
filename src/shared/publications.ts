@@ -12,10 +12,15 @@ export const publicationChannelLabels: Record<PublicationChannel, string> = {
   "naver-clip": "네이버클립",
   blog: "블로그",
 };
-export const publicationStatuses = ["planned", "published"] as const;
+/**
+ * `draft`: saved on the channel (for example a Naver blog 임시저장) but not public yet.
+ * It is still a channel to come, so it never completes the project.
+ */
+export const publicationStatuses = ["planned", "draft", "published"] as const;
 export type PublicationStatus = (typeof publicationStatuses)[number];
 export const publicationStatusLabels: Record<PublicationStatus, string> = {
   planned: "예정",
+  draft: "임시저장",
   published: "게시 완료",
 };
 
@@ -39,7 +44,7 @@ const httpURL = z
 export const publicationSchema = z.strictObject({
   channel: z.enum(publicationChannels),
   status: z.enum(publicationStatuses),
-  /** Empty while planned, or when the post exists but its link is not recorded. */
+  /** Empty while planned or saved as a draft, or when the post exists but its link is not recorded. */
   url: httpURL,
   /** The day the post went live on this channel; never the day it was recorded. */
   publishedAt: z

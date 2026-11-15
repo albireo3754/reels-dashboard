@@ -64,7 +64,7 @@ One project can be posted on Instagram, Naver Clip and the blog on different day
 {"projectId":"content:example","expectedUpdatedAt":"<dashboard updatedAt>","channel":"naver-clip","status":"published","url":"https://…","publishedAt":"2026-11-06"}
 ```
 
-- `channel`: `instagram`, `naver-clip` or `blog`. `status`: `planned`, `published`, or `none` to drop the channel. `url` is optional; `publishedAt` is allowed only with `published`.
+- `channel`: `instagram`, `naver-clip` or `blog`. `status`: `planned`, `draft` (saved on the channel but not public, e.g. a Naver blog 임시저장), `published`, or `none` to drop the channel. `url` is optional; `publishedAt` is allowed only with `published`. A draft never completes the entry.
 - Nothing else on the entry changes, so no full `reels_upsert_content` is needed. `reels_upsert_content` keeps the stored channels when `publications` is omitted and replaces them when it is passed.
 - When every targeted channel is `published`, the entry's `stage` becomes `published` and is never moved back. Register the channels still to come as `planned` first; otherwise a single live channel completes the entry.
 - This is a record. It does not post, upload or check the link. Confirm the live post and its date before recording `published`.
