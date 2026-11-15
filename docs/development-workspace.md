@@ -78,7 +78,7 @@ Codex가 기본 도구이며 **Codex 열기·Claude 열기**나 설정의 **세�
 
 - Codex는 설계·리뷰에 `read-only`, 구현·수정에 `workspace-write`, 승인 정책은 `on-request`를 기본으로 지정한다. [공식 승인·보안 문서](https://learn.chatgpt.com/docs/agent-approvals-security)와 설치된 CLI 도움말을 확인했다.
 - Claude Code는 2026-11-11부터 활성 도구 목록에 있다. 설계·리뷰 단계는 `--permission-mode plan`, 구현·수정 단계는 `--permission-mode manual`을 기본으로 실행한다. 목록에 없는 도구·종류를 IPC로 요청하면 호스트가 거부한다.
-- **승인 없이 실행(YOLO)** — 2026-11-12 사용자 지시로 추가했다. 블로그 **맥락과 함께 수정** 대화상자와 터미널 설정의 체크박스로 세션을 시작할 때마다 고른다(start 계약의 `permission: "ask" | "bypass"`, 생략하면 `ask`). `bypass`는 구현·수정 단계에서만 Codex `--dangerously-bypass-approvals-and-sandbox`, Claude Code `--dangerously-skip-permissions`로 실행하고, 설계·리뷰 단계는 선택과 무관하게 읽기 전용을 유지한다. 마지막 선택은 renderer `localStorage`에 남고 처음 값은 `ask`다. 셸 alias·함수에는 기대지 않는다(`exec`로 실행 파일을 직접 띄운다).
+- **승인 없이 실행(YOLO)** — 2026-11-12 사용자 지시로 추가했다. 블로그 **Claude와 함께 수정**·**Codex와 함께 수정** 대화상자와 터미널 설정의 체크박스로 세션을 시작할 때마다 고른다(start 계약의 `permission: "ask" | "bypass"`, 생략하면 `ask`). `bypass`는 구현·수정 단계에서만 Codex `--dangerously-bypass-approvals-and-sandbox`, Claude Code `--dangerously-skip-permissions`로 실행하고, 설계·리뷰 단계는 선택과 무관하게 읽기 전용을 유지한다. 마지막 선택은 renderer `localStorage`에 남고 처음 값은 `ask`다. 셸 alias·함수에는 기대지 않는다(`exec`로 실행 파일을 직접 띄운다).
 - 일반 터미널과 npm 검사는 사용자 권한의 로컬 셸이다. 작업 폴더 선택은 운영체제 sandbox가 아니다. 입력은 현재 세션에 전달하고 알 수 없는 세션·도구·비정상 크기는 거부한다. 요청문은 셸의 단일 인자로 인코딩한다.
 - 실행 중이거나 연결이 끊긴(detached) 세션이 있으면 소스 변경과 세션 백엔드 변경을 거부한다. 미리보기·검증 작업의 중복 실행도 거부한다. 설정이 손상되거나 소스가 이동했으면 다시 연결한다.
 - 미리보기 iframe에는 preload/Node/desktop bridge가 없다. 외부 운영 사이트는 시스템 브라우저에서 열고 CLI 인증정보를 웹에 전달하지 않는다. 터미널은 기존 MCP나 공유 웹 API에 노출하지 않는다.

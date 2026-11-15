@@ -41,7 +41,9 @@ test('blog terminal passes current context, retains failed requests and selects 
     // The blog header no longer duplicates the toolbar's terminal toggle (⌘N / 터미널).
     const blog = page.getByRole('region', { name: '블로그 작업', exact: true });
     await expect(blog.getByRole('button', { name: '터미널 열기', exact: true })).toHaveCount(0);
-    await expect(blog.getByRole('button', { name: '맥락과 함께 수정', exact: true })).toHaveCount(1);
+    await expect(blog.getByRole('button', { name: 'Claude와 함께 수정', exact: true })).toHaveCount(1);
+    await expect(blog.getByRole('button', { name: 'Codex와 함께 수정', exact: true })).toHaveCount(1);
+    await expect(blog.getByRole('button', { name: '맥락과 함께 수정', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '터미널', exact: true }).click();
     const drawer = page.getByRole('region', { name: '터미널', exact: true });
     await expect(drawer).toBeVisible();
@@ -50,7 +52,7 @@ test('blog terminal passes current context, retains failed requests and selects 
     await page.getByRole('button', { name: '새 터미널', exact: true }).click();
     await expect(sessionTabs).toHaveCount(1);
     const firstId = await page.evaluate(async () => (await window.reels!.workbench!.state()).sessions[0].id);
-    await page.getByRole('button', { name: '맥락과 함께 수정', exact: true }).click();
+    await page.getByRole('button', { name: 'Codex와 함께 수정', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '블로그 화면 수정' });
     const start = dialog.getByRole('button', { name: '맥락을 넣어 Codex 열기', exact: true });
     await expect(start).toBeDisabled();
@@ -104,11 +106,22 @@ test('blog terminal passes current context, retains failed requests and selects 
     await page.evaluate(async id => window.reels!.workbench!.stop(id), secondId);
     await expect(page.locator(`#dev-tab-${firstId}`)).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('tab', { name: '레퍼런스 추출·탐색', exact: true }).click();
-    await page.getByRole('button', { name: '맥락과 함께 수정', exact: true }).click();
+    await page.getByRole('button', { name: 'Claude와 함께 수정', exact: true }).click();
     await expect(dialog.locator('pre')).toContainText('선택 프로젝트: 없음');
     await expect(dialog.locator('pre')).not.toContainText('article-a');
     await expect(dialog.getByLabel('수정 요청', { exact: true })).toHaveValue('');
+    await expect(dialog.getByRole('button', { name: '맥락을 넣어 Codex 열기', exact: true })).toHaveCount(0);
+    const claudeStart = dialog.getByRole('button', { name: '맥락을 넣어 Claude Code 열기', exact: true });
+    await expect(claudeStart).toBeDisabled();
     await page.screenshot({ path: info.outputPath('blog-terminal-context.png') });
+    await dialog.getByLabel('수정 요청', { exact: true }).fill('레퍼런스 화면 여백을 수정해주세요.');
+    await claudeStart.click();
+    await expect(dialog).not.toBeVisible();
+    const claudeRequests = await app.evaluate(() => (globalThis as any).blogRequests);
+    expect(claudeRequests).toHaveLength(3);
+    expect(claudeRequests[2]).toMatchObject({ kind: 'claude', phase: 'implement' });
+    expect(claudeRequests[2].task).toContain('레퍼런스 추출·탐색');
+    expect(claudeRequests[2].task).toContain('레퍼런스 화면 여백');
     expect(await readFile(config.canon, 'utf8')).toBe(original);
   } finally { await closeApp(app); await cleanProfile(profile); }
 });
@@ -121,7 +134,8 @@ test('normal desktop blog does not expose development terminal actions', async (
     const page = await app.firstWindow();
     await page.getByRole('button', { name: '블로그', exact: true }).click();
     await expect(page.getByRole('heading', { name: '블로그 작업', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '맥락과 함께 수정', exact: true })).toHaveCount(0);
+    for (const name of ['맥락과 함께 수정', 'Claude와 함께 수정', 'Codex와 함께 수정'])
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '터미널 열기', exact: true })).toHaveCount(0);
   } finally { await closeApp(app); await cleanProfile(profile); }
 });

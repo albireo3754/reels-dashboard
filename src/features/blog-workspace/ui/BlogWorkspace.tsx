@@ -139,7 +139,7 @@ export function BlogWorkspace({api,media,projects,active=true,onStartTerminal}:{
   /** 블로그 탭이 보이는지. 프로젝트 목록은 보일 때 다시 읽는다. */
   active?:boolean;
   /** @deprecated 터미널 패널은 상단 툴바의 터미널 버튼·⌘N으로 연다. 호환을 위해 받기만 한다. */
-  onOpenTerminal?:()=>void;onStartTerminal?:(task:string,permission:import('../../../shared/workbench').AgentPermission)=>Promise<void>}) {
+  onOpenTerminal?:()=>void;onStartTerminal?:(task:string,permission:import('../../../shared/workbench').AgentPermission,provider:import('../../../shared/workbench').AgentProvider)=>Promise<void>}) {
   const [mode,setMode]=useState<string>('projects');
   const [editors,setEditors]=useState<CanonicalEditorTab[]>([]);
   const [closingEditor,setClosingEditor]=useState('');
