@@ -3,16 +3,18 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { emptyPlanning, weekPlan, monday, calendarImportSchema, type Planning } from "../../src/shared/planning";
+import { emptyPlanning, weekPlan, weekStart, calendarImportSchema, type Planning } from "../../src/shared/planning";
 import { PlanningStore } from "../../src/shared/lib/planning-store";
 import type { Project } from "../../src/shared/contracts";
 
 const event = (id: string, projectId: string, start: string) => ({ id, projectId, title: id, start, url: "https://calendar.google.com/calendar/event?eid=sample", channel: "naver-clip" as const, cancelled: false });
 const calendar = { url: "https://calendar.google.com/calendar/u/0/r/week", syncedAt: "2026-11-12T08:00:00Z", window: { from: "2026-11-09", to: "2026-11-23" }, events: [event("one", "p1", "2026-11-13T15:56:00+09:00"), event("two", "p2", "2026-11-20T15:56:00+09:00")] };
 const project = (id: string, publishedAt?: string): Project => ({ id, title: id, date: "2026-11-12", nextAction: "", stage: "published", publicURL: "", shared: false, publications: [{ channel: "naver-clip", status: "published", url: "", ...(publishedAt ? { publishedAt } : {}) }] });
-test("weeks use Seoul Monday boundaries, including year rollover", () => {
-  assert.equal(monday(new Date("2026-11-15T15:01:00Z")), "2026-11-16");
-  assert.equal(monday(new Date("2027-01-01T00:00:00Z")), "2026-12-28");
+test("weeks use Seoul Sunday boundaries, including year rollover", () => {
+  assert.equal(weekStart(new Date("2026-11-15T15:01:00Z")), "2026-11-15", "Mon 00:01 KST belongs to the week from Sunday");
+  assert.equal(weekStart(new Date("2026-11-14T15:01:00Z")), "2026-11-15", "Sunday 00:01 KST starts a new week");
+  assert.equal(weekStart(new Date("2026-11-14T14:59:00Z")), "2026-11-08", "Saturday 23:59 KST is still the previous week");
+  assert.equal(weekStart(new Date("2027-01-01T00:00:00Z")), "2026-12-27");
 });
 test("counts completed and calendar plans separately; no project date guessing or double count", () => {
   const data: Planning = { ...emptyPlanning(), calendar: { ...calendar, events: [...calendar.events, event("duplicate", "p1", "2026-11-13T16:00:00+09:00"), { ...event("cancelled", "p3", "2026-11-13T15:56:00+09:00"), cancelled: true }] } };

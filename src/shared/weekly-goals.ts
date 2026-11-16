@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { Project, Stage } from "./contracts";
-import { addDays, monday, seoulDate, weekPlan, weeklyTargetsSchema, type Planning, type PlannedPost, type PlanningUpdate } from "./planning";
+import { addDays, weekStart, seoulDate, weekPlan, weeklyTargetsSchema, type Planning, type PlannedPost, type PlanningUpdate } from "./planning";
 import { projectState } from "./project-state";
 import type { PublicationChannel } from "./publications";
 
@@ -183,7 +183,7 @@ function spread(taken: string[], items: GoalCandidate[], wanted: number, today: 
 
 export interface WeeklyGoalsView { thisWeek: WeekGoals; nextWeek: WeekGoals; queue: BookingQueue; targets: WeeklyTargets }
 export function weeklyGoalsView(planning: Planning, projects: Project[], now: Date = new Date()): WeeklyGoalsView {
-  const from = monday(now);
+  const from = weekStart(now);
   return {
     thisWeek: weekGoals(planning, projects, from, now),
     nextWeek: weekGoals(planning, projects, addDays(from, 7), now),

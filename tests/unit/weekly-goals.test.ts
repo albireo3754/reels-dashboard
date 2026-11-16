@@ -9,7 +9,7 @@ import { bookingQueue, defaultWeeklyTargets, targetFields, weekGoals, weeklyGoal
 import type { Project } from "../../src/shared/contracts";
 import type { Publication } from "../../src/shared/publications";
 
-// Monday 2026-11-16, 10:00 KST.
+// Monday 2026-11-16, 10:00 KST (the week runs from Sunday 11-15).
 const now = new Date("2026-11-16T01:00:00Z");
 const project = (id: string, publications: Publication[], extra: Partial<Project> = {}): Project =>
   ({ id, title: id, date: "2026-11-01", nextAction: `next ${id}`, stage: "review", publicURL: "", shared: false, publications, ...extra });
@@ -140,6 +140,6 @@ test("booking queue: a channel with no target proposes nothing, and the blog is 
 
 test("the view covers this week, next week and the queue from one snapshot", () => {
   const view = weeklyGoalsView(emptyPlanning(), [], now);
-  assert.deepEqual([view.thisWeek.from, view.nextWeek.from, view.queue.horizonDays], ["2026-11-16", "2026-11-23", 14]);
+  assert.deepEqual([view.thisWeek.from, view.nextWeek.from, view.queue.horizonDays], ["2026-11-15", "2026-11-22", 14]);
   assert.deepEqual(view.targets, { ...defaultWeeklyTargets, "naver-clip": 3 });
 });

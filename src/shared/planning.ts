@@ -95,10 +95,10 @@ export function addDays(day: string, count: number): string {
   at.setUTCDate(at.getUTCDate() + count);
   return at.toISOString().slice(0, 10);
 }
-export function monday(at: Date): string {
+/** First day of the Seoul week containing `at`. Weeks run Sunday to Saturday. */
+export function weekStart(at: Date): string {
   const today = seoulDate(at);
-  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
-  return addDays(today, -((weekday + 6) % 7));
+  return addDays(today, -new Date(`${today}T12:00:00Z`).getUTCDay());
 }
 export interface PlannedPost { key: string; projectId: string; title: string; day: string; start?: string; status: "published" | "planned"; url: string; }
 /** `target` defaults to the older single target; callers that know the channel's own target pass it. */

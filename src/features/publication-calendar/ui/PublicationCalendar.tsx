@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Project } from "../../../shared/contracts";
-import { addDays, emptyPlanning, monday, weekPlan, type Planning, type PlanningBridge } from "../../../shared/planning";
+import { addDays, emptyPlanning, weekStart, weekPlan, type Planning, type PlanningBridge } from "../../../shared/planning";
 import { classifyLinear } from "../../../shared/autopilot";
 import { goalChannels, goalChannelLabels, weeklyTargetsOf, type GoalChannel } from "../../../shared/weekly-goals";
 import { errorMessage } from "../../../shared/lib/errors";
@@ -23,9 +23,9 @@ export function PublicationCalendar({ api, projects }: { api?: PlanningBridge; p
     finally { setBusy(false); }
   }, [api]);
   useEffect(() => { void refresh(); }, [refresh]);
-  const first = addDays(monday(new Date()), offset * 7);
+  const first = addDays(weekStart(new Date()), offset * 7);
   return <section className="publication-calendar" aria-label="게시 캘린더">
-    <header className="calendar-heading"><div><h2>캘린더</h2><p>주간 목표와 게시 일정 · 한국시간 · 월요일 시작</p></div>
+    <header className="calendar-heading"><div><h2>캘린더</h2><p>주간 목표와 게시 일정 · 한국시간 · 일요일 시작</p></div>
       <div className="calendar-actions">
         <a href={data.calendar?.url ?? "https://calendar.google.com/calendar/u/0/r/week"} target="_blank" rel="noreferrer">Google Calendar 열기 ↗</a>
         <a href={data.linear?.url ?? "https://linear.app"} target="_blank" rel="noreferrer">Linear 열기 ↗</a>
