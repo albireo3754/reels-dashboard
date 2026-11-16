@@ -82,6 +82,16 @@
 - 판정은 [project-state.ts](../src/shared/project-state.ts) 하나다. done → complete. 아직 갈 채널이 있고 전부 scheduled → scheduled(단계 무관). published에서 남은 채널이 planned·draft면 channel_pending, 없으면 complete. 그 밖은 review·in_progress. `needsUserReview`는 review와 channel_pending이다. 보드의 진행 중·완료 필터, 상단 요약, autopilot 큐(연결된 Linear 이슈 포함), `reels list-projects`의 `projectStates[]`가 모두 이 함수를 쓴다.
 - 단계·종류·날짜 기준 목록은 contracts.ts 상수 하나에서 저장 검증(data.ts)·CLI/MCP 입력(local-resources.ts)·JSON Schema 생성(scripts/write-project-schema.ts)이 가져간다.
 
+### 작업 순번 — 2026-11-16 구현
+
+사용자가 정하는 작업 순서를 앱 프로젝트에 둔다. 전에는 Obsidian 우선순위 폴더의 연결표(`dashboard-mapping.json`의 `order_hint`)와 파생 HTML이 이 순서를 들고 있었는데, 앱이 상태 정본이므로 순서도 앱으로 옮겼다.
+
+- `priority`(선택, 1~999 정수, 1이 먼저): 순서만 정한다. 완료 여부·채널 상태·진행 단계를 바꾸지 않는다.
+- 입력: 카드 **수정 → 작업 순번**(비우면 순번 없음), CLI/MCP `upsert-content`의 `priority`(생략하면 기존 값 유지, `null`이면 지움). 재출력·병합은 기존 값을 유지한다.
+- 보드 **작업 우선순** 정렬: [project-state.ts](../src/shared/project-state.ts) 판정(사용자 확인 필요 review·channel_pending → 진행 중 → 예약 → 완료) → 순번(있는 것 먼저, 작은 수 먼저) → 단계 → 날짜.
+- 오늘 볼 1개(autopilot 순위): 순번을 근거 하나로 더한다(1번 30점, 한 칸 내려갈 때마다 2점 감소, 최소 2점, 이유 `작업 순번 n`). 마감·차단·기다린 기간과 함께 비교하므로 고정 1위는 아니다. 완료·예약 프로젝트는 순번이 있어도 큐에 들어오지 않는다.
+- 카드에 `순번 n`으로 보인다. `reels list-projects`의 `dashboard.projects[].priority`로 읽는다.
+
 ## 앱 사용법
 
 ### 프로젝트 터미널 — 2026-11-12

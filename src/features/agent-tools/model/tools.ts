@@ -189,7 +189,7 @@ export const toolDefinitions = {
   },
   reels_upsert_content: {
     description:
-      "Register or update one production entry by stable ID and current dashboard updatedAt. Resources are an explicit full replacement; omitted content fields are not accepted. Links existing media/folders/documents without copies, proxies, rendering or publication. New entries are private; existing sharing is preserved. Read list_projects and get_content before updating.",
+      "Register or update one production entry by stable ID and current dashboard updatedAt. Resources are an explicit full replacement; omitted content fields are not accepted. Links existing media/folders/documents without copies, proxies, rendering or publication. New entries are private; existing sharing is preserved. priority is the user's working order (1 first; omit to keep, null to clear); it orders work and never marks anything done. Read list_projects and get_content before updating.",
     input: z.strictObject({
       content: contentInputSchema,
       expectedUpdatedAt: dashboardRevision,
@@ -220,7 +220,7 @@ export const toolDefinitions = {
   },
   reels_list_projects: {
     description:
-      "List saved editing projects and production dashboard entries. Editing tools take editorProjects[].id; content tools take dashboard.projects[].id. projectStates[] is the shared reading of each entry (complete, scheduled, channel_pending, review, in_progress; needsUserReview); use it instead of judging stage alone. stage done means the work is finished, not that anything was posted. Content prose remains in the content workspace.",
+      "List saved editing projects and production dashboard entries. Editing tools take editorProjects[].id; content tools take dashboard.projects[].id. projectStates[] is the shared reading of each entry (complete, scheduled, channel_pending, review, in_progress; needsUserReview); use it instead of judging stage alone. projects[].priority is the user's working order (1 first); rank by state, then priority. stage done means the work is finished, not that anything was posted. Content prose remains in the content workspace.",
     input: z.strictObject({}),
     readOnly: true,
   },

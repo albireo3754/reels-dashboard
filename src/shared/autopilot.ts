@@ -153,6 +153,8 @@ export interface RawItem {
   nextAction?: string;
   dueDate?: string | null;
   priority?: number;
+  /** The Dashboard project's own working order (1 first), set by the user. */
+  order?: number;
   blockedBy: string[];
   subIssues?: { open: number; total: number };
   createdAt?: string;
@@ -233,6 +235,7 @@ function sourceItems(planning: Planning, projects: Project[], now: Date = new Da
     add({
       key: project.id, kind: view.needsUserReview ? "review" : "active", source: "dashboard",
       title: project.title, projectId: project.id, stage: project.stage, nextAction: project.nextAction, blockedBy: [],
+      ...(project.priority !== undefined ? { order: project.priority } : {}),
       ...(project.localNotes ? { localNotes: project.localNotes } : {}),
       ...(project.resources?.length ? { resources: project.resources.map(({ role, label, path }) => ({ role, label, path })) } : {}),
     });
@@ -333,6 +336,8 @@ export function rankItems(items: readonly RawItem[], now: Date): QueueItem[] {
     }
     if (item.priority && item.priority >= 1 && item.priority <= 4 && priorityScore[item.priority] > 0)
       gain(priorityScore[item.priority], `Linear 우선순위 ${priorityName[item.priority]}`);
+    // The user's own order is one weight too: #1 counts like Urgent, fading by 2 per place.
+    if (item.order !== undefined) gain(Math.max(2, 32 - item.order * 2), `작업 순번 ${item.order}`);
     const since = item.updatedAt ?? item.createdAt;
     if (since && Number.isFinite(Date.parse(since))) {
       const waited = Math.max(0, Math.floor((now.getTime() - Date.parse(since)) / dayMs));
