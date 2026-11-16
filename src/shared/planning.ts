@@ -57,10 +57,16 @@ export const linearImportSchema = z.strictObject({
   if (new Set(value.issues.map(e => e.id)).size !== value.issues.length)
     ctx.addIssue({ code: "custom", message: "Duplicate Linear issue IDs" });
 });
+const goalCount = z.number().int().min(0).max(14);
+/** Posts per week for each goal channel (blog, Naver Clip, Reels, Shorts). See weekly-goals.ts. */
+export const weeklyTargetsSchema = z.strictObject({ blog: goalCount, "naver-clip": goalCount, instagram: goalCount, youtube: goalCount });
 export const planningSchema = z.strictObject({
   schemaVersion: z.literal(1),
   updatedAt: z.string().datetime(),
+  /** The Naver Clip target saved before per-channel targets; kept equal to `weeklyTargets["naver-clip"]` when that is 1 or more. */
   weeklyTarget: z.number().int().min(1).max(30),
+  /** Omitted in files saved before per-channel targets; readers then use the defaults. */
+  weeklyTargets: weeklyTargetsSchema.optional(),
   calendar: calendarImportSchema.nullable(),
   linear: linearImportSchema.nullable(),
 });
@@ -68,9 +74,11 @@ export type Planning = z.infer<typeof planningSchema>;
 export const planningUpdateSchema = z.strictObject({
   expectedUpdatedAt: z.string().datetime(),
   weeklyTarget: z.number().int().min(1).max(30).optional(),
+  /** Only the channels given change; the others keep their current target. */
+  weeklyTargets: weeklyTargetsSchema.partial().optional(),
   calendar: calendarImportSchema.optional(),
   linear: linearImportSchema.optional(),
-}).refine(v => v.weeklyTarget !== undefined || v.calendar !== undefined || v.linear !== undefined, "No update supplied");
+}).refine(v => v.weeklyTarget !== undefined || (v.weeklyTargets !== undefined && Object.keys(v.weeklyTargets).length > 0) || v.calendar !== undefined || v.linear !== undefined, "No update supplied");
 export type PlanningUpdate = z.infer<typeof planningUpdateSchema>;
 export interface PlanningBridge {
   get(): Promise<Planning>;
@@ -93,7 +101,8 @@ export function monday(at: Date): string {
   return addDays(today, -((weekday + 6) % 7));
 }
 export interface PlannedPost { key: string; projectId: string; title: string; day: string; start?: string; status: "published" | "planned"; url: string; }
-export function weekPlan(planning: Planning, projects: Project[], from: string, channel: PublicationChannel) {
+/** `target` defaults to the older single target; callers that know the channel's own target pass it. */
+export function weekPlan(planning: Planning, projects: Project[], from: string, channel: PublicationChannel, target: number = planning.weeklyTarget) {
   const to = addDays(from, 7);
   const rows = new Map<string, PlannedPost>();
   // Calendar dates are authoritative for upcoming events; project.date is never used.
@@ -105,6 +114,15 @@ export function weekPlan(planning: Planning, projects: Project[], from: string, 
     const key = `${event.projectId}:${channel}`;
     rows.set(key, { key, projectId: event.projectId, title: project?.title ?? event.title, day, start: event.start, status: "planned", url: event.url });
   }
+  // A booking recorded on the project wins over the calendar copy of the same project.
+  for (const project of projects) {
+    const booked = project.publications?.find(p => p.channel === channel && p.status === "scheduled");
+    if (!booked?.scheduledAt) continue;
+    const day = seoulDate(booked.scheduledAt);
+    const key = `${project.id}:${channel}`;
+    if (day < from || day >= to) { rows.delete(key); continue; }
+    rows.set(key, { key, projectId: project.id, title: project.title, day, start: booked.scheduledAt, status: "planned", url: rows.get(key)?.url ?? "" });
+  }
   for (const project of projects) {
     const post = project.publications?.find(p => p.channel === channel && p.status === "published");
     if (!post?.publishedAt || post.publishedAt < from || post.publishedAt >= to) continue;
@@ -114,7 +132,7 @@ export function weekPlan(planning: Planning, projects: Project[], from: string, 
   const posts = [...rows.values()].sort((a, b) => a.day.localeCompare(b.day) || (a.start ?? "").localeCompare(b.start ?? "") || a.title.localeCompare(b.title));
   const published = posts.filter(p => p.status === "published").length;
   const scheduled = posts.length - published;
-  return { from, to, posts, published, scheduled, remaining: Math.max(0, planning.weeklyTarget - posts.length),
+  return { from, to, posts, published, scheduled, remaining: Math.max(0, target - posts.length),
     covered: Boolean(planning.calendar && planning.calendar.window.from <= from && planning.calendar.window.to >= to),
     issues: (planning.linear?.issues ?? []).filter(i => i.dueDate && i.dueDate >= from && i.dueDate < to && i.state !== "canceled" && i.state !== "duplicate"),
   };

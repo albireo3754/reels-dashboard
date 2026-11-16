@@ -1,5 +1,6 @@
 import { PublicationCalendar } from "../features/publication-calendar";
 import { AutopilotToday } from "../features/after-work-autopilot";
+import { WeeklyGoals } from "../features/weekly-goals";
 import { InstagramInsights } from "../features/instagram-insights";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
@@ -512,6 +513,19 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           (tab === "dashboard" || tab === "settings") && (
             <MobileBriefing bridge={bridge} compact={tab === "dashboard"} />
           )}
+        {tab === "dashboard" && !readOnly && (
+          <WeeklyGoals
+            api={bridge.planning}
+            projects={dashboard.projects}
+            revision={dashboard.updatedAt}
+            onOpenProject={id => {
+              const project = dashboard.projects.find(p => p.id === id);
+              if (!project) return;
+              setEditingRevision(dashboard.updatedAt);
+              setEditingProject({ ...project });
+            }}
+          />
+        )}
         {tab === "dashboard" && !readOnly && (
           <AutopilotToday
             api={bridge.autopilot}

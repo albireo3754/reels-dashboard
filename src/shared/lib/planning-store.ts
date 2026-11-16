@@ -2,6 +2,7 @@ import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { emptyPlanning, planningSchema, planningUpdateSchema, type PlanningBridge } from "../planning";
 import { readJsonFile, writeJsonAtomic } from "./fs";
+import { targetFields } from "../weekly-goals";
 
 /** Private provider snapshots, not another calendar or issue database. No credentials. */
 export class PlanningStore implements PlanningBridge {
@@ -19,8 +20,8 @@ export class PlanningStore implements PlanningBridge {
         if (input[source] && current[source] && Date.parse(input[source].syncedAt) < Date.parse(current[source].syncedAt))
           throw new Error("STALE_SOURCE: 이전 조회 결과로 덮어쓸 수 없어요.");
       }
-      const { expectedUpdatedAt: _, ...changes } = input;
-      const next = planningSchema.parse({ ...current, ...changes, updatedAt: new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString() });
+      const { expectedUpdatedAt: _, weeklyTarget: __, weeklyTargets: ___, ...changes } = input;
+      const next = planningSchema.parse({ ...current, ...changes, ...targetFields(current, input), updatedAt: new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString() });
       await mkdir(this.root, { recursive: true, mode: 0o700 });
       await writeJsonAtomic(path.join(this.root, "planning.json"), next, { mode: 0o600 });
       return next;

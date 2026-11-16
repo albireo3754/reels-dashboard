@@ -56,6 +56,10 @@ export const toolDefinitions = {
     description: "Read the private calendar/Linear import snapshot and revision. This does not query providers. No credentials or private planning data enter shared snapshots.",
     input: z.strictObject({}), readOnly: true,
   },
+  reels_get_weekly_goals: {
+    description: "Read this week's and next week's posting goal per channel (blog, Naver Clip, Reels, Shorts: published, booked, remaining, candidates in work order) and the two-week video booking queue (booked/cap = 2x weekly target, open slots, suggested days for finished videos, bookings past 14 days). Read-only: it never books or posts; after booking on the channel, record the project's publication as scheduled.",
+    input: z.strictObject({}), readOnly: true,
+  },
   reels_sync_planning: {
     description: "Import confirmed Google Calendar events or Linear issues after querying connected providers. Use get_planning.updatedAt. Each supplied provider replaces its complete bounded snapshot; omitted provider is preserved. Report source syncedAt and window honestly. Does not create/update external events, issues or social posts.",
     input: planningUpdateSchema, readOnly: false,

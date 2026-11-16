@@ -18,6 +18,7 @@ import type {
 import { AgentSession, patchProject } from "../../../entities/agent-session";
 import { toolDefinitions, type ToolName } from "../model/tools";
 import { projectState } from "../../../shared/project-state";
+import { weeklyGoalsView } from "../../../shared/weekly-goals";
 
 export interface AgentEditorPort extends EditorBridge {
   busy: boolean;
@@ -134,6 +135,8 @@ export function createAgentDispatch(ports: AgentPorts) {
         return port("planning").get();
       case "reels_sync_planning":
         return port("planning").update(input);
+      case "reels_get_weekly_goals":
+        return weeklyGoalsView(await port("planning").get(), (await ports.dashboard()).projects, new Date());
       case "reels_get_cover_preferences":
         return port("coverPreferences").get();
       case "reels_set_cover_preferences":

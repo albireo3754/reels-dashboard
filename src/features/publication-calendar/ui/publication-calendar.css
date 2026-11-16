@@ -6,6 +6,8 @@
 .calendar-actions a { font-size:13px; }
 .calendar-controls>div { display:flex; gap:6px; }
 .calendar-controls select { margin-left:8px; }
+.calendar-channel { display:flex; align-items:center; gap:8px; font-size:13px; }
+.calendar-channel select { margin:0 4px 0 0; }
 .calendar-week { border:1px solid var(--border,#dfe3e8); border-radius:12px; overflow:hidden; min-width:0; }
 .calendar-week>header { padding:18px; }
 .calendar-goal { display:grid; text-align:right; gap:5px; }

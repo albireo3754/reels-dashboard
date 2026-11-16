@@ -17,7 +17,7 @@ export const toolGroups = {
   forms: "Shared input forms: create, read, save, apply and open.",
   analysis: "Image and frame analysis of a project folder.",
   blog: "Naver blog references, comment records and GIF motion clips.",
-  planning: "Calendar and Linear planning snapshots.",
+  planning: "Calendar and Linear snapshots, weekly channel goals, video booking queue.",
   edits: "Edits app automation through Dashboard main and its native AX helper.",
   insights: "Private Instagram account insights and topic labels.",
 } as const;
@@ -104,4 +104,5 @@ export const toolGroupOf = {
 
   reels_get_planning: "planning",
   reels_sync_planning: "planning",
+  reels_get_weekly_goals: "planning",
 } as const satisfies Record<ToolName, ToolGroup>;

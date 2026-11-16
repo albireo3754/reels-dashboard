@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import { addDays, emptyPlanning, monday, weekPlan, type Planning, type PlanningBridge } from "../../../shared/planning";
 import { classifyLinear } from "../../../shared/autopilot";
+import { goalChannels, goalChannelLabels, weeklyTargetsOf, type GoalChannel } from "../../../shared/weekly-goals";
 import { errorMessage } from "../../../shared/lib/errors";
 import "./publication-calendar.css";
 
@@ -13,7 +14,8 @@ export function PublicationCalendar({ api, projects }: { api?: PlanningBridge; p
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState(0);
-  const channel = "naver-clip" as const;
+  const [channel, setChannel] = useState<GoalChannel>("naver-clip");
+  const target = weeklyTargetsOf(data)[channel];
   const refresh = useCallback(async () => {
     if (!api) return;
     setBusy(true); setError("");
@@ -39,14 +41,14 @@ export function PublicationCalendar({ api, projects }: { api?: PlanningBridge; p
     <p className="calendar-help">일정은 Google Calendar에서, 할 일은 Linear에서 수정해요. 연결 세션에서 가져온 결과를 표시하며 실시간 자동 동기화는 하지 않아요.</p>
     <div className="calendar-controls">
       <div><button aria-label="이전 주" onClick={() => setOffset(v => v - 1)}>←</button><button onClick={() => setOffset(0)}>이번 주</button><button aria-label="다음 주" onClick={() => setOffset(v => v + 1)}>→</button></div>
-      <span>네이버클립 · 주 {data.weeklyTarget}개 목표</span>
+      <label className="calendar-channel">채널<select value={channel} onChange={e => setChannel(e.target.value as GoalChannel)}>{goalChannels.map(c => <option key={c} value={c}>{goalChannelLabels[c]}</option>)}</select><span>주 {target}개 목표</span></label>
     </div>
     {[0, 1].map(index => {
-      const week = weekPlan(data, projects, addDays(first, index * 7), channel);
+      const week = weekPlan(data, projects, addDays(first, index * 7), channel, target);
       const label = offset === 0 ? (index ? "다음 주" : "이번 주") : `${dayLabel(week.from)} 주간`;
       return <article className="calendar-week" key={week.from} aria-label={label}>
-        <header><div><h3>{label}</h3><p>{dayLabel(week.from)} – {dayLabel(addDays(week.to, -1))}</p></div><div className="calendar-goal"><strong>{week.published + week.scheduled} / {data.weeklyTarget}</strong><span>게시 {week.published} · 예정 {week.scheduled} · {week.covered ? `남은 ${week.remaining}개` : "예정 일정 미확인"}</span></div></header>
-        {!week.covered && <p className="calendar-coverage">이 주 전체의 Google Calendar 조회 결과가 없어요. 목표 잔여량은 동기화 후 확인해요.</p>}
+        <header><div><h3>{label}</h3><p>{dayLabel(week.from)} – {dayLabel(addDays(week.to, -1))}</p></div><div className="calendar-goal"><strong>{week.published + week.scheduled} / {target}</strong><span>게시 {week.published} · 예정 {week.scheduled} · 남은 {week.remaining}개{week.covered ? "" : " (Google Calendar 미조회)"}</span></div></header>
+        {!week.covered && <p className="calendar-coverage">이 주 전체의 Google Calendar 조회 결과가 없어요. 프로젝트에 기록한 게시·공개 예약만 셌어요.</p>}
         <div className="calendar-days">{Array.from({ length: 7 }, (_, day) => {
           const date = addDays(week.from, day);
           return <section key={date} aria-label={dayLabel(date)}><h4>{dayLabel(date)}</h4>{week.posts.filter(p => p.day === date).map(post => <div className={`calendar-post ${post.status}`} key={post.key}>

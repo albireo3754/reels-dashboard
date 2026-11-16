@@ -1,0 +1,45 @@
+.weekly-goals { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
+.weekly-goals .ui-section-header { margin-bottom: 0; }
+.weekly-goals .ui-notice { margin: 0; }
+/* No boxes: hairline columns and spacing carry the structure (design-system rule 2). */
+.weekly-goal-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2) var(--space-5); }
+.weekly-goal-tile, .booking-row { display: grid; align-content: start; gap: var(--space-2); min-width: 0; padding: var(--space-3) 0 var(--space-1); border-top: 1px solid var(--color-border); }
+.weekly-goal-tile header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.weekly-goal-tile h4 { margin: 0; font-size: var(--text-md); font-weight: 600; }
+.weekly-goal-tile strong { font-size: var(--text-3xl); line-height: 1; font-variant-numeric: tabular-nums; }
+.weekly-goal-tile strong small { font-size: var(--text-md); color: var(--color-text-subtle); font-weight: 500; }
+.weekly-goal-meter { position: relative; display: flex; height: 6px; overflow: hidden; border-radius: 999px; background: var(--color-surface-sunken); }
+.weekly-goal-meter .done { background: var(--color-primary); }
+.weekly-goal-meter .booked { background: var(--color-primary); opacity: .35; }
+.weekly-goal-meta, .weekly-goal-empty { margin: 0; font-size: var(--text-sm); color: var(--color-text-subtle); }
+.weekly-goal-met { color: var(--color-success-text); font-weight: 600; }
+.weekly-goal-fill { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.weekly-goal-fill li, .booking-list li { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--text-base); }
+.weekly-goal-fill li > :first-child, .booking-list li > :nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-goal-fill .ui-badge, .booking-list .ui-badge { flex: none; }
+.weekly-goals-open { display: inline-block; max-width: 100%; min-height: 0; height: auto; padding: 0; border-radius: var(--radius-xs); font: inherit; text-align: left; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-goals-open:hover { background: none; color: var(--color-primary-text); text-decoration: underline; }
+.booking-queue { display: grid; gap: var(--space-2); }
+.booking-queue h4 { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 0 0; font-size: var(--text-md); }
+.booking-queue h4 > span { font-size: var(--text-sm); font-weight: 400; color: var(--color-text-subtle); }
+.booking-help { margin: 0; max-width: 320px; font-size: var(--text-sm); line-height: 1.5; }
+.booking-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: var(--space-2) var(--space-5); }
+.booking-row header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.booking-row h5 { margin: 0; font-size: var(--text-md); font-weight: 600; }
+.booking-count { font-variant-numeric: tabular-nums; font-size: var(--text-base); }
+.booking-state { margin-left: auto; font-size: var(--text-sm); color: var(--color-text-subtle); }
+.booking-row[data-full] .booking-state { color: var(--color-success-text); }
+.booking-list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.booking-list time { flex: none; width: 76px; font-size: var(--text-sm); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.booking-more { justify-self: start; }
+.weekly-target-editor { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
+.weekly-target-editor label { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-subtle); }
+.weekly-target-editor input { width: 72px; }
+.weekly-target-editor small { font-size: var(--text-xs); }
+@media (max-width: 1100px) { .weekly-goal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .booking-rows { grid-template-columns: minmax(0, 1fr); } }
+/* Phone: keep the four goals as a 2x2 glance; each tile shows its first item only. */
+@media (max-width: 600px) {
+  .weekly-goal-tile strong { font-size: var(--text-2xl); }
+  .weekly-goal-fill li:nth-child(n + 2) { display: none; }
+  .booking-list time { width: 64px; }
+}

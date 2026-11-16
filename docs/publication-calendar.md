@@ -1,6 +1,6 @@
 # 게시 캘린더와 외부 서비스
 
-데스크톱 **캘린더** 탭은 이번 주·다음 주 네이버클립 목표를 보여 준다. 기본 주간 목표는 3개, 날짜 경계는 한국시간·월요일이다. 확인된 채널별 게시일과 Google Calendar에서 가져온 향후 게시 일정을 합산한다. 촬영일·프로젝트 날짜를 게시일로 추정하지 않는다. 게시 완료와 예정은 따로 세며, 같은 프로젝트/채널은 중복으로 세지 않는다.
+데스크톱 **캘린더** 탭은 고른 채널(블로그·클립·릴스·쇼츠)의 이번 주·다음 주 목표를 보여 준다. 채널별 주간 목표와 대시보드의 "이번 주 목표"·영상 예약 큐는 [weekly-goals.md](weekly-goals.md)를 따른다. 날짜 경계는 한국시간·월요일이다. 확인된 채널별 게시일, 프로젝트에 기록한 공개 예약, Google Calendar에서 가져온 향후 게시 일정을 합산한다(같은 프로젝트·채널은 프로젝트 기록 우선). 촬영일·프로젝트 날짜를 게시일로 추정하지 않는다. 게시 완료와 예정은 따로 세며, 같은 프로젝트/채널은 중복으로 세지 않는다.
 
 ## 정본과 연결
 
@@ -49,7 +49,7 @@ Linear 입력은 `{url,syncedAt,window,issues}`이고 이슈는 `{id,identifier,
 
 CLI도 같은 도구 계약을 노출한다: `reels get-planning`, `reels sync-planning`. 전체 입력 사용법은 `reels help sync-planning`에서 확인한다. 앱과 MCP를 새 빌드로 다시 시작해야 새 도구가 등록된다.
 
-주간 목표만 바꾸려면 `reels sync-planning --expected-updated-at <현재 updatedAt> --weekly-target 3`처럼 실제 변경 필드를 하나 이상 전달한다. CLI 도움말 예시에도 `--weekly-target 3`을 포함한다. 리비전만 있는 빈 업데이트는 계속 거절한다.
+채널별 주간 목표는 `--weekly-targets '{"blog":2,"naver-clip":3,"instagram":2,"youtube":1}'`로 바꾼다(준 채널만 변경). 예전 `--weekly-target`은 클립 목표다. 주간 목표만 바꾸려면 `reels sync-planning --expected-updated-at <현재 updatedAt> --weekly-target 3`처럼 실제 변경 필드를 하나 이상 전달한다. CLI 도움말 예시에도 `--weekly-target 3`을 포함한다. 리비전만 있는 빈 업데이트는 계속 거절한다.
 
 ## 검증
 

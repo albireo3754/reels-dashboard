@@ -6,6 +6,7 @@ import {
   demoVideo,
 } from "./editor-demo";
 import { emptyPlanning, planningSchema, planningUpdateSchema } from "./planning";
+import { targetFields } from "./weekly-goals";
 import { autopilotStateSchema, computeAutopilotView, defaultAutopilotConfig, emptyAutopilotState } from "./autopilot";
 import { emptyInstagramState, instagramSnapshotSchema, instagramTopicsInput, type InstagramInsightsState } from "./instagram-insights";
 import type {
@@ -339,8 +340,8 @@ export function createDemoBridge(
         const input = planningUpdateSchema.parse(value);
         const current = await this.get();
         if (current.updatedAt !== input.expectedUpdatedAt) throw new Error("STALE_PLANNING");
-        const { expectedUpdatedAt: _, ...changes } = input;
-        const next = planningSchema.parse({ ...current, ...changes, updatedAt: new Date().toISOString() });
+        const { expectedUpdatedAt: _, weeklyTarget: __, weeklyTargets: ___, ...changes } = input;
+        const next = planningSchema.parse({ ...current, ...changes, ...targetFields(current, input), updatedAt: new Date().toISOString() });
         storage?.setItem("reels-planning-demo-v1", JSON.stringify(next));
         return next;
       },
