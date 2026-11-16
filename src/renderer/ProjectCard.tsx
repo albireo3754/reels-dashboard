@@ -85,6 +85,11 @@ export function ProjectCard({
           )}
         </div>
         <p className="project-meta">
+          {project.priority !== undefined && (
+            <span className="priority-indicator" title="작업 순번 (1이 먼저)">
+              순번 {project.priority}
+            </span>
+          )}
           <span>
             {project.dateBasis ? `${dateBasisLabels[project.dateBasis]} ` : ""}
             {project.date || "날짜 미정"}

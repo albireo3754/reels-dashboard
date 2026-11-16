@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { writeFile } from "node:fs/promises";
 import { productionSchema } from "../src/shared/production-project";
-import { localResourcesSchema } from "../src/shared/local-resources";
+import { localResourcesSchema, projectPrioritySchema } from "../src/shared/local-resources";
 import { outboundSchema } from "../src/shared/icloud-delivery";
 import { publicationsSchema } from "../src/shared/publications";
 import { projectDateBases, projectKinds, projectStages } from "../src/shared/contracts";
@@ -10,6 +10,7 @@ const project = z.strictObject({
   title: z.string().max(500),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   kind: z.enum(projectKinds).optional(),
+  priority: projectPrioritySchema.optional(),
   dateBasis: z.enum(projectDateBases).optional(),
   stage: z.enum(projectStages),
   nextAction: z.string().max(2000),

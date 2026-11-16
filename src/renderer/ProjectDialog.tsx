@@ -170,6 +170,23 @@ export function ProjectDialog({
                 ))}
               </select>
             </label>
+            <label title="1이 먼저예요. 순서만 정하고 완료 여부는 바꾸지 않아요. 비우면 순번 없음">
+              작업 순번
+              <input
+                type="number"
+                min={1}
+                max={999}
+                step={1}
+                inputMode="numeric"
+                placeholder="없음"
+                value={project.priority ?? ""}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  set("priority", e.target.value && Number.isInteger(n) && n >= 1 && n <= 999 ? n : undefined);
+                }}
+                disabled={busy}
+              />
+            </label>
           </div>
           <label>
             다음 할 일

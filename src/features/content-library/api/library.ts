@@ -23,7 +23,7 @@ import {
   mediaKind,
   type ContentMediaPage,
 } from "../../../shared/content-media";
-import type { LocalResource, Dashboard } from "../../../shared/contracts";
+import type { LocalResource, Dashboard, Project } from "../../../shared/contracts";
 import {
   contentInputSchema,
   localPathSchema,
@@ -228,12 +228,16 @@ export class ContentLibrary {
       const still = new Set((old?.resources ?? []).map(key));
       if ([...kept].some((k) => !still.has(k)))
         throw new Error("MISSING_RESOURCE: 없는 파일은 이미 연결돼 있던 자료로만 남길 수 있어요.");
-      const project = {
+      const { priority, ...rest } = input;
+      const project: Project = {
         ...old,
-        ...input,
+        ...rest,
         resources,
         shared: old?.shared ?? false,
       };
+      // Omitted keeps the stored order, null clears it.
+      if (priority === null) delete project.priority;
+      else if (priority !== undefined) project.priority = priority;
       current.projects = old
         ? current.projects.map((p) => (p.id === input.id ? project : p))
         : [...current.projects, project];

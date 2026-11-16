@@ -10,7 +10,11 @@ import {
   publicationOn,
   type PublicationChannel,
 } from "../../../shared/publications";
-import { isActiveState, projectState } from "../../../shared/project-state";
+import {
+  isActiveState,
+  projectState,
+  type ProjectState,
+} from "../../../shared/project-state";
 
 export const channelLabels = {
   all: "모든 채널",
@@ -65,6 +69,14 @@ export function parseBoardQuery(value: unknown): BoardQuery {
   return result;
 }
 const normalize = (v: string) => v.normalize("NFKC").toLocaleLowerCase("ko");
+/** What needs the user first; then work in progress; booked and finished work last. */
+const stateOrder: Record<ProjectState, number> = {
+  review: 0,
+  channel_pending: 0,
+  in_progress: 1,
+  scheduled: 2,
+  complete: 3,
+};
 const priority: Record<Stage, number> = {
   review: 0,
   editing: 1,
@@ -118,13 +130,21 @@ export function selectBoardProjects(
     );
     return words.every((word) => text.includes(word));
   });
+  const states = new Map(selected.map((p) => [p.id, projectState(p, now).state]));
   return selected.sort((a, b) => {
     const title = () =>
       a.title.localeCompare(b.title, "ko", { numeric: true }) ||
       a.id.localeCompare(b.id);
     if (query.sort === "title") return title();
-    if (query.sort === "priority" && a.stage !== b.stage)
-      return priority[a.stage] - priority[b.stage];
+    if (query.sort === "priority") {
+      // State first (needs the user > in progress > booked > done), then the user's own order
+      // (numbered before unnumbered), then the stage.
+      const order =
+        stateOrder[states.get(a.id)!] - stateOrder[states.get(b.id)!] ||
+        (a.priority ?? Infinity) - (b.priority ?? Infinity) ||
+        priority[a.stage] - priority[b.stage];
+      if (order) return order;
+    }
     // Missing dates stay last in both directions; record dates are never treated as publication dates.
     if (!a.date || !b.date) return Number(!a.date) - Number(!b.date) || title();
     const date = a.date.localeCompare(b.date);

@@ -392,6 +392,10 @@
 .share-indicator::before {
   content: "· ";
 }
+.priority-indicator {
+  color: var(--color-text);
+  font-weight: 600;
+}
 .project-meta a {
   font-size: var(--text-sm);
 }

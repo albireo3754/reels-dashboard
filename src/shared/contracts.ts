@@ -57,6 +57,8 @@ export interface Project {
   id: string;
   /** Omitted means `content`. */
   kind?: ProjectKind;
+  /** The user's own working order: 1 comes first. Only orders work; it never changes whether a project is done. */
+  priority?: number;
   title: string;
   date: string;
   stage: Stage;

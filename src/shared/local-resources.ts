@@ -27,6 +27,9 @@ export const localResourcesSchema = z
   )
   .max(500);
 
+/** A project's place in the user's own working order. */
+export const projectPrioritySchema = z.number().int().min(1).max(999);
+
 export const contentInputSchema = z.strictObject({
   id: z
     .string()
@@ -39,6 +42,8 @@ export const contentInputSchema = z.strictObject({
   stage: z.enum(projectStages),
   /** Omit to keep the stored kind (new entries are `content`). */
   kind: z.enum(projectKinds).optional(),
+  /** The user's working order (1 first). Omit to keep the stored one, `null` to clear it. */
+  priority: projectPrioritySchema.nullable().optional(),
   nextAction: z.string().max(2000),
   publicURL: z.string().max(2048),
   localNotes: z.string().max(4000),

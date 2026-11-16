@@ -2,7 +2,7 @@ import {
   productionSchema,
   validateProductionLinks,
 } from "./production-project";
-import { localResourcesSchema } from "./local-resources";
+import { localResourcesSchema, projectPrioritySchema } from "./local-resources";
 import { outboundSchema } from "./icloud-delivery";
 import { publicationsSchema } from "./publications";
 import {
@@ -51,9 +51,12 @@ export function validateDashboard(value: unknown): Dashboard {
       throw new Error("Invalid project date");
     if (p.kind !== undefined && !(projectKinds as readonly unknown[]).includes(p.kind))
       throw new Error("Invalid project kind");
+    if (p.priority !== undefined && !projectPrioritySchema.safeParse(p.priority).success)
+      throw new Error("Invalid project priority");
     return {
       id,
       ...(p.kind !== undefined ? { kind: p.kind as Project["kind"] } : {}),
+      ...(p.priority !== undefined ? { priority: p.priority as number } : {}),
       ...(p.outbound !== undefined ? { outbound: outboundSchema.parse(p.outbound) } : {}),
       ...(p.production !== undefined
         ? { production: productionSchema.parse(p.production) }
