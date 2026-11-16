@@ -49,6 +49,12 @@ const httpURL = z
 
 export const scheduledAtSchema = z.iso.datetime({ offset: true });
 
+/** YouTube only: a long-form video or a Short. Omitted means long-form; only `shorts` counts toward the Shorts goal. */
+export const videoFormats = ["long", "shorts"] as const;
+export type VideoFormat = (typeof videoFormats)[number];
+export const videoFormatLabels: Record<VideoFormat, string> = { long: "본편", shorts: "쇼츠" };
+export const isShorts = (p: Pick<Publication, "channel" | "format">) => p.channel === "youtube" && p.format === "shorts";
+
 export const publicationSchema = z.strictObject({
   channel: z.enum(publicationChannels),
   status: z.enum(publicationStatuses),
@@ -61,6 +67,8 @@ export const publicationSchema = z.strictObject({
     .optional(),
   /** The booked publish time with its UTC offset; only for `scheduled`, and required there. */
   scheduledAt: scheduledAtSchema.optional(),
+  /** YouTube only; see videoFormats. */
+  format: z.enum(videoFormats).optional(),
 });
 export type Publication = z.infer<typeof publicationSchema>;
 
@@ -78,6 +86,10 @@ export const publicationsSchema = z
   .refine(
     (list) => list.every((p) => (p.status === "scheduled") === Boolean(p.scheduledAt)),
     "공개 예약 채널에는 예약 시각이 필요하고, 다른 상태에는 넣을 수 없어요.",
+  )
+  .refine(
+    (list) => list.every((p) => p.channel === "youtube" || !p.format),
+    "본편·쇼츠 구분은 유튜브 채널에만 넣을 수 있어요.",
   );
 
 type WithPublications = { publications?: Publication[] };

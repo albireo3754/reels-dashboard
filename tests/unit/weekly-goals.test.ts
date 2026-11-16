@@ -16,6 +16,8 @@ const project = (id: string, publications: Publication[], extra: Partial<Project
 const scheduled = (channel: Publication["channel"], at: string): Publication => ({ channel, status: "scheduled", url: "", scheduledAt: at });
 const published = (channel: Publication["channel"], day: string): Publication => ({ channel, status: "published", url: "", publishedAt: day });
 const planned = (channel: Publication["channel"], status: "planned" | "draft" = "planned"): Publication => ({ channel, status, url: "" });
+/** A YouTube entry marked as a Short; only these count toward the Shorts goal. */
+const short = (p: Publication): Publication => ({ ...p, format: "shorts" });
 
 test("targets: defaults per channel, the older clip target when nothing per channel was saved", () => {
   assert.deepEqual(defaultWeeklyTargets, { blog: 2, "naver-clip": 3, instagram: 2, youtube: 1 });
@@ -68,7 +70,7 @@ test("week goals: per-channel counts, totals capped at the target, candidates in
     project("reel-1", [published("instagram", "2026-11-16")], { stage: "published" }),
     project("reel-2", [published("instagram", "2026-11-18")], { stage: "published" }),
     project("reel-3", [published("instagram", "2026-11-19")], { stage: "published" }),
-    project("short", [planned("youtube")], { stage: "captured" }),
+    project("short", [short(planned("youtube"))], { stage: "captured" }),
     project("finished", [planned("blog")], { stage: "done" }),
   ];
   const goals = weekGoals(emptyPlanning(), projects, "2026-11-16", now);
@@ -125,7 +127,7 @@ test("booking queue: at most two weeks of posts, never a slot past 14 days, noth
   ], now).channels.find(c => c.channel === "instagram")!;
   assert.deepEqual([full.open, full.full, full.slots.length], [0, true, 0]);
 
-  const far = bookingQueue(planning, [project("far", [scheduled("youtube", "2026-12-10T19:00:00+09:00")]), project("s2", [planned("youtube")])], now)
+  const far = bookingQueue(planning, [project("far", [short(scheduled("youtube", "2026-12-10T19:00:00+09:00"))]), project("s2", [short(planned("youtube"))])], now)
     .channels.find(c => c.channel === "youtube")!;
   assert.deepEqual([far.booked.length, far.beyond.length, far.open], [0, 1, 1], "a booking past the horizon still uses the cap");
 });

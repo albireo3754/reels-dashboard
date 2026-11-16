@@ -10,6 +10,9 @@ import {
   publicationChannels,
   publicationOn,
   publicationStatusLabels,
+  videoFormatLabels,
+  videoFormats,
+  type VideoFormat,
   type Publication,
   type PublicationChannel,
 } from "../shared/publications";
@@ -253,6 +256,21 @@ export function ProjectDialog({
                     }
                     disabled={busy || entry?.status !== "published"}
                   />
+                  {channel === "youtube" && entry && (
+                    <select
+                      aria-label="유튜브 본편·쇼츠"
+                      title="쇼츠만 주간 쇼츠 목표에 들어가요"
+                      value={entry.format ?? "long"}
+                      onChange={(e) => setChannel(channel, { format: e.target.value as VideoFormat })}
+                      disabled={busy}
+                    >
+                      {videoFormats.map((f) => (
+                        <option value={f} key={f}>
+                          {videoFormatLabels[f]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {entry?.status === "scheduled" && (
                     <input
                       type="datetime-local"

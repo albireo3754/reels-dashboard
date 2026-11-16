@@ -108,7 +108,7 @@ export function ProjectCard({
                 p.channel === "instagram" && p.status === "planned"
                   ? readiness
                   : undefined;
-              const label = `${publicationChannelLabels[p.channel]} · ${
+              const label = `${publicationChannelLabels[p.channel]}${p.channel === "youtube" && p.format === "shorts" ? " 쇼츠" : ""} · ${
                 p.status === "published" && p.publishedAt
                   ? `${p.publishedAt} 게시`
                   : p.status === "scheduled" && p.scheduledAt

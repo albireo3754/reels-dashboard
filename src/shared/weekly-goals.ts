@@ -2,7 +2,11 @@ import type { z } from "zod";
 import type { Project, Stage } from "./contracts";
 import { addDays, weekStart, seoulDate, weekPlan, weeklyTargetsSchema, type Planning, type PlannedPost, type PlanningUpdate } from "./planning";
 import { projectState } from "./project-state";
-import type { PublicationChannel } from "./publications";
+import { isShorts, type Publication, type PublicationChannel } from "./publications";
+
+/** The entry that counts for a goal channel: YouTube counts Shorts only. */
+const goalEntry = (p: Project, channel: PublicationChannel): Publication | undefined =>
+  p.publications?.find(x => x.channel === channel && (channel !== "youtube" || isShorts(x)));
 
 /**
  * The weekly rhythm: how many posts each channel should get per week, what is still missing this
@@ -75,7 +79,7 @@ function pendingFor(projects: Project[], channel: PublicationChannel, now: Date)
   const planned = projects
     .filter(p => projectState(p, now).state !== "complete")
     .flatMap(p => {
-      const entry = p.publications?.find(x => x.channel === channel);
+      const entry = goalEntry(p, channel);
       return entry && (entry.status === "planned" || entry.status === "draft") ? [{ p, status: entry.status }] : [];
     })
     .sort((a, b) => byWorkOrder(a.p, b.p))
@@ -138,12 +142,12 @@ export function bookingQueue(planning: Planning, projects: Project[], now: Date 
     for (const event of planning.calendar?.events ?? []) {
       if (event.cancelled || event.channel !== channel || Date.parse(event.start) <= now.getTime()) continue;
       const project = projects.find(p => p.id === event.projectId);
-      if (project?.publications?.some(p => p.channel === channel && p.status === "published")) continue;
+      if (project && goalEntry(project, channel)?.status === "published") continue;
       all.set(event.projectId, { projectId: event.projectId, title: project?.title ?? event.title, at: event.start, day: dayOf(event.start), source: "calendar" });
     }
     // A booking recorded on the project is the latest word on that project's time.
     for (const project of projects) {
-      const entry = project.publications?.find(p => p.channel === channel);
+      const entry = goalEntry(project, channel);
       if (entry?.status !== "scheduled" || !entry.scheduledAt || Date.parse(entry.scheduledAt) <= now.getTime()) continue;
       all.set(project.id, { projectId: project.id, title: project.title, at: entry.scheduledAt, day: dayOf(entry.scheduledAt), source: "dashboard" });
     }

@@ -264,6 +264,7 @@ export class ContentLibrary {
             ? "PROJECT_MERGED: 합쳐진 ID예요. 대표 프로젝트 ID를 사용해주세요."
             : "CONTENT_NOT_FOUND: 등록한 콘텐츠를 찾지 못했어요.",
         );
+      const format = input.format ?? old.publications?.find((p) => p.channel === input.channel)?.format;
       const publications =
         input.status === "none"
           ? withoutPublication(old.publications, input.channel)
@@ -273,6 +274,7 @@ export class ContentLibrary {
               url: input.url ?? "",
               ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
               ...(input.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
+              ...(format ? { format } : {}),
             });
       const { publications: _previous, ...rest } = old;
       const project = {

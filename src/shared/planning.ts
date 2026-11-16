@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Project } from "./contracts";
-import { publicationChannels, type PublicationChannel } from "./publications";
+import { isShorts, publicationChannels, type Publication, type PublicationChannel } from "./publications";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -104,19 +104,21 @@ export interface PlannedPost { key: string; projectId: string; title: string; da
 /** `target` defaults to the older single target; callers that know the channel's own target pass it. */
 export function weekPlan(planning: Planning, projects: Project[], from: string, channel: PublicationChannel, target: number = planning.weeklyTarget) {
   const to = addDays(from, 7);
+  // The YouTube goal is Shorts: a long-form video (format omitted or long) is not counted.
+  const on = (p: Publication) => p.channel === channel && (channel !== "youtube" || isShorts(p));
   const rows = new Map<string, PlannedPost>();
   // Calendar dates are authoritative for upcoming events; project.date is never used.
   for (const event of planning.calendar?.events ?? []) {
     const day = seoulDate(event.start);
     if (event.cancelled || event.channel !== channel || day < from || day >= to) continue;
     const project = projects.find(p => p.id === event.projectId);
-    if (project?.publications?.some(p => p.channel === channel && p.status === "published")) continue;
+    if (project?.publications?.some(p => on(p) && p.status === "published")) continue;
     const key = `${event.projectId}:${channel}`;
     rows.set(key, { key, projectId: event.projectId, title: project?.title ?? event.title, day, start: event.start, status: "planned", url: event.url });
   }
   // A booking recorded on the project wins over the calendar copy of the same project.
   for (const project of projects) {
-    const booked = project.publications?.find(p => p.channel === channel && p.status === "scheduled");
+    const booked = project.publications?.find(p => on(p) && p.status === "scheduled");
     if (!booked?.scheduledAt) continue;
     const day = seoulDate(booked.scheduledAt);
     const key = `${project.id}:${channel}`;
@@ -124,7 +126,7 @@ export function weekPlan(planning: Planning, projects: Project[], from: string, 
     rows.set(key, { key, projectId: project.id, title: project.title, day, start: booked.scheduledAt, status: "planned", url: rows.get(key)?.url ?? "" });
   }
   for (const project of projects) {
-    const post = project.publications?.find(p => p.channel === channel && p.status === "published");
+    const post = project.publications?.find(p => on(p) && p.status === "published");
     if (!post?.publishedAt || post.publishedAt < from || post.publishedAt >= to) continue;
     const key = `${project.id}:${channel}`;
     rows.set(key, { key, projectId: project.id, title: project.title, day: post.publishedAt, status: "published", url: post.url });

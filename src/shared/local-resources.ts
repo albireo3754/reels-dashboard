@@ -63,12 +63,15 @@ export const setPublicationSchema = z
     url: publicationSchema.shape.url.optional(),
     publishedAt: publicationSchema.shape.publishedAt,
     scheduledAt: publicationSchema.shape.scheduledAt,
+    /** YouTube only. Omit to keep the stored format. */
+    format: publicationSchema.shape.format,
   })
   .refine(
     (v) =>
       (v.status === "published" || !v.publishedAt) &&
       (v.status !== "none" || !v.url) &&
-      (v.status === "scheduled") === Boolean(v.scheduledAt),
-    "게시일은 게시 완료에만, 예약 시각은 공개 예약에만(필수), 링크는 채널을 둘 때만 넣을 수 있어요.",
+      (v.status === "scheduled") === Boolean(v.scheduledAt) &&
+      (v.channel === "youtube" || !v.format),
+    "게시일은 게시 완료에만, 예약 시각은 공개 예약에만(필수), 링크는 채널을 둘 때만, 본편·쇼츠 구분은 유튜브에만 넣을 수 있어요.",
   );
 export type SetPublicationInput = z.infer<typeof setPublicationSchema>;
