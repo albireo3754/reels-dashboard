@@ -76,8 +76,44 @@ export const foodFocusTemplate = {
   },
 } as const;
 
+export const letterboxShortsTemplate = {
+  ...travelCaptionTemplate,
+  id: "letterbox-shorts-v1",
+  name: "가로 영상·상하단 자막 쇼츠",
+  fps: 60,
+  audio: "source",
+  showPlace: false,
+  videoViewport: { width: 1080, height: 608 },
+  layers: {
+    title: {
+      y: -505,
+      size: 6.4,
+      scale: 0.66,
+      color: "#ffffff",
+      background: "#000000",
+    },
+    place: travelCaptionTemplate.layers.place,
+    caption: {
+      y: 465,
+      size: 5,
+      scale: 0.6,
+      color: "#ffffff",
+      background: "#000000",
+    },
+    note: {
+      y: 595,
+      size: 3.4,
+      scale: 0.55,
+      color: "#dddddd",
+      background: "#000000",
+    },
+  },
+} as const;
+
 export const openCutTemplates = {
   [travelCaptionTemplate.id]: travelCaptionTemplate,
   [foodFocusTemplate.id]: foodFocusTemplate,
+  [letterboxShortsTemplate.id]: letterboxShortsTemplate,
 } as const;
-export type OpenCutTemplate = (typeof openCutTemplates)[keyof typeof openCutTemplates];
+export type OpenCutTemplate =
+  (typeof openCutTemplates)[keyof typeof openCutTemplates];

@@ -11,11 +11,16 @@
 
 앱에 별도 할 일 편집기·캘린더 서버를 만들지 않았다. **이 버전은 연결 세션을 통한 가져오기 방식이며, 앱 자체 OAuth·자동 폴링·양방향 동기화는 없다.** 상단에는 각 서비스의 마지막 조회 시각을 표시한다. `새로고침`은 로컬의 최신 가져오기 결과를 읽는다. 조회 범위 밖 주에는 예정 일정과 목표 잔여량을 미확인으로 표시한다. 게시 개수는 실제 알려진 기록만 표시한다.
 
+## Linear 선택 필드와 triage
+
+`linear.issues[]`의 `state`는 `triage`(Linear Inbox)를 포함해 `triage|backlog|unstarted|started|completed|canceled|duplicate`다. 퇴근 후 autopilot이 순위를 계산할 수 있도록 선택 필드 `stateName`(예: "In Review", "검토 필요"), `priority`(0 없음, 1 urgent … 4 low), `createdAt`·`updatedAt`·`startedAt`, `blockedBy`(미완료 차단 이슈 identifier), `subIssues`(`{open,total}`), `projectId`(연결된 Dashboard project id)를 넣을 수 있다. 모두 선택이라 이전에 저장한 `planning.json`은 그대로 읽힌다. 캘린더의 Linear 목록은 triage와 "리뷰"가 이름에 든 started를 "리뷰 대기", 그 밖의 started를 "진행 중"으로 표시한다. 분류와 큐 규칙은 [autopilot.md](autopilot.md)를 따른다.
+
 ## MCP / CLI 동기화
 
 1. 연결된 Google Calendar/Linear 도구로 필요한 주의 데이터를 조회한다. Calendar는 게시 일정만, Linear는 콘텐츠 팀의 이슈만 선택한다. 계정의 다른 일정·할 일을 통째로 가져오지 않는다.
 2. `reels_get_planning`으로 로컬 `updatedAt`을 조회한다.
-3. `reels_sync_planning`에 `expectedUpdatedAt`과 `calendar` 또는 `linear`를 넣는다. 각 provider에는 실제 `syncedAt`, 조회 구간 `{from,to}`(날짜·끝 제외), 실제 ID/URL과 결과 배열을 넣는다. 조회한 전체 구간을 페이지 끝까지 확인한 뒤 `window`를 기록한다.
+3. (Claude `claude.ai Linear` 커넥터 재인증으로 하는 **수동 sync**다. 자동 tick의 갱신은 Keychain API 키를 쓰는 `reels autopilot refresh-linear`이며 서로 다른 인증이다. [autopilot.md](autopilot.md#linear-자동-갱신-모델-호출-0)) `reels_sync_planning`에 `expectedUpdatedAt`과 `calendar` 또는 `linear`를 넣는다. 각 provider에는 실제 `syncedAt`, 조회 구간 `{from,to}`(날짜·끝 제외), 실제 ID/URL과 결과 배열을 넣는다. 조회한 전체 구간을 페이지 끝까지 확인한 뒤 `window`를 기록한다.
+   Linear 이슈에는 가능한 한 선택 필드도 채운다. `state`는 Linear 상태 타입(Inbox는 `triage`), `stateName`은 화면에 보이는 상태 이름 그대로, `priority`는 Linear 숫자(0~4), `createdAt`·`updatedAt`·`startedAt`은 이슈의 ISO 시각, `blockedBy`는 아직 끝나지 않은 차단 이슈의 identifier 배열, `subIssues`는 `{open,total}`, `projectId`는 이슈 설명·첨부에 `dashboard:<projectId>`로 적힌 Dashboard 항목 id(없으면 생략)다. 값을 모르면 필드를 생략한다. 추정해서 채우지 않는다. `dueDate`가 없는 이슈도 빼지 않고 보낸다(주간 목록만 숨긴다). 선택 필드 `description`에는 이슈 본문을 넣을 수 있고, autopilot 워커가 제목만이 아니라 원문에서 시작하는 데 쓴다.
 4. 주어진 provider만 전체 교체하고 생략한 provider는 보존한다. 취소/삭제된 일정을 반영하려면 새 전체 결과에서 제거하거나 `cancelled:true`로 보낸다. 이전 조회 결과·동시 수정 리비전은 거절한다.
 5. 앱에서 새로고침하거나 탭을 다시 열고 확인한다. 도구는 외부 서비스에 이벤트·이슈를 만들거나 네이버에 게시하지 않는다.
 
@@ -40,7 +45,7 @@
 }
 ```
 
-Linear 입력은 `{url,syncedAt,window,issues}`이고 이슈는 `{id,identifier,title,url,dueDate,state}`다. `dueDate` 없는 이슈는 주간 마감 목록에 포함하지 않는다. `state`는 Linear의 상태 타입(backlog/unstarted/started/completed/canceled)을 그대로 사용한다. API·커넥터 실패를 빈 목록 성공으로 저장하지 않는다.
+Linear 입력은 `{url,syncedAt,window,issues}`이고 이슈는 `{id,identifier,title,url,dueDate,state}`다. `dueDate` 없는 이슈는 주간 마감 목록에 포함하지 않는다. `state`는 Linear의 상태 타입(triage/backlog/unstarted/started/completed/canceled/duplicate)을 그대로 사용한다. API·커넥터 실패를 빈 목록 성공으로 저장하지 않는다.
 
 CLI도 같은 도구 계약을 노출한다: `reels get-planning`, `reels sync-planning`. 전체 입력 사용법은 `reels help sync-planning`에서 확인한다. 앱과 MCP를 새 빌드로 다시 시작해야 새 도구가 등록된다.
 

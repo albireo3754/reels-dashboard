@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { projectStages, projectStageLabels } from "../../src/shared/contracts";
 import { projectNextActionGuide } from "../../src/shared/project-next-action";
 
-test("all six stages provide distinct next steps and workflow completion guidance", () => {
+test("every stage provides distinct next steps and workflow completion guidance", () => {
   const guides = projectStages.map((stage) =>
     projectNextActionGuide({ stage, nextAction: "" }),
   );
@@ -15,10 +15,11 @@ test("all six stages provide distinct next steps and workflow completion guidanc
     assert.match(guides[i], /최신 저장 상태/);
     assert.ok(guides[i].length < 8000);
   });
-  assert.match(guides[1], /맥락 준비 절차/);
-  assert.match(guides[3], /저장 전 변경과 진행 중 렌더/);
-  assert.match(guides[4], /임의로 고치지 말고/);
-  assert.match(guides[5], /재게시하지 말고/);
+  assert.match(guides[projectStages.indexOf("captured")], /맥락 준비 절차/);
+  assert.match(guides[projectStages.indexOf("editing")], /저장 전 변경과 진행 중 렌더/);
+  assert.match(guides[projectStages.indexOf("review")], /임의로 고치지 말고/);
+  assert.match(guides[projectStages.indexOf("published")], /재게시하지 말고/);
+  assert.match(guides[projectStages.indexOf("done")], /작업 완료를 게시 완료로 바꾸지 마세요/);
 });
 
 test("guide preserves next action as data and handles a published project with pending channels", () => {

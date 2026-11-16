@@ -42,6 +42,7 @@ export const cliOptions = {
   reels_start_render: { wait: true, sample: { outputPath: "/abs/new.mov" } },
   reels_get_render_job: { wait: true },
   reels_update_project: { sample: { patch: `'{"cover":{"time":7.25}}'` } },
+  reels_photos_find: { sample: { date: "2026-01-15", mediaKind: "video", minDuration: "90", maxDuration: "150" } },
   reels_photos_search: { sample: { text: "cafe" } },
   reels_sync_planning: { sample: { weeklyTarget: "3" } },
   reels_set_instagram_topics: { sample: { topics: `'{"123":"Example topic"}'` } },

@@ -106,3 +106,14 @@ test("export upsert dates new projects in local time, keeps published state and 
   assert.deepEqual(again.resources?.map((r) => r.label), ["c", "v1"]);
   assert.equal(again.production!.exports.length, 1); // same output path is recorded once
 });
+
+test("re-exporting a done project keeps it done with its next action", () => {
+  const edit = { kind: "video" as const, id: "edit-done" };
+  const out = { role: "final" as const, path: "/tmp/out-done.mp4", label: "v6" };
+  const update = { title: "clip", stage: "review" as const, nextAction: "check", resources: [out], exported: [out] };
+  const created = upsertExportedProject(board([]), edit, update, new Date(), randomUUID).projects[0];
+  const done = { ...created, stage: "done" as const, nextAction: "작업 완료(사용자 확인)" };
+  const again = upsertExportedProject(board([done]), edit, update, new Date(), randomUUID).projects[0];
+  assert.equal(again.stage, "done");
+  assert.equal(again.nextAction, "작업 완료(사용자 확인)");
+});

@@ -27,6 +27,13 @@ import { localPathSchema } from "../../shared/local-resources";
 import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
 import { engines, version } from "../../../package.json";
 import { agentGuide } from "./agent-guide";
+import {
+  autopilotCommand,
+  autopilotHelp,
+  autopilotUsage,
+  autopilotValueWords,
+  autopilotWords,
+} from "./autopilot";
 import { runtimeCheck, setupChecks, type Check } from "./doctor";
 import {
   completionScript,
@@ -1032,6 +1039,21 @@ Example: reels collect-instagram-insights --source scheduled`,
     }
   },
 } satisfies Builtin;
+const autopilotBuiltin = {
+  name: "autopilot",
+  usage: autopilotUsage,
+  help: autopilotHelp,
+  summary:
+    "After-work queue: status, tick with at most 3 automatic reservations, manual runs, one item for today. Works without the app.",
+  completions: autopilotWords,
+  completionValues: autopilotValueWords,
+  run: (args, { io, scope }) =>
+    autopilotCommand(
+      args,
+      { root: profileRoot(io), env: io.env, script: io.script, interactive: Boolean(io.stdin().isTTY) && Boolean(process.stdout.isTTY) },
+      scope,
+    ),
+} satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
   { name: "exit-codes", run: exitCodeHelp },
   {
@@ -1089,6 +1111,7 @@ export const builtins: readonly Builtin[] = [
   callCommand,
   prepareMediaCommand,
   collectInstagramCommand,
+  autopilotBuiltin,
   helpCommand,
   completionCommand,
 ];

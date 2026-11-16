@@ -33,6 +33,7 @@ export function buildOpenCutProject(
   if (!textBase)
     throw new Error("Add one default text element in OpenCut first.");
   let cursor = 0;
+  const sourceAudio = style.audio === "source";
   const cuts = recipe.cuts.map((c) => {
     const matches = media.filter((m) => m.name === c.file);
     if (matches.length !== 1)
@@ -56,6 +57,31 @@ export function buildOpenCutProject(
     const base = elements.find((e: any) => e.type === m.type);
     if (!base) throw new Error(`Add one ${m.type} element in OpenCut first.`);
     const e = structuredClone(base);
+    let scale = c.scale;
+    if ("videoViewport" in style) {
+      if (
+        !m.width ||
+        !m.height ||
+        !Number.isFinite(m.width) ||
+        !Number.isFinite(m.height) ||
+        m.width <= 0 ||
+        m.height <= 0
+      )
+        throw new Error(`Media dimensions required for letterbox: ${c.file}`);
+      if (c.scale !== 1 || c.x !== 0 || c.y !== 0)
+        throw new Error(
+          "Letterbox viewport owns clip placement; prepare source crops before importing.",
+        );
+      const canvasFit = Math.min(
+        style.canvas.width / m.width,
+        style.canvas.height / m.height,
+      );
+      const viewportFit = Math.min(
+        style.videoViewport.width / m.width,
+        style.videoViewport.height / m.height,
+      );
+      scale = viewportFit / canvasFit;
+    }
     // Content-specific effects, animation and old retiming must not leak into a new recipe.
     for (const key of ["effects", "animations", "keyframes", "masks", "retime"])
       delete e[key];
@@ -71,8 +97,8 @@ export function buildOpenCutProject(
       opacity: 1,
       blendMode: "normal",
       transform: {
-        scaleX: c.scale,
-        scaleY: c.scale,
+        scaleX: scale,
+        scaleY: scale,
         position: { x: c.x, y: c.y },
         rotate: 0,
       },
@@ -83,9 +109,9 @@ export function buildOpenCutProject(
         trimEnd: Math.round(
           (m.duration! - c.sourceIn - c.length * c.rate) * 120000,
         ),
-        muted: true,
-        isSourceAudioEnabled: false,
-        volume: 0,
+        muted: !sourceAudio,
+        isSourceAudioEnabled: sourceAudio,
+        volume: sourceAudio ? 1 : 0,
         retime: { rate: c.rate, maintainPitch: false },
       });
     cursor += c.length;
@@ -94,7 +120,10 @@ export function buildOpenCutProject(
   const edge = "titleOnEdgesSeconds" in style ? style.titleOnEdgesSeconds : 0;
   const headerWindows =
     edge > 0 && cursor > edge * 2
-      ? [{ start: 0, end: edge }, { start: cursor - edge, end: cursor }]
+      ? [
+          { start: 0, end: edge },
+          { start: cursor - edge, end: cursor },
+        ]
       : [{ start: 0, end: cursor }];
   const layers = [
     {
@@ -105,7 +134,10 @@ export function buildOpenCutProject(
     {
       name: "상단 장소",
       style: style.layers.place,
-      cues: headerWindows.map((window) => ({ ...window, text: recipe.place })),
+      cues:
+        "showPlace" in style && !style.showPlace
+          ? []
+          : headerWindows.map((window) => ({ ...window, text: recipe.place })),
     },
     { name: "본문 자막", style: style.layers.caption, cues: recipe.captions },
     { name: "부가 정보", style: style.layers.note, cues: recipe.notes },
@@ -165,7 +197,11 @@ export function buildOpenCutProject(
         });
       }),
     }));
-  Object.assign(tracks.main, { elements: cuts, muted: true, hidden: false });
+  Object.assign(tracks.main, {
+    elements: cuts,
+    muted: !sourceAudio,
+    hidden: false,
+  });
   tracks.audio = [];
   Object.assign(project.settings, {
     canvasSize: { ...style.canvas },
@@ -174,7 +210,7 @@ export function buildOpenCutProject(
     fps: { numerator: style.fps, denominator: 1 },
     background: { type: "color", color: "#000000" },
   });
-  project.metadata.name = `${recipe.place} · ${style.name}`;
+  project.metadata.name = `${recipe.place || recipe.title.replaceAll("\n", " ")} · ${style.name}`;
   project.metadata.duration = Math.round(cursor * 120000);
   project.metadata.updatedAt = new Date().toISOString();
   scene.updatedAt = project.metadata.updatedAt;

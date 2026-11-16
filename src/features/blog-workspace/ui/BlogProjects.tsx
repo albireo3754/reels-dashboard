@@ -12,7 +12,7 @@ const shortDate=(day:string)=>{
 };
 
 /** 진행 중 행의 블로그 채널 상태: 기록이 없으면 그대로 말해 실제 게시 여부를 카드에서 확인하게 한다. */
-const progressNote=(project:CanonicalBlogProject)=>project.blog?.status==='draft'?'블로그 임시저장':project.blog?.status==='planned'?'블로그 게시 예정':'블로그 게시 기록 없음';
+const progressNote=(project:CanonicalBlogProject)=>project.blog?.status==='draft'?'블로그 임시저장':project.blog?.status==='scheduled'?'블로그 공개 예약':project.blog?.status==='planned'?'블로그 게시 예정':'블로그 게시 기록 없음';
 
 /** 진행 중은 제목순 그대로, 게시 완료는 최근 게시일 순. */
 const byPublished=(a:CanonicalBlogProject,b:CanonicalBlogProject)=>(b.blog?.publishedAt??'').localeCompare(a.blog?.publishedAt??'');

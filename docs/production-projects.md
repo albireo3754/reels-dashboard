@@ -71,6 +71,17 @@
 - `publicURL`은 채널 항목이 없는 기존 프로젝트의 링크로 계속 쓴다. 채널 항목이 있으면 카드에는 채널 칩의 링크만 보인다. 기존 값을 채널 항목으로 자동 변환하지 않는다. 어느 채널 링크인지 추측하지 않기 위해서다.
 - 이 필드는 기록이다. 게시·업로드·게시 여부 확인을 하지 않으며 공유 snapshot에 포함하지 않는다. 산출물(kind)별 편집 데이터·레퍼런스 분리는 여전히 계획 단계다.
 
+### 작업 완료·공개 예약·운영 종류 — 2026-11-16 구현
+
+현재 데이터의 불일치(완료한 작업이 게시 전 채널 때문에 다시 대기, 예약을 nextAction 문구로 판정, 운영 일을 소재 카드로 등록)를 정리하려고 최소 확장했다.
+
+- `stage: done`(작업 완료): 제작·확인 작업이 끝나 큐에 다시 올리지 않는다. 채널 상태는 바꾸지 않으므로 게시 링크·게시일을 만들지 않는다. 재출력해도 done과 다음 할 일이 유지된다.
+- `publications[].status: scheduled` + `scheduledAt`(오프셋 포함 ISO 시각, scheduled에만 필수): 채널에 공개 예약됨. 시각이 지나도 published로 바꾸지 않고 `scheduledPast`로 알린다.
+- 채널 `youtube` 추가.
+- `kind: operation`(생략 = content): 주간 업로드 큐, 시리즈 채택 결정, 신청, 자료 정리처럼 소재가 아닌 일.
+- 판정은 [project-state.ts](../src/shared/project-state.ts) 하나다. done → complete. 아직 갈 채널이 있고 전부 scheduled → scheduled(단계 무관). published에서 남은 채널이 planned·draft면 channel_pending, 없으면 complete. 그 밖은 review·in_progress. `needsUserReview`는 review와 channel_pending이다. 보드의 진행 중·완료 필터, 상단 요약, autopilot 큐(연결된 Linear 이슈 포함), `reels list-projects`의 `projectStates[]`가 모두 이 함수를 쓴다.
+- 단계·종류·날짜 기준 목록은 contracts.ts 상수 하나에서 저장 검증(data.ts)·CLI/MCP 입력(local-resources.ts)·JSON Schema 생성(scripts/write-project-schema.ts)이 가져간다.
+
 ## 앱 사용법
 
 ### 프로젝트 터미널 — 2026-11-12

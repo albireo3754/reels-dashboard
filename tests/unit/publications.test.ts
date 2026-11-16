@@ -56,7 +56,8 @@ test("stored channel state is validated and stays out of the shared snapshot", (
   bad([{ channel: "blog", status: "planned", url: "", publishedAt: "2026-11-01" }]);
   bad([{ channel: "blog", status: "draft", url: "", publishedAt: "2026-11-01" }]);
   bad([{ channel: "blog", status: "published", url: "javascript:alert(1)" }]);
-  bad([{ channel: "youtube", status: "published", url: "" }]);
+  bad([{ channel: "tiktok", status: "published", url: "" }]);
+  bad([{ channel: "naver-clip", status: "scheduled", url: "" }]);
 });
 
 test("a channel view judges progress by that channel alone", () => {
@@ -89,7 +90,8 @@ test("a channel view judges progress by that channel alone", () => {
   assert.deepEqual(ids({ channel: "naver-clip", stage: "review" }), []);
   assert.deepEqual(ids({ channel: "blog", stage: "all" }), []);
   assert.equal(parseBoardQuery({ channel: "naver-clip" }).channel, "naver-clip");
-  assert.equal(parseBoardQuery({ channel: "youtube" }).channel, "all");
+  assert.equal(parseBoardQuery({ channel: "youtube" }).channel, "youtube");
+  assert.equal(parseBoardQuery({ channel: "tiktok" }).channel, "all");
 });
 
 test("setPublication changes one channel, promotes the stage only when every channel is live, and survives a full upsert", async () => {

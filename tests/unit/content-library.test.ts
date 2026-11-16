@@ -63,8 +63,23 @@ test("local content links survive restart, replace by stable ID, stay private, a
     );
     await rm(file);
     assert.equal((await lib.get(content.id)).resources[0].available, false);
-    await assert.rejects(lib.upsert(content, second.updatedAt));
-    assert.equal((await store.load()).updatedAt, second.updatedAt);
+    // The deleted file stays as the same historical link (as stored, read back from get); an unrelated title edit still saves.
+    const linked = (await lib.get(content.id)).project.resources!.map(({ role, path, label }) => ({ role, path, label }));
+    const third = await lib.upsert({ ...content, title: "title after loss", resources: linked }, second.updatedAt);
+    assert.equal(third.project.title, "title after loss");
+    assert.deepEqual(third.project.resources, linked);
+    assert.equal(third.resources[0].available, false);
+    // A missing path that was not linked before is still refused, and nothing is saved.
+    const gone = path.join(root, "never-there.png");
+    await assert.rejects(
+      lib.upsert({ ...content, resources: [...linked, { role: "cover", path: gone, label: "x" }] }, third.updatedAt),
+      /ENOENT/,
+    );
+    await assert.rejects(
+      lib.upsert({ ...content, resources: [{ role: "cover", path: linked[0].path, label: "same path, other role" }] }, third.updatedAt),
+      /ENOENT/,
+    );
+    assert.equal((await store.load()).updatedAt, third.updatedAt);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -6,6 +6,7 @@ import {
   publicationsSchema,
 } from "./publications";
 import { dashboardRevision } from "./production-project";
+import { projectDateBases, projectKinds, projectStages } from "./contracts";
 import { absolutePathSchema } from "./path-schema";
 
 export const localPathSchema = absolutePathSchema();
@@ -34,15 +35,10 @@ export const contentInputSchema = z.strictObject({
     .regex(/^[\p{L}\p{N}_.:-]+$/u),
   title: z.string().min(1).max(500),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  dateBasis: z.enum(["capture", "publication", "record"]),
-  stage: z.enum([
-    "idea",
-    "captured",
-    "selected",
-    "editing",
-    "review",
-    "published",
-  ]),
+  dateBasis: z.enum(projectDateBases),
+  stage: z.enum(projectStages),
+  /** Omit to keep the stored kind (new entries are `content`). */
+  kind: z.enum(projectKinds).optional(),
   nextAction: z.string().max(2000),
   publicURL: z.string().max(2048),
   localNotes: z.string().max(4000),
@@ -61,11 +57,13 @@ export const setPublicationSchema = z
     status: z.enum(["none", ...publicationStatuses]),
     url: publicationSchema.shape.url.optional(),
     publishedAt: publicationSchema.shape.publishedAt,
+    scheduledAt: publicationSchema.shape.scheduledAt,
   })
   .refine(
     (v) =>
       (v.status === "published" || !v.publishedAt) &&
-      (v.status !== "none" || !v.url),
-    "게시일은 게시 완료에만, 링크는 예정·임시저장·게시 완료에만 넣을 수 있어요.",
+      (v.status !== "none" || !v.url) &&
+      (v.status === "scheduled") === Boolean(v.scheduledAt),
+    "게시일은 게시 완료에만, 예약 시각은 공개 예약에만(필수), 링크는 채널을 둘 때만 넣을 수 있어요.",
   );
 export type SetPublicationInput = z.infer<typeof setPublicationSchema>;

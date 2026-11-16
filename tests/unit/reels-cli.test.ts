@@ -2810,7 +2810,13 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
     const { data } = (await cli(root, ["tools"])).document;
     assert.deepEqual(
       data.builtins.map(({ command }: { command: string }) => command),
-      ["reels status", "reels doctor", "reels prepare-media", "reels collect-instagram-insights"],
+      [
+        "reels status",
+        "reels doctor",
+        "reels prepare-media",
+        "reels collect-instagram-insights",
+        "reels autopilot",
+      ],
     );
   });
 });

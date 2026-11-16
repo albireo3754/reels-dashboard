@@ -6,6 +6,7 @@ import {
   demoVideo,
 } from "./editor-demo";
 import { emptyPlanning, planningSchema, planningUpdateSchema } from "./planning";
+import { autopilotStateSchema, computeAutopilotView, defaultAutopilotConfig, emptyAutopilotState } from "./autopilot";
 import { emptyInstagramState, instagramSnapshotSchema, instagramTopicsInput, type InstagramInsightsState } from "./instagram-insights";
 import type {
   Arguments,
@@ -342,6 +343,18 @@ export function createDemoBridge(
         const next = planningSchema.parse({ ...current, ...changes, updatedAt: new Date().toISOString() });
         storage?.setItem("reels-planning-demo-v1", JSON.stringify(next));
         return next;
+      },
+    },
+    // The demo has no Keychain, scheduler or autopilot folder: it computes the same read-only view from its own
+    // Linear copy and projects, and takes an optional saved state (paused, lastTick) from storage.
+    autopilot: {
+      async get() {
+        const planning = planningSchema.parse(JSON.parse(storage?.getItem("reels-planning-demo-v1") ?? JSON.stringify(emptyPlanning())));
+        const saved = autopilotStateSchema.partial().parse(JSON.parse(storage?.getItem("reels-autopilot-demo-v1") ?? "{}"));
+        return computeAutopilotView({
+          planning, projects: loadDashboard().projects, state: { ...emptyAutopilotState(), ...saved },
+          config: defaultAutopilotConfig(), now: new Date(), probe: () => false,
+        });
       },
     },
     // Demo has no iCloud: a delivered outbound counts as fully uploaded so the

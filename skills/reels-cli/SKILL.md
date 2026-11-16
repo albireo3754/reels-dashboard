@@ -83,6 +83,10 @@ reels get-render-job --job-id <id> --wait    # attach later
 
 On `INSTAGRAM_AUTH`, ask Codex to help renew the Instagram read token through the existing private token file/account connection. Never paste a token into chat or CLI arguments. No app OAuth or automatic renewal is provided. Before persistence, failures say `not_applied`; once persistence starts, inspect `next` and `hint` before repeating. A busy lock says `retry: wait`; a lock left by SIGKILL requires verifying the owner is gone before manual removal, never age-based takeover.
 
+## After-work autopilot
+
+`reels autopilot status|tick|today|run --manual <key>|resolve|pause|resume|refresh-linear [--dry-run]|connect-linear|disconnect-linear` reads the Linear copy and Dashboard queue without the app: at most 3 automatic reservations, nothing starts while 3 or more items wait for review, manual runs are unlimited, `today` shows the one item to look at. `reels autopilot tick --dry-run` changes nothing. `refresh-linear` reads Linear without a model through a Keychain API key (service `reels-dashboard-linear`); `connect-linear` runs only in a terminal and never takes the key as an argument, so do not ask the user to paste it. See `docs/autopilot.md`.
+
 ## More
 
 This guide comes from `reels help agent` and matches the installed CLI version. Full documentation lives in the Reels Dashboard repository: `docs/cli-usage.md` (CLI contract and exit codes) and `docs/mcp-usage.md` (what each tool does).

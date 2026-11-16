@@ -29,6 +29,7 @@ const photosToolArgs: Record<string, unknown> = {
   reels_photos_search: { text: "카페" },
   reels_photos_search_page: { searchId: "search_test", offset: 0, pageSize: 5 },
   reels_photos_index: { date: "2026-08-13" },
+  reels_photos_find: { date: "2026-08-13" },
   reels_photos_groups: { level: "fine" },
   reels_photos_group: { groupId: "group", indexRunId: "run" },
   reels_photos_inspect: { groupId: "group", indexRunId: "run", page: 1, pageSize: 10 },
@@ -60,7 +61,7 @@ test("every agent Photos tool only reads Photos, and the video and bundle import
     photos: async (method: string, args: Record<string, string>) => {
       validateRequest(method, args);
       nativeCalls.push(method);
-      return { searchId: "search_test", nextOffset: null };
+      return { searchId: "search_test", nextOffset: null, indexRunID: "run", groups: [] };
     },
   } as unknown as AgentPorts);
 

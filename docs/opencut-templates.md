@@ -6,8 +6,33 @@
 | --- | --- |
 | `travel-caption-v1` | 처음부터 끝까지 소개·장소명을 상단에 고정한다. |
 | `food-focus-v1` | 시작·끝 각 3초에 소개·장소를 표시한다(전체 6초 이하는 계속 표시). 중간은 상단을 비우고 아래쪽에 본문·부가정보를 모은다. |
+| `letterbox-shorts-v1` | 검정 세로 캔버스의 중앙 1080×608 영역에 영상을 맞추고 위에는 고정 제목, 아래에는 구간별 자막을 둔다. 원본 소리를 유지하며 60fps로 출력한다. |
 
 `food-focus-v1`을 사용할 때는 처음과 끝에 장소를 보여줄 컷을 배치한다. 타임라인과 자막 문안은 프리셋 선택으로 바뀌지 않는다.
+
+## 상하단 자막 쇼츠
+
+`letterbox-shorts-v1`은 같은 `opencut:prepare` 명령을 쓴다. 장소·블로그가 없는 요리/반전 영상도 가능하며 이 프리셋에만 `blogPath`, `recipe.place`, 본문 자막을 생략할 수 있다. 기존 여행·맛집 프리셋의 원고/장소/자막 필수 조건과 무음 기본값은 유지한다.
+
+- 출력은 **1080×1920**, 중앙 영상 영역은 **1080×608**이다. 실제 미디어의 가로·세로를 읽어 비율을 유지한 채 영역 안에 맞춘다. 글자나 영상 픽셀을 늘여 가로로 만들지 않는다.
+- 세로 촬영본을 영역에 그대로 맞추면 작게 보인다. 피사체를 확인해 필요한 가로 크롭·HDR→SDR 사본을 먼저 준비하고 등록한다. 이 프리셋의 컷 `scale/x/y`는 기본값을 사용한다. 이미 검정 여백·자막이 합쳐진 16:9 완성본을 겹쳐 넣지 않는다.
+- 원본 소리는 `main.muted=false`, 영상별 `muted=false`, `isSourceAudioEnabled=true`, `volume=1`로 보존한다. 정지사진 구간에는 소리가 없다. 다른 음악 트랙은 추가하지 않는다. Export에서 **Include audio in export**를 켠다.
+- 제목은 끝까지, 본문과 부가정보는 지정 구간에만 나온다. 제목/자막 배치는 공통 프리셋에서 관리한다. 정지는 가져온 프레임 이미지에 원하는 길이를 지정하며 3초 한도를 따른다.
+- 적용은 Playwright MCP의 브라우저별 OpenCut v28 프로젝트 저장소를 이용한다. OpenCut의 공식 CLI/MCP 또는 CapCut 템플릿 가져오기 기능이 아니다. 로컬 CLI가 입력 패키지를 만들고, Playwright가 적용·Export를 수행한다.
+
+```json
+{
+  "projectId": "content:cooking",
+  "destination": "/absolute/new-package-directory",
+  "sources": ["/absolute/linked/cooking-landscape.mp4"],
+  "recipe": {
+    "templateId": "letterbox-shorts-v1",
+    "title": "사용자가 정한 제목",
+    "cuts": [{"file": "cooking-landscape.mp4", "length": 8}],
+    "captions": [{"start": 4, "end": 8, "text": "사용자가 정한 반응 자막"}]
+  }
+}
+```
 
 ## 제작 흐름
 

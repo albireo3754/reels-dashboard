@@ -14,6 +14,8 @@ import path from "node:path";
 import {
   buildOpenCutProject,
   foodFocusTemplate,
+  letterboxShortsTemplate,
+  openCutPackageSchema,
   openCutRecipeSchema,
   travelCaptionTemplate,
 } from "../../src/features/opencut-template";
@@ -141,17 +143,29 @@ test("food focus keeps the header off food shots without changing cuts or cue ti
     ],
   });
   const baseline = buildOpenCutProject(
-    seed(), media, { ...input, templateId: "travel-caption-v1" }, travelCaptionTemplate,
+    seed(),
+    media,
+    { ...input, templateId: "travel-caption-v1" },
+    travelCaptionTemplate,
   ).scenes[0].tracks;
-  const food = buildOpenCutProject(seed(), media, input, foodFocusTemplate).scenes[0].tracks;
+  const food = buildOpenCutProject(seed(), media, input, foodFocusTemplate)
+    .scenes[0].tracks;
   for (const header of food.overlay.slice(0, 2)) {
     assert.deepEqual(
       header.elements.map((e: any) => [e.startTime, e.duration]),
-      [[0, 360000], [600000, 360000]],
+      [
+        [0, 360000],
+        [600000, 360000],
+      ],
     );
   }
   const timing = (track: any) =>
-    track.elements.map((e: any) => [e.startTime, e.duration, e.content, e.mediaId]);
+    track.elements.map((e: any) => [
+      e.startTime,
+      e.duration,
+      e.content,
+      e.mediaId,
+    ]);
   assert.deepEqual(timing(food.main), timing(baseline.main));
   assert.deepEqual(timing(food.overlay[2]), timing(baseline.overlay[2]));
 });
@@ -196,6 +210,71 @@ test("schema, missing/duplicate media, long stills and out-of-source slow motion
   const bad = recipe();
   bad.captions[1].start = 2;
   assert.equal(openCutRecipeSchema.safeParse(bad).success, false);
+});
+
+test("letterbox preserves source audio, keeps media inside its horizontal viewport, and omits a place label", () => {
+  const input = openCutRecipeSchema.parse({
+    templateId: "letterbox-shorts-v1",
+    title: "A cooking mishap",
+    cuts: [
+      { file: "toast.mov", length: 2 },
+      { file: "door.jpg", length: 2 / 3 },
+    ],
+    captions: [{ start: 2, end: 8 / 3, text: "Reaction" }],
+  });
+  const dimensions = media.map((m) => ({
+    ...m,
+    width: 1080,
+    height: m.type === "video" ? 608 : 1920,
+  }));
+  const before = seed();
+  const project = buildOpenCutProject(
+    before,
+    dimensions,
+    input,
+    letterboxShortsTemplate,
+  );
+  const tracks = project.scenes[0].tracks;
+  assert.equal(tracks.main.muted, false);
+  assert.equal(tracks.main.elements[0].isSourceAudioEnabled, true);
+  assert.equal(tracks.main.elements[0].volume, 1);
+  assert.equal(tracks.main.elements[0].muted, false);
+  assert.equal(tracks.main.elements[0].transform.scaleX, 1);
+  assert.equal(tracks.main.elements[1].transform.scaleY, 608 / 1920);
+  assert.equal(tracks.overlay.length, 2);
+  assert.deepEqual(
+    tracks.overlay.map((t: any) => t.name),
+    ["상단 제목", "본문 자막"],
+  );
+  assert.equal(tracks.overlay[0].elements[0].duration, 320000);
+  assert.equal(tracks.overlay[1].elements[0].startTime, 240000);
+  assert.deepEqual(tracks.audio, []);
+  assert.equal(project.settings.fps.numerator, 60);
+  assert.equal(before.scenes[0].tracks.main.elements[0].mediaId, "old");
+  const standalone = new Function(
+    `return (${buildOpenCutProject.toString()})`,
+  )();
+  assert.equal(
+    standalone(seed(), dimensions, input, letterboxShortsTemplate).scenes[0]
+      .tracks.main.muted,
+    false,
+  );
+  assert.throws(
+    () => buildOpenCutProject(seed(), media, input, letterboxShortsTemplate),
+    /dimensions/,
+  );
+  assert.equal(
+    openCutRecipeSchema.safeParse({
+      ...input,
+      cuts: [{ file: "toast.mov", length: 2, scale: 2 }],
+    }).success,
+    false,
+  );
+  assert.equal(
+    openCutRecipeSchema.safeParse({ ...input, templateId: "travel-caption-v1" })
+      .success,
+    false,
+  );
 });
 
 test("package uses registered blog/media, keeps existing project resources and rejects overwrite or missing grants", async () => {
@@ -264,6 +343,30 @@ test("package uses registered blog/media, keeps existing project resources and r
     assert.equal(current.publications?.[0].channel, "blog");
     assert.equal(current.production, undefined);
     assert.ok(calls.includes("reels_upsert_content"));
+    const shorts = {
+      ...input,
+      destination: path.join(root, "shorts-package"),
+      blogPath: undefined,
+      recipe: {
+        templateId: "letterbox-shorts-v1",
+        title: "User hook",
+        cuts: [{ file: "toast.mov", length: 2 }],
+      },
+    };
+    const prepared = await prepareOpenCutPackage(shorts, data, call);
+    const manifest = JSON.parse(
+      await readFile(path.join(prepared.directory, "manifest.json"), "utf8"),
+    );
+    assert.equal(manifest.blogPath, null);
+    assert.equal(manifest.blogSha256, null);
+    assert.match(
+      await readFile(path.join(prepared.directory, "README.md"), "utf8"),
+      /원본 소리를 포함/,
+    );
+    assert.equal(
+      openCutPackageSchema.safeParse({ ...input, blogPath: undefined }).success,
+      false,
+    );
     await assert.rejects(
       prepareOpenCutPackage(input, data, call),
       /already exists/,

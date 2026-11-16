@@ -23,6 +23,9 @@ export const projectStages = [
   "selected",
   "editing",
   "review",
+  /** Work on the project is finished and it must not come back to the queue.
+   * Says nothing about channels: each one keeps its own draft/scheduled/published state. */
+  "done",
   "published",
 ] as const;
 export type Stage = (typeof projectStages)[number];
@@ -32,8 +35,17 @@ export const projectStageLabels: Record<Stage, string> = {
   selected: "촬영본 선택",
   editing: "편집 중",
   review: "검토 대기",
+  done: "작업 완료",
   published: "게시 완료",
 };
+/** `operation`: planning or housekeeping work (a weekly upload queue, an application, a tidy-up), not a shoot. */
+export const projectKinds = ["content", "operation"] as const;
+export type ProjectKind = (typeof projectKinds)[number];
+export const projectKindLabels: Record<ProjectKind, string> = {
+  content: "콘텐츠",
+  operation: "운영",
+};
+export const projectDateBases = ["capture", "publication", "record"] as const;
 export interface LocalResource {
   role: "footage" | "final" | "cover" | "draft" | "document" | "folder";
   path: string;
@@ -43,6 +55,8 @@ export interface Project {
   outbound?: import("./icloud-delivery").ProjectOutbound;
   production?: import("./production-project").Production;
   id: string;
+  /** Omitted means `content`. */
+  kind?: ProjectKind;
   title: string;
   date: string;
   stage: Stage;
@@ -75,6 +89,8 @@ export interface OpenDocument {
 export interface DashboardBridge {
   readonly instagramInsights?: import("./instagram-insights").InstagramInsightsBridge;
   readonly planning?: import("./planning").PlanningBridge;
+  /** Read-only after-work queue summary; absent in the web demo and shared read-only views. */
+  readonly autopilot?: import("./autopilot").AutopilotBridge;
   readonly coverPreferences?: import("./clip-upload").CoverPreferencesBridge;
   readonly clipUpload?: import("./clip-upload").ClipUploadBridge;
   readonly icloud?: import("./icloud-delivery").ICloudBridge;

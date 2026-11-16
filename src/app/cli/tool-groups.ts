@@ -55,6 +55,7 @@ export const toolGroupOf = {
   reels_list_project_edits: "content",
 
   reels_photos_status: "photos",
+  reels_photos_find: "photos",
   reels_photos_search: "photos",
   reels_photos_search_page: "photos",
   reels_photos_index: "photos",

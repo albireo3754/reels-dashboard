@@ -18,6 +18,12 @@ import {
   type PublishReadiness,
 } from "../shared/publish-readiness";
 
+/** Booked publish time in this computer's time zone, e.g. 11/20 15:56. */
+const scheduledLabel = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
 const dateBasisLabels: Record<NonNullable<Project["dateBasis"]>, string> = {
   capture: "촬영",
   publication: "게시",
@@ -100,7 +106,9 @@ export function ProjectCard({
               const label = `${publicationChannelLabels[p.channel]} · ${
                 p.status === "published" && p.publishedAt
                   ? `${p.publishedAt} 게시`
-                  : ready
+                  : p.status === "scheduled" && p.scheduledAt
+                    ? `${scheduledLabel(p.scheduledAt)} 공개 예약`
+                    : ready
                     ? publishReadinessLabels[ready.state]
                     : publicationStatusLabels[p.status]
               }`;

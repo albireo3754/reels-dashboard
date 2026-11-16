@@ -23,6 +23,7 @@ const bridge: DashboardBridge = {
     onChanged: callback => subscribe("instagram:changed", callback),
   },
   planning: { get: () => invoke("planning:get"), update: input => invoke("planning:update", input) },
+  autopilot: { get: () => invoke("autopilot:get") },
   executionLogs: { list: () => invoke("executionLogs:list") },
   workflow: {
     request: (action, input) => invoke("workflow:request", action, input),

@@ -4,6 +4,8 @@ import { EditsNativeClient } from "./edits-native";
 import { watch as watchFiles } from "node:fs";
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import { PlanningStore } from "../shared/lib/planning-store";
+import { AutopilotStore, processAlive, processStartTime } from "../shared/lib/autopilot-store";
+import { computeAutopilotView } from "../shared/autopilot";
 import { InstagramInsightsStore } from "../shared/lib/instagram-insights-store";
 import { instagramConnectionInput } from "../shared/instagram-insights";
 import {InputFormWindows} from "./input-form-window";
@@ -794,6 +796,12 @@ async function awaitReady() {
   handle("cover-preferences:get", () => coverPreferences.get());
   handle("planning:get", () => planning.get());
   handle("planning:update", (input: unknown) => planning.update(input));
+  // Read-only: the same queue the CLI computes. Starting or changing anything stays in `reels autopilot`.
+  const autopilot = new AutopilotStore(root);
+  handle("autopilot:get", async () => {
+    const [snapshot, dashboard, config, state] = await Promise.all([planning.get(), store.load(), autopilot.readConfig(), autopilot.readState()]);
+    return computeAutopilotView({ planning: snapshot, projects: dashboard.projects, state, config, now: new Date(), probe: { isAlive: processAlive, startedAt: processStartTime } });
+  });
   handle("instagram:get", (input: unknown) => fixture ? demo.instagramInsights!.get() : instagramInsights.get(input ?? {}));
   handle("instagram:topics", (input: unknown) => fixture ? demo.instagramInsights!.setTopics(input as Record<string,string>) : instagramInsights.setTopics(input));
   handle("instagram:refresh", refreshInstagramInsights);

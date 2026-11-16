@@ -1,4 +1,5 @@
 import { PublicationCalendar } from "../features/publication-calendar";
+import { AutopilotToday } from "../features/after-work-autopilot";
 import { InstagramInsights } from "../features/instagram-insights";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
@@ -54,6 +55,7 @@ import { publicationsSchema } from "../shared/publications";
 import { ProjectDialog } from "./ProjectDialog";
 import { Empty, Icon } from "./ui";
 import { SettingsScreen } from "./SettingsScreen";
+import { isActiveState, projectState } from "../shared/project-state";
 import { readableTime } from "./photo-export/shared";
 import { LibraryScreen } from "./photo-export/LibraryScreen";
 import { TransfersScreen } from "./photo-export/TransfersScreen";
@@ -253,16 +255,16 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       shared: false,
     });
   };
-  const totals = useMemo(
-    () => ({
+  const totals = useMemo(() => {
+    const now = new Date();
+    const states = dashboard.projects.map((p) => projectState(p, now));
+    return {
       all: dashboard.projects.length,
-      active: dashboard.projects.filter((p) => p.stage !== "published").length,
-      review: dashboard.projects.filter((p) => p.stage === "review").length,
-      published: dashboard.projects.filter((p) => p.stage === "published")
-        .length,
-    }),
-    [dashboard],
-  );
+      active: states.filter((s) => isActiveState(s.state)).length,
+      review: states.filter((s) => s.state === "review").length,
+      complete: states.filter((s) => s.state === "complete").length,
+    };
+  }, [dashboard]);
   const nativeNotice = (
     <div className="desktop-notice">
       <Icon name="library" />
@@ -413,7 +415,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
                   [
                     ["진행 중", totals.active, "active"],
                     ["검토 대기", totals.review, "review"],
-                    ["게시 완료", totals.published, "published"],
+                    ["완료", totals.complete, "complete"],
                   ] as const
                 ).map(([name, value, stage]) => (
                   <button
@@ -510,6 +512,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           (tab === "dashboard" || tab === "settings") && (
             <MobileBriefing bridge={bridge} compact={tab === "dashboard"} />
           )}
+        {tab === "dashboard" && !readOnly && (
+          <AutopilotToday
+            api={bridge.autopilot}
+            revision={dashboard.updatedAt}
+            onOpenProject={id => {
+              const project = dashboard.projects.find(p => p.id === id);
+              if (!project) return;
+              setEditingRevision(dashboard.updatedAt);
+              setEditingProject({ ...project });
+            }}
+          />
+        )}
         {tab === "dashboard" && (
           <section className="content-section" aria-labelledby="board-heading">
             <h2 id="board-heading" className="ui-sr-only">

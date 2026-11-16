@@ -40,7 +40,18 @@ export const linearImportSchema = z.strictObject({
     title: z.string().min(1).max(500),
     url: linearLink,
     dueDate: date.nullable(),
-    state: z.enum(["backlog", "unstarted", "started", "completed", "canceled"]),
+    state: z.enum(["triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate"]),
+    // Optional so snapshots saved before the autopilot still parse unchanged.
+    stateName: z.string().min(1).max(200).optional(),
+    priority: z.number().int().min(0).max(4).optional(),
+    createdAt: z.string().datetime({ offset: true }).optional(),
+    updatedAt: z.string().datetime({ offset: true }).optional(),
+    startedAt: z.string().datetime({ offset: true }).optional(),
+    blockedBy: z.array(z.string().min(1).max(80)).max(50).optional(),
+    subIssues: z.strictObject({ open: z.number().int().min(0), total: z.number().int().min(0) }).optional(),
+    projectId: z.string().min(1).max(500).optional(),
+    // Linear's own text, kept so the autopilot worker starts from the source and not from the title alone.
+    description: z.string().max(20_000).optional(),
   })).max(500),
 }).superRefine((value, ctx) => {
   if (new Set(value.issues.map(e => e.id)).size !== value.issues.length)
@@ -105,6 +116,6 @@ export function weekPlan(planning: Planning, projects: Project[], from: string, 
   const scheduled = posts.length - published;
   return { from, to, posts, published, scheduled, remaining: Math.max(0, planning.weeklyTarget - posts.length),
     covered: Boolean(planning.calendar && planning.calendar.window.from <= from && planning.calendar.window.to >= to),
-    issues: (planning.linear?.issues ?? []).filter(i => i.dueDate && i.dueDate >= from && i.dueDate < to && i.state !== "canceled"),
+    issues: (planning.linear?.issues ?? []).filter(i => i.dueDate && i.dueDate >= from && i.dueDate < to && i.state !== "canceled" && i.state !== "duplicate"),
   };
 }

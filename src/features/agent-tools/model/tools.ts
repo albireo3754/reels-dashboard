@@ -1,3 +1,4 @@
+import { photosFindInput } from "../../../shared/photos-find";
 import { selectionQuery, selectionExecute, selectionUpdate } from "../../../shared/analysis-selection";
 import { editsTools } from "../../../shared/edits";
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
@@ -197,7 +198,7 @@ export const toolDefinitions = {
   },
   reels_set_publication: {
     description:
-      "Record where one content entry is posted: set a single channel (instagram, naver-clip or blog) to planned, draft (saved on the channel but not public, e.g. a Naver blog 임시저장) or published with its link and the day it went live, or `none` to drop the channel. Other fields, resources and channels are untouched, so no full upsert is needed. When every targeted channel is published the entry's stage becomes published; it is never moved back. Register the channels still to come as planned first, otherwise a single live channel completes the entry. This records state only and does not post, upload or verify anything. Confirm the live post before recording published; a saved draft is draft, never published.",
+      "Record where one content entry is posted: set a single channel (instagram, naver-clip, blog or youtube) to planned, draft (saved on the channel but not public, e.g. a Naver blog 임시저장), scheduled (a publish time is booked; pass scheduledAt with its offset — it stays scheduled after that time until the live post is confirmed) or published with its link and the day it went live, or `none` to drop the channel. Other fields, resources and channels are untouched, so no full upsert is needed. When every targeted channel is published the entry's stage becomes published; it is never moved back. Register the channels still to come as planned first, otherwise a single live channel completes the entry. This records state only and does not post, upload or verify anything. Confirm the live post before recording published; a saved draft is draft, never published.",
     input: setPublicationSchema,
     readOnly: false,
   },
@@ -219,7 +220,7 @@ export const toolDefinitions = {
   },
   reels_list_projects: {
     description:
-      "List saved editing projects and production dashboard entries. Editing tools take editorProjects[].id; content tools take dashboard.projects[].id. Content prose remains in the content workspace.",
+      "List saved editing projects and production dashboard entries. Editing tools take editorProjects[].id; content tools take dashboard.projects[].id. projectStates[] is the shared reading of each entry (complete, scheduled, channel_pending, review, in_progress; needsUserReview); use it instead of judging stage alone. stage done means the work is finished, not that anything was posted. Content prose remains in the content workspace.",
     input: z.strictObject({}),
     readOnly: true,
   },
@@ -310,6 +311,11 @@ export const toolDefinitions = {
       "Read Photos helper status and existing authorization. This does not grant Photos permission.",
     input: z.strictObject({}),
     readOnly: true,
+  },
+  reels_photos_find: {
+    description: "Find Photos assets on one explicit local capture date by media kind, inclusive duration in seconds and filename substring. Defaults to videos. Replaces the current date index; reads metadata only, without OCR or content analysis. Returns every match with groupId/indexRunId/asset id for photos_inspect and import_photos_video. Originals remain untouched; import is a separate explicit action.",
+    input: photosFindInput,
+    readOnly: false,
   },
   reels_photos_search: {
     description: "Search Photos without knowing a capture date. Filter by GPS center/radius, OCR text, or both. Optional inclusive dates narrow the library. Creates a temporary candidate snapshot without replacing the current date index. OCR examines photo/video preview images, not every video frame; misses are possible. Returns scanned count, failures and nextOffset; continue pages even when matches is empty. No Photos changes.",

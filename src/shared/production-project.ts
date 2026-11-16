@@ -123,7 +123,8 @@ export function upsertExportedProject(
   newID: () => string,
 ): Dashboard {
   const old = editOwner(dashboard, edit);
-  const published = old?.stage === "published";
+  // Re-exporting never reopens a closed project: published and done keep their stage and next action.
+  const published = old?.stage === "published" || old?.stage === "done";
   const project: Project = {
     ...old,
     id: old?.id ?? edit.id,
@@ -132,7 +133,7 @@ export function upsertExportedProject(
     ...(update.dateBasis
       ? { dateBasis: old?.dateBasis ?? update.dateBasis }
       : {}),
-    stage: published ? "published" : update.stage,
+    stage: published ? old.stage : update.stage,
     nextAction: published ? old.nextAction : update.nextAction,
     publicURL: old?.publicURL ?? "",
     shared: old?.shared ?? false,

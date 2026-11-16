@@ -194,9 +194,25 @@ export class ContentLibrary {
 
   async upsert(value: ContentInput, expectedUpdatedAt: string) {
     const input = contentInputSchema.parse(value);
+    // A link this entry already has can point at a file that was later deleted (export history keeps
+    // referring to it). Keep exactly that role+path as a historical reference so unrelated edits still save;
+    // get() reports it as unavailable. Any new or changed path must still exist.
+    const key = (r: { role: string; path: string }) => `${r.role}:${r.path}`;
+    const stored = new Set(
+      ((await this.store.load()).projects.find((p) => p.id === input.id)?.resources ?? []).map(key),
+    );
+    const kept = new Set<string>();
     // Resolve every explicit reference before changing any state. Never read or copy media contents.
     const resources = await Promise.all(
-      input.resources.map((r) => this.resolve(r)),
+      input.resources.map(async (r) => {
+        try {
+          return await this.resolve(r);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT" || !stored.has(key(r))) throw error;
+          kept.add(key(r));
+          return { role: r.role, path: r.path, label: r.label };
+        }
+      }),
     );
     const keys = resources.map((r) => `${r.role}:${r.path}`);
     if (new Set(keys).size !== keys.length)
@@ -209,6 +225,9 @@ export class ContentLibrary {
           "PROJECT_MERGED: 합쳐진 ID예요. 대표 프로젝트 ID를 사용해주세요.",
         );
       const old = current.projects.find((p) => p.id === input.id);
+      const still = new Set((old?.resources ?? []).map(key));
+      if ([...kept].some((k) => !still.has(k)))
+        throw new Error("MISSING_RESOURCE: 없는 파일은 이미 연결돼 있던 자료로만 남길 수 있어요.");
       const project = {
         ...old,
         ...input,
@@ -249,6 +268,7 @@ export class ContentLibrary {
               status: input.status,
               url: input.url ?? "",
               ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
+              ...(input.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
             });
       const { publications: _previous, ...rest } = old;
       const project = {

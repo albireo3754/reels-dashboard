@@ -1,3 +1,4 @@
+import { findPhotos } from "../../../shared/photos-find";
 import type { EditsBridge, EditsToolName } from "../../../shared/edits";
 import type { BlogCommentCreateInput, BlogCommentDeleteInput, BlogCommentListInput, BlogCommentUpdateInput } from "../../../shared/blog-comments";
 import {inputFormTools} from "../../../shared/input-form-tools";
@@ -16,6 +17,7 @@ import type {
 } from "../../../shared/contracts";
 import { AgentSession, patchProject } from "../../../entities/agent-session";
 import { toolDefinitions, type ToolName } from "../model/tools";
+import { projectState } from "../../../shared/project-state";
 
 export interface AgentEditorPort extends EditorBridge {
   busy: boolean;
@@ -227,11 +229,16 @@ export function createAgentDispatch(ports: AgentPorts) {
           jobs: editor.activeJobs(),
           deliveries: await ports.icloud?.list() ?? [],
         };
-      case "reels_list_projects":
+      case "reels_list_projects": {
+        const dashboard = await ports.dashboard();
+        const now = new Date();
         return {
           editorProjects: await editor.list(),
-          dashboard: await ports.dashboard(),
+          dashboard,
+          projectStates: dashboard.projects.map((p) => projectState(p, now)),
+          projectStatesAt: now.toISOString(),
         };
+      }
       case "reels_get_project":
         return editor.load(input.projectId);
       case "reels_open_project": {
@@ -314,6 +321,8 @@ export function createAgentDispatch(ports: AgentPorts) {
         };
       case "reels_photos_status":
         return ports.photos("status", {});
+      case "reels_photos_find":
+        return findPhotos((method, args) => ports.photos(method, args), input);
       case "reels_photos_search":
         return photosSearchPage(await ports.photos("photos.search", {
           ...(input.text ? { text: input.text } : {}),

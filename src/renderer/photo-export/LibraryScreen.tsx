@@ -1,3 +1,5 @@
+import { localDate } from "../../shared/lib/format";
+import { PhotoFinder } from "./PhotoFinder";
 import type { ReactNode } from "react";
 import type { Asset, DashboardBridge, Status } from "../../shared/contracts";
 import { Section, SectionHeader } from "../../shared/ui/primitives";
@@ -94,6 +96,10 @@ export function LibraryScreen({
           </p>
         )}
       <div className="library-controls">
+        <button disabled={!!busy} onClick={() => {
+          const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+          setDate(localDate(yesterday)); setGroups(null); clearSelection();
+        }}>어제</button>
         <input
           aria-label="촬영 날짜"
           title="촬영 날짜"
@@ -128,6 +134,12 @@ export function LibraryScreen({
           날짜 색인
         </button>
       </div>
+      <PhotoFinder date={date} bridge={bridge} disabled={!!busy || !canIndex}
+        importDisabled={editorRendering} run={run} indexRunId={groups?.indexRunID}
+        onSearchStart={() => { clearSelection(); setGroups(null); }}
+        onIndexed={result => { clearSelection(); setGroups(result); photo.setLevel("fine"); }}
+        onImport={asset => { void editPhotosVideo(asset.id, asset); }}
+        onGroup={id => { void selectGroup(id); }} />
       {!groups ? (
         <Empty title="촬영한 날짜부터 골라주세요.">
           날짜를 색인하면 시간과 위치로 묶인 촬영 그룹이 보여요.

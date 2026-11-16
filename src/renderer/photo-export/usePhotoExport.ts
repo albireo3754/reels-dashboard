@@ -171,12 +171,12 @@ export function photoExportActions(
     editorRendering: boolean;
   },
 ) {
-  const editPhotosVideo = (assetID: string) =>
+  const editPhotosVideo = (assetID: string, source?: { groupId: string; indexRunId: string }) =>
     run("Photos 원본과 재생 영상 준비", async () => {
-      if (!detail || editorRendering) return;
+      if ((!detail && !source) || editorRendering) return;
       const project = await bridge.editor.fromPhotos({
-        groupID: detail.group.id,
-        indexRunID: detail.indexRunID,
+        groupID: source?.groupId ?? detail!.group.id,
+        indexRunID: source?.indexRunId ?? detail!.indexRunID,
         assetID,
       });
       setEditorProject(project);

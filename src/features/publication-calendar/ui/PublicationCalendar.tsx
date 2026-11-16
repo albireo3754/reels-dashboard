@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import { addDays, emptyPlanning, monday, weekPlan, type Planning, type PlanningBridge } from "../../../shared/planning";
+import { classifyLinear } from "../../../shared/autopilot";
 import { errorMessage } from "../../../shared/lib/errors";
 import "./publication-calendar.css";
 
@@ -53,7 +54,7 @@ export function PublicationCalendar({ api, projects }: { api?: PlanningBridge; p
             {post.url ? <a href={post.url} target="_blank" rel="noreferrer">{post.title} ↗</a> : <span>{post.title}</span>}
           </div>)}</section>;
         })}</div>
-        <div className="calendar-tasks"><h4>Linear 할 일</h4>{week.issues.length ? <ul>{week.issues.map(issue => <li key={issue.id}><a href={issue.url} target="_blank" rel="noreferrer">{issue.identifier} · {issue.title} ↗</a><span>{issue.state === "completed" ? "완료" : issue.state === "started" ? "진행 중" : "할 일"} · {issue.dueDate}</span></li>)}</ul> : <p>{data.linear ? "가져온 할 일 중 이 주 마감인 항목이 없어요." : "Linear 연결 대기 중이에요."}</p>}</div>
+        <div className="calendar-tasks"><h4>Linear 할 일</h4>{week.issues.length ? <ul>{week.issues.map(issue => <li key={issue.id}><a href={issue.url} target="_blank" rel="noreferrer">{issue.identifier} · {issue.title} ↗</a><span>{({ review: "리뷰 대기", active: "진행 중", candidate: "할 일", ignore: issue.state === "completed" ? "완료" : "할 일" })[classifyLinear(issue)]} · {issue.dueDate}</span></li>)}</ul> : <p>{data.linear ? "가져온 할 일 중 이 주 마감인 항목이 없어요." : "Linear 연결 대기 중이에요."}</p>}</div>
       </article>;
     })}
   </section>;

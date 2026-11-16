@@ -5,22 +5,28 @@ import { z } from "zod";
  * channels, and each channel finishes on its own schedule, so "published" is
  * tracked per channel instead of once per project.
  */
-export const publicationChannels = ["instagram", "naver-clip", "blog"] as const;
+export const publicationChannels = ["instagram", "naver-clip", "blog", "youtube"] as const;
 export type PublicationChannel = (typeof publicationChannels)[number];
 export const publicationChannelLabels: Record<PublicationChannel, string> = {
   instagram: "인스타그램",
   "naver-clip": "네이버클립",
   blog: "블로그",
+  youtube: "유튜브",
 };
 /**
  * `draft`: saved on the channel (for example a Naver blog 임시저장) but not public yet.
  * It is still a channel to come, so it never completes the project.
  */
-export const publicationStatuses = ["planned", "draft", "published"] as const;
+/**
+ * `scheduled`: a publish time is booked on the channel. It stays scheduled after that time
+ * until someone confirms the live post; the time passing never makes it published.
+ */
+export const publicationStatuses = ["planned", "draft", "scheduled", "published"] as const;
 export type PublicationStatus = (typeof publicationStatuses)[number];
 export const publicationStatusLabels: Record<PublicationStatus, string> = {
   planned: "예정",
   draft: "임시저장",
+  scheduled: "공개 예약",
   published: "게시 완료",
 };
 
@@ -41,6 +47,8 @@ const httpURL = z
     }
   }, "게시 링크는 HTTP 또는 HTTPS 주소를 입력해주세요.");
 
+export const scheduledAtSchema = z.iso.datetime({ offset: true });
+
 export const publicationSchema = z.strictObject({
   channel: z.enum(publicationChannels),
   status: z.enum(publicationStatuses),
@@ -51,6 +59,8 @@ export const publicationSchema = z.strictObject({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  /** The booked publish time with its UTC offset; only for `scheduled`, and required there. */
+  scheduledAt: scheduledAtSchema.optional(),
 });
 export type Publication = z.infer<typeof publicationSchema>;
 
@@ -64,6 +74,10 @@ export const publicationsSchema = z
   .refine(
     (list) => list.every((p) => p.status === "published" || !p.publishedAt),
     "게시일은 게시 완료 채널에만 넣을 수 있어요.",
+  )
+  .refine(
+    (list) => list.every((p) => (p.status === "scheduled") === Boolean(p.scheduledAt)),
+    "공개 예약 채널에는 예약 시각이 필요하고, 다른 상태에는 넣을 수 없어요.",
   );
 
 type WithPublications = { publications?: Publication[] };

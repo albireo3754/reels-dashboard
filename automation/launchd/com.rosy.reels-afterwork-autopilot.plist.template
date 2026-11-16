@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. Replace the __PLACEHOLDERS__, then install it yourself:
+    __REPO__     absolute path of the reels-dashboard checkout
+    __USER_DATA__ the profile folder the app uses: ~/Library/Application Support/Reels Dashboard (absolute, also for
+                  `npm start` dev runs) unless the app runs with its own REELS_USER_DATA, then that exact path
+    __HOME__     your home folder
+  Create __USER_DATA__/autopilot first (mode 700): launchd does not create the log folder.
+  Period: StartInterval is seconds; keep it equal to intervalMinutes * 60 in autopilot/config.json.
+  See docs/autopilot.md before running launchctl bootstrap.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.rosy.reels-afterwork-autopilot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>__REPO__/dist-cli/reels.mjs</string>
+    <string>autopilot</string>
+    <string>tick</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>REELS_AUTOPILOT_AUTOMATED</key>
+    <string>1</string>
+    <key>REELS_USER_DATA</key>
+    <string>__USER_DATA__</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:__HOME__/.local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__USER_DATA__/autopilot/tick.log</string>
+  <key>StandardErrorPath</key>
+  <string>__USER_DATA__/autopilot/tick.err.log</string>
+</dict>
+</plist>

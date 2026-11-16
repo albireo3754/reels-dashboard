@@ -31,6 +31,7 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels <slug> [options]` | yes | Any tool. `reels_get_project` is `reels get-project`. |
 | `reels call <name\|slug> [options]` | yes | The same, by full tool name. |
 | `reels prepare-media ...` | no | [Local media copy](#local-media-copy). |
+| `reels autopilot <status\|tick\|run --manual\|today\|resolve\|pause\|resume\|refresh-linear\|connect-linear\|disconnect-linear>` | no | After-work queue and the automatic tick: at most 3 automatic reservations, manual runs unlimited, one item for today. Contract, config and scheduling: [autopilot.md](autopilot.md). `AUTOPILOT_BUSY` (another tick holds the lock) exits 6. `refresh-linear` and `connect-linear` fail with a `LINEAR_*` code and exit 4; `connect-linear` refuses to run outside a terminal (exit 2) and never prints or accepts the key as an argument. |
 | `reels --help`, `reels <command> --help`, `reels help [<command>]`, `reels --version` | no | Help and version. |
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
 | `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |
@@ -243,3 +244,7 @@ npm run test:cli
 `reels collect-instagram-insights --source manual|scheduled` waits for one collection into the same private profile without a running app. The default source is `manual`; every collection gets its own UUID and timestamps. It never retries. Success prints only collection metadata; authentication, permission, rate limit and network failures exit 4 with a redacted cause; a profile lock conflict exits 6. `refresh-instagram-insights` remains the app's asynchronous manual tool. See [Instagram storage, locking, token status and Codex scheduling status](instagram-insights.md#앱-없이-1회-수집--2026-11-14).
 
 The collection command refuses `REELS_DEMO=1`. Failures before snapshot persistence (including authentication) report `not_applied`; persistence failures report `unknown`, or `applied` after the history commit, with `next`/`hint` to inspect the same profile in the app. Busy reports `retry: wait` without automatically waiting. `INSTAGRAM_AUTH` explicitly asks the user to request Instagram read-token renewal from Codex through the existing private token file/account connection; never pass credentials in chat or CLI arguments.
+
+## Find a video by date and length
+
+`reels photos-find --date 2026-01-15 --min-duration 90 --max-duration 150` finds videos around two minutes long. Optional `--filename` filters names; `--media-kind photo` finds photos without duration filters. Uses metadata only and replaces the current date index. Results include the identities for inspection and explicit import. See [Photos finder](photos-find.md).

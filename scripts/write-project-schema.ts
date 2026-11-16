@@ -4,12 +4,14 @@ import { productionSchema } from "../src/shared/production-project";
 import { localResourcesSchema } from "../src/shared/local-resources";
 import { outboundSchema } from "../src/shared/icloud-delivery";
 import { publicationsSchema } from "../src/shared/publications";
+import { projectDateBases, projectKinds, projectStages } from "../src/shared/contracts";
 const project = z.strictObject({
   id: z.string().min(1).max(160),
   title: z.string().max(500),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  dateBasis: z.enum(["capture", "publication", "record"]).optional(),
-  stage: z.enum(["idea", "captured", "selected", "editing", "review", "published"]),
+  kind: z.enum(projectKinds).optional(),
+  dateBasis: z.enum(projectDateBases).optional(),
+  stage: z.enum(projectStages),
   nextAction: z.string().max(2000),
   publicURL: z.string().max(2048),
   shared: z.boolean(),

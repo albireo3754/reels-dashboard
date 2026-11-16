@@ -10,6 +10,7 @@ import {
   publicationOn,
   type PublicationChannel,
 } from "../../../shared/publications";
+import { isActiveState, projectState } from "../../../shared/project-state";
 
 export const channelLabels = {
   all: "모든 채널",
@@ -31,7 +32,8 @@ export const basisLabels = {
 };
 export type BoardQuery = {
   search: string;
-  stage: "all" | "active" | Stage;
+  /** `active` and `complete` follow the shared reading in project-state.ts; a Stage matches the stored stage. */
+  stage: "all" | "active" | "complete" | Stage;
   basis: keyof typeof basisLabels;
   /** One channel narrows the board to projects that target it and judges progress by that channel alone. */
   channel: "all" | PublicationChannel;
@@ -51,7 +53,7 @@ export function parseBoardQuery(value: unknown): BoardQuery {
   if (!value || typeof value !== "object") return result;
   const v = value as Record<string, unknown>;
   if (typeof v.search === "string") result.search = v.search.slice(0, 300);
-  if (["all", "active", ...projectStages].includes(String(v.stage)))
+  if (["all", "active", "complete", ...projectStages].includes(String(v.stage)))
     result.stage = v.stage as BoardQuery["stage"];
   if (Object.hasOwn(basisLabels, String(v.basis)))
     result.basis = v.basis as BoardQuery["basis"];
@@ -69,7 +71,8 @@ const priority: Record<Stage, number> = {
   selected: 2,
   captured: 3,
   idea: 4,
-  published: 5,
+  done: 5,
+  published: 6,
 };
 export function selectBoardProjects(
   projects: Project[],
@@ -77,22 +80,27 @@ export function selectBoardProjects(
 ): Project[] {
   const words = normalize(query.search).trim().split(/\s+/).filter(Boolean);
   const channel = query.channel;
+  const now = new Date();
   const selected = projects.filter((project) => {
+    // "active" is the shared reading (project-state.ts), with or without a channel filter.
+    const state = projectState(project, now).state;
+    const active = isActiveState(state);
+    if (query.stage === "complete" && state !== "complete") return false;
     if (channel !== "all") {
       if (!publicationOn(project, channel)) return false;
       // In a channel view "published" means live on that channel, whatever the other channels are doing.
       const live = isPublishedOn(project, channel);
-      if (query.stage === "active" ? live : query.stage === "published" && !live)
+      if (query.stage === "active" ? live || !active : query.stage === "published" && !live)
         return false;
       if (
-        !["all", "active", "published"].includes(query.stage) &&
+        !["all", "active", "complete", "published"].includes(query.stage) &&
         (live || project.stage !== query.stage)
       )
         return false;
     } else if (
       query.stage === "active"
-        ? project.stage === "published"
-        : query.stage !== "all" && project.stage !== query.stage
+        ? !active
+        : !["all", "complete"].includes(query.stage) && project.stage !== query.stage
     )
       return false;
     if (

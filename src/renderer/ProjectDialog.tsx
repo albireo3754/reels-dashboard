@@ -14,6 +14,20 @@ import {
   type PublicationChannel,
 } from "../shared/publications";
 
+const pad = (n: number) => String(n).padStart(2, "0");
+/** ISO time with offset → value for a datetime-local input in this computer's time zone. */
+function toLocalInput(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+/** datetime-local value → ISO time with this computer's UTC offset, as scheduledAt requires. */
+function fromLocalInput(value: string) {
+  const d = new Date(value);
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  return `${value}:00${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
+}
+
 /**
  * Content record form. A native modal <dialog> provides the focus trap, inert
  * background and Escape handling; Escape and backdrop clicks are ignored while
@@ -71,6 +85,8 @@ export function ProjectDialog({
       ...patch,
     };
     if (next && next.status !== "published") delete next.publishedAt;
+    if (next && next.status !== "scheduled") delete next.scheduledAt;
+    if (next && !next.scheduledAt) delete next.scheduledAt;
     if (next && !next.publishedAt) delete next.publishedAt;
     const publications = [...rest, ...(next ? [next] : [])].sort(
       (a, b) =>
@@ -220,6 +236,19 @@ export function ProjectDialog({
                     }
                     disabled={busy || entry?.status !== "published"}
                   />
+                  {entry?.status === "scheduled" && (
+                    <input
+                      type="datetime-local"
+                      aria-label={`${name} 공개 예약 시각`}
+                      value={entry.scheduledAt ? toLocalInput(entry.scheduledAt) : ""}
+                      onChange={(e) =>
+                        setChannel(channel, {
+                          scheduledAt: e.target.value ? fromLocalInput(e.target.value) : undefined,
+                        })
+                      }
+                      disabled={busy}
+                    />
+                  )}
                 </div>
               );
             })}

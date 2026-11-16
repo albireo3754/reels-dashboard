@@ -57,8 +57,10 @@ export async function prepareOpenCutPackage(
   const input = openCutPackageSchema.parse(value);
   const template = openCutTemplates[input.recipe.templateId];
   const library = new ContentLibrary(new LocalStore(root));
-  const blog = await library.documentText(input.projectId, input.blogPath);
-  if (blog.truncated)
+  const blog = input.blogPath
+    ? await library.documentText(input.projectId, input.blogPath)
+    : undefined;
+  if (blog?.truncated)
     throw new Error("블로그 원고가 너무 커요. 원고를 분리해주세요.");
   const files = input.sources.map((f) => path.basename(f));
   if (input.recipe.cuts.some((c) => !files.includes(c.file)))
@@ -92,8 +94,8 @@ export async function prepareOpenCutPackage(
     JSON.stringify(
       {
         projectId: input.projectId,
-        blogPath: input.blogPath,
-        blogSha256: digest(blog.text),
+        blogPath: input.blogPath ?? null,
+        blogSha256: blog ? digest(blog.text) : null,
         templateId: input.recipe.templateId,
         duration,
         mediaReceipt: copied.receiptPath,
@@ -106,25 +108,29 @@ export async function prepareOpenCutPackage(
   );
   await write(
     "README.md",
-    `# ${input.recipe.place} — OpenCut 자막 소개\n\n` +
+    `# ${input.recipe.place || input.recipe.title} — ${template.name}\n\n` +
       `상태: 편집 패키지 준비. 영상 출력·게시 완료가 아닙니다.\n\n` +
-      `블로그: ${input.blogPath}\n\n` +
+      (input.blogPath
+        ? `블로그: ${input.blogPath}\n\n`
+        : "문구: 사용자 제공 컷·제목·자막 입력. 블로그 원고 없음.\n\n") +
       `1. OpenCut에서 이 소재의 프로젝트를 열고 이 폴더의 촬영본을 가져옵니다. 중복으로 가져오지 않습니다.\n` +
       `2. 처음 만든 프로젝트에는 영상·사진(사용할 때만)·기본 텍스트를 하나씩 타임라인에 넣습니다.\n` +
       `3. 기존 프로젝트를 고칠 때는 먼저 백업합니다. 편집기에서 apply-opencut.js를 Playwright로 실행합니다. 대상은 현재 열린 프로젝트입니다.\n` +
       `4. 반환된 before와 project를 로컬에 저장합니다. 먼저 짧게 출력해 배치·색을 확인합니다.\n` +
-      `5. 전체 MP4와 무자막 기본본을 무음으로 출력하고 같은 Dashboard 프로젝트에 연결합니다.\n\n` +
-      `예상 ${duration.toFixed(2)}초 · 정지사진 최대3초 · 나레이션 없음 · 1080×1920/30fps.\n\n` +
-      `recipe.json의 문안·컷은 에이전트가 촬영본과 블로그를 읽고 선정한 입력입니다. 블로그를 자동 요약하거나 새 경험을 생성하는 기능은 아닙니다. OpenCut 공식 import 파일이 아닙니다.\n`,
+      `5. ${template.audio === "source" ? "Include audio in export를 켜고 원본 소리를 포함해 MP4를 출력합니다. 음악은 추가하지 않습니다." : "전체 MP4와 무자막 기본본을 무음으로 출력합니다."} 같은 Dashboard 프로젝트에 연결합니다.\n\n` +
+      `예상 ${duration.toFixed(2)}초 · 정지사진 최대3초 · 나레이션 없음 · 1080×1920/${template.fps}fps.\n\n` +
+      `recipe.json의 문안·컷은 제공된 근거에서 선정한 입력입니다. 새 경험을 생성하지 않습니다. OpenCut 공식 import 파일이 아닙니다.\n`,
   );
-  const currentBlog = await library.documentText(
-    input.projectId,
-    input.blogPath,
-  );
-  if (currentBlog.truncated || digest(currentBlog.text) !== digest(blog.text))
-    throw new Error(
-      "원고가 준비 중 바뀌었어요. 생성 폴더를 확인하고 새 원고로 다시 준비해주세요.",
+  if (input.blogPath && blog) {
+    const currentBlog = await library.documentText(
+      input.projectId,
+      input.blogPath,
     );
+    if (currentBlog.truncated || digest(currentBlog.text) !== digest(blog.text))
+      throw new Error(
+        "원고가 준비 중 바뀌었어요. 생성 폴더를 확인하고 새 원고로 다시 준비해주세요.",
+      );
+  }
   const current = await call("reels_get_content", {
     projectId: input.projectId,
   });

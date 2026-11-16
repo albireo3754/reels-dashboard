@@ -79,6 +79,7 @@ export function BoardToolbar({
           }
         >
           <option value="active">진행 중 전체</option>
+          <option value="complete">완료 전체</option>
           {Object.entries(stageLabels).map(([key, label]) => (
             <option key={key} value={key}>
               {label}

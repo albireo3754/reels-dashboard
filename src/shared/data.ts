@@ -6,6 +6,8 @@ import { localResourcesSchema } from "./local-resources";
 import { outboundSchema } from "./icloud-delivery";
 import { publicationsSchema } from "./publications";
 import {
+  projectDateBases,
+  projectKinds,
   projectStages,
   type Dashboard,
   type Project,
@@ -47,8 +49,11 @@ export function validateDashboard(value: unknown): Dashboard {
     const date = text(p.date, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
       throw new Error("Invalid project date");
+    if (p.kind !== undefined && !(projectKinds as readonly unknown[]).includes(p.kind))
+      throw new Error("Invalid project kind");
     return {
       id,
+      ...(p.kind !== undefined ? { kind: p.kind as Project["kind"] } : {}),
       ...(p.outbound !== undefined ? { outbound: outboundSchema.parse(p.outbound) } : {}),
       ...(p.production !== undefined
         ? { production: productionSchema.parse(p.production) }
@@ -71,11 +76,7 @@ export function validateDashboard(value: unknown): Dashboard {
       ...(p.dateBasis !== undefined
         ? {
             dateBasis: (() => {
-              if (
-                !["capture", "publication", "record"].includes(
-                  String(p.dateBasis),
-                )
-              )
+              if (!(projectDateBases as readonly string[]).includes(String(p.dateBasis)))
                 throw new Error("Invalid date basis");
               return p.dateBasis as Project["dateBasis"];
             })(),
