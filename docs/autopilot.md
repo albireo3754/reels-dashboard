@@ -40,7 +40,7 @@
 | `reels autopilot status` | 큐·점유·실행 중 예약·자동 slot·최신성·일시정지·마지막 tick. 읽기 전용. |
 | `reels autopilot tick [--dry-run] [--now <iso>]` | 자동 경로. 순서: 설정·일시정지·활성 시간 → 상태 읽기 → 최신성 → 잠금 → 회수 → `queue_full` → `unchanged` → 순위·순서 기록 → admission → 예약 → 실행기 시작. `--dry-run`은 상태·파일을 바꾸지 않고 같은 계산과 오늘 볼 1개를 보여 준다(`wouldAdmit`). `offWorkAt` 이후 첫 실제 tick은 `today.md`를 갱신한다. |
 | `reels autopilot run --manual <key>...` | 수동 시작. key는 `reels autopilot status`의 `key` 또는 Linear identifier(예: `CONTENT-12`). 개수 제한 없음(3개씩 묶음으로 나눠 묶음마다 실행기를 띄운다). |
-| `reels autopilot today` | 오늘 볼 1개(정확한 링크 또는 `project:<id>`, 왜 지금인지, 필요한 한 결정, 완료 기준)를 출력하고 `<profile>/autopilot/today.md`에 쓴다. 리뷰 큐가 비면 차단되지 않은 진행 중 1위의 다음 행동, 그것도 없으면 `null`(없음)이다. 취향·실제 경험·인증이 필요한 항목은 `userDecisionRequired`로 표시하며 자동 완료하지 않는다. |
+| `reels autopilot today` | 오늘 볼 1개(정확한 링크 또는 `project:<id>`, 왜 지금인지, 필요한 한 결정, 완료 기준)를 출력하고 `<profile>/autopilot/today.md`에 쓴다. 리뷰 큐가 비면 차단되지 않은 진행 중 1위의 다음 행동, 그것도 없으면 `null`(없음)이다. 취향·실제 경험·인증이 필요한 항목은 `userDecisionRequired`로 표시하며 자동 완료하지 않는다. 보고서 없는 리뷰 항목의 "필요한 한 가지"는 남은 채널(예 `남은 채널: 블로그 임시저장`)과 저장된 다음 행동을 그대로 보여 준다. |
 | `reels autopilot resolve <key>` | `awaiting_review` 예약을 `done`으로 닫는다. 키가 Linear/Dashboard에서 사라지면 다음 tick이 `left_queue`로 정리한다. |
 | `reels autopilot pause [--reason <text>]` / `resume` | 자동 tick의 시작을 막는다/허용한다. 수동 실행은 일시정지와 무관하다. |
 | `reels autopilot refresh-linear [--dry-run]` | 모델 없이 Linear API를 읽어 `planning.json`의 `linear`를 통째로 바꾼다(`--dry-run`은 저장 없이 이슈 수·상태별 수·페이지 수·`syncedAt`·`X-Complexity`만 출력, 제목은 출력하지 않는다). 실패는 `LINEAR_*` 코드와 exit 4. |

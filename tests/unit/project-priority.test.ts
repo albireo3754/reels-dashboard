@@ -79,6 +79,19 @@ test("today's pick weighs the user's order among items that need the user; a fin
   assert.equal(pickToday(pending)?.key, "blog-1");
 });
 
+test("today's pick says what is owed: the waiting channel and the stored next action", () => {
+  const queue = buildQueue({ planning: { schemaVersion: 1 } as never, now, ledger: [], config: { staleAfterMinutes: 60 } as never, projects: [
+    base({ id: "kirin", stage: "published", priority: 1, nextAction: "임시저장본 확인 후 발행",
+      publications: [{ channel: "instagram", status: "published", url: "", publishedAt: "2026-09-12" }, { channel: "blog", status: "draft", url: "" }] }),
+  ] });
+  const pick = pickToday(queue);
+  assert.equal(pick?.decision, "남은 채널: 블로그 임시저장 · 다음 행동: 임시저장본 확인 후 발행");
+  assert.match(pick?.doneWhen ?? "", /블로그 임시저장을\(를\) 게시/);
+  const plain = pickToday(buildQueue({ planning: { schemaVersion: 1 } as never, now, ledger: [], config: { staleAfterMinutes: 60 } as never,
+    projects: [base({ id: "r", stage: "review" })] }));
+  assert.equal(plain?.decision, "검토 후 승인 또는 수정 요청을 결정", "no next action and no channel keeps the generic line");
+});
+
 test("re-export keeps the user's order", () => {
   const dash = { schemaVersion: 1 as const, updatedAt: "2026-11-16T03:00:00.000Z", projects: [
     base({ id: "p", stage: "editing", priority: 5, production: { edits: [{ kind: "video", id: "e1" }], mergedIds: [], exports: [] } as never }),

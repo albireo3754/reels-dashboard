@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Project } from "./contracts";
 import { seoulDate, type Planning } from "./planning";
 import { isActiveState, projectState } from "./project-state";
+import { publicationChannelLabels, publicationStatusLabels } from "./publications";
 
 /**
  * After-work autopilot: pure queue, ranking and admission logic.
@@ -155,6 +156,8 @@ export interface RawItem {
   priority?: number;
   /** The Dashboard project's own working order (1 first), set by the user. */
   order?: number;
+  /** Target channels still owed by a person, e.g. "블로그 임시저장" (scheduled ones wait on the channel, not shown). */
+  waiting?: string;
   blockedBy: string[];
   subIssues?: { open: number; total: number };
   createdAt?: string;
@@ -236,6 +239,10 @@ function sourceItems(planning: Planning, projects: Project[], now: Date = new Da
       key: project.id, kind: view.needsUserReview ? "review" : "active", source: "dashboard",
       title: project.title, projectId: project.id, stage: project.stage, nextAction: project.nextAction, blockedBy: [],
       ...(project.priority !== undefined ? { order: project.priority } : {}),
+      ...(view.pendingChannels.some((c) => c.status !== "scheduled")
+        ? { waiting: view.pendingChannels.filter((c) => c.status !== "scheduled")
+            .map((c) => `${publicationChannelLabels[c.channel]} ${publicationStatusLabels[c.status]}`).join(", ") }
+        : {}),
       ...(project.localNotes ? { localNotes: project.localNotes } : {}),
       ...(project.resources?.length ? { resources: project.resources.map(({ role, label, path }) => ({ role, label, path })) } : {}),
     });
@@ -494,10 +501,14 @@ export function pickToday(queue: Queue): TodayPick | null {
         ? "자동 작업이 근거 부족으로 멈췄어요. 보고서의 빈칸에 필요한 사실·취향·인증을 채워 주세요"
         : review.reportPath
           ? review.outcome === "progressed" ? "수행된 변경과 검증 근거를 보고 승인할지, 되돌릴지 결정" : "준비된 보고서를 보고 승인할지, 고칠 점을 남길지 결정"
-          : "검토 후 승인 또는 수정 요청을 결정",
+          // Without a report, say what is actually owed: the channel still waiting and the stored next action.
+          : [review.waiting && `남은 채널: ${review.waiting}`, review.nextAction?.trim() && `다음 행동: ${review.nextAction.trim()}`]
+              .filter(Boolean).join(" · ") || "검토 후 승인 또는 수정 요청을 결정",
       doneWhen: review.reservationId
         ? `결정을 마치고 \`reels autopilot resolve ${review.key}\`로 닫기, 또는 Linear/Dashboard 상태가 바뀌어 큐에서 빠짐`
-        : "Linear/Dashboard에서 검토 결과가 반영돼 리뷰 대기에서 빠짐",
+        : review.waiting
+          ? `${review.waiting}을(를) 게시하고 Dashboard 채널 상태를 게시 완료(또는 공개 예약 시각)로 기록`
+          : "Linear/Dashboard에서 검토 결과가 반영돼 리뷰 대기에서 빠짐",
       userDecisionRequired: true,
       ...(review.reportPath ? { reportPath: review.reportPath } : {}),
       ...(review.outcome ? { outcome: review.outcome } : {}),
