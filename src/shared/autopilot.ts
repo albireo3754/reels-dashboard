@@ -344,7 +344,9 @@ export function rankItems(items: readonly RawItem[], now: Date): QueueItem[] {
       const points = item.kind === "review" ? Math.min(20, waited * 2) : Math.min(5, Math.floor(waited / 2));
       if (points > 0) gain(points, `${waited}일째 기다림`);
     }
-    if (item.stage && stageScore[item.stage] > 0) gain(stageScore[item.stage], `진척: ${item.stage}`);
+    // A published project still in the review queue waits on the user for a channel, just like stage review.
+    if (item.kind === "review" && item.stage === "published") gain(stageScore.review, "진척: 채널 게시 대기");
+    else if (item.stage && stageScore[item.stage] > 0) gain(stageScore[item.stage], `진척: ${item.stage}`);
     return { ...item, score, reasons: reasons.length ? reasons : ["특별한 근거 없음"] };
   });
   return ranked.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));

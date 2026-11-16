@@ -71,6 +71,12 @@ test("today's pick weighs the user's order among items that need the user; a fin
   assert.equal(today?.key, "first");
   assert.ok(today?.why.includes("작업 순번 1"));
   assert.equal(queue.review.some((i) => i.key === "closed"), false);
+  // A channel still waiting (stage published) counts as far along as stage review, so #1 stays first.
+  const pending = buildQueue({ planning: { schemaVersion: 1 } as never, now, ledger: [], config: { staleAfterMinutes: 60 } as never, projects: [
+    base({ id: "clip-2", stage: "review", priority: 2 }),
+    base({ id: "blog-1", stage: "published", priority: 1, publications: [{ channel: "blog", status: "draft", url: "" }] }),
+  ] });
+  assert.equal(pickToday(pending)?.key, "blog-1");
 });
 
 test("re-export keeps the user's order", () => {
