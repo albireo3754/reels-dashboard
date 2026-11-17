@@ -76,7 +76,7 @@ test("week goals: per-channel counts, totals capped at the target, candidates in
   const goals = weekGoals(emptyPlanning(), projects, "2026-11-16", now);
   const by = Object.fromEntries(goals.channels.map(c => [c.channel, c]));
   assert.deepEqual([by.blog.published, by.blog.remaining], [1, 1]);
-  assert.deepEqual(by.blog.candidates.map(c => [c.projectId, c.status, c.ready]), [["blog-b", "planned", false], ["blog-a", "draft", true]], "priority first; done projects are left out");
+  assert.deepEqual(by.blog.candidates.map(c => [c.projectId, c.status, c.phase, c.ready]), [["blog-b", "planned", "production", false], ["blog-a", "draft", "draft", true]], "priority first; done projects are left out");
   assert.deepEqual([by.instagram.published, by.instagram.remaining], [3, 0]);
   assert.deepEqual(by.youtube.candidates.map(c => [c.projectId, c.ready]), [["short", false]]);
   // 3 reels count as 2 toward a target of 2.
@@ -98,7 +98,7 @@ test("clip candidates: projects planned for the clip first, then live Reels with
 test("booking queue: at most two weeks of posts, never a slot past 14 days, nothing more when full", () => {
   const targets = { blog: 2, "naver-clip": 3, instagram: 2, youtube: 1 };
   const planning: Planning = { ...emptyPlanning(), weeklyTargets: targets };
-  const ready = (id: string, priority?: number) => project(id, [planned("instagram")], { stage: "review", ...(priority ? { priority } : {}) });
+  const ready = (id: string, priority?: number) => project(id, [planned("instagram")], { stage: "editing", resources: [{ role: "final", path: `/tmp/${id}.mp4`, label: "완성본" }], ...(priority ? { priority } : {}) });
   const projects = [
     project("booked-1", [scheduled("instagram", "2026-11-18T19:00:00+09:00")]),
     project("past", [scheduled("instagram", "2026-11-15T19:00:00+09:00")]),
@@ -130,6 +130,33 @@ test("booking queue: at most two weeks of posts, never a slot past 14 days, noth
   const far = bookingQueue(planning, [project("far", [short(scheduled("youtube", "2026-12-10T19:00:00+09:00"))]), project("s2", [short(planned("youtube"))])], now)
     .channels.find(c => c.channel === "youtube")!;
   assert.deepEqual([far.booked.length, far.beyond.length, far.open], [0, 1, 1], "a booking past the horizon still uses the cap");
+});
+
+test("phases: a project waiting for review is kept apart from reviewed work and is never proposed for booking", () => {
+  const final = { resources: [{ role: "final" as const, path: "/tmp/cut.mp4", label: "완성본" }] };
+  const projects = [
+    project("in-review", [planned("instagram")], { stage: "review", priority: 1, ...final }),
+    project("on-channel", [planned("instagram", "draft")], { stage: "editing", priority: 2 }),
+    project("finished", [planned("instagram")], { stage: "editing", priority: 3, ...final }),
+    project("live-elsewhere", [published("naver-clip", "2026-11-01"), planned("instagram")], { stage: "published", priority: 4 }),
+    project("making", [planned("instagram")], { stage: "editing", priority: 5 }),
+  ];
+  const reels = weekGoals(emptyPlanning(), projects, "2026-11-16", now).channels.find(c => c.channel === "instagram")!;
+  assert.deepEqual(reels.candidates.map(c => [c.projectId, c.phase, c.ready]), [
+    ["in-review", "review", false],
+    ["on-channel", "draft", true],
+    ["finished", "final", true],
+    ["live-elsewhere", "final", true],
+    ["making", "production", false],
+  ], "a final file does not make a project still in review ready");
+  const queue = bookingQueue(emptyPlanning(), projects, now).channels.find(c => c.channel === "instagram")!;
+  assert.deepEqual(queue.ready.map(c => c.projectId), ["on-channel", "finished", "live-elsewhere"]);
+  assert.deepEqual(queue.inReview.map(c => c.projectId), ["in-review"]);
+  assert.equal(queue.inProduction, 1);
+  assert.ok(!queue.slots.some(s => s.projectId === "in-review"), "never proposed while in review");
+  assert.deepEqual(queue.slots.map(s => [s.projectId, s.phase]), [["on-channel", "draft"], ["finished", "final"], ["live-elsewhere", "final"]]);
+  const clip = weekGoals(emptyPlanning(), [project("reel", [published("instagram", "2026-11-02")], { stage: "published" })], "2026-11-16", now).channels.find(c => c.channel === "naver-clip")!;
+  assert.deepEqual(clip.candidates.map(c => [c.status, c.phase, c.ready]), [["reuse", "reuse", true]]);
 });
 
 test("booking queue: a channel with no target proposes nothing, and the blog is never queued", () => {

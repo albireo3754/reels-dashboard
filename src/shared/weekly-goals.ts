@@ -43,9 +43,27 @@ export function weeklyTargetsOf(planning: Pick<Planning, "weeklyTarget" | "weekl
 }
 
 const readiness: Record<Stage, number> = { published: 0, review: 1, editing: 2, selected: 3, captured: 4, idea: 5, done: 6 };
-/** A video is ready to book when its final file exists or the cut is waiting for review or already live elsewhere. */
+
+/**
+ * Where a candidate is on the way to a post, so the queue never mixes reviewed work with work still to review:
+ * - `draft`: already saved as a draft on the channel; only booking or publishing is left.
+ * - `final`: reviewed and finished (a final file, or the project is live elsewhere or done), not on the channel yet.
+ * - `review`: the project is waiting for review ("검토 대기"), even when a final file exists.
+ * - `production`: still being made.
+ * - `reuse`: a live Reel to re-upload as a Naver Clip.
+ */
+export const goalPhases = ["draft", "final", "review", "production", "reuse"] as const;
+export type GoalPhase = (typeof goalPhases)[number];
+export const goalPhaseLabels: Record<GoalPhase, string> = { draft: "임시저장", final: "완성본", review: "검토 대기", production: "제작 중", reuse: "재업 후보" };
+
+/**
+ * A video is ready to book once its review is over: a final file exists, or the project is live elsewhere or done.
+ * A project still waiting for review is not ready, even with a final file.
+ */
 export const isReadyToBook = (project: Project) =>
-  project.stage === "review" || project.stage === "published" || Boolean(project.resources?.some(r => r.role === "final"));
+  project.stage !== "review" && (project.stage === "published" || project.stage === "done" || Boolean(project.resources?.some(r => r.role === "final")));
+const phaseOf = (project: Project, status: "planned" | "draft"): GoalPhase =>
+  status === "draft" ? "draft" : project.stage === "review" ? "review" : isReadyToBook(project) ? "final" : "production";
 const byWorkOrder = (a: Project, b: Project) =>
   (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
   || readiness[a.stage] - readiness[b.stage]
@@ -55,7 +73,8 @@ const byWorkOrder = (a: Project, b: Project) =>
  * `reuse`: a Reel already live on Instagram with no Naver Clip entry yet. The weekly clip routine re-uploads
  * existing videos, so these fill clip slots after the projects planned for the clip itself.
  */
-export interface GoalCandidate { projectId: string; title: string; stage: Stage; status: "planned" | "draft" | "reuse"; ready: boolean; nextAction: string; priority?: number }
+/** `ready`: the review is over and only booking or uploading is left (`phase` is `draft`, `final` or `reuse`). */
+export interface GoalCandidate { projectId: string; title: string; stage: Stage; status: "planned" | "draft" | "reuse"; phase: GoalPhase; ready: boolean; nextAction: string; priority?: number }
 export interface ChannelWeek {
   channel: GoalChannel; label: string; target: number;
   published: number; scheduled: number; remaining: number;
@@ -65,8 +84,8 @@ export interface ChannelWeek {
 }
 export interface WeekGoals { from: string; to: string; calendarCovered: boolean; channels: ChannelWeek[]; totals: { target: number; done: number; remaining: number } }
 
-const candidate = (p: Project, status: GoalCandidate["status"], ready: boolean): GoalCandidate => ({
-  projectId: p.id, title: p.title, stage: p.stage, status, ready, nextAction: p.nextAction,
+const candidate = (p: Project, status: GoalCandidate["status"], phase: GoalPhase): GoalCandidate => ({
+  projectId: p.id, title: p.title, stage: p.stage, status, phase, ready: phase === "draft" || phase === "final" || phase === "reuse", nextAction: p.nextAction,
   ...(p.priority !== undefined ? { priority: p.priority } : {}),
 });
 const reelDay = (p: Project) => p.publications?.find(x => x.channel === "instagram" && x.status === "published")?.publishedAt ?? "";
@@ -83,12 +102,12 @@ function pendingFor(projects: Project[], channel: PublicationChannel, now: Date)
       return entry && (entry.status === "planned" || entry.status === "draft") ? [{ p, status: entry.status }] : [];
     })
     .sort((a, b) => byWorkOrder(a.p, b.p))
-    .map(({ p, status }) => candidate(p, status, isReadyToBook(p)));
+    .map(({ p, status }) => candidate(p, status, phaseOf(p, status)));
   if (channel !== "naver-clip") return planned;
   const reuse = projects
     .filter(p => p.stage !== "done" && reelDay(p) && !p.publications?.some(x => x.channel === "naver-clip"))
     .sort((a, b) => (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER) || reelDay(b).localeCompare(reelDay(a)))
-    .map(p => candidate(p, "reuse", true));
+    .map(p => candidate(p, "reuse", "reuse"));
   return [...planned, ...reuse];
 }
 
@@ -110,7 +129,7 @@ export function weekGoals(planning: Planning, projects: Project[], from: string,
 }
 
 export interface Booking { projectId: string; title: string; at: string; day: string; source: "dashboard" | "calendar" }
-export interface Slot { day: string; projectId: string; title: string }
+export interface Slot { day: string; projectId: string; title: string; phase: GoalPhase }
 export interface ChannelQueue {
   channel: VideoChannel; label: string; target: number;
   /** Two weeks of posts: `target * 2`. */
@@ -120,8 +139,10 @@ export interface ChannelQueue {
   beyond: Booking[];
   open: number;
   full: boolean;
-  /** Finished videos waiting for a booking, in the user's work order. */
+  /** Reviewed videos waiting for a booking (channel drafts, finished cuts, re-uploads), in the user's work order. */
   ready: GoalCandidate[];
+  /** Planned for this channel and waiting for review; booked only after the review. */
+  inReview: GoalCandidate[];
   /** Planned for this channel but not finished yet. */
   inProduction: number;
   /** The next days to book, one ready video each, never past the horizon or the cap. */
@@ -157,10 +178,11 @@ export function bookingQueue(planning: Planning, projects: Project[], now: Date 
     const open = Math.max(0, cap - booked.length - beyond.length);
     const pending = pendingFor(projects, channel, now).filter(c => !all.has(c.projectId));
     const ready = pending.filter(c => c.ready);
+    const inReview = pending.filter(c => c.phase === "review");
     const slots = target > 0 ? spread(sorted.map(b => b.day), ready, Math.min(open, ready.length), today, until, Math.max(1, Math.floor(7 / target))) : [];
     return {
       channel, label: goalChannelLabels[channel], target, cap, booked, beyond, open, full: open === 0,
-      ready, inProduction: pending.length - ready.length, slots,
+      ready, inReview, inProduction: pending.length - ready.length - inReview.length, slots,
     };
   });
   return { now: now.toISOString(), until, horizonDays: bookingHorizonDays, channels };
@@ -182,7 +204,7 @@ function spread(taken: string[], items: GoalCandidate[], wanted: number, today: 
       if (used.every(t => gap(t, day) >= minimum)) { picked.push(day); used.push(day); }
     }
   }
-  return picked.sort().map((day, index) => ({ day, projectId: items[index].projectId, title: items[index].title }));
+  return picked.sort().map((day, index) => ({ day, projectId: items[index].projectId, title: items[index].title, phase: items[index].phase }));
 }
 
 export interface WeeklyGoalsView { thisWeek: WeekGoals; nextWeek: WeekGoals; queue: BookingQueue; targets: WeeklyTargets }

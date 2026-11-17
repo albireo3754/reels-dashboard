@@ -2,14 +2,24 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import type { Planning, PlanningBridge } from "../../../shared/planning";
 import { addDays } from "../../../shared/planning";
-import { goalChannels, goalChannelLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalCandidate, type WeeklyTargets } from "../../../shared/weekly-goals";
+import { goalChannels, goalChannelLabels, goalPhaseLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalPhase, type WeeklyTargets } from "../../../shared/weekly-goals";
 import { errorMessage } from "../../../shared/lib/errors";
 import { Badge, Button, Notice, Section, SectionHeader } from "../../../shared/ui/primitives";
 import { Popover } from "../../../shared/ui/Popover";
 import "./weekly-goals.css";
 
 const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", weekday: "short" });
-const statusLabel: Record<GoalCandidate["status"], string> = { planned: "예정", draft: "임시저장", reuse: "재업 후보" };
+/** What each phase still needs, for the title tooltip. */
+const phaseHint: Record<GoalPhase, string> = {
+  draft: "채널에 임시저장됨 · 예약·발행만 남음",
+  final: "검토 끝난 완성본 · 채널에 올리기 전",
+  review: "검토 대기 · 검토를 마치면 예약 제안에 올라와요",
+  production: "아직 제작 중",
+  reuse: "인스타 릴스를 클립으로 재업",
+};
+/** Work still to do on our side is the warning; reviewed work waiting for the channel is the primary tone. */
+const phaseTone: Record<GoalPhase, "primary" | "neutral" | "warning"> = { draft: "primary", final: "neutral", review: "warning", production: "warning", reuse: "neutral" };
+const PhaseBadge = ({ phase }: { phase: GoalPhase }) => <Badge tone={phaseTone[phase]} data-phase={phase}>{goalPhaseLabels[phase]}</Badge>;
 
 /**
  * This week's goal per channel, what to fill it with, and the two-week booking queue for videos.
@@ -85,8 +95,8 @@ function ChannelTile({ week, onOpenProject }: { week: ChannelWeek; onOpenProject
         fill.length
           ? <ol className="weekly-goal-fill" aria-label={`${week.label} 채울 것`}>{fill.map(c => (
             <li key={c.projectId}>
-              <ProjectName id={c.projectId} title={c.title} hint={c.status === "reuse" ? "인스타 릴스를 클립으로 재업" : statusLabel[c.status]} onOpenProject={onOpenProject} />
-              <Badge tone={c.status !== "reuse" && !c.ready ? "warning" : "neutral"}>{c.status === "reuse" ? statusLabel.reuse : c.ready ? "완성본" : "제작 중"}</Badge>
+              <ProjectName id={c.projectId} title={c.title} hint={phaseHint[c.phase]} onOpenProject={onOpenProject} />
+              <PhaseBadge phase={c.phase} />
             </li>))}</ol>
           : <p className="weekly-goal-empty">채울 후보 없음 · 새 소재가 필요해요</p>
       )}
@@ -112,13 +122,19 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
       <Meter done={0} booked={ahead} total={q.cap} label={`${q.label} 앞으로 예약 ${ahead}/${q.cap}`} />
       {q.beyond.length > 0 && <Notice tone="warning">2주 넘게 앞선 예약 {q.beyond.length}개 · {q.beyond.map(b => `${dayLabel(b.day)} ${b.title}`).join(", ")}</Notice>}
       {rows.length > 0 && <ul className="booking-list">
-        {visible.map(row => <li key={`${row.kind}:${row.projectId}`} className={row.kind}><time>{dayLabel(row.day)}</time><ProjectName id={row.projectId} title={row.title} onOpenProject={onOpenProject} />{row.kind === "booked" ? <Badge>예약됨</Badge> : <Badge tone="primary">예약 제안</Badge>}</li>)}
+        {visible.map(row => <li key={`${row.kind}:${row.projectId}`} className={row.kind}><time>{dayLabel(row.day)}</time><ProjectName id={row.projectId} title={row.title} hint={row.kind === "slot" ? phaseHint[row.phase] : undefined} onOpenProject={onOpenProject} />{row.kind === "booked" ? <Badge>예약됨</Badge> : <><span className="booking-phase" data-phase={row.phase}>{goalPhaseLabels[row.phase]}</span><Badge tone="primary">예약 제안</Badge></>}</li>)}
       </ul>}
       {rows.length > shownRows && <Button size="small" className="booking-more" onClick={() => setAll(v => !v)} aria-expanded={all}>{all ? "접기" : `${rows.length - shownRows}개 더 보기`}</Button>}
       {!q.full && q.cap > 0 && left > 0 && (
         <p className="weekly-goal-empty">{q.slots.length < q.ready.length
           ? `나머지 ${left}칸은 2주 안에 남는 날이 없어요`
           : `나머지 ${left}칸은 새 완성본이 생기면 채워져요${q.inProduction ? ` · 제작 중 ${q.inProduction}개` : ""}`}</p>
+      )}
+      {q.cap > 0 && q.inReview.length > 0 && (
+        <p className="booking-review" aria-label={`${q.label} 검토 대기`}>
+          <Badge tone="warning">검토 대기 {q.inReview.length}</Badge>
+          <span className="booking-review-names">{q.inReview.map((c, i) => <span key={c.projectId}>{i > 0 && " · "}<ProjectName id={c.projectId} title={c.title} hint={phaseHint.review} onOpenProject={onOpenProject} /></span>)}</span>
+        </p>
       )}
     </article>
   );
@@ -127,9 +143,9 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
 function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQueue[]; until: string; onOpenProject?: (projectId: string) => void }) {
   return (
     <section className="booking-queue" aria-label="영상 예약 큐">
-      <h4>영상 예약 큐 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 완성본 기준</span>
+      <h4>영상 예약 큐 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 검토 끝난 것만</span>
         <Popover label="예약 큐 안내">
-          <p className="booking-help">채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 완성본을 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 앱은 채널에 직접 예약·게시하지 않아요. 채널에서 예약한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
+          <p className="booking-help">채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 채널에서 예약한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
         </Popover>
       </h4>
       <div className="booking-rows">{channels.map(q => <QueueRow key={q.channel} q={q} onOpenProject={onOpenProject} />)}</div>

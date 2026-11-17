@@ -35,7 +35,8 @@ test("the Shorts goal counts Shorts only; long-form or unmarked YouTube posts do
   const live = [...projects, base({ id: "s02", stage: "published", publications: [{ channel: "youtube", status: "published", url: "", publishedAt: "2026-11-16", format: "shorts" }] })];
   assert.equal(weekGoals(emptyPlanning(), live, "2026-11-15", now).channels.find((c) => c.channel === "youtube")!.published, 1);
   const queue = bookingQueue(emptyPlanning(), projects, now).channels.find((c) => c.channel === "youtube")!;
-  assert.deepEqual(queue.ready.map((c) => c.projectId), ["s01"]);
+  // s01 is still waiting for review, so it is listed apart and not proposed for booking yet.
+  assert.deepEqual([queue.ready.map((c) => c.projectId), queue.inReview.map((c) => c.projectId)], [[], ["s01"]]);
 });
 
 test("set-publication keeps the stored format when it is omitted", async () => {

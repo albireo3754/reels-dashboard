@@ -11,7 +11,9 @@ const projects = [
   project("blog-draft", "블로그 임시저장 글", "review", [{ channel: "blog", status: "draft", url: "" }], { priority: 1 }),
   project("clip-booked", "클립 예약 영상", "published", [{ channel: "instagram", status: "published", url: "", publishedAt: "2026-10-01" }, { channel: "naver-clip", status: "scheduled", url: "", scheduledAt: "2026-11-20T15:56:00+09:00" }]),
   project("reel-old", "재업할 지난 릴스", "published", [{ channel: "instagram", status: "published", url: "", publishedAt: "2026-11-02" }]),
-  project("reel-ready", "완성된 새 릴스", "review", [{ channel: "instagram", status: "planned", url: "" }]),
+  project("reel-ready", "완성된 새 릴스", "editing", [{ channel: "instagram", status: "planned", url: "" }], { resources: [{ role: "final", path: "/tmp/reel-ready.mp4", label: "완성본" }] }),
+  project("reel-review", "검토 대기 릴스", "review", [{ channel: "instagram", status: "planned", url: "" }], { resources: [{ role: "final", path: "/tmp/reel-review.mp4", label: "완성본" }] }),
+  project("reel-draft", "채널 임시저장 릴스", "editing", [{ channel: "instagram", status: "draft", url: "" }]),
   project("reel-wip", "편집 중인 릴스", "editing", [{ channel: "instagram", status: "planned", url: "" }]),
   project("short-ready", "완성된 쇼츠", "review", [{ channel: "youtube", status: "planned", url: "" }]),
 ];
@@ -34,11 +36,12 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
 
   const blog = panel.getByRole("article", { name: "블로그 이번 주" });
   await expect(blog.getByText("게시 1 · 이번 주 예약 0 · 남은 1")).toBeVisible();
-  await expect(blog.getByRole("list", { name: "블로그 채울 것" }).getByRole("listitem")).toHaveText([/블로그 임시저장 글.*완성본/]);
+  await expect(blog.getByRole("list", { name: "블로그 채울 것" }).getByRole("listitem")).toHaveText([/블로그 임시저장 글.*임시저장/]);
   const clip = panel.getByRole("article", { name: "클립 이번 주" });
   await expect(clip.getByText("게시 0 · 이번 주 예약 1 · 남은 2")).toBeVisible();
   await expect(clip.getByRole("listitem").first()).toContainText("재업 후보");
-  await expect(panel.getByRole("article", { name: "릴스 이번 주" }).getByRole("listitem")).toHaveText([/완성된 새 릴스.*완성본/, /편집 중인 릴스.*제작 중/]);
+  // Reels: 2 a week, none live yet, so the first two candidates in work order show (review comes before editing).
+  await expect(panel.getByRole("article", { name: "릴스 이번 주" }).getByRole("listitem")).toHaveText([/검토 대기 릴스.*검토 대기/, /완성된 새 릴스.*완성본/]);
 
   const queue = panel.getByRole("region", { name: "영상 예약 큐" });
   await expect(queue.getByText(/오늘부터 2주 · 11\. 29\. \(일\)까지/)).toBeVisible();
@@ -48,8 +51,13 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
   await expect(clipQueue.getByRole("listitem").filter({ hasText: "예약 제안" }).first()).toContainText("재업할 지난 릴스");
   const reels = queue.getByRole("article", { name: "릴스 예약" });
   await expect(reels.getByText("4개 더 예약 가능")).toBeVisible();
-  await expect(reels.getByRole("listitem").filter({ hasText: "예약 제안" })).toHaveText([/완성된 새 릴스/]);
-  await expect(reels.getByText("나머지 3칸은 새 완성본이 생기면 채워져요 · 제작 중 1개")).toBeVisible();
+  // Only reviewed work is proposed, and each slot says whether it is already on the channel.
+  await expect(reels.getByRole("listitem").filter({ hasText: "예약 제안" })).toHaveText([/완성된 새 릴스.*완성본/, /채널 임시저장 릴스.*임시저장/]);
+  await expect(reels.getByText("나머지 2칸은 새 완성본이 생기면 채워져요 · 제작 중 1개")).toBeVisible();
+  const review = reels.getByLabel("릴스 검토 대기");
+  await expect(review).toContainText("검토 대기 1");
+  await expect(review).toContainText("검토 대기 릴스");
+  await expect(reels.getByRole("listitem").filter({ hasText: "검토 대기 릴스" })).toHaveCount(0);
 
   // The queue rule lives in a help popover, not a standing paragraph.
   await queue.getByRole("button", { name: "예약 큐 안내" }).click();
