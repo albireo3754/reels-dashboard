@@ -8,7 +8,7 @@ const project = (id: string, title: string, stage: string, publications: unknown
   ({ id, title, date: "2026-11-01", nextAction: "다음 행동", stage, publicURL: "", shared: false, publications, ...extra });
 const projects = [
   project("blog-live", "블로그 게시 완료 글", "published", [{ channel: "blog", status: "published", url: "", publishedAt: "2026-11-17" }]),
-  project("blog-draft", "블로그 임시저장 글", "review", [{ channel: "blog", status: "draft", url: "" }], { priority: 1 }),
+  project("blog-draft", "블로그 임시저장 글", "published", [{ channel: "blog", status: "draft", url: "" }], { priority: 1 }),
   project("clip-booked", "클립 예약 영상", "published", [{ channel: "instagram", status: "published", url: "", publishedAt: "2026-10-01" }, { channel: "naver-clip", status: "scheduled", url: "", scheduledAt: "2026-11-20T15:56:00+09:00" }]),
   project("reel-old", "재업할 지난 릴스", "published", [{ channel: "instagram", status: "published", url: "", publishedAt: "2026-11-02" }]),
   project("reel-ready", "완성된 새 릴스", "editing", [{ channel: "instagram", status: "planned", url: "" }], { resources: [{ role: "final", path: "/tmp/reel-ready.mp4", label: "완성본" }] }),

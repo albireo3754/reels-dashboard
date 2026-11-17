@@ -35,9 +35,11 @@
 /* Which state a proposed slot is in: on the channel already (draft) vs. still to upload. Text, not a second color. */
 .booking-phase { flex: none; font-size: var(--text-xs); color: var(--color-text-subtle); }
 .booking-phase[data-phase="draft"] { color: var(--color-primary-text); font-weight: 600; }
-.booking-review { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin: 0; font-size: var(--text-sm); color: var(--color-text-subtle); }
+/* Every title waiting for review stays visible and clickable: the names wrap instead of being clipped. */
+.booking-review { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; margin: 0; font-size: var(--text-sm); color: var(--color-text-subtle); }
 .booking-review .ui-badge { flex: none; }
-.booking-review-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.booking-review-names { min-width: 0; overflow-wrap: anywhere; }
+.booking-review-names .weekly-goals-open { max-width: none; white-space: normal; }
 .weekly-target-editor { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
 .weekly-target-editor label { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-subtle); }
 .weekly-target-editor input { width: 72px; }

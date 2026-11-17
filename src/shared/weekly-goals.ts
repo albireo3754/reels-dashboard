@@ -50,7 +50,8 @@ const readiness: Record<Stage, number> = { published: 0, review: 1, editing: 2, 
  * - `final`: reviewed and finished (a final file, or the project is live elsewhere or done), not on the channel yet.
  * - `review`: the project is waiting for review ("검토 대기"), even when a final file exists.
  * - `production`: still being made.
- * - `reuse`: a live Reel to re-upload as a Naver Clip.
+ * - `reuse`: a live Reel to re-upload as a Naver Clip. The live Reel has passed review already, so this holds even
+ *   when the project is back in review for another channel.
  */
 export const goalPhases = ["draft", "final", "review", "production", "reuse"] as const;
 export type GoalPhase = (typeof goalPhases)[number];
@@ -62,8 +63,9 @@ export const goalPhaseLabels: Record<GoalPhase, string> = { draft: "임시저장
  */
 export const isReadyToBook = (project: Project) =>
   project.stage !== "review" && (project.stage === "published" || project.stage === "done" || Boolean(project.resources?.some(r => r.role === "final")));
+/** Review comes first: a channel draft uploaded before the review is over is still waiting for review. */
 const phaseOf = (project: Project, status: "planned" | "draft"): GoalPhase =>
-  status === "draft" ? "draft" : project.stage === "review" ? "review" : isReadyToBook(project) ? "final" : "production";
+  project.stage === "review" ? "review" : status === "draft" ? "draft" : isReadyToBook(project) ? "final" : "production";
 const byWorkOrder = (a: Project, b: Project) =>
   (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
   || readiness[a.stage] - readiness[b.stage]
