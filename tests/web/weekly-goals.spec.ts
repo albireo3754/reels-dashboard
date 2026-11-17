@@ -36,12 +36,15 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
 
   const blog = panel.getByRole("article", { name: "블로그 이번 주" });
   await expect(blog.getByText("게시 1 · 이번 주 예약 0 · 남은 1")).toBeVisible();
+  // Which posts make up the count, not just the numbers.
+  await expect(blog.getByRole("list", { name: "블로그 이번 주 게시·예약" }).getByRole("listitem")).toHaveText([/11\. 17\..*블로그 게시 완료 글.*게시/]);
   await expect(blog.getByRole("list", { name: "블로그 채울 것" }).getByRole("listitem")).toHaveText([/블로그 임시저장 글.*임시저장/]);
   const clip = panel.getByRole("article", { name: "클립 이번 주" });
   await expect(clip.getByText("게시 0 · 이번 주 예약 1 · 남은 2")).toBeVisible();
-  await expect(clip.getByRole("listitem").first()).toContainText("재업 후보");
+  await expect(clip.getByRole("list", { name: "클립 이번 주 게시·예약" }).getByRole("listitem")).toHaveText([/11\. 20\..*클립 예약 영상.*예약/]);
+  await expect(clip.getByRole("list", { name: "클립 채울 것" }).getByRole("listitem").first()).toContainText("재업 후보");
   // Reels: 2 a week, none live yet, so the first two candidates in work order show (review comes before editing).
-  await expect(panel.getByRole("article", { name: "릴스 이번 주" }).getByRole("listitem")).toHaveText([/검토 대기 릴스.*검토 대기/, /완성된 새 릴스.*완성본/]);
+  await expect(panel.getByRole("article", { name: "릴스 이번 주" }).getByRole("list", { name: "릴스 채울 것" }).getByRole("listitem")).toHaveText([/검토 대기 릴스.*검토 대기/, /완성된 새 릴스.*완성본/]);
 
   const queue = panel.getByRole("region", { name: "영상 예약 큐" });
   await expect(queue.getByText(/오늘부터 2주 · 11\. 29\. \(일\)까지/)).toBeVisible();

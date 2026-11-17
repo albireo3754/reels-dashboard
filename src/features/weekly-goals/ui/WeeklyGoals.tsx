@@ -8,6 +8,9 @@ import { Badge, Button, Notice, Section, SectionHeader } from "../../../shared/u
 import { Popover } from "../../../shared/ui/Popover";
 import "./weekly-goals.css";
 
+const at = (day: string) => new Date(`${day}T12:00:00Z`);
+const monthDay = (day: string) => at(day).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" });
+const weekday = (day: string) => `(${at(day).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", weekday: "short" })})`;
 const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", weekday: "short" });
 /** What each phase still needs, for the title tooltip. */
 const phaseHint: Record<GoalPhase, string> = {
@@ -91,6 +94,14 @@ function ChannelTile({ week, onOpenProject }: { week: ChannelWeek; onOpenProject
         {week.target === 0 ? "이번 주 목표 없음" : `게시 ${week.published} · 이번 주 예약 ${week.scheduled} · `}
         {week.target > 0 && (met ? <span className="weekly-goal-met">달성</span> : `남은 ${week.remaining}`)}
       </p>
+      {week.posts.length > 0 && (
+        <ol className="weekly-goal-posts" aria-label={`${week.label} 이번 주 게시·예약`}>{week.posts.map(post => (
+          <li key={post.key} data-status={post.status}>
+            <time dateTime={post.day}>{monthDay(post.day)}<span className="weekday"> {weekday(post.day)}</span></time>
+            <ProjectName id={post.projectId} title={post.title} hint={post.status === "published" ? "게시 완료" : "공개 예약"} onOpenProject={onOpenProject} />
+            <Badge tone={post.status === "published" ? "primary" : "neutral"}>{post.status === "published" ? "게시" : "예약"}</Badge>
+          </li>))}</ol>
+      )}
       {week.remaining > 0 && (
         fill.length
           ? <ol className="weekly-goal-fill" aria-label={`${week.label} 채울 것`}>{fill.map(c => (
