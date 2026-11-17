@@ -1105,8 +1105,7 @@ async function awaitReady() {
     );
   workflowNotifications.start();
   app.on("second-instance", showWindow);
-  if (!fixture)
-    {
+  if (!fixture) {
     const agent = await connectAgent(root, {
       edits: { request: (name, input) => shutdown.track(() => edits.request(name, input)) },
       coverPreferences,
@@ -1151,7 +1150,7 @@ async function awaitReady() {
     if ("error" in agent.mcp)
       console.warn(`MCP HTTP endpoint unavailable: ${agent.mcp.error}`);
     else console.info(`MCP endpoints: ${agent.mcp.url} ${agent.mcp.workflowUrl}`);
-    }
+  }
   app.on("activate", () => {
     showWindow();
   });
