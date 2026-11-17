@@ -1,11 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("local signature and ASCII upload bundle work through UI, preload and real MCP without iCloud writes", async ({}, info) => {
   test.setTimeout(180_000);
@@ -14,14 +13,7 @@ test("local signature and ASCII upload bundle work through UI, preload and real 
   const app = await launchApp(profile, false);
   const page = await app.firstWindow();
   const client = new Client({ name: "clip-upload-qa", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [path.resolve("dist-mcp/server.mjs")],
-    env: {
-      ...(process.env as Record<string, string>),
-      REELS_USER_DATA: profile,
-    },
-  });
+  const transport = mcpTransport(profile);
   const call = async (name: string, args: Record<string, unknown> = {}) => {
     const result = await client.callTool({ name, arguments: args });
     expect(result.isError, JSON.stringify(result.content)).not.toBe(true);

@@ -6,7 +6,9 @@ import {
 } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { dirname, join, resolve } from "node:path";
 
 export async function makeProfile(): Promise<string> {
@@ -26,6 +28,28 @@ function emptyZdotdir(): string {
     qaZdotdir = dir;
   }
   return qaZdotdir;
+}
+
+/**
+ * One MCP port per profile, chosen before launch so a spec can build its client transport
+ * before the app is up. The same profile reuses its port, so a relaunch keeps the URL.
+ */
+const mcpPorts = new Map<string, number>();
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createNetServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
+}
+export const mcpUrl = (profile: string) => `http://127.0.0.1:${mcpPorts.get(profile)}/mcp`;
+/** An MCP client transport to the app launched with this profile (call after `launchApp`). */
+export function mcpTransport(profile: string) {
+  if (!mcpPorts.has(profile)) throw new Error("launchApp(profile) must run before mcpTransport");
+  return new StreamableHTTPClientTransport(new URL(mcpUrl(profile)));
 }
 
 export async function launchApp(
@@ -56,6 +80,9 @@ export async function launchApp(
   env.REELS_BACKGROUND_QA =
     process.env.REELS_ELECTRON_HEADED === "1" ? "0" : "1";
   env.REELS_USER_DATA = profile;
+  // Never let QA take the user's real MCP port (4319).
+  if (!mcpPorts.has(profile)) mcpPorts.set(profile, await freePort());
+  env.REELS_MCP_PORT = String(mcpPorts.get(profile));
   env.REELS_DEMO = demo ? "1" : "0";
   // Terminal sessions default to herdr when installed. Keep existing scenarios
   // deterministic (and off the user's herdr server); herdr scenarios opt in below.

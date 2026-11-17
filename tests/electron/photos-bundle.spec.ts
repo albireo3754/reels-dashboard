@@ -1,9 +1,8 @@
 import { test, expect, type ElectronApplication } from "@playwright/test";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, type StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { access, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 // REELS_PHOTOS_DEMO_QA stands in for Photos: the demo group mixes photos and videos and
 // the demo materializer writes synthetic copies, so no Photos library is read
@@ -16,7 +15,7 @@ test.describe("Photos bundle import over MCP", () => {
   test.setTimeout(180_000);
   let app: ElectronApplication | undefined,
     client: Client,
-    transport: StdioClientTransport,
+    transport: StreamableHTTPClientTransport,
     profile: string;
   async function call(name: string, args: Record<string, unknown> = {}) {
     const result = await client.callTool(
@@ -39,12 +38,7 @@ test.describe("Photos bundle import over MCP", () => {
       )
       .toBe(true);
     client = new Client({ name: "reels-photos-bundle-qa", version: "1" });
-    transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("dist-mcp/server.mjs")],
-      env: { ...(process.env as Record<string, string>), REELS_USER_DATA: profile },
-      maxBufferSize: 64 * 1024 * 1024,
-    });
+    transport = mcpTransport(profile);
     await client.connect(transport);
   });
   test.afterEach(async () => {

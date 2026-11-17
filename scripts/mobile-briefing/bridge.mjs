@@ -1,5 +1,5 @@
 import { Client } from '@modelcontextprotocol/client';
-import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
@@ -14,10 +14,8 @@ const origin=new URL(credential.url);if(origin.protocol!=='https:')throw new Err
 const root=path.join(os.homedir(),'Library/Application Support/Reels Dashboard/mobile-bridge');await mkdir(root,{recursive:true,mode:0o700});
 let objects=new LocalObjectStore(),snapshot=null;
 try{const cached=JSON.parse(await readFile(path.join(root,'registry.json'),'utf8'));objects=new LocalObjectStore(cached.objects);snapshot=cached.snapshot;}catch{}
-const client=new Client({name:'reels-mobile-bridge',version:'1'});
-const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'dist-mcp/server.mjs')],cwd:repo,env:{...process.env},stderr:'pipe'});
-await client.connect(transport);
-console.log(new Date().toISOString(),"MCP connection ready.");
+// The app serves MCP over local HTTP; connect lazily so an app that is not running yet is only "unavailable".
+const mcpUrl=new URL(process.env.REELS_MCP_URL??'http://127.0.0.1:4319/mcp');let client=null;
 let mediaEnabled=false;
 let running=true;process.on('SIGTERM',()=>{running=false;});process.on('SIGINT',()=>{running=false;});
 const execute=promisify(execFile);
@@ -33,7 +31,7 @@ async function request(route,options={}){
  const r=await fetch(new URL(route,origin),{...options,headers:{'OAI-Sites-Authorization':'Bearer '+credential.token,'X-Reels-Bridge-Key':credential.token,...options.headers},redirect:'manual',signal:AbortSignal.timeout(30000)});
  if(!r.ok)throw new Error(`Remote request failed (${r.status})`);return r;
 }
-async function mcp(name){const r=await client.callTool({name,arguments:{}},{timeout:20000});if(r.isError)throw new Error('Local app unavailable');return r.structuredContent;}
+async function mcp(name){if(!client){const next=new Client({name:'reels-mobile-bridge',version:'1'});await next.connect(new StreamableHTTPClientTransport(mcpUrl));client=next;}const r=await client.callTool({name,arguments:{}},{timeout:20000});if(r.isError)throw new Error('Local app unavailable');return r.structuredContent;}
 async function refresh(){
  try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;
  const temp=path.join(root,'registry.json.tmp');await writeFile(temp,JSON.stringify({objects:objects.exportRegistry(),snapshot}),{mode:0o600});await rename(temp,path.join(root,'registry.json'));
@@ -59,4 +57,4 @@ try{
   }catch{await reportStatus(false).catch(()=>{});if(Date.now()>nextFailureLog){log('Connection unavailable; metadata retained. Retrying.');nextFailureLog=Date.now()+60000;}}
   await new Promise(r=>setTimeout(r,1000));
  }
-}finally{await client.close();await transport.close();}
+}finally{await client?.close();}

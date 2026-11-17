@@ -1,10 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import path from "node:path";
 import { access, writeFile, readFile } from "node:fs/promises";
 import { sendNative } from "../../src/desktop/native";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("MCP Photos search reaches the native helper without changing the date index", async () => {
   test.skip(process.env.REELS_PHOTOS_SEARCH_LIVE !== "1", "Explicit read-only Photos QA opt-in required");
@@ -12,7 +11,7 @@ test("MCP Photos search reaches the native helper without changing the date inde
   const profile = await makeProfile();
   const app = await launchApp(profile, false);
   const client = new Client({ name: "photos-search-qa", version: "1" });
-  const transport = new StdioClientTransport({ command: process.execPath, args: [path.resolve("dist-mcp/server.mjs")], env: { ...process.env as Record<string,string>, REELS_USER_DATA: profile } });
+  const transport = mcpTransport(profile);
   try {
     await expect.poll(async () => { try { await access(path.join(profile,"agent/connection.json")); return true; } catch { return false; } }).toBe(true);
     await client.connect(transport);

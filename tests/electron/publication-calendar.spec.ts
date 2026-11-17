@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("private calendar imports travel through MCP, preload and UI without sharing them", async ({}, info) => {
   test.setTimeout(90_000);
@@ -11,7 +10,7 @@ test("private calendar imports travel through MCP, preload and UI without sharin
   const app = await launchApp(profile, false);
   const page = await app.firstWindow();
   const client = new Client({ name: "calendar-qa", version: "1" });
-  const transport = new StdioClientTransport({ command: process.execPath, args: [path.resolve("dist-mcp/server.mjs")], env: { ...(process.env as Record<string, string>), REELS_USER_DATA: profile } });
+  const transport = mcpTransport(profile);
   const call = async (name: string, args = {}) => {
     const result = await client.callTool({ name, arguments: args });
     expect(result.isError, JSON.stringify(result.content)).not.toBe(true);

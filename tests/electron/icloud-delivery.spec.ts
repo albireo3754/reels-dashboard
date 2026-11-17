@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, type StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import {
   mkdir,
   mkdtemp,
@@ -12,7 +11,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("MCP and desktop share delivery state through the real PhotosIndex iCloud endpoint", async () => {
   test.setTimeout(180_000);
@@ -31,17 +30,10 @@ test("MCP and desktop share delivery state through the real PhotosIndex iCloud e
   const app = await launchApp(profile, false, {
     PHOTOSINDEX_EXPORT_ROOT: cloud,
   });
-  let client: Client | undefined, transport: StdioClientTransport | undefined;
+  let client: Client | undefined, transport: StreamableHTTPClientTransport | undefined;
   async function connect() {
     client = new Client({ name: "icloud-delivery-qa", version: "1" });
-    transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("dist-mcp/server.mjs")],
-      env: {
-        ...(process.env as Record<string, string>),
-        REELS_USER_DATA: profile,
-      },
-    });
+    transport = mcpTransport(profile);
     await client.connect(transport);
   }
   async function call(name: string, args: Record<string, unknown> = {}) {

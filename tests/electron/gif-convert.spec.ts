@@ -1,11 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { access, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { editorRuntime, launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 const execute = promisify(execFile);
 const runtime = editorRuntime();
@@ -47,11 +46,7 @@ test("board video converts to a silent looping GIF through the UI and the real M
   );
   const app = await launchApp(profile, false);
   const client = new Client({ name: "gif-convert-qa", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [path.resolve("dist-mcp/server.mjs")],
-    env: { ...(process.env as Record<string, string>), REELS_USER_DATA: profile },
-  });
+  const transport = mcpTransport(profile);
   try {
     const page = await app.firstWindow();
     await expect(page.getByRole("heading", { name: "합성 블로그 동작 영상", exact: true })).toBeVisible();

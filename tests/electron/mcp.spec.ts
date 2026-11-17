@@ -1,12 +1,11 @@
 import { test, expect, type ElectronApplication } from "@playwright/test";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, type StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, access } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { editorRuntime, launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { editorRuntime, launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 const execute = promisify(execFile);
 const runtime = editorRuntime();
@@ -31,19 +30,11 @@ test.describe("real MCP to Electron editor", () => {
   test.setTimeout(180_000);
   let app: ElectronApplication | undefined,
     client: Client,
-    transport: StdioClientTransport,
+    transport: StreamableHTTPClientTransport,
     profile: string;
   async function connect() {
     client = new Client({ name: "reels-electron-qa", version: "1" });
-    transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("dist-mcp/server.mjs")],
-      env: {
-        ...(process.env as Record<string, string>),
-        REELS_USER_DATA: profile,
-      },
-      maxBufferSize: 64 * 1024 * 1024,
-    });
+    transport = mcpTransport(profile);
     await client.connect(transport);
   }
   async function call(name: string, args: Record<string, unknown> = {}) {
@@ -275,11 +266,10 @@ test.describe("real MCP to Electron editor", () => {
     expect(overwrite.isError).toBe(true);
     await closeApp(app);
     app = undefined;
-    const offline = await client.callTool({
-      name: "reels_get_app_state",
-      arguments: {},
-    });
-    expect(offline.isError).toBe(true);
+    // A stopped app is a refused connection, which MCP clients show as "not connected".
+    await expect(
+      client.callTool({ name: "reels_get_app_state", arguments: {} }),
+    ).rejects.toThrow();
     app = await launchApp(profile, false);
     await app.firstWindow();
     await expect

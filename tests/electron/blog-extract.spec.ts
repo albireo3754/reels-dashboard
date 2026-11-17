@@ -3,9 +3,7 @@ import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { resolve } from "node:path";
-import { launchApp, makeProfile, closeApp, cleanProfile } from "./helpers";
+import { launchApp, makeProfile, closeApp, cleanProfile, mcpTransport } from "./helpers";
 
 // Synthetic SmartEditor ONE post. All https traffic of the extractor/verify sessions is answered
 // in-process; nothing reaches Naver. Set REELS_BLOG_LIVE_URL to additionally run a real post.
@@ -178,7 +176,7 @@ test("agents run the same extraction through the Dashboard MCP", async () => {
       }
     }, { outer, post, mobile, png: PNG });
     client = new Client({ name: "reels-blog-extract-qa", version: "1" });
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: [resolve("dist-mcp/server.mjs")], env: { ...(process.env as Record<string, string>), REELS_USER_DATA: profile } }));
+    await client.connect(mcpTransport(profile));
     const tools = (await client.listTools()).tools.map((t) => t.name);
     expect(tools).toEqual(expect.arrayContaining(["reels_extract_blog_reference", "reels_list_blog_references", "reels_link_blog_reference", "reels_unlink_blog_reference"]));
     const missing = await client.callTool({ name: "reels_extract_blog_reference", arguments: { url: POST } }, { timeout: 60_000 });

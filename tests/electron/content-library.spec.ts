@@ -1,22 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { writeFile, access } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("MCP registers local content, refreshes UI, rejects stale writes and restores links", async () => {
   const profile = await makeProfile();
   let app = await launchApp(profile, false);
   const client = new Client({ name: "content-test", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [path.resolve("dist-mcp/server.mjs")],
-    env: {
-      ...(process.env as Record<string, string>),
-      REELS_USER_DATA: profile,
-    },
-  });
+  const transport = mcpTransport(profile);
   async function call(name: string, args: Record<string, unknown> = {}) {
     const r = await client.callTool({ name, arguments: args });
     expect(r.isError, JSON.stringify(r.content)).not.toBe(true);

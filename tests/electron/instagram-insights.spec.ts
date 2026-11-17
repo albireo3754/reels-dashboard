@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { launchApp, closeApp, makeProfile, cleanProfile } from "./helpers";
+import { launchApp, closeApp, makeProfile, cleanProfile, mcpTransport } from "./helpers";
 
 test("Instagram token stays in main while MCP collection, private history and UI share the same service", async ({}, info) => {
   test.setTimeout(120000);
@@ -94,14 +93,7 @@ test("Instagram token stays in main while MCP collection, private history and UI
       )
       .toBe(true);
     await client.connect(
-      new StdioClientTransport({
-        command: process.execPath,
-        args: [path.resolve("dist-mcp/server.mjs")],
-        env: {
-          ...(process.env as Record<string, string>),
-          REELS_USER_DATA: profile,
-        },
-      }),
+      mcpTransport(profile),
     );
     const call = async (name: string, args = {}) => {
       const result = await client.callTool({ name, arguments: args });
