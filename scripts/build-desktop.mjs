@@ -40,17 +40,6 @@ await build({
   logLevel: "warning",
 });
 
-await build({
-  entryPoints: ["src/app/mcp/main.ts"],
-  outfile: "dist-mcp/server.mjs",
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node22",
-  packages: "external",
-  sourcemap: true,
-});
-
 // Single self-contained file: zod is bundled so the CLI runs from any directory.
 // The agent guide is embedded too, so `reels help agent` matches this build without the repository.
 const agentGuide = await readFile("skills/reels-cli/SKILL.md", "utf8");

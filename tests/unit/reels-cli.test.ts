@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:net";
 import { Readable } from "node:stream";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { startMcpHttpServer } from "../../src/app/mcp/http";
 import {
   createAgentDispatch,
   toolDefinitions,
@@ -221,16 +221,8 @@ test("tools list and schemas match the shared definitions and the real MCP serve
     assert.equal(list.document.data.count, Object.keys(toolDefinitions).length);
     assert.match(list.document.data.guidance, /get_app_state/);
     const client = new Client({ name: "reels-cli-test", version: "1" });
-    const transport = new StdioClientTransport({
-      command: process.execPath,
-      args: ["--import", "tsx", "src/app/mcp/main.ts"],
-      cwd: process.cwd(),
-      env: {
-        ...(process.env as Record<string, string>),
-        REELS_USER_DATA: root,
-      },
-      stderr: "pipe",
-    });
+    const server = await startMcpHttpServer({ port: 0, dispatch: echo, workflow: async () => ({}) });
+    const transport = new StreamableHTTPClientTransport(new URL(server.url));
     try {
       await client.connect(transport);
       const { tools } = await client.listTools();
@@ -244,7 +236,7 @@ test("tools list and schemas match the shared definitions and the real MCP serve
       }
     } finally {
       await client.close();
-      await transport.close();
+      await server.close();
     }
   });
 });

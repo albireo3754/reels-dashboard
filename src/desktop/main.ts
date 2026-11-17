@@ -1106,7 +1106,8 @@ async function awaitReady() {
   workflowNotifications.start();
   app.on("second-instance", showWindow);
   if (!fixture)
-    closeAgent = await connectAgent(root, {
+    {
+    const agent = await connectAgent(root, {
       edits: { request: (name, input) => shutdown.track(() => edits.request(name, input)) },
       coverPreferences,
       planning,
@@ -1145,7 +1146,12 @@ async function awaitReady() {
       },
       open: (project) => emit("agent:project-opened", project),
       photos: requestPhotos,
-    });
+    }, requestWorkflow);
+    closeAgent = agent.close;
+    if ("error" in agent.mcp)
+      console.warn(`MCP HTTP endpoint unavailable: ${agent.mcp.error}`);
+    else console.info(`MCP endpoints: ${agent.mcp.url} ${agent.mcp.workflowUrl}`);
+    }
   app.on("activate", () => {
     showWindow();
   });

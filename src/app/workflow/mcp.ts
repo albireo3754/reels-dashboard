@@ -7,7 +7,6 @@ import {
   experienceMediaInput,
 } from "../../shared/experience";
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
   createWorkflowInput,
@@ -18,21 +17,24 @@ import {
   isReadOnlyWorkflowAction,
   type WorkflowAction,
 } from "../../shared/workflow";
-import { workflowRequest } from "./client";
 
-/** Tool handler that forwards to the workflow server and wraps the reply as an MCP result. */
-const forward =
-  (action: WorkflowAction) =>
-  async (input: unknown): Promise<CallToolResult> => {
-    try {
-      const result = await workflowRequest(action, input);
-      return mcpResult(result);
-    } catch (error) {
-      return mcpError(error);
-    }
-  };
+export type WorkflowCall = (action: WorkflowAction, input: unknown) => Promise<unknown>;
 
-const handle = serveStdio(() => {
+/**
+ * Builds the workflow MCP server. `request` runs one workflow action; the desktop app
+ * passes its own host-aware client so a shared server that quit is adopted and retried.
+ */
+export function createWorkflowMcpServer(request: WorkflowCall) {
+  /** Tool handler that forwards to the workflow server and wraps the reply as an MCP result. */
+  const forward =
+    (action: WorkflowAction) =>
+    async (input: unknown): Promise<CallToolResult> => {
+      try {
+        return mcpResult(await request(action, input));
+      } catch (error) {
+        return mcpError(error);
+      }
+    };
   const server = new McpServer(
     { name: "reels-workflows", version: "1.0.0" },
     {
@@ -147,6 +149,4 @@ const handle = serveStdio(() => {
     );
   }
   return server;
-});
-process.on("SIGINT", () => void handle.close());
-process.on("SIGTERM", () => void handle.close());
+}

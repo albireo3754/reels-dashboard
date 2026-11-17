@@ -12,8 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createConnection } from "node:net";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { startMcpHttpServer } from "../../src/app/mcp/http";
 import {
   createAgentDispatch,
   type AgentPorts,
@@ -247,21 +247,18 @@ test("agentRoot resolves the override and falls back to the app folder", () => {
   assert.match(agentRoot({}), /Reels Dashboard$/);
 });
 
-test("real stdio MCP lists typed tools, forwards calls and reports app-offline errors", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "reels-mcp-unit-"));
+test("real HTTP MCP lists typed tools, forwards calls and reports a stopped app", async () => {
   let calls = 0;
-  const close = await startAgentSocket(root, async (name) => {
-    calls++;
-    return { name, connected: true };
+  const server = await startMcpHttpServer({
+    port: 0,
+    dispatch: async (name) => {
+      calls++;
+      return { name, connected: true };
+    },
+    workflow: async () => ({}),
   });
   const client = new Client({ name: "reels-test", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["--import", "tsx", "src/app/mcp/main.ts"],
-    cwd: process.cwd(),
-    env: { ...(process.env as Record<string, string>), REELS_USER_DATA: root },
-    stderr: "pipe",
-  });
+  const transport = new StreamableHTTPClientTransport(new URL(server.url));
   try {
     await client.connect(transport);
     const list = await client.listTools();
@@ -284,18 +281,14 @@ test("real stdio MCP lists typed tools, forwards calls and reports app-offline e
       assert.match(String(error), /valid|uuid|Invalid/i);
     }
     assert.equal(calls, 1);
-    await close();
-    const offline = await client.callTool({
-      name: "reels_get_app_state",
-      arguments: {},
-    });
-    assert.equal(offline.isError, true);
-    assert.match(JSON.stringify(offline.content), /APP_OFFLINE/);
+    // An app that is not running shows up as a failed connection, which is intended.
+    await server.close();
+    await assert.rejects(
+      client.callTool({ name: "reels_get_app_state", arguments: {} }),
+    );
   } finally {
-    await client.close();
-    await transport.close();
-    await close();
-    await rm(root, { recursive: true, force: true });
+    await client.close().catch(() => {});
+    await server.close().catch(() => {});
   }
 });
 

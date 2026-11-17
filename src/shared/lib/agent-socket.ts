@@ -16,10 +16,11 @@ import os from "node:os";
 import path from "node:path";
 
 export const agentRequestLimit = 2 * 1024 * 1024;
-const responseLimit = 64 * 1024 * 1024;
+export const agentResponseLimit = 64 * 1024 * 1024;
+const responseLimit = agentResponseLimit;
 // The server drops idle sockets at this limit, so a client cannot wait longer.
-const socketTimeoutMs = 180_000;
-const emptyErrorMessage = "앱이 오류 내용을 알려주지 않았어요.";
+export const socketTimeoutMs = 180_000;
+export const emptyErrorMessage = "앱이 오류 내용을 알려주지 않았어요.";
 const connectionFile = (root: string) =>
   path.join(root, "agent", "connection.json");
 type Connection = { version: 1; socket: string; token: string; pid: number };

@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { startMcpHttpServer } from "../../src/app/mcp/http";
 import { WorkflowRuntime } from "../../src/app/workflow/runtime";
 import { startWorkflowServer } from "../../src/app/workflow/server";
 import { workflowRequest } from "../../src/app/workflow/client";
@@ -143,20 +143,19 @@ test("run ownership, evidence boundaries, stage validation and cancellation", as
   }
 });
 
-test("headless HTTP, CLI and actual stdio MCP share a run without Electron or model API", async () => {
+test("headless HTTP, CLI and actual HTTP MCP share a run without Electron or model API", async () => {
   const f = await fixture();
   const handle = await startWorkflowServer({
     root: path.join(f.root, "db"),
     port: 0,
   });
   const client = new Client({ name: "workflow-test", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["--import", "tsx", "src/app/workflow/mcp.ts"],
-    cwd: process.cwd(),
-    env: { PATH: process.env.PATH!, REELS_WORKFLOW_URL: handle.url },
-    stderr: "pipe",
+  const mcp = await startMcpHttpServer({
+    port: 0,
+    dispatch: async () => ({}),
+    workflow: (action, input) => workflowRequest(action, input, handle.url),
   });
+  const transport = new StreamableHTTPClientTransport(new URL(mcp.workflowUrl));
   try {
     const run = await workflowRequest("create", f.input, handle.url);
     const response = await fetch(`${handle.url}/api/workflows/create`, {
@@ -204,6 +203,7 @@ test("headless HTTP, CLI and actual stdio MCP share a run without Electron or mo
     assert.equal(stale.isError, true);
   } finally {
     await client.close();
+    await mcp.close();
     await handle.close();
     await rm(f.root, { recursive: true, force: true });
   }

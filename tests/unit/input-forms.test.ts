@@ -6,8 +6,8 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { startMcpHttpServer } from "../../src/app/mcp/http";
 import { WorkflowRuntime } from "../../src/app/workflow/runtime";
 import { startWorkflowServer } from "../../src/app/workflow/server";
 import { workflowRequest } from "../../src/app/workflow/client";
@@ -150,7 +150,7 @@ test("session forms do not create workflows; IDs are idempotent, answers survive
   }
 });
 
-test("real stdio MCP and forms CLI share create/save/results/apply/open with HTTP and no workflow", async () => {
+test("real HTTP MCP and forms CLI share create/save/results/apply/open with HTTP and no workflow", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "forms-mcp-"));
   const opened: string[] = [];
   const h = await startWorkflowServer({
@@ -162,13 +162,12 @@ test("real stdio MCP and forms CLI share create/save/results/apply/open with HTT
     },
   });
   const client = new Client({ name: "forms-test", version: "1" });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["--import", "tsx", "src/app/workflow/mcp.ts"],
-    cwd: process.cwd(),
-    env: { PATH: process.env.PATH!, REELS_WORKFLOW_URL: h.url },
-    stderr: "pipe",
+  const mcp = await startMcpHttpServer({
+    port: 0,
+    dispatch: async () => ({}),
+    workflow: (action, input) => workflowRequest(action, input, h.url),
   });
+  const transport = new StreamableHTTPClientTransport(new URL(mcp.workflowUrl));
   const cli = async (...args: string[]) =>
     JSON.parse(
       (
@@ -243,6 +242,7 @@ test("real stdio MCP and forms CLI share create/save/results/apply/open with HTT
     assert.equal(bad.status, 403);
   } finally {
     await client.close();
+    await mcp.close();
     await h.close();
     await rm(root, { recursive: true, force: true });
   }
