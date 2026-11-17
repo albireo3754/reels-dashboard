@@ -32,6 +32,7 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 | `reels call <name\|slug> [options]` | yes | The same, by full tool name. |
 | `reels prepare-media ...` | no | [Local media copy](#local-media-copy). |
 | `reels autopilot <status\|tick\|run --manual\|today\|resolve\|pause\|resume\|refresh-linear\|connect-linear\|disconnect-linear>` | no | After-work queue and the automatic tick: at most 3 automatic reservations, manual runs unlimited, one item for today. Contract, config and scheduling: [autopilot.md](autopilot.md). `AUTOPILOT_BUSY` (another tick holds the lock) exits 6. `refresh-linear` and `connect-linear` fail with a `LINEAR_*` code and exit 4; `connect-linear` refuses to run outside a terminal (exit 2) and never prints or accepts the key as an argument. |
+| `reels report [--out <path>] [--now <iso>]` | no | The current progress as one self-contained HTML file for people and other sessions, with the same report embedded as JSON. Default `<profile>/reports/status.html`; replaces only a file it wrote (`OUTPUT_EXISTS`, exit 2, otherwise). Reads only. See [status-report.md](status-report.md). |
 | `reels --help`, `reels <command> --help`, `reels help [<command>]`, `reels --version` | no | Help and version. |
 | `reels help exit-codes` | no | The exit codes as text and as `data.exitCodes`, for when this file is out of reach. |
 | `reels help agent` | no | The [agent guide](#agent-guide) for this version as `data.guide` (Markdown), with `data.name` and `data.version`. |

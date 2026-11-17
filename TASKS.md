@@ -1,5 +1,11 @@
 # Reels Dashboard 진행 상태
 
+## 현황 HTML 보고서 `reels report` — 2026-11-17
+
+- [x] 화면만으로 진행 상황 파악이 어렵다는 요청: 앱 없이 저장 데이터를 읽어 HTML 한 파일(+내장 JSON)로 뽑는 CLI 빌트인. 계산은 `projectState`·`weeklyGoalsView`·autopilot view 재사용. [문서](docs/status-report.md).
+- [x] 공유 안전: 로컬 경로·메모·캘린더 링크 제외, 자기 파일만 덮어쓰기. 단위 테스트·typecheck·아키텍처 검사.
+- [ ] 사용자 실사용 확인 뒤 origin push. 앱 안 버튼·자동 갱신은 필요가 확인되면.
+
 ## Edits 외부 앱 자동화 — 2026-11-14
 
 - [x] main 기준 격리 worktree에서 TS 서비스·공통 MCP/CLI 도구·edits 필터·main 주입 경로 작성. 앱을 우회하는 독립 CLI/helper 실행 경로 없음.

@@ -5,7 +5,7 @@ description: Operate a running Reels Dashboard app from a shell with the `reels`
 
 # Reels CLI
 
-Most `reels` commands call the running Reels Dashboard app through the same private socket tools as MCP. The app owns projects, Photos access and render jobs. `prepare-media` and `collect-instagram-insights` work directly with local files without the app. The CLI has no queue or retry logic, and it never launches the app. If `reels` is not on `PATH`, run `node <repo>/dist-cli/reels.mjs` instead.
+Most `reels` commands call the running Reels Dashboard app through the same private socket tools as MCP. The app owns projects, Photos access and render jobs. `prepare-media`, `collect-instagram-insights` and `report` work directly with local files without the app. The CLI has no queue or retry logic, and it never launches the app. If `reels` is not on `PATH`, run `node <repo>/dist-cli/reels.mjs` instead.
 
 ## Start
 
@@ -27,6 +27,10 @@ A tool can be named `reels_get_project`, `get_project` or `get-project`. Flags c
 ## Photos
 
 Photos originals stay untouched by default. The `photos` group only reads (status, search, index, groups, inspect). To bring a visit's Photos material to the dashboard, use `reels import-photos-bundle --project-id <card> --group-id <id> --index-run-id <run>` (optional `--asset-ids '["<id>",...]'` as JSON): it copies every photo and video of the group, Live Photo motion included, into app storage and attaches them to that one card. Videos become linked edit projects without cards of their own. Rerunning is safe; earlier copies are reused. `reels import-photos-video` imports a single video as its own edit card. Both leave the Photos item unchanged. There is no move or delete command. Deleting originals is a desktop-only choice the user makes explicitly; "organize" or "정리" never means delete.
+
+## Progress report
+
+`reels report` writes the current progress (today's pick, counts by state, weekly goals, the work order, what waits for review, recent posts) to one HTML file and prints its path as `data.path`. Use it to show the user where things stand or to hand another session the same picture; the report is also embedded as JSON in `<script id="reels-status-report">`. It reads only and replaces only its own file.
 
 ## Ids
 

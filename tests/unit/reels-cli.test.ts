@@ -2816,6 +2816,7 @@ test("suggestions and tool lookups lead to the command an agent wanted", async (
         "reels prepare-media",
         "reels collect-instagram-insights",
         "reels autopilot",
+        "reels report",
       ],
     );
   });

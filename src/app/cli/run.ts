@@ -35,6 +35,7 @@ import {
   autopilotWords,
 } from "./autopilot";
 import { runtimeCheck, setupChecks, type Check } from "./doctor";
+import { reportCommand, reportHelp, reportOptions, reportUsage } from "./report";
 import {
   completionScript,
   completionShells,
@@ -909,7 +910,7 @@ Render:  reels start-render --project-id <id> --expected-updated-at <rev> --targ
 Resume:  reels get-render-job --job-id <id> --wait
 Any:     reels call <tool> --input - < input.json
 Copy:    reels prepare-media --list | reels prepare-media --help
-Collect: reels collect-instagram-insights --source manual    (works without the app)
+No app:  reels report (progress as one HTML file) | reels collect-instagram-insights --source manual
 Env:     REELS_USER_DATA selects the app profile.
 Exit codes: reels help exit-codes. While writeOutcome is unknown, never retry a write; inspect state first.
 Agents: reels help agent prints the usage guide for this version.`;
@@ -1054,6 +1055,20 @@ const autopilotBuiltin = {
       scope,
     ),
 } satisfies Builtin;
+const reportBuiltin = {
+  name: "report",
+  usage: reportUsage,
+  help: reportHelp,
+  summary:
+    "Write the current progress as one HTML file to share with people and sessions. Works without the app.",
+  completions: () => optionWords(reportOptions),
+  completionValues: () => valueWords(reportOptions),
+  run: (args, { io, scope }) => {
+    // It writes only its own report file, never app state; rerunning replaces that file.
+    scope.readOnly = true;
+    return reportCommand(args, { root: profileRoot(io), io });
+  },
+} satisfies Builtin;
 export const helpTopics: readonly HelpTopic[] = [
   { name: "exit-codes", run: exitCodeHelp },
   {
@@ -1112,6 +1127,7 @@ export const builtins: readonly Builtin[] = [
   prepareMediaCommand,
   collectInstagramCommand,
   autopilotBuiltin,
+  reportBuiltin,
   helpCommand,
   completionCommand,
 ];
