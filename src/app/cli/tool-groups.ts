@@ -17,7 +17,7 @@ export const toolGroups = {
   forms: "Shared input forms: create, read, save, apply and open.",
   analysis: "Image and frame analysis of a project folder.",
   blog: "Naver blog references, comment records and GIF motion clips.",
-  planning: "Calendar and Linear snapshots, weekly channel goals, video booking queue.",
+  planning: "Calendar and Linear snapshots, weekly goals, posting queue (blog and video).",
   edits: "Edits app automation through Dashboard main and its native AX helper.",
   insights: "Private Instagram account insights and topic labels.",
 } as const;

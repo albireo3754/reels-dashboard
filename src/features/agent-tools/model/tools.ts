@@ -57,7 +57,7 @@ export const toolDefinitions = {
     input: z.strictObject({}), readOnly: true,
   },
   reels_get_weekly_goals: {
-    description: "Read this week's and next week's posting goal per channel (blog, Naver Clip, Reels, Shorts: published, booked, remaining, candidates in work order) and the two-week video booking queue (booked/cap = 2x weekly target, open slots, suggested days for finished videos, bookings past 14 days). Read-only: it never books or posts; after booking on the channel, record the project's publication as scheduled.",
+    description: "Read this week's and next week's posting goal per channel (blog, Naver Clip, Reels, Shorts: published, booked, remaining, candidates in work order) and the two-week posting queue for every goal channel, blog included (booked/cap = 2x weekly target, open slots, suggested days for reviewed blog drafts and finished videos, bookings past 14 days). Read-only: it never books or posts; after booking on the channel, record the project's publication as scheduled.",
     input: z.strictObject({}), readOnly: true,
   },
   reels_sync_planning: {

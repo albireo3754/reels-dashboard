@@ -10,15 +10,12 @@ const goalEntry = (p: Project, channel: PublicationChannel): Publication | undef
 
 /**
  * The weekly rhythm: how many posts each channel should get per week, what is still missing this
- * week, and which finished videos to book next. Reads the Dashboard and the planning snapshot only;
+ * week, and which finished posts (blog and video) to book next. Reads the Dashboard and the planning snapshot only;
  * it never books or posts anything on a channel.
  */
 export const goalChannels = ["blog", "naver-clip", "instagram", "youtube"] as const satisfies readonly PublicationChannel[];
 export type GoalChannel = (typeof goalChannels)[number];
 export const goalChannelLabels: Record<GoalChannel, string> = { blog: "블로그", "naver-clip": "클립", instagram: "릴스", youtube: "쇼츠" };
-/** Channels whose posts are videos that can be booked ahead. The blog is written, not booked. */
-export const videoChannels = ["naver-clip", "instagram", "youtube"] as const satisfies readonly GoalChannel[];
-export type VideoChannel = (typeof videoChannels)[number];
 
 export const defaultWeeklyTargets: Record<GoalChannel, number> = { blog: 2, "naver-clip": 3, instagram: 2, youtube: 1 };
 export type WeeklyTargets = z.infer<typeof weeklyTargetsSchema>;
@@ -34,7 +31,7 @@ export function targetFields(current: Planning, update: Pick<PlanningUpdate, "we
   return { weeklyTargets, ...(clip >= 1 ? { weeklyTarget: clip } : {}) };
 }
 
-/** Booked videos are kept at most this far ahead; the queue never proposes a slot past it. */
+/** Booked posts (blog and video) are kept at most this far ahead; the queue never proposes a slot past it. */
 export const bookingHorizonDays = 14;
 
 /** Saved targets, or the defaults with the older single Naver Clip target when nothing per channel was saved. */
@@ -63,9 +60,13 @@ export const goalPhaseLabels: Record<GoalPhase, string> = { draft: "임시저장
  */
 export const isReadyToBook = (project: Project) =>
   project.stage !== "review" && (project.stage === "published" || project.stage === "done" || Boolean(project.resources?.some(r => r.role === "final")));
-/** Review comes first: a channel draft uploaded before the review is over is still waiting for review. */
-const phaseOf = (project: Project, status: "planned" | "draft"): GoalPhase =>
-  project.stage === "review" ? "review" : status === "draft" ? "draft" : isReadyToBook(project) ? "final" : "production";
+/**
+ * Review comes first: a channel draft uploaded before the review is over is still waiting for review.
+ * A final video file or a post live on another channel says nothing about the blog post, so a planned blog post
+ * stays `production` until it is saved as a draft on the blog.
+ */
+const phaseOf = (project: Project, status: "planned" | "draft", channel: PublicationChannel): GoalPhase =>
+  project.stage === "review" ? "review" : status === "draft" ? "draft" : channel !== "blog" && isReadyToBook(project) ? "final" : "production";
 const byWorkOrder = (a: Project, b: Project) =>
   (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
   || readiness[a.stage] - readiness[b.stage]
@@ -104,7 +105,7 @@ function pendingFor(projects: Project[], channel: PublicationChannel, now: Date)
       return entry && (entry.status === "planned" || entry.status === "draft") ? [{ p, status: entry.status }] : [];
     })
     .sort((a, b) => byWorkOrder(a.p, b.p))
-    .map(({ p, status }) => candidate(p, status, phaseOf(p, status)));
+    .map(({ p, status }) => candidate(p, status, phaseOf(p, status, channel)));
   if (channel !== "naver-clip") return planned;
   const reuse = projects
     .filter(p => p.stage !== "done" && reelDay(p) && !p.publications?.some(x => x.channel === "naver-clip"))
@@ -132,8 +133,12 @@ export function weekGoals(planning: Planning, projects: Project[], from: string,
 
 export interface Booking { projectId: string; title: string; at: string; day: string; source: "dashboard" | "calendar" }
 export interface Slot { day: string; projectId: string; title: string; phase: GoalPhase }
+/**
+ * One channel of the posting queue ("게시 대기열"): every goal channel, the blog included. The blog is booked as
+ * a scheduled post ("발행 예약"), videos as a scheduled publish ("공개 예약"); the rules are the same.
+ */
 export interface ChannelQueue {
-  channel: VideoChannel; label: string; target: number;
+  channel: GoalChannel; label: string; target: number;
   /** Two weeks of posts: `target * 2`. */
   cap: number;
   booked: Booking[];
@@ -141,13 +146,13 @@ export interface ChannelQueue {
   beyond: Booking[];
   open: number;
   full: boolean;
-  /** Reviewed videos waiting for a booking (channel drafts, finished cuts, re-uploads), in the user's work order. */
+  /** Reviewed posts waiting for a booking (channel drafts, finished cuts, re-uploads), in the user's work order. */
   ready: GoalCandidate[];
   /** Planned for this channel and waiting for review; booked only after the review. */
   inReview: GoalCandidate[];
   /** Planned for this channel but not finished yet. */
   inProduction: number;
-  /** The next days to book, one ready video each, never past the horizon or the cap. */
+  /** The next days to book, one ready post each, never past the horizon or the cap. */
   slots: Slot[];
 }
 export interface BookingQueue { now: string; until: string; horizonDays: number; channels: ChannelQueue[] }
@@ -158,7 +163,7 @@ export function bookingQueue(planning: Planning, projects: Project[], now: Date 
   const targets = weeklyTargetsOf(planning);
   const today = seoulDate(now);
   const until = addDays(today, bookingHorizonDays);
-  const channels = videoChannels.map(channel => {
+  const channels = goalChannels.map(channel => {
     const target = targets[channel];
     const cap = target * 2;
     const all = new Map<string, Booking>();

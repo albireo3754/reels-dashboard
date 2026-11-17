@@ -27,7 +27,8 @@
 .booking-queue h4 { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 0 0; font-size: var(--text-md); }
 .booking-queue h4 > span { font-size: var(--text-sm); font-weight: 400; color: var(--color-text-subtle); }
 .booking-help { margin: 0; max-width: 320px; font-size: var(--text-sm); line-height: 1.5; }
-.booking-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: var(--space-2) var(--space-5); }
+/* One column per goal channel, in the same order as the tiles above. */
+.booking-rows { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: var(--space-2) var(--space-5); }
 .booking-row header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .booking-row h5 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .booking-count { font-variant-numeric: tabular-nums; font-size: var(--text-base); }
@@ -48,12 +49,13 @@
 .weekly-target-editor label { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-subtle); }
 .weekly-target-editor input { width: 72px; }
 .weekly-target-editor small { font-size: var(--text-xs); }
-@media (max-width: 1100px) { .weekly-goal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .booking-rows { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1100px) { .weekly-goal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .booking-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Phone: keep the four goals as a 2x2 glance; each tile shows its first item only. */
 @media (max-width: 600px) {
   .weekly-goal-tile strong { font-size: var(--text-2xl); }
   .weekly-goal-fill li:nth-child(n + 2) { display: none; }
   .booking-list time { width: 64px; }
+  .booking-rows { grid-template-columns: minmax(0, 1fr); }
   /* Phone: the date without the weekday leaves room for the title. */
   .weekly-goal-posts time { width: auto; }
   .weekly-goal-posts .weekday { display: none; }

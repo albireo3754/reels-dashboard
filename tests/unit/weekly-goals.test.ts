@@ -166,12 +166,44 @@ test("phases: a project waiting for review is kept apart from reviewed work and 
   assert.deepEqual(clip.candidates.map(c => [c.projectId, c.status, c.phase, c.ready]), [["reel", "reuse", "reuse", true], ["reel-in-review", "reuse", "reuse", true]]);
 });
 
-test("booking queue: a channel with no target proposes nothing, and the blog is never queued", () => {
+test("booking queue: a channel with no target proposes nothing; every goal channel is queued, the blog first", () => {
   const planning: Planning = { ...emptyPlanning(), weeklyTargets: { blog: 2, "naver-clip": 0, instagram: 2, youtube: 1 } };
   const queue = bookingQueue(planning, [project("c", [planned("naver-clip")])], now);
-  assert.deepEqual(queue.channels.map(c => c.channel), ["naver-clip", "instagram", "youtube"]);
-  const clip = queue.channels[0];
+  assert.deepEqual(queue.channels.map(c => c.channel), ["blog", "naver-clip", "instagram", "youtube"]);
+  const clip = queue.channels.find(c => c.channel === "naver-clip")!;
   assert.deepEqual([clip.cap, clip.slots.length, clip.full], [0, 0, true]);
+});
+
+// 2026-11-18: the queue was video-only ("영상 예약 큐"); the user asked for the blog in it too ("게시 대기열").
+test("posting queue: the blog is queued like the videos — bookings count, drafts get slots, unwritten posts wait", () => {
+  const event = { id: "e-blog", projectId: "cal-blog", title: "캘린더 블로그", start: "2026-11-24T10:00:00+09:00", url: "https://calendar.google.com/calendar/event?eid=b", channel: "blog" as const, cancelled: false };
+  const planning: Planning = {
+    ...emptyPlanning(), weeklyTargets: { blog: 2, "naver-clip": 3, instagram: 2, youtube: 1 },
+    calendar: { url: "https://calendar.google.com/calendar/u/0/r/week", syncedAt: "2026-11-16T00:00:00Z", window: { from: "2026-11-09", to: "2026-11-30" }, events: [event] },
+  };
+  const final = { resources: [{ role: "final" as const, path: "/tmp/cut.mp4", label: "완성본" }] };
+  const projects = [
+    project("booked-blog", [published("instagram", "2026-11-01"), scheduled("blog", "2026-11-19T10:00:00+09:00")], { stage: "published" }),
+    project("cal-blog", [planned("blog")], { stage: "editing" }),
+    project("blog-draft", [published("instagram", "2026-11-02"), planned("blog", "draft")], { stage: "published", priority: 1 }),
+    // A finished video or a live Reel says nothing about the blog post: not proposed until it is a blog draft.
+    project("blog-unwritten", [published("instagram", "2026-11-03"), planned("blog")], { stage: "published", priority: 2, ...final }),
+    project("blog-review", [planned("blog", "draft")], { stage: "review", priority: 3 }),
+  ];
+  const blog = bookingQueue(planning, projects, now).channels.find(c => c.channel === "blog")!;
+  assert.deepEqual([blog.label, blog.cap], ["블로그", 4]);
+  assert.deepEqual(blog.booked.map(b => [b.projectId, b.day, b.source]), [["booked-blog", "2026-11-19", "dashboard"], ["cal-blog", "2026-11-24", "calendar"]]);
+  assert.deepEqual([blog.open, blog.full], [2, false]);
+  assert.deepEqual(blog.ready.map(c => [c.projectId, c.phase]), [["blog-draft", "draft"]]);
+  assert.deepEqual(blog.inReview.map(c => c.projectId), ["blog-review"]);
+  assert.equal(blog.inProduction, 1, "the unwritten post");
+  assert.deepEqual(blog.slots.map(s => [s.projectId, s.phase]), [["blog-draft", "draft"]]);
+  const slot = blog.slots[0].day;
+  assert.ok(slot > "2026-11-16" && slot < "2026-11-30", slot);
+  for (const taken of ["2026-11-19", "2026-11-24"]) assert.ok(Math.abs(Date.parse(slot) - Date.parse(taken)) >= 3 * 86_400_000, `${slot} keeps 3 days from ${taken}`);
+
+  const tile = weekGoals(planning, projects, "2026-11-15", now).channels.find(c => c.channel === "blog")!;
+  assert.deepEqual(tile.candidates.find(c => c.projectId === "blog-unwritten")?.phase, "production", "the tile badge agrees with the queue");
 });
 
 test("the view covers this week, next week and the queue from one snapshot", () => {

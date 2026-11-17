@@ -25,7 +25,8 @@ const phaseTone: Record<GoalPhase, "primary" | "neutral" | "warning"> = { draft:
 const PhaseBadge = ({ phase }: { phase: GoalPhase }) => <Badge tone={phaseTone[phase]} data-phase={phase}>{goalPhaseLabels[phase]}</Badge>;
 
 /**
- * This week's goal per channel, what to fill it with, and the two-week booking queue for videos.
+ * This week's goal per channel, what to fill it with, and the two-week posting queue ("게시 대기열") for every
+ * channel, the blog included.
  * Read-only on channels: it suggests what to book; booking itself happens on the channel and is then
  * recorded on the project. Without a planning bridge (shared view) it renders nothing.
  */
@@ -139,7 +140,7 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
       {!q.full && q.cap > 0 && left > 0 && (
         <p className="weekly-goal-empty">{q.slots.length < q.ready.length
           ? `나머지 ${left}칸은 2주 안에 남는 날이 없어요`
-          : `나머지 ${left}칸은 새 완성본이 생기면 채워져요${q.inProduction ? ` · 제작 중 ${q.inProduction}개` : ""}`}</p>
+          : `나머지 ${left}칸은 ${q.channel === "blog" ? "새 글을 임시저장하면" : "새 완성본이 생기면"} 채워져요${q.inProduction ? ` · 제작 중 ${q.inProduction}개` : ""}`}</p>
       )}
       {q.cap > 0 && q.inReview.length > 0 && (
         <p className="booking-review" aria-label={`${q.label} 검토 대기`}>
@@ -153,10 +154,10 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
 
 function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQueue[]; until: string; onOpenProject?: (projectId: string) => void }) {
   return (
-    <section className="booking-queue" aria-label="영상 예약 큐">
-      <h4>영상 예약 큐 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 검토 끝난 것만</span>
-        <Popover label="예약 큐 안내">
-          <p className="booking-help">채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 채널에서 예약한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
+    <section className="booking-queue" aria-label="게시 대기열">
+      <h4>게시 대기열 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 검토 끝난 것만</span>
+        <Popover label="게시 대기열 안내">
+          <p className="booking-help">블로그 글과 영상을 채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 블로그는 임시저장한 글만 제안해요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 블로그는 발행 예약, 영상은 공개 예약을 한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
         </Popover>
       </h4>
       <div className="booking-rows">{channels.map(q => <QueueRow key={q.channel} q={q} onOpenProject={onOpenProject} />)}</div>
@@ -180,7 +181,7 @@ function TargetEditor({ api, planning, targets, onSaved }: { api: PlanningBridge
         <label key={channel}>
           <span>{goalChannelLabels[channel]}</span>
           <input type="number" min={0} max={14} value={draft[channel]} onChange={e => setDraft(d => ({ ...d, [channel]: Math.max(0, Math.min(14, Math.trunc(Number(e.target.value) || 0))) }))} />
-          {channel !== "blog" && <small>2주 예약 {draft[channel] * 2}개까지</small>}
+          <small>2주 예약 {draft[channel] * 2}개까지</small>
         </label>
       ))}
       <Button type="submit" size="small" disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>

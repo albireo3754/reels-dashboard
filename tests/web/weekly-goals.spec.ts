@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * "이번 주 목표" on the Dashboard tab: per-channel weekly goals, what fills them, and the two-week video
- * booking queue. Synthetic localStorage data only (web demo bridge).
+ * "이번 주 목표" on the Dashboard tab: per-channel weekly goals, what fills them, and the two-week posting
+ * queue ("게시 대기열", blog and video). Synthetic localStorage data only (web demo bridge).
  */
 const project = (id: string, title: string, stage: string, publications: unknown[], extra: Record<string, unknown> = {}) =>
   ({ id, title, date: "2026-11-01", nextAction: "다음 행동", stage, publicURL: "", shared: false, publications, ...extra });
@@ -28,7 +28,7 @@ async function seed(page: Page) {
   await page.goto("/?demo=1");
 }
 
-test("weekly goals: four channels with progress, what fills each, and the two-week booking queue", async ({ page }, info) => {
+test("weekly goals: four channels with progress, what fills each, and the two-week posting queue", async ({ page }, info) => {
   await seed(page);
   const panel = page.getByTestId("weekly-goals");
   await expect(panel.getByRole("heading", { name: "이번 주 목표" })).toBeVisible();
@@ -46,8 +46,12 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
   // Reels: 2 a week, none live yet, so the first two candidates in work order show (review comes before editing).
   await expect(panel.getByRole("article", { name: "릴스 이번 주" }).getByRole("list", { name: "릴스 채울 것" }).getByRole("listitem")).toHaveText([/검토 대기 릴스.*검토 대기/, /완성된 새 릴스.*완성본/]);
 
-  const queue = panel.getByRole("region", { name: "영상 예약 큐" });
+  const queue = panel.getByRole("region", { name: "게시 대기열" });
   await expect(queue.getByText(/오늘부터 2주 · 11\. 29\. \(일\)까지/)).toBeVisible();
+  // The blog is queued like the videos: its channel draft is proposed for a day.
+  const blogQueue = queue.getByRole("article", { name: "블로그 예약" });
+  await expect(blogQueue.getByText("앞으로 예약 0 / 4")).toBeVisible();
+  await expect(blogQueue.getByRole("listitem").filter({ hasText: "예약 제안" })).toHaveText([/블로그 임시저장 글.*임시저장/]);
   const clipQueue = queue.getByRole("article", { name: "클립 예약" });
   await expect(clipQueue.getByText("앞으로 예약 1 / 6")).toBeVisible();
   await expect(clipQueue.getByRole("listitem").filter({ hasText: "예약됨" })).toContainText("클립 예약 영상");
@@ -63,8 +67,8 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
   await expect(reels.getByRole("listitem").filter({ hasText: "검토 대기 릴스" })).toHaveCount(0);
 
   // The queue rule lives in a help popover, not a standing paragraph.
-  await queue.getByRole("button", { name: "예약 큐 안내" }).click();
-  await expect(page.getByRole("dialog", { name: "예약 큐 안내" })).toContainText("2주치");
+  await queue.getByRole("button", { name: "게시 대기열 안내" }).click();
+  await expect(page.getByRole("dialog", { name: "게시 대기열 안내" })).toContainText("2주치");
   await page.keyboard.press("Escape");
 
   // Clicking a project opens it.
@@ -86,7 +90,7 @@ test("weekly goals: editing one channel's target saves it and the tiles follow",
   await panel.getByRole("button", { name: "목표 수정" }).click();
   const form = panel.getByRole("form", { name: "주간 목표 수정" });
   await form.getByLabel("쇼츠").fill("2");
-  await expect(form.getByText("2주 예약 4개까지")).toHaveCount(2); // reels (2) and now shorts (2)
+  await expect(form.getByText("2주 예약 4개까지")).toHaveCount(3); // blog (2), reels (2) and now shorts (2)
   await form.getByRole("button", { name: "저장" }).click();
   await expect(form).toHaveCount(0);
   await expect(panel.getByRole("article", { name: "쇼츠 이번 주" }).getByText("게시 0 · 이번 주 예약 0 · 남은 2")).toBeVisible();
