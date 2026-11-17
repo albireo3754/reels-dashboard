@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import type { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { StaticPriceCatalog, type ModelRate } from "./pricing";
 import { ObservationRecorder } from "./observation";
 import { CodexObserver } from "./codex-observer";
@@ -43,7 +43,10 @@ export async function configureObservation(
     )
       throw new Error("Invalid OTLP headers");
     if (vendor === "langfuse") headers["x-langfuse-ingestion-version"] = "4";
-    exporter = new OTLPTraceExporter({
+    // Loaded only when export is configured: the default local-only setup never needs it, and loading it
+    // ahead of @opentelemetry/api broke Playwright's TS loader (tests/web/canonical-sdk.spec.ts).
+    const { OTLPTraceExporter: Exporter } = await import("@opentelemetry/exporter-trace-otlp-http");
+    exporter = new Exporter({
       url: url.href,
       headers,
       timeoutMillis: 3000,
