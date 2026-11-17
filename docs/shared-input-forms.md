@@ -26,7 +26,7 @@ flowchart LR
 
 ## MCP와 CLI
 
-같은 서버를 사용한다. 데스크톱 앱은 서버를 내장하며([내장 서버](workflows.md#desktop-embedded-server--2026-11-03)), 앱 없이 쓸 때 서버 실행은 `npm run start:server`, stdio MCP는 `npm run start:workflow-mcp`, CLI는 `npm run forms -- …`다. 다른 포트는 `REELS_WORKFLOW_URL=http://127.0.0.1:<port>`로 지정한다. 서버를 새로 만들거나 DB 파일을 직접 수정해서 연결하지 않는다.
+같은 서버를 사용한다. 데스크톱 앱은 서버를 내장하며([내장 서버](workflows.md#desktop-embedded-server--2026-11-03)), 앱 없이 쓸 때 서버 실행은 `npm run start:server`, MCP는 실행 중인 앱의 `http://127.0.0.1:4319/workflow/mcp`, CLI는 `npm run forms -- …`다. 다른 포트는 `REELS_WORKFLOW_URL=http://127.0.0.1:<port>`로 지정한다. 서버를 새로 만들거나 DB 파일을 직접 수정해서 연결하지 않는다.
 
 | MCP | CLI | 역할 |
 | --- | --- | --- |

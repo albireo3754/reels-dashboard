@@ -24,7 +24,7 @@
 
 검증: 타입·FSD·서비스 구문 검사, 상태 만료/주소 검증/민감 필드 제외 단위 검사, 실제 Electron IPC와 사이트 열기·오프라인 전환·설정 카드 검사, 패키징 앱의 동일 검사 통과. 새 빌드는 `release/briefing-connection/mac-arm64/Reels Dashboard.app`이에요.
 
-`scripts/mobile-briefing/bridge.mjs`는 앱에 stdio MCP로 연결해 등록 자료를 읽어요. 인증정보는 macOS Keychain에 보관하고, `com.rosy.reels-mobile-bridge` 사용자 LaunchAgent가 로그인 세션에서 실행해요. 개인 경로와 기록은 앱 user-data의 `mobile-bridge` 아래에만 저장되며 사이트 소스에 커밋하지 않아요. 원본은 이동·복사하지 않아요.
+`scripts/mobile-briefing/bridge.mjs`는 앱의 로컬 HTTP MCP(`REELS_MCP_URL`, 기본 `http://127.0.0.1:4319/mcp`)에 연결해 등록 자료를 읽어요. 인증정보는 macOS Keychain에 보관하고, `com.rosy.reels-mobile-bridge` 사용자 LaunchAgent가 로그인 세션에서 실행해요. 개인 경로와 기록은 앱 user-data의 `mobile-bridge` 아래에만 저장되며 사이트 소스에 커밋하지 않아요. 원본은 이동·복사하지 않아요.
 
 `packages/icloud-object-sdk`는 등록 객체의 HeadObject/GetObject/ListObjects 형태 읽기 SDK예요. S3 HTTP/SigV4 호환 서버가 아니에요. Sites 전용 터널을 등록하는 도구가 없어, 준비한 파일 전송 경로는 요청 큐와 R2를 통한 인증된 outbound HTTPS 중계예요.
 

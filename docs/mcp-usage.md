@@ -1,29 +1,62 @@
 # Reels Dashboard MCP
 
-The local MCP server lets an agent work with the running desktop editor. Electron remains the owner of project files, Photos access and render jobs. There is no HTTP port and no second editor state inside the MCP process.
+The running desktop app serves MCP over local streamable HTTP. Electron remains the owner of project files, Photos access and render jobs; tools run inside the app against the same services as the UI, so there is no MCP process and no second editor state. Closing the app closes the endpoint, and a client then shows "not connected". An agent never launches a second app instance.
 
-Agents that work from a shell can use the [`reels` CLI](cli-usage.md), which calls the same tools over the same socket.
+Agents that work from a shell can use the [`reels` CLI](cli-usage.md), which calls the same tools over the app's private Unix socket.
+
+## Endpoints
+
+| URL | Tools |
+| --- | --- |
+| `http://127.0.0.1:4319/mcp` | The Reels tools (`reels_*`). |
+| `http://127.0.0.1:4319/workflow/mcp` | The workflow and input-form tools (`reels_workflow_*`, `reels_form_*`). |
+
+The port is `4319` by default. Set `REELS_MCP_PORT` in the app's environment to change it (`0` picks a free port, used by tests). The chosen URLs are also written to `agent/mcp.json` in the app's user-data folder. The server is stateless: every request is independent, so any number of clients can connect at once and none shares state with another. It binds `127.0.0.1` only, accepts only a loopback `Host` (DNS rebinding) and refuses any browser `Origin` that is not the server itself. Requests over 2 MB, replies over 64 MB and calls over 180 s fail the same way they did on the socket. If the port is taken (for example by a second app instance) the app logs `MCP HTTP endpoint unavailable` and keeps running with the socket only.
+
+The workflow tools talk to the workflow server on `4318` (see [workflows](workflows.md#mcp)) through the app, so they keep working when that server is shared with another process.
 
 ## Setup
 
-Build the application and the stdio entry point with `npm ci && npm run build`. Build the native/editor runtimes using the README instructions if they are not already available. Open the desktop app with `npm start` or use the newly packaged app. A previously packaged app needs rebuilding to include the agent socket.
+Build and open the desktop app (`npm ci && npm run build`, then `npm start`, or the packaged app). Build the native/editor runtimes using the README instructions if they are not already available. A previously packaged app needs rebuilding to include the HTTP endpoint.
 
-In the content project's `.codex/config.toml`, configure the actual absolute paths for that machine:
+Claude Code (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "reels_dashboard": { "type": "http", "url": "http://127.0.0.1:4319/mcp" },
+    "reels_workflows": { "type": "http", "url": "http://127.0.0.1:4319/workflow/mcp" }
+  }
+}
+```
+
+Codex (`config.toml`):
 
 ```toml
 [mcp_servers.reels_dashboard]
-command = "/absolute/path/to/node"
-args = ["/absolute/path/to/reels-dashboard/dist-mcp/server.mjs"]
-cwd = "/absolute/path/to/reels-dashboard"
-env_vars = ["REELS_USER_DATA"]
+url = "http://127.0.0.1:4319/mcp"
 enabled = true
 startup_timeout_sec = 20
 tool_timeout_sec = 180
+
+[mcp_servers.reels_workflows]
+url = "http://127.0.0.1:4319/workflow/mcp"
+enabled = true
 ```
 
-Use Node 22.12 or later. Keep this personal config outside the public app repository. `REELS_USER_DATA` is optional and is primarily for isolated QA; without it, both app and MCP use the normal Reels Dashboard application-support directory. Do not point a fixture/demo instance at production data.
+Keep this personal config outside the public app repository. QA instances use their own `REELS_USER_DATA` and a different `REELS_MCP_PORT`; do not point a fixture/demo instance at production data. Load a new chat or reconnect MCP connections so the client discovers the newly registered server. A local server does not need OAuth login. With the app closed the client reports the server as not connected, which is intended.
 
-Run `codex mcp list` from that trusted content project to verify discovery. Load a new chat or reconnect MCP connections so the client discovers the newly registered server. The MCP process can list its tools before the app starts, but calls return `APP_OFFLINE` until the app is running. A local stdio server does not need OAuth login.
+## Concurrency
+
+Several sessions can call tools at once. Reads run in parallel. A few write tools are queued first-in first-out because they contend for one app-wide resource (the wait counts against the 180 s limit):
+
+| Lock | Tools | Why |
+| --- | --- | --- |
+| `editor` | `reels_import_video`, `reels_update_project`, `reels_start_render`, `reels_open_project`, `reels_cancel_render`, `reels_merge_projects`, `reels_link_project_edit`, `reels_import_photos_bundle` | The editor service runs one project operation at a time and answers `EDITOR_BUSY` otherwise; these tools also load a project, compare `updatedAt` and then save. Queuing gives the loser a real `STALE_PROJECT`, not a misleading `EDITOR_BUSY`. |
+| `analysis` | `reels_start_analysis`, `reels_run_analysis_selection` | One analysis run owns the provider and its lock file. |
+| `photos-index` | `reels_photos_index` | One shared native Photos index. |
+
+Not locked on purpose: tools protected by an `updatedAt` revision in an atomic store (content, outbound, delivery, planning, clip bundles), the fail-fast guards the caller should see (`EDITS_BUSY` for `reels_edits_*`, `BLOG_EXTRACT_BUSY`, `ANALYSIS_BUSY` between runs), whole-value writes (`reels_set_cover_preferences`) and every read.
 
 ## Editing flow
 
@@ -224,7 +257,7 @@ npm run build
 npm run test:mcp
 ```
 
-MCP integration tests launch a real non-demo Electron app with an isolated temporary profile and generated synthetic media. They exercise stdio discovery, live UI updates, revision/dirty-state protection, actual PNG decoding, real video/audio/cover output, cancellation, disconnect and restart. They do not access or delete personal Photos media.
+MCP integration tests launch a real non-demo Electron app with an isolated temporary profile and generated synthetic media. They exercise HTTP discovery, live UI updates, revision/dirty-state protection, actual PNG decoding, real video/audio/cover output, cancellation, disconnect and restart. They do not access or delete personal Photos media.
 
 See [interface design](agent-interface.md) and [verification record](mcp-verification.md).
 
@@ -274,7 +307,7 @@ Validation: Swift search tests cover distance filtering, missing GPS, stable
 pagination, Korean OCR matching, failures, inclusive dates, invalid inputs,
 snapshot eviction, permission denial and preservation of the current date index.
 TypeScript tests cover schemas and MCP-to-native argument forwarding. Opt-in
-`tests/electron/photos-search.spec.ts` exercises real stdio MCP → Electron →
+`tests/electron/photos-search.spec.ts` exercises real HTTP MCP → Electron →
 PhotoKit/Vision in an isolated background profile; set `REELS_PHOTOS_SEARCH_LIVE=1`
 only for authorized personal-library QA. `REELS_PHOTOS_SEARCH_AUTHORIZE=1` requests
 macOS permission only when explicitly authorized. Reports must stay outside the
@@ -283,7 +316,7 @@ public repository (`REELS_PHOTOS_SEARCH_REPORT`).
 Verification on 2026-10-31: 100 native tests passed (including actual Vision OCR
 of synthetic Korean signage), followed by the added snapshot-expiry regression;
 76 TypeScript unit tests, typecheck, architecture boundaries and diff whitespace
-checks passed. Live stdio MCP → background Electron → PhotoKit/Vision passed on
+checks passed. Live MCP → background Electron → PhotoKit/Vision passed on
 an authorized library, with real location candidates and real Korean OCR matches;
 image timeouts were returned separately. Personal evidence is kept in the content
 workspace, not this repository. Packaged output: `release/photos-search/mac-arm64/Reels Dashboard.app`.

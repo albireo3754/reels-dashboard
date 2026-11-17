@@ -88,7 +88,7 @@ Protocol 7 adds `builtinDefinition` (an app-owned definition by name, currently 
 
 ## MCP
 
-Run `npm run start:workflow-mcp` as an independent stdio server while the HTTP server is running. It does not require the Electron MCP socket. It provides:
+The running desktop app serves the workflow MCP at `http://127.0.0.1:4319/workflow/mcp` (same port and server as the Reels tools, see [MCP usage](mcp-usage.md)). It forwards each call to the workflow HTTP server above through the app's own client, so a shared or external workflow server keeps working. There is no standalone stdio entry point. It provides:
 
 - `reels_workflow_list`
 - `reels_workflow_get`
@@ -104,13 +104,10 @@ Example MCP client configuration (adapt the path and Node executable to the loca
 
 ```toml
 [mcp_servers.reels_workflows]
-command = "node"
-args = ["--import", "tsx", "/absolute/path/to/reels-dashboard/src/app/workflow/mcp.ts"]
-cwd = "/absolute/path/to/reels-dashboard"
-
-[mcp_servers.reels_workflows.env]
-REELS_WORKFLOW_URL = "http://127.0.0.1:4318"
+url = "http://127.0.0.1:4319/workflow/mcp"
 ```
+
+Claude Code: `{"mcpServers": {"reels_workflows": {"type": "http", "url": "http://127.0.0.1:4319/workflow/mcp"}}}`.
 
 Clients may require reconnection to discover a new MCP server. An already-open session can use the CLI without changing its MCP configuration. No global client configuration is modified by this feature.
 
@@ -118,7 +115,7 @@ Clients may require reconnection to discover a new MCP server. An already-open s
 
 `src/app/workflow/runtime.ts` is the only graph/runtime implementation. HTTP, CLI, MCP and the browser share it through the local server. Existing historical blog shell runners are not invoked. This is the new headless path; old content artifacts and archived runners remain intact.
 
-Checks: `npm run typecheck`, `npm run check:architecture`, `npm run test:workflow`, `npm run build:web`, `npm run test:workflow-ui`. Runtime tests exercise persistent interrupts, stale review rejection, duplicate results, revision routing/limits, cancellation, server ownership and actual stdio MCP + CLI interoperability. UI tests use a real headless server and browser with synthetic files. They do not claim real editorial quality or SmartEditor integration.
+Checks: `npm run typecheck`, `npm run check:architecture`, `npm run test:workflow`, `npm run build:web`, `npm run test:workflow-ui`. Runtime tests exercise persistent interrupts, stale review rejection, duplicate results, revision routing/limits, cancellation, server ownership and actual HTTP MCP + CLI interoperability. UI tests use a real headless server and browser with synthetic files. They do not claim real editorial quality or SmartEditor integration.
 
 Verified on 2026-11-01: 101 unit tests passed; the 3 workflow tests were rerun after the final text-approval invalidation change. The headless workflow browser test and 10 existing shared-web/shell tests passed. Typecheck, architecture check, original-spec preservation, web build, desktop bundle build and diff whitespace check passed. Desktop/mobile screenshots were inspected in `test-results/workflow/`. No packaged app installation, real article generation, SmartEditor transfer or publication was performed.
 

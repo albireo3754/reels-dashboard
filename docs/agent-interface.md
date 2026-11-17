@@ -20,11 +20,11 @@ One historical template name was used with changing sizes. A tool must return cu
 
 ## Architecture
 
-`Codex -> stdio MCP -> private Unix socket -> application composition -> shared editor service`
+`Agent -> local HTTP MCP (127.0.0.1:4319) -> application composition -> shared editor service`
 
 `Agent shell -> reels CLI -> private Unix socket -> application composition -> shared editor service`
 
-There is no HTTP listener. The MCP server and the `reels` CLI are both thin clients of the same socket and the same tool definitions, so they cannot drift apart. Neither has an independent project store or render queue. Electron owns state and jobs; closing an MCP connection or ending a CLI process does not cancel a render. A stopped app produces an explicit connection error, never synthetic data. The app must be opened before editing; an agent does not silently launch a second app instance.
+The app serves MCP over loopback streamable HTTP and the `reels` CLI uses the private socket; both run the same in-process dispatch and tool definitions, so they cannot drift apart. Neither has an independent project store or render queue. Electron owns state and jobs; closing an MCP connection or ending a CLI process does not cancel a render. A stopped app produces an explicit connection error, never synthetic data. The app must be opened before editing; an agent does not silently launch a second app instance.
 
 - `src/app`: composition, MCP entry point, `reels` CLI entry point (`src/app/cli`), integration of editor and agent tools.
 - `src/features/reel-editing`: existing editor service, importing only lower-level shared contracts/storage. Public API is `index.ts`.
@@ -48,7 +48,7 @@ The `reels` CLI derives its subcommands, flags and schemas from `toolDefinitions
 ## Acceptance
 
 1. FSD boundary checks, type checks and existing relevant tests pass after extraction.
-2. Real stdio MCP initialization, tools listing, tool validation and error results pass.
+2. Real HTTP MCP initialization, tools listing, tool validation and error results pass.
 3. Through MCP and a real non-demo Electron app, import synthetic media, change only requested settings, receive a decoded PNG and manifest, render actual media, inspect completion and cancel a running job.
 4. UI reflects agent changes; unsaved UI and stale project writes cannot overwrite each other. Restart/reconnect and app-offline behavior are tested.
 5. A project-scoped MCP configuration is installed in the content workspace without replacing other configuration. Its exact command is exercised locally.

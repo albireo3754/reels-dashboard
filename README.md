@@ -68,7 +68,7 @@ Existing footage folders, completed videos/covers and content documents can be l
 
 Travel/restaurant caption videos can use the [OpenCut template package](docs/opencut-templates.md): select footage and a linked blog manuscript, prepare a reusable cut/caption recipe, and register the editing package on the same Dashboard project. `npm run opencut:prepare -- /absolute/request.json` uses the running app's existing API; OpenCut performs timeline editing and export.
 
-The desktop editor exposes a local stdio MCP server for project lookup, partial editing, previews, rendering and Photos discovery. It uses a private Unix socket and shares the UI's editor service. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
+The running desktop app serves MCP over local streamable HTTP (`http://127.0.0.1:4319/mcp`; workflow tools at `/workflow/mcp`) for project lookup, partial editing, previews, rendering and Photos discovery. It runs the tools inside the app against the UI's editor service; there is no separate MCP process. See [MCP setup and tools](docs/mcp-usage.md) and [interface design](docs/agent-interface.md).
 
 Agents working from a shell can use the `reels` CLI instead. It calls every MCP tool over the same socket, prints one JSON document on stdout, documents its exit codes, saves preview images to files and can wait for render jobs. Copying registered media to a local folder works without the app. Build it with `npm run build:desktop` and see [CLI usage](docs/cli-usage.md).
 

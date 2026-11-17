@@ -22,3 +22,7 @@ The returned MCP preview images were also inspected: the place guide is centered
 Build preparation uncovered compiler caches and media-library install names containing the previous checkout path. Generated caches are kept outside the checkout while rebuilding; original media, settings and the previous packaged app are not deleted. Fresh debug/release compiler and FFmpeg build caches rebuilt successfully. The resulting app passed the packaged checks above.
 
 Runtime limits: MCP uses a private local socket; no cloud access is established. Jobs are app-owned but not crash-persistent. A new or reconnected Codex chat must load a newly installed MCP configuration. Source paths, credentials, session transcripts and user-specific project configuration are not included in this public repository.
+
+## 2026-11-17: stdio to local HTTP
+
+The stdio entry points (`dist-mcp/server.mjs`, `src/app/workflow/mcp.ts`) are gone; the app serves both MCP servers over streamable HTTP (see [usage](mcp-usage.md)). The table above records the earlier stdio runs. The HTTP runs use `tests/unit/mcp-http.test.ts` (initialize/tools/list, concurrent clients, Host/Origin refusal, lock serialization, timeout and size limits) and the Electron specs, which now connect through `mcpTransport(profile)` to an ephemeral per-profile port. A stopped app is a refused connection, not an `APP_OFFLINE` tool result.
