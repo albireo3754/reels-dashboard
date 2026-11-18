@@ -43,6 +43,8 @@ export const analysisStart = z.strictObject({
   model: z.string().min(1).max(160).optional(),
   reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
   force: z.boolean().default(false),
+  /** Comparison run: always calls the model, keeps results out of search/selection/reuse and leaves saved context untouched. */
+  isolated: z.boolean().default(false),
   maxFiles: z.number().int().min(1).max(200).default(100),
 });
 export const analysisQuery = z.strictObject({
@@ -71,6 +73,8 @@ export interface AnalysisUsage {
 }
 export interface AnalysisResult {
   reuseKey?: string;
+  /** Produced by an isolated comparison run; never effective, searchable or reusable. */
+  isolated?: boolean;
   sample: AnalysisSample;
   provider: string;
   runId: string;
@@ -82,6 +86,7 @@ export interface AnalysisRun {
   requestedReasoning?: string;
   settingsDigest?: string;
   force?: boolean;
+  isolated?: boolean;
   skippedSamples?: number;
   calls?: AnalysisUsage[];
   usage?: AnalysisUsage;

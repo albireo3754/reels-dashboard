@@ -306,3 +306,80 @@ test("metadata cache skips original digest and extraction across service restart
     assert.equal(calls,2); assert.equal(await readFile(marker,"utf8"),"xxx");
   } finally { await rm(root,{recursive:true,force:true}); }
 });
+
+test("isolated comparison runs never replace effective results, reuse or saved context", async () => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "analysis-isolated-")));
+  try {
+    const media = path.join(root, "media");
+    await mkdir(media);
+    await writeFile(path.join(media, "photo.jpg"), "fixture");
+    const store = new LocalStore(root);
+    await store.initialize();
+    await store.update((d) => ({
+      ...d,
+      projects: [{ id: "one", title: "one", date: "2026-11-07", stage: "captured" as const, nextAction: "", publicURL: "", shared: false, resources: [{ role: "folder" as const, path: media, label: "sources" }] }],
+    }));
+    const calls: { model: string; context: string }[] = [];
+    const service = new MediaAnalysis(store, new ContentLibrary(store), "unused", new ExecutionLogs(root), [
+      {
+        id: "fake",
+        label: "fake",
+        async analyze(samples, context, _request, options) {
+          calls.push({ model: options!.model, context });
+          return samples.map(() => ({ ...fields, description: `${options!.model} 설명` }));
+        },
+      },
+    ]);
+    (service as any).prepare = async (_id: string, sourcePath: string) => {
+      const { stat } = await import("node:fs/promises");
+      const { createHash } = await import("node:crypto");
+      const s = await stat(sourcePath);
+      const sourceVersion = createHash("sha256").update(`${s.size}:${s.mtimeMs}`).digest("hex");
+      return [{ id: "sample", sourcePath, sourceVersion, kind: "photo", time: null, imagePath: sourcePath }];
+    };
+    const finish = async () => {
+      for (let i = 0; i < 100; i++) {
+        const d = await service.search({ projectId: "one" });
+        if (d.runs.at(-1)?.status === "completed") return d;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      throw Error("timed out");
+    };
+    let d = await service.search({ projectId: "one" });
+    await service.start({ projectId: "one", folder: media, provider: "fake", model: "base", context: { venue: "저장 맥락" }, expectedRevision: d.revision });
+    d = await finish();
+    assert.equal(d.matches[0].fields.description, "base 설명");
+
+    // Comparison with another model and a run-only context: no revision needed, saved context kept.
+    await service.start({ projectId: "one", folder: media, provider: "fake", model: "candidate", isolated: true, context: { venue: "실험 맥락" } });
+    d = await finish();
+    const run = d.runs.at(-1)!;
+    assert.equal(run.isolated, true);
+    assert.equal(run.requestedModel, "candidate");
+    assert.equal(run.context?.venue, "실험 맥락");
+    assert.equal(d.context?.venue, "저장 맥락");
+    assert.match(calls.at(-1)!.context, /실험 맥락/);
+    const isolated = d.results.filter((r) => r.isolated);
+    assert.equal(isolated.length, 1);
+    assert.equal(isolated[0].fields.description, "candidate 설명");
+    assert.equal(isolated[0].reuseKey, undefined);
+    assert.equal(d.matches.length, 1);
+    assert.equal(d.matches[0].fields.description, "base 설명");
+    assert.equal((await service.search({ projectId: "one", query: "candidate" })).matches.length, 0);
+
+    // The same isolated settings run again still call the model instead of reusing.
+    await service.start({ projectId: "one", folder: media, provider: "fake", model: "candidate", isolated: true });
+    d = await finish();
+    assert.equal(calls.length, 3);
+    assert.equal(d.runs.at(-1)?.analyzedSamples, 1);
+
+    // A later normal run with the candidate model does not adopt the isolated result.
+    await service.start({ projectId: "one", folder: media, provider: "fake", model: "candidate" });
+    d = await finish();
+    assert.equal(calls.length, 4);
+    assert.equal(d.runs.at(-1)?.skippedSamples, 0);
+    assert.equal(d.matches[0].fields.description, "candidate 설명");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

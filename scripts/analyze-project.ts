@@ -1,13 +1,26 @@
 // Same service as desktop IPC/MCP, usable without restarting an active editor.
+// Run only while the app is not analyzing; the shared active.pid lock refuses overlaps.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { parseArgs } from "node:util";
 import { LocalStore } from "../src/shared/lib/storage";
+import { ExecutionLogs } from "../src/shared/lib/execution-logs";
 import { ContentLibrary } from "../src/features/content-library";
 import { MediaAnalysis } from "../src/desktop/media-analysis";
-const [root, projectId, folder, contextFile] = process.argv.slice(2);
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: {
+    model: { type: "string" },
+    reasoning: { type: "string" },
+    isolated: { type: "boolean", default: false },
+    force: { type: "boolean", default: false },
+    "max-files": { type: "string" },
+  },
+});
+const [root, projectId, folder, contextFile] = positionals;
 if (!root || !projectId || !folder)
   throw new Error(
-    "Usage: node --import tsx scripts/analyze-project.ts USER_DATA PROJECT_ID LINKED_FOLDER",
+    "Usage: node --import tsx scripts/analyze-project.ts USER_DATA PROJECT_ID LINKED_FOLDER [CONTEXT_JSON] [--model M] [--reasoning R] [--isolated] [--force] [--max-files N]",
   );
 const store = new LocalStore(root);
 await store.initialize();
@@ -15,6 +28,7 @@ const service = new MediaAnalysis(
   store,
   new ContentLibrary(store),
   path.resolve("native/editor-engine/.build/runtime"),
+  new ExecutionLogs(root),
 );
 const prior = await service.search({ projectId });
 const context = contextFile
@@ -24,6 +38,11 @@ const run = await service.start({
   projectId,
   folder,
   ...(context ? { context, expectedRevision: prior.revision } : {}),
+  ...(values.model ? { model: values.model } : {}),
+  ...(values.reasoning ? { reasoning: values.reasoning as "low" } : {}),
+  ...(values["max-files"] ? { maxFiles: Number(values["max-files"]) } : {}),
+  isolated: values.isolated,
+  force: values.force,
 });
 console.log(JSON.stringify(run));
 const timer = setInterval(async () => {

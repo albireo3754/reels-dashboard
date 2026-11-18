@@ -146,7 +146,8 @@ export class MediaAnalysis {
         : r,
     );
     const latest = new Map<string, (typeof doc.results)[number]>();
-    for (const r of doc.results) latest.set(r.sample.id, r);
+    // Isolated comparison results stay in history only; they never replace the effective result.
+    for (const r of doc.results) if (!r.isolated) latest.set(r.sample.id, r);
     const q = query.normalize("NFC").toLowerCase();
     const matches = [...latest.values()]
       .map((r) => ({
@@ -169,7 +170,7 @@ export class MediaAnalysis {
     await this.update(input.projectId, (d) => {
       if (d.revision !== input.expectedRevision)
         throw new Error("STALE_ANALYSIS: 다시 조회해주세요.");
-      if (!d.results.some((r) => r.sample.id === input.sampleId))
+      if (!d.results.some((r) => r.sample.id === input.sampleId && !r.isolated))
         throw new Error("분석 결과 없음");
       d.corrections[input.sampleId] = {
         ...d.corrections[input.sampleId],
@@ -244,7 +245,8 @@ export class MediaAnalysis {
         );
       const previous = await this.load(input.projectId);
       const context = input.context ?? previous.context;
-      if (input.context && input.expectedRevision === undefined)
+      // An isolated run uses a supplied context for itself only, so it needs no revision.
+      if (input.context && !input.isolated && input.expectedRevision === undefined)
         throw new Error(
           "CONTEXT_REVISION_REQUIRED: 맥락 수정 전 분석 상태를 조회해주세요.",
         );
@@ -252,6 +254,7 @@ export class MediaAnalysis {
         requestedModel: input.model ?? process.env.REELS_ANALYSIS_MODEL ?? "gpt-6.1-sol",
         requestedReasoning: input.reasoning ?? process.env.REELS_ANALYSIS_REASONING ?? "high",
         force: input.force, skippedSamples: 0, calls: [],
+        ...(input.isolated ? { isolated: true } : {}),
         context,
         promptVersion: "context-v4-selection-mcp",
         id: randomUUID(),
@@ -266,11 +269,11 @@ export class MediaAnalysis {
         errors: [],
       };
       await this.update(input.projectId, (d) => {
-        if (input.context && d.revision !== input.expectedRevision)
+        if (input.context && !input.isolated && d.revision !== input.expectedRevision)
           throw new Error(
             "STALE_ANALYSIS: 분석 맥락이 변경됐어요. 다시 조회해주세요.",
           );
-        if (input.context) d.context = structuredClone(input.context);
+        if (input.context && !input.isolated) d.context = structuredClone(input.context);
         for (const r of d.runs)
           if (r.status === "running") r.status = "interrupted";
         d.runs.push(run);
@@ -439,7 +442,7 @@ export class MediaAnalysis {
           const key = sha256Hex(`${sample.id}:${run.settingsDigest}`);
           if (unique.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; return false; }
           unique.add(key);
-          if (!run.force && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; reused.push(sample); return false; }
+          if (!run.force && !run.isolated && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; reused.push(sample); return false; }
           return true;
         });
         if (reused.length) await this.update(projectId, d => {
@@ -468,7 +471,10 @@ export class MediaAnalysis {
               d.results.push(
                 ...samples.map((sample, i) => ({
                   sample,
-                  reuseKey: sha256Hex(`${sample.id}:${run.settingsDigest}`),
+                  // No reuse key: a later normal run must not adopt a comparison result.
+                  ...(run.isolated
+                    ? { isolated: true }
+                    : { reuseKey: sha256Hex(`${sample.id}:${run.settingsDigest}`) }),
                   provider: adapter.id,
                   runId: run.id,
                   analyzedAt: new Date().toISOString(),

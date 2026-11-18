@@ -141,3 +141,18 @@ Preparation uses filesystem metadata operations (stat/lstat/realpath), then chec
 Synthetic verification includes a new service instance with the digest reader forbidden and ffmpeg removed: an unchanged second run skips successfully with no additional model calls. Separate mtime and size changes invalidate the cache. No paid model or private media is used.
 
 Validation: type/FSD/build passed; 680 unit tests (675 passed, 5 conditional skips, zero failures) in serial execution. The parallel run had an unrelated agent-socket timing failure which passed independently and in the final serial suite. Development and packaged background Electron media-analysis IPC/MCP checks each passed. Independent code review corrections were applied. New unsigned QA bundle: `release/analysis-digest-cache-20261114/mac-arm64/Reels Dashboard.app`; the existing native Edits binary was unavailable to this source package. No running app was restarted and no remote push was made.
+
+## Isolated model comparison runs — 2026-11-18
+
+A new Codex model can be tried on the same cuts without touching production metadata. `reels_start_analysis` (and `reels start-analysis --isolated`) accepts `isolated: true` together with the existing `model`/`reasoning` arguments.
+
+- An isolated run always calls the model (it never reuses earlier results) and is stored as a normal run with `isolated: true`, including `calls`/`usage`.
+- Its results are kept in `results` with `isolated: true` and no `reuseKey`. They never become the effective result, never appear in `matches`/search, selection or mosaic review, cannot be corrected, and a later normal run never adopts them.
+- A `context` passed to an isolated run is used for that run only (snapshotted on the run). It needs no `expectedRevision` and leaves the saved project context unchanged. Without `context` the saved context is used.
+- To compare, read `runs` (model, usage) and `results` filtered by `runId`.
+
+Before this change, any run with a different model appended a result that became the effective one, so a trial silently replaced production metadata. An app build without this change still treats isolated results as normal ones when it reads the same profile; update the app before relying on isolation from the UI or MCP.
+
+`scripts/analyze-project.ts` runs the same service from the checkout without restarting the app: `node --import tsx scripts/analyze-project.ts USER_DATA PROJECT_ID LINKED_FOLDER [CONTEXT_JSON] [--model M] [--reasoning R] [--isolated] [--force] [--max-files N]`. It needs `dist-electron/analysis-context-mcp.cjs` (built by `npm run build:desktop`) and refuses to start while another analysis holds `active.pid`. The script constructor had drifted from the service signature and was fixed.
+
+Validation: a unit test covers isolation of effective results, search, reuse in both directions and saved context; type/FSD checks and the full unit suite pass. A live comparison on one 960×720 preview frame (one image per call, same saved context): `gpt-6.1-sol`/high 27,267 input (13,184 cached) and 991 output tokens in 28 s; `gpt-6.2-sol`/high 30,777 input (14,592 cached) and 1,075 output tokens in 39 s. Reasoning-token and actual-model counters were not reported by the CLI events (`null`).
