@@ -69,7 +69,7 @@ function TopicRow({
             {others.length > 0 && (
               <>
                 <dt>다른 표지</dt>
-                <dd>{others.map((h) => <CoverHook key={h} text={h} />)}</dd>
+                <dd>{others.map((h, i) => <CoverHook key={`${i}:${h}`} text={h} />)}</dd>
               </>
             )}
             {item.captionHead && (
@@ -83,8 +83,8 @@ function TopicRow({
                 <dt>빌린 훅</dt>
                 <dd>
                   <ul>
-                    {item.basedOn.map((b) => (
-                      <li key={b.title}>
+                    {item.basedOn.map((b, i) => (
+                      <li key={`${i}:${b.title}`}>
                         <b>{b.title}</b> — {b.evidence}
                       </li>
                     ))}
@@ -145,12 +145,15 @@ function TopicRow({
 export function TopicSelection({
   projects,
   revision,
+  planningRevision = 0,
   api,
   onOpenProject,
   onDecide,
 }: {
   projects: Project[];
   revision: string;
+  /** Bumped when the weekly goals are saved elsewhere, so the gap line follows. */
+  planningRevision?: number;
   api?: PlanningBridge;
   onOpenProject?: (projectId: string) => void;
   /** Omitted in read-only views. */
@@ -169,7 +172,7 @@ export function TopicSelection({
   }, [api]);
   useEffect(() => {
     void load();
-  }, [load, revision]);
+  }, [load, revision, planningRevision]);
   const board = useMemo(
     () => topicBoard(projects, planning ? topicGaps(weeklyGoalsView(planning, projects)) : []),
     [projects, planning],
@@ -190,7 +193,7 @@ export function TopicSelection({
   return (
     <Section className="topic-selection" aria-label="소재 선정" data-testid="topic-selection">
       <SectionHeader level={3} title="소재 선정" description={boardSummary(board)} />
-      {error && <Notice tone="warning">결정을 저장하지 못했어요 · {error}</Notice>}
+      {error && <Notice tone="danger">결정을 저장하지 못했어요 · {error}</Notice>}
       {board.items.length === 0 ? (
         <p className="topic-empty">
           아직 소재 후보가 없어요. 잘된 훅과 우리 영상 소스를 엮은 드래프트를 에이전트가 MCP <code>reels_set_pitches</code>로 올리면 여기에 보여요.

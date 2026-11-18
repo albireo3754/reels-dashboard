@@ -73,3 +73,15 @@ test("topic selection: pitches in readiness order with the gap they fill, detail
   const decisions = stored.projects.flatMap((p: { pitches?: { id: string; decision: string }[] }) => (p.pitches ?? []).map((x) => `${x.id}:${x.decision}`));
   expect(decisions.sort()).toEqual(["d1:proposed", "d2:dropped", "d4:picked", "d9:dropped"]);
 });
+
+test("topic selection: the gap line follows a weekly goal edited right above it", async ({ page }) => {
+  await seed(page);
+  const panel = page.getByTestId("topic-selection");
+  await expect(panel.getByText(/이번 주 릴스 2편 남음/)).toBeVisible();
+  const goals = page.getByTestId("weekly-goals");
+  await goals.getByRole("button", { name: "목표 수정" }).click();
+  const form = goals.getByRole("form", { name: "주간 목표 수정" });
+  await form.getByLabel("릴스").fill("3");
+  await form.getByRole("button", { name: "저장" }).click();
+  await expect(panel.getByText(/이번 주 릴스 3편 남음/)).toBeVisible();
+});

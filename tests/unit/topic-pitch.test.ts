@@ -6,6 +6,7 @@ import path from "node:path";
 import { ContentLibrary } from "../../src/features/content-library";
 import { LocalStore } from "../../src/shared/lib/storage";
 import { validateDashboard } from "../../src/shared/data";
+import { mergeProjects } from "../../src/shared/production-project";
 import type { ContentInput } from "../../src/shared/local-resources";
 import { decidePitch, topicBoard, topicPitchesSchema, type TopicPitch } from "../../src/shared/topic-pitch";
 import { boardSummary } from "../../src/features/topic-selection/model/summary";
@@ -100,4 +101,34 @@ test("setPitches and decidePitch change only the pitches and survive a full upse
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("free text that looks like a local path or a credential is refused, ordinary text is not", () => {
+  for (const bad of [
+    { source: `${["", "Users", "someone", "a.mov"].join("/")} 원본` },
+    { source: "촬영본 ~/Desktop/a.mov" },
+    { captionHead: "file:///tmp/a.png" },
+    { hypothesis: "token sk-abcdef1234567890" },
+    { asks: ["ghp_abcdefghijklmnop 확인"] },
+    { basedOn: [{ title: "A", evidence: "Bearer abcdefghijklmnop" }] },
+    { coverHooks: ["a".repeat(0) + "deadbeefdeadbeefdeadbeefdeadbeef / 표지"] },
+  ])
+    assert.equal(topicPitchesSchema.safeParse([pitch("x", bad as Partial<TopicPitch>)]).success, false, JSON.stringify(bad));
+  for (const ok of [
+    { source: "도시어부 클립 v5(42초) + 폭포맥주 v2 / 원본 구간 재조합" },
+    { captionHead: "11월부터 일본에서 쇼핑하시면 면세 받는 순서가 달라졌어요🇯🇵" },
+    { coverHooks: ["시나몬 코젤 4,500원 / 판교 2차로 또 올 집"] },
+    { basedOn: [{ title: "3만 보", evidence: "도달 3.1만 · 저장 1.84% · 공유 1.68%" }] },
+  ])
+    assert.equal(topicPitchesSchema.safeParse([pitch("x", ok as Partial<TopicPitch>)]).success, true, JSON.stringify(ok));
+});
+
+test("merging cards carries their pitches and refuses id clashes or more than eight", () => {
+  const card = (id: string, pitches: TopicPitch[]) => ({ id, title: id, date: "2026-11-18", stage: "idea" as const, nextAction: "", publicURL: "", shared: false, pitches });
+  const dashboard = (projects: ReturnType<typeof card>[]) => ({ schemaVersion: 1 as const, updatedAt: "2026-11-18T00:00:00.000Z", projects });
+  const merged = mergeProjects(dashboard([card("a", [pitch("d1")]), card("b", [pitch("d2", { decision: "picked" })])]), "a", ["b"]);
+  assert.deepEqual(merged.projects[0].pitches?.map((p) => `${p.id}:${p.decision}`), ["d1:proposed", "d2:picked"]);
+  assert.throws(() => mergeProjects(dashboard([card("a", [pitch("d1")]), card("b", [pitch("d1")])]), "a", ["b"]), /PITCH_MERGE_CONFLICT/);
+  const many = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => pitch(`${prefix}${i}`));
+  assert.throws(() => mergeProjects(dashboard([card("a", many("a", 5)), card("b", many("b", 4))]), "a", ["b"]), /PITCH_MERGE_CONFLICT/);
 });

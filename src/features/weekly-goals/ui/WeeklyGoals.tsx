@@ -30,7 +30,7 @@ const PhaseBadge = ({ phase }: { phase: GoalPhase }) => <Badge tone={phaseTone[p
  * Read-only on channels: it suggests what to book; booking itself happens on the channel and is then
  * recorded on the project. Without a planning bridge (shared view) it renders nothing.
  */
-export function WeeklyGoals({ api, projects, revision, onOpenProject }: { api?: PlanningBridge; projects: Project[]; revision: string; onOpenProject?: (projectId: string) => void }) {
+export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanningSaved }: { api?: PlanningBridge; projects: Project[]; revision: string; onOpenProject?: (projectId: string) => void; onPlanningSaved?: () => void }) {
   const [planning, setPlanning] = useState<Planning | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -55,7 +55,7 @@ export function WeeklyGoals({ api, projects, revision, onOpenProject }: { api?: 
         actions={view && <Button variant="quiet" size="small" onClick={() => setEditing(v => !v)} aria-expanded={editing}>{editing ? "닫기" : "목표 수정"}</Button>}
       />
       {error && <Notice tone="warning">주간 목표를 읽지 못했어요 · {error}</Notice>}
-      {view && planning && editing && <TargetEditor api={api} planning={planning} targets={view.targets} onSaved={next => { setPlanning(next); setEditing(false); }} />}
+      {view && planning && editing && <TargetEditor api={api} planning={planning} targets={view.targets} onSaved={next => { setPlanning(next); setEditing(false); onPlanningSaved?.(); }} />}
       {week && <div className="weekly-goal-grid">{week.channels.map(c => <ChannelTile key={c.channel} week={c} onOpenProject={onOpenProject} />)}</div>}
       {view && <BookingQueue channels={view.queue.channels} until={view.queue.until} onOpenProject={onOpenProject} />}
     </Section>

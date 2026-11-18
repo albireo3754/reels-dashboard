@@ -4,6 +4,7 @@ import { productionSchema } from "../src/shared/production-project";
 import { localResourcesSchema, projectPrioritySchema } from "../src/shared/local-resources";
 import { outboundSchema } from "../src/shared/icloud-delivery";
 import { publicationsSchema } from "../src/shared/publications";
+import { topicPitchesSchema } from "../src/shared/topic-pitch";
 import { projectDateBases, projectKinds, projectStages } from "../src/shared/contracts";
 const project = z.strictObject({
   id: z.string().min(1).max(160),
@@ -21,6 +22,7 @@ const project = z.strictObject({
   production: productionSchema.optional(),
   outbound: outboundSchema.optional(),
   publications: publicationsSchema.optional(),
+  pitches: topicPitchesSchema.optional(),
 });
 const schema = z.toJSONSchema(z.strictObject({
   schemaVersion: z.literal(1),

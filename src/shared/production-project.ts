@@ -246,6 +246,13 @@ export function mergeProjects(
       publications[publications.indexOf(existing)] = entry;
     }
   }
+  // Pitches (and the user's pick/drop on them) follow the footage into the merged card.
+  const pitches = [...(target.pitches ?? []), ...sources.flatMap((p) => p.pitches ?? [])];
+  if (new Set(pitches.map((p) => p.id)).size !== pitches.length)
+    throw new Error("PITCH_MERGE_CONFLICT: 합칠 카드들의 소재 후보 ID가 겹쳐요. 후보를 먼저 정리해주세요.");
+  // Same cap as topic-pitch.ts maxPitchesPerProject (not imported: topic-pitch depends on this module).
+  if (pitches.length > 8)
+    throw new Error("PITCH_MERGE_CONFLICT: 합치면 소재 후보가 8개를 넘어요. 후보를 먼저 정리해주세요.");
   const model = target.production ?? emptyProduction();
   const outbounds = [target,...sources].flatMap(p => p.outbound ? [p.outbound] : []);
   if (new Set(outbounds.map(o=>o.directory)).size > 1)
@@ -254,6 +261,7 @@ export function mergeProjects(
     ...target,
     ...(outbounds[0] ? {outbound:outbounds[0]} : {}),
     resources: [...(target.resources ?? [])],
+    ...(pitches.length ? { pitches } : {}),
     ...(publications.length
       ? {
           publications: publications.sort(

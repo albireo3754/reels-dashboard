@@ -97,6 +97,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dashboard, setDashboard] = useState<Dashboard>(emptyDashboard);
+  const [planningRevision, setPlanningRevision] = useState(0);
   const [boardQuery, setBoardQuery] = useState<BoardQuery>(() => {
     try {
       const saved = parseBoardQuery(
@@ -533,6 +534,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             api={bridge.planning}
             projects={dashboard.projects}
             revision={dashboard.updatedAt}
+            onPlanningSaved={() => setPlanningRevision(n => n + 1)}
             onOpenProject={id => {
               const project = dashboard.projects.find(p => p.id === id);
               if (!project) return;
@@ -545,6 +547,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           <TopicSelection
             projects={dashboard.projects}
             revision={dashboard.updatedAt}
+            planningRevision={planningRevision}
             api={bridge.planning}
             onOpenProject={id => {
               const project = dashboard.projects.find(p => p.id === id);

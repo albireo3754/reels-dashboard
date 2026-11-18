@@ -36,7 +36,29 @@ export const pitchEffortLabels: Record<PitchEffort, string> = { S: "작업 적�
 
 const line = (max: number) => z.string().trim().min(1).max(max);
 
-export const topicPitchSchema = z.strictObject({
+/**
+ * Pitches are mirrored to the owner's mobile briefing, so free text must not carry a local path or
+ * something shaped like a credential. Descriptions alone do not stop a careless agent; this does.
+ */
+const privatePatterns: [RegExp, string][] = [
+  [/(^|[\s("'`])(\/Users|\/private|\/Volumes|\/home|\/var|\/tmp|\/opt|\/Library)\//, "로컬 경로"],
+  [/(^|[\s("'`])~\//, "로컬 경로"],
+  [/\bfile:\/\//i, "로컬 경로"],
+  [/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/, "인증정보"],
+  [/\b(ghp|gho|github_pat|xox[abprs]|AKIA|AIza)[A-Za-z0-9_-]{8,}/, "인증정보"],
+  [/\bbearer\s+[A-Za-z0-9._-]{12,}/i, "인증정보"],
+  [/\b[A-Fa-f0-9]{32,}\b/, "인증정보처럼 보이는 값"],
+];
+export function privateTextIssue(value: string): string | null {
+  for (const [pattern, label] of privatePatterns) if (pattern.test(value)) return label;
+  return null;
+}
+const strings = (value: unknown): string[] =>
+  typeof value === "string" ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === "object" ? Object.values(value).flatMap(strings) : [];
+
+export const maxPitchesPerProject = 8;
+
+const topicPitchObject = z.strictObject({
   /** Stable within the project, e.g. `d2`. */
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
   channel: z.enum(publicationChannels),
@@ -61,11 +83,17 @@ export const topicPitchSchema = z.strictObject({
   decision: z.enum(pitchDecisions).default("proposed"),
   updatedAt: z.iso.datetime({ offset: true }),
 });
+export const topicPitchSchema = topicPitchObject.superRefine((pitch, ctx) => {
+  for (const text of strings(pitch)) {
+    const issue = privateTextIssue(text);
+    if (issue) ctx.addIssue({ code: "custom", message: `소재 후보에 ${issue}를 넣을 수 없어요. 모바일에도 보이는 정보예요.` });
+  }
+});
 export type TopicPitch = z.infer<typeof topicPitchSchema>;
 
 export const topicPitchesSchema = z
   .array(topicPitchSchema)
-  .max(8)
+  .max(maxPitchesPerProject)
   .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "소재 후보 ID가 겹쳐요.");
 
 /** One row of the board: the pitch plus the card it lives on. */
@@ -152,7 +180,7 @@ export type SetPitchesInput = z.infer<typeof setPitchesSchema>;
 
 export const decidePitchSchema = z.strictObject({
   projectId: z.string().min(1).max(160),
-  pitchId: topicPitchSchema.shape.id,
+  pitchId: topicPitchObject.shape.id,
   decision: z.enum(pitchDecisions),
   expectedUpdatedAt: dashboardRevision,
 });

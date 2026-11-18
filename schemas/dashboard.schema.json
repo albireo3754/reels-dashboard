@@ -355,6 +355,147 @@
               ],
               "additionalProperties": false
             }
+          },
+          "pitches": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "instagram",
+                    "naver-clip",
+                    "blog",
+                    "youtube"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "hookFamily": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "coverHooks": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "captionHead": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "basedOn": {
+                  "default": [],
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "evidence": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "evidence"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "hypothesis": {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "S",
+                    "M",
+                    "L"
+                  ]
+                },
+                "readiness": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "needs_edit",
+                    "needs_user",
+                    "hold"
+                  ]
+                },
+                "asks": {
+                  "default": [],
+                  "maxItems": 6,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "rank": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                },
+                "decision": {
+                  "default": "proposed",
+                  "type": "string",
+                  "enum": [
+                    "proposed",
+                    "picked",
+                    "dropped"
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                }
+              },
+              "required": [
+                "id",
+                "channel",
+                "title",
+                "hookFamily",
+                "coverHooks",
+                "basedOn",
+                "source",
+                "effort",
+                "readiness",
+                "asks",
+                "decision",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
