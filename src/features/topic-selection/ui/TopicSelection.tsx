@@ -21,6 +21,14 @@ const readinessTone: Record<PitchReadiness, "primary" | "neutral" | "warning"> =
   hold: "neutral",
 };
 
+/** What the questions mean at each readiness; for needs_user the badge already says it. */
+const asksLabel: Record<PitchReadiness, string> = {
+  ready: "올리기 전 확인",
+  needs_edit: "확인할 것",
+  needs_user: "",
+  hold: "결정할 것",
+};
+
 /** Two-line cover hook, split where the content workspace writes ` / `. */
 function CoverHook({ text }: { text: string }) {
   const lines = text.split(/\s+\/\s+/);
@@ -60,8 +68,8 @@ function TopicRow({
         </div>
         <CoverHook text={first} />
         {item.asks.length > 0 && (
-          <p className="topic-asks">
-            <span>내 답 필요</span> {item.asks.join(" · ")}
+          <p className="topic-asks" data-readiness={item.readiness}>
+            {asksLabel[item.readiness] && <span>{asksLabel[item.readiness]}</span>} {item.asks.join(" · ")}
           </p>
         )}
         {open && (

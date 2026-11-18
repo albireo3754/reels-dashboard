@@ -13,6 +13,9 @@
 .topic-hook { display: inline-grid; justify-self: start; padding-left: var(--space-3); border-left: 3px solid var(--color-primary); font-weight: 600; line-height: 1.4; }
 .topic-asks { margin: 0; font-size: var(--text-sm); color: var(--color-warning-text, var(--color-text)); }
 .topic-asks span { font-weight: 600; margin-right: var(--space-1); }
+.topic-asks[data-readiness="hold"] { color: var(--color-text-subtle); }
+/* Korean reads by word: never split 문안 into 문/안. */
+.topic-main { word-break: keep-all; overflow-wrap: anywhere; }
 .topic-detail { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
 .topic-detail dt { color: var(--color-text-subtle); }
 .topic-detail dd { margin: 0; display: grid; gap: var(--space-1); }

@@ -40,7 +40,7 @@ test("topic selection: pitches in readiness order with the gap they fill, detail
   await expect(rows.nth(0)).toContainText("단골 간접체험");
   await expect(rows.nth(0)).toContainText("바로 올릴 수 있음");
   await expect(rows.nth(1)).toContainText("면세 변경 정보");
-  await expect(rows.nth(2)).toContainText("내 답 필요 직접 마셔 본 맛 감상 한 줄");
+  await expect(rows.nth(2).locator(".topic-asks")).toHaveText("직접 마셔 본 맛 감상 한 줄");
   await expect(panel.getByText("버린 후보")).toHaveCount(0);
   await expect(panel.getByText("제외한 후보 1개")).toBeVisible();
   // The recommended cover hook shows as two lines; the rest waits behind 근거.
