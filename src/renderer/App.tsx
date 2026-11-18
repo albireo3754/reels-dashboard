@@ -1,6 +1,8 @@
 import { PublicationCalendar } from "../features/publication-calendar";
 import { AutopilotToday } from "../features/after-work-autopilot";
 import { WeeklyGoals } from "../features/weekly-goals";
+import { TopicSelection } from "../features/topic-selection";
+import { decidePitch, type PitchDecision } from "../shared/topic-pitch";
 import { InstagramInsights } from "../features/instagram-insights";
 import { ShortcutHint, useShortcut } from "../shared/ui/shortcuts";
 import { goToTab } from "../shared/keymap";
@@ -244,6 +246,19 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       setEditingProject(null);
       setNotice("콘텐츠 진행 상태를 저장했어요.");
     });
+  /** Records a pick/drop on one pitch against the latest saved dashboard, so an open editor is never overwritten. */
+  const decideTopic = async (projectId: string, pitchId: string, decision: PitchDecision) => {
+    const current = await bridge.loadDashboard();
+    const next = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      projects: current.projects.map((p) =>
+        p.id === projectId ? { ...p, pitches: decidePitch(p.pitches ?? [], pitchId, decision) } : p,
+      ),
+    };
+    await bridge.saveDashboard(next, current.updatedAt);
+    setDashboard(await bridge.loadDashboard());
+  };
   const newProject = () => {
     setEditingRevision(dashboard.updatedAt);
     setEditingProject({
@@ -524,6 +539,20 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               setEditingRevision(dashboard.updatedAt);
               setEditingProject({ ...project });
             }}
+          />
+        )}
+        {tab === "dashboard" && !readOnly && (
+          <TopicSelection
+            projects={dashboard.projects}
+            revision={dashboard.updatedAt}
+            api={bridge.planning}
+            onOpenProject={id => {
+              const project = dashboard.projects.find(p => p.id === id);
+              if (!project) return;
+              setEditingRevision(dashboard.updatedAt);
+              setEditingProject({ ...project });
+            }}
+            onDecide={decideTopic}
           />
         )}
         {tab === "dashboard" && !readOnly && (

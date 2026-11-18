@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Project } from "./contracts";
 import { publicationChannelLabels, publicationChannels, type PublicationChannel } from "./publications";
+import { dashboardRevision } from "./production-project";
 
 /**
  * A draft of the next thing to make: a hook that already worked, crossed with footage we have.
@@ -140,3 +141,19 @@ export function decidePitch(pitches: TopicPitch[], id: string, decision: PitchDe
   if (!pitches.some((p) => p.id === id)) throw new Error("PITCH_NOT_FOUND");
   return pitches.map((p) => (p.id === id ? { ...p, decision, updatedAt: now.toISOString() } : p));
 }
+
+/** Replace a project's pitches; an empty list removes them. */
+export const setPitchesSchema = z.strictObject({
+  projectId: z.string().min(1).max(160),
+  expectedUpdatedAt: dashboardRevision,
+  pitches: topicPitchesSchema,
+});
+export type SetPitchesInput = z.infer<typeof setPitchesSchema>;
+
+export const decidePitchSchema = z.strictObject({
+  projectId: z.string().min(1).max(160),
+  pitchId: topicPitchSchema.shape.id,
+  decision: z.enum(pitchDecisions),
+  expectedUpdatedAt: dashboardRevision,
+});
+export type DecidePitchInput = z.infer<typeof decidePitchSchema>;

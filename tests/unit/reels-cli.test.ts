@@ -2659,6 +2659,7 @@ const jsonValues: Record<string, unknown> = {
   paths: ["/absolute/path/final.mp4"],
   files: [{ sourcePath: "/absolute/path/final.mp4", name: "final.mp4", role: "final" }],
   edit: { kind: "video", id: projectId },
+  pitches: [],
   content: {
     id: "sample",
     title: "Title",

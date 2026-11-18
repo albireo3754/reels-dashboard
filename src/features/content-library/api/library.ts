@@ -33,6 +33,13 @@ import {
 } from "../../../shared/local-resources";
 import { LocalStore } from "../../../shared/lib/storage";
 import { scanOrphanEdits } from "./orphan-edits";
+import {
+  decidePitch,
+  decidePitchSchema,
+  setPitchesSchema,
+  type DecidePitchInput,
+  type SetPitchesInput,
+} from "../../../shared/topic-pitch";
 import type { OutboundFile } from "../../../shared/icloud-delivery";
 
 const media = new Set([
@@ -289,6 +296,44 @@ export class ContentLibrary {
     }, input.expectedUpdatedAt);
     this.changed(dashboard);
     return this.get(input.projectId);
+  }
+
+  /** Replaces one entry's topic pitches. Other fields stay as they are. */
+  async setPitches(value: SetPitchesInput) {
+    const input = setPitchesSchema.parse(value);
+    const dashboard = await this.store.update((current) => {
+      const old = this.pitchOwner(current, input.projectId);
+      const { pitches: _previous, ...rest } = old;
+      const project: Project = { ...rest, ...(input.pitches.length ? { pitches: input.pitches } : {}) };
+      current.projects = current.projects.map((p) => (p.id === old.id ? project : p));
+      return current;
+    }, input.expectedUpdatedAt);
+    this.changed(dashboard);
+    return this.get(input.projectId);
+  }
+
+  /** Records the user's pick or drop of one pitch. Choosing never changes the stage or channels. */
+  async decidePitch(value: DecidePitchInput) {
+    const input = decidePitchSchema.parse(value);
+    const dashboard = await this.store.update((current) => {
+      const old = this.pitchOwner(current, input.projectId);
+      const project: Project = { ...old, pitches: decidePitch(old.pitches ?? [], input.pitchId, input.decision) };
+      current.projects = current.projects.map((p) => (p.id === old.id ? project : p));
+      return current;
+    }, input.expectedUpdatedAt);
+    this.changed(dashboard);
+    return this.get(input.projectId);
+  }
+
+  private pitchOwner(current: Dashboard, projectId: string) {
+    const old = current.projects.find((p) => p.id === projectId);
+    if (!old)
+      throw new Error(
+        current.projects.some((p) => p.production?.mergedIds.includes(projectId))
+          ? "PROJECT_MERGED: 합쳐진 ID예요. 대표 프로젝트 ID를 사용해주세요."
+          : "CONTENT_NOT_FOUND: 등록한 콘텐츠를 찾지 못했어요.",
+      );
+    return old;
   }
 
   async listFolder(directory: string, offset = 0, limit = 100, withDocuments = false) {

@@ -20,6 +20,7 @@ import {
   localPathSchema,
   setPublicationSchema,
 } from "../../../shared/local-resources";
+import { decidePitchSchema, setPitchesSchema } from "../../../shared/topic-pitch";
 import { settingsPatchSchema } from "../../../entities/agent-session";
 
 /** Operating rules shared by the MCP server and the `reels` CLI. */
@@ -204,6 +205,24 @@ export const toolDefinitions = {
     description:
       "Record where one content entry is posted: set a single channel (instagram, naver-clip, blog or youtube) to planned, draft (saved on the channel but not public, e.g. a Naver blog 임시저장), scheduled (a publish time is booked; pass scheduledAt with its offset — it stays scheduled after that time until the live post is confirmed) or published with its link and the day it went live, or `none` to drop the channel. For youtube pass format `shorts` or `long` (omitted keeps the stored one; unmarked means long-form); only Shorts count toward the weekly Shorts goal. Other fields, resources and channels are untouched, so no full upsert is needed. When every targeted channel is published the entry's stage becomes published; it is never moved back. Register the channels still to come as planned first, otherwise a single live channel completes the entry. This records state only and does not post, upload or verify anything. Confirm the live post before recording published; a saved draft is draft, never published.",
     input: setPublicationSchema,
+    readOnly: false,
+  },
+  reels_get_topic_board: {
+    description:
+      "Read the topic-selection board: pitches for what to make next (a proven hook crossed with footage we have), picked first, then by readiness (ready, needs_edit, needs_user, hold) and rank, plus how many posts each pitched channel still needs this/next week. Dropped pitches are only counted. Read-only.",
+    input: z.strictObject({}),
+    readOnly: true,
+  },
+  reels_set_pitches: {
+    description:
+      "Replace one content entry's topic pitches (max 8; an empty list removes them). Each pitch: id, channel, title, hookFamily, coverHooks (two lines split by ' / ', first is the recommendation), optional captionHead, basedOn (earlier posts and the observation that made the hook worth borrowing), source (the footage and its state), optional hypothesis, effort S/M/L, readiness, asks (questions only the user can answer — research facts instead of asking), optional rank, decision, updatedAt. No local paths or credentials: the board is mirrored to the owner's mobile briefing. Script and caption prose stay in the content workspace. A new idea needs its own entry first (upsert_content, stage idea). Use dashboard.updatedAt as expectedUpdatedAt.",
+    input: setPitchesSchema,
+    readOnly: false,
+  },
+  reels_decide_pitch: {
+    description:
+      "Record the user's decision on one pitch: picked (chosen to make), dropped (kept for the record, off the board) or proposed (undo). Stage, channels and other pitches are untouched; register the channel as planned separately when production starts. Record only decisions the user made.",
+    input: decidePitchSchema,
     readOnly: false,
   },
   reels_list_local_media: {

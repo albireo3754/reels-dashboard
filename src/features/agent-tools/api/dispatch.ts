@@ -18,6 +18,7 @@ import type {
 import { AgentSession, patchProject } from "../../../entities/agent-session";
 import { toolDefinitions, type ToolName } from "../model/tools";
 import { projectState } from "../../../shared/project-state";
+import { topicBoard, topicGaps } from "../../../shared/topic-pitch";
 import { weeklyGoalsView } from "../../../shared/weekly-goals";
 
 export interface AgentEditorPort extends EditorBridge {
@@ -78,6 +79,8 @@ export interface AgentPorts {
     setPublication?(
       input: import("../../../shared/local-resources").SetPublicationInput,
     ): Promise<unknown>;
+    setPitches?(input: import("../../../shared/topic-pitch").SetPitchesInput): Promise<unknown>;
+    decidePitch?(input: import("../../../shared/topic-pitch").DecidePitchInput): Promise<unknown>;
     listFolder(
       directory: string,
       offset: number,
@@ -218,6 +221,19 @@ export function createAgentDispatch(ports: AgentPorts) {
         session.assertWritable();
         if (!ports.content.setPublication) throw new Error("UNSUPPORTED");
         return ports.content.setPublication(input);
+      case "reels_get_topic_board": {
+        const projects = (await ports.dashboard()).projects;
+        const gaps = ports.planning ? topicGaps(weeklyGoalsView(await ports.planning.get(), projects, new Date())) : [];
+        return topicBoard(projects, gaps);
+      }
+      case "reels_set_pitches":
+        session.assertWritable();
+        if (!ports.content.setPitches) throw new Error("UNSUPPORTED");
+        return ports.content.setPitches(input);
+      case "reels_decide_pitch":
+        session.assertWritable();
+        if (!ports.content.decidePitch) throw new Error("UNSUPPORTED");
+        return ports.content.decidePitch(input);
       case "reels_list_local_media":
         return ports.content.listFolder(
           input.directory,
