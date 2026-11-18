@@ -70,6 +70,8 @@ export interface Project {
   dateBasis?: "capture" | "publication" | "record";
   /** Per-channel posting state. `stage` and `publicURL` stay the project-wide summary. */
   publications?: import("./publications").Publication[];
+  /** Drafts of what to make next from this footage: a proven hook crossed with this source. */
+  pitches?: import("./topic-pitch").TopicPitch[];
 }
 export interface Dashboard {
   schemaVersion: 1;
