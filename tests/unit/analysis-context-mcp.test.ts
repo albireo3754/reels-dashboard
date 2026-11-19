@@ -32,18 +32,10 @@ test("analysis subprocess does not inherit parent agent IDs, key env or extra se
     "ELECTRON_RUN_AS_NODE",
   ])
     assert.equal(env[key], undefined);
-  const args = analysisCodexSettings(
-    "/fixture/server.cjs",
-    "/fixture/batch.json",
-    "/fixture/receipt.json",
-  );
+  const args = analysisCodexSettings();
   assert(args.includes("project_doc_max_bytes=0"));
-  assert(args.includes("mcp_servers.reels_analysis.required=true"));
-  assert(
-    args.includes(
-      'mcp_servers.reels_analysis.enabled_tools=["get_analysis_context"]',
-    ),
-  );
+  // Context travels on stdin; the child registers no MCP server.
+  assert(!args.some((a) => a.startsWith("mcp_servers.")));
 });
 test("read-only batch MCP exposes exactly one tool, rejects extra selectors and freezes context", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "reels-context-mcp-test-"));

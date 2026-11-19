@@ -112,7 +112,7 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
     assert.equal((await service.search({projectId:"one",query:"소금바베큐"})).matches.length,0);
     assert.equal(d.context?.menus, "확인한 소금바베큐");
     assert.equal(d.runs[0].context?.venue, "테스트 식당");
-    assert.equal(d.runs[0].promptVersion, "context-v4-selection-mcp");
+    assert.equal(d.runs[0].promptVersion, "context-v5-selection-stdin");
     assert.equal(JSON.parse(received[0]).facts.menus, "확인한 소금바베큐");
     assert.equal(JSON.parse(received[0]).dateBasis, "unknown");
     await assert.rejects(
@@ -197,12 +197,15 @@ test("project isolation, stale corrections and reanalysis preserve human edits",
         },
       ],
     );
-    (failing as any).prepare = (service as any).prepare;
+    // Distinct sample IDs per file so batches are not collapsed by run-wide dedupe.
+    (failing as any).prepare = async (...args: unknown[]) =>
+      ((await (service as any).prepare(...args)) as { sourcePath: string }[]).map((s) => ({ ...s, id: path.basename(s.sourcePath) }));
     failing.retryDelaysMs = [0, 0, 0];
     await failing.start({
       projectId: "one",
       folder: media,
       provider: "broken",
+      batchImages: 3,
     });
     let failed;
     for (let i = 0; i < 100; i++) {
@@ -232,6 +235,13 @@ test("noninteractive subprocess receives EOF instead of hanging on piped stdin",
     { timeout: 2000 },
   );
   assert.equal(stdout, "EOF:");
+  const piped = await runFile(
+    process.execPath,
+    ["-e", "let input='';process.stdin.on('data',s=>input+=s);process.stdin.on('end',()=>process.stdout.write('EOF:'+input))"],
+    { timeout: 2000 },
+    '{"context":"private"}',
+  );
+  assert.equal(piped.stdout, 'EOF:{"context":"private"}');
 });
 
 test("usage preserves missing counters and sums only observed turns", async () => {
@@ -379,6 +389,55 @@ test("isolated comparison runs never replace effective results, reuse or saved c
     assert.equal(calls.length, 4);
     assert.equal(d.runs.at(-1)?.skippedSamples, 0);
     assert.equal(d.matches[0].fields.description, "candidate 설명");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("frames are batched by image count across file boundaries", async () => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "analysis-batch-")));
+  try {
+    const media = path.join(root, "media");
+    await mkdir(media);
+    // One video (three stills) and five photos: eight frames.
+    await writeFile(path.join(media, "a.mp4"), "video");
+    for (const name of ["b.jpg", "c.jpg", "d.jpg", "e.jpg", "f.jpg"]) await writeFile(path.join(media, name), name);
+    const store = new LocalStore(root);
+    await store.initialize();
+    await store.update((d) => ({
+      ...d,
+      projects: [{ id: "one", title: "one", date: "2026-11-07", stage: "captured" as const, nextAction: "", publicURL: "", shared: false, resources: [{ role: "folder" as const, path: media, label: "sources" }] }],
+    }));
+    const sizes: number[] = [];
+    const service = new MediaAnalysis(store, new ContentLibrary(store), "unused", new ExecutionLogs(root), [
+      { id: "fake", label: "fake", async analyze(samples) { sizes.push(samples.length); return samples.map(() => fields); } },
+    ]);
+    (service as any).prepare = async (_id: string, sourcePath: string) => {
+      const { stat } = await import("node:fs/promises");
+      const { createHash } = await import("node:crypto");
+      const s = await stat(sourcePath);
+      const sourceVersion = createHash("sha256").update(`${s.size}:${s.mtimeMs}`).digest("hex");
+      const times = sourcePath.endsWith(".mp4") ? [1, 2, 3] : [null];
+      return times.map((time) => ({ id: `${path.basename(sourcePath)}:${time}`, sourcePath, sourceVersion, kind: time === null ? "photo" : "video-frame", time, imagePath: sourcePath }));
+    };
+    const finish = async () => {
+      for (let i = 0; i < 100; i++) {
+        const d = await service.search({ projectId: "one" });
+        if (d.runs.at(-1)?.status === "completed") return d;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      throw Error("timed out");
+    };
+    await service.start({ projectId: "one", folder: media, provider: "fake" });
+    let d = await finish();
+    assert.deepEqual(sizes, [5, 3]);
+    assert.equal(d.runs.at(-1)?.batchImages, 5);
+    assert.equal(d.runs.at(-1)?.analyzedSamples, 8);
+    assert.equal(d.runs.at(-1)?.processedFiles, 6);
+    assert.equal(d.matches.length, 8);
+    await service.start({ projectId: "one", folder: media, provider: "fake", batchImages: 2, force: true });
+    d = await finish();
+    assert.deepEqual(sizes.slice(2), [2, 2, 2, 2]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

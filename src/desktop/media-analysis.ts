@@ -51,11 +51,10 @@ export class MediaAnalysis {
     private runtime: string,
     private logs: ExecutionLogs,
     adapters?: ImageAnalyzer[],
-    contextMcpPath?: string,
   ) {
     this.root = path.join(store.root, "media-analysis");
     this.adapters = new Map(
-      (adapters ?? [new CodexImageAnalyzer(this.root, undefined, contextMcpPath)]).map((a) => [a.id, a]),
+      (adapters ?? [new CodexImageAnalyzer(this.root)]).map((a) => [a.id, a]),
     );
   }
   private async owner(): Promise<number | undefined> {
@@ -255,8 +254,9 @@ export class MediaAnalysis {
         requestedReasoning: input.reasoning ?? process.env.REELS_ANALYSIS_REASONING ?? "high",
         force: input.force, skippedSamples: 0, calls: [],
         ...(input.isolated ? { isolated: true } : {}),
+        batchImages: input.batchImages,
         context,
-        promptVersion: "context-v4-selection-mcp",
+        promptVersion: "context-v5-selection-stdin",
         id: randomUUID(),
         provider: adapter.id,
         request: input.request,
@@ -420,26 +420,69 @@ export class MediaAnalysis {
       });
     try {
       run.settingsDigest = sha256Hex(JSON.stringify([adapter.id, run.requestedModel, run.requestedReasoning, run.promptVersion, context, run.request]));
-      // Three source files per model invocation; each frame remains independently attributable.
-      for (let offset = 0; offset < files.length; offset += 3) {
-        let samples: AnalysisSample[] = [];
-        for (const file of files.slice(offset, offset + 3)) {
-          try {
-            samples.push(...(await this.prepare(projectId, file, run.id, run.settingsDigest, run.force)));
-          } catch {
-            run.errors.push({
-              sourcePath: file,
-              message: "원본 읽기 또는 프레임 추출 실패",
-            });
+      const keyOf = (sample: AnalysisSample) => sha256Hex(`${sample.id}:${run.settingsDigest}`);
+      // Up to batchImages frames per model invocation, across file boundaries;
+      // each frame remains independently attributable.
+      const size = run.batchImages ?? 5;
+      const unique = new Set<string>();
+      const owner = new Map<AnalysisSample, number>();
+      let pending: AnalysisSample[] = [];
+      let read = 0;
+      let providerFailed = false;
+      const dispatch = async (samples: AnalysisSample[]) => {
+        try {
+          const { fields } = await analyzeWithRetry(adapter, samples, context, run.request, {
+            model: run.requestedModel!, reasoning: run.requestedReasoning!,
+            recordUsage: usage => { (run.calls ??= []).push(usage); },
+          }, this.retryDelaysMs);
+          // Refuse results if any source changed while the analyzer was running.
+          for (const sample of samples) {
+            const current = await stat(sample.sourcePath);
+            if (versionOf(current) !== sample.sourceVersion)
+              throw new Error("분석 중 원본 변경");
           }
+          await this.update(projectId, (d) => {
+            d.results.push(
+              ...samples.map((sample, i) => ({
+                sample,
+                // No reuse key: a later normal run must not adopt a comparison result.
+                ...(run.isolated ? { isolated: true } : { reuseKey: keyOf(sample) }),
+                provider: adapter.id,
+                runId: run.id,
+                analyzedAt: new Date().toISOString(),
+                fields: analysisFields.parse(fields[i]),
+              })),
+            );
+          });
+          run.analyzedSamples += samples.length;
+        } catch (e) {
+          providerFailed = true;
+          run.errors.push(
+            ...[...new Set(samples.map((s) => s.sourcePath))].map((sourcePath) => ({
+              sourcePath,
+              message:
+                errorMessage(e, "분석 실패") +
+                (e instanceof AnalysisRetryError && e.attempts > 1 ? ` (${e.attempts}회 시도 후 중단)` : ""),
+            })),
+          );
         }
-        run.settingsDigest ??= sha256Hex(JSON.stringify([adapter.id, run.requestedModel, run.requestedReasoning, run.promptVersion, context, run.request]));
+        // Files whose frames are all dispatched (or that had none to analyze).
+        run.processedFiles = pending.length ? owner.get(pending[0])! : read;
+        await saveRun();
+      };
+      for (const [index, file] of files.entries()) {
+        let samples: AnalysisSample[] = [];
+        try {
+          samples = await this.prepare(projectId, file, run.id, run.settingsDigest, run.force);
+        } catch {
+          run.errors.push({ sourcePath: file, message: "원본 읽기 또는 프레임 추출 실패" });
+        }
+        read = index + 1;
         const previous = await this.load(projectId);
         const seen = new Set(previous.results.filter(r => r.reuseKey).map(r => r.reuseKey));
-        const unique = new Set<string>();
         const reused: AnalysisSample[] = [];
         samples = samples.filter(sample => {
-          const key = sha256Hex(`${sample.id}:${run.settingsDigest}`);
+          const key = keyOf(sample);
           if (unique.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; return false; }
           unique.add(key);
           if (!run.force && !run.isolated && seen.has(key)) { run.skippedSamples = (run.skippedSamples ?? 0) + 1; reused.push(sample); return false; }
@@ -447,63 +490,21 @@ export class MediaAnalysis {
         });
         if (reused.length) await this.update(projectId, d => {
           for (const sample of reused) {
-            const cached = [...d.results].reverse().find(r => r.reuseKey === sha256Hex(`${sample.id}:${run.settingsDigest}`));
+            const cached = [...d.results].reverse().find(r => r.reuseKey === keyOf(sample));
             if (cached && (cached.sample.sourcePath !== sample.sourcePath || cached.sample.sourceVersion !== sample.sourceVersion)) d.results.push({ ...cached, sample });
           }
         });
-        let providerFailed = false;
-        if (samples.length) {
-          try {
-            const { fields } = await analyzeWithRetry(adapter, samples, context, run.request, {
-              model: run.requestedModel!, reasoning: run.requestedReasoning!,
-              recordUsage: usage => { (run.calls ??= []).push(usage); },
-            }, this.retryDelaysMs);
-            // Refuse results if any source changed while the analyzer was running.
-            for (const sample of samples) {
-              const current = await stat(sample.sourcePath);
-              if (
-                versionOf(current) !==
-                sample.sourceVersion
-              )
-                throw new Error("분석 중 원본 변경");
-            }
-            await this.update(projectId, (d) => {
-              d.results.push(
-                ...samples.map((sample, i) => ({
-                  sample,
-                  // No reuse key: a later normal run must not adopt a comparison result.
-                  ...(run.isolated
-                    ? { isolated: true }
-                    : { reuseKey: sha256Hex(`${sample.id}:${run.settingsDigest}`) }),
-                  provider: adapter.id,
-                  runId: run.id,
-                  analyzedAt: new Date().toISOString(),
-                  fields: analysisFields.parse(fields[i]),
-                })),
-              );
-            });
-            run.analyzedSamples += samples.length;
-          } catch (e) {
-            providerFailed = true;
-            run.errors.push(
-              ...[...new Set(samples.map((s) => s.sourcePath))].map(
-                (sourcePath) => ({
-                  sourcePath,
-                  message:
-                    errorMessage(e, "분석 실패") +
-                    (e instanceof AnalysisRetryError && e.attempts > 1
-                      ? ` (${e.attempts}회 시도 후 중단)`
-                      : ""),
-                }),
-              ),
-            );
-          }
-        }
-        run.processedFiles = Math.min(files.length, offset + 3);
-        await saveRun();
-        // The provider already got its retries for this batch; stop instead of failing every remaining file.
+        for (const sample of samples) owner.set(sample, index);
+        pending.push(...samples);
+        while (pending.length >= size && !providerFailed) await dispatch(pending.splice(0, size));
+        // The provider already got its retries for that batch; stop instead of failing every remaining file.
         if (providerFailed) break;
+        if (!pending.length) {
+          run.processedFiles = read;
+          await saveRun();
+        }
       }
+      if (pending.length && !providerFailed) await dispatch(pending.splice(0));
       run.status = run.errors.length
         ? run.analyzedSamples
           ? "partial"

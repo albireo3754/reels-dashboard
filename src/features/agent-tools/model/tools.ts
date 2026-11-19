@@ -108,7 +108,7 @@ export const toolDefinitions = {
   reels_update_analysis_selection: { description: "Record human usability, representative choice or actual content/edit usage. Nothing is deleted or hidden.", input: selectionUpdate, readOnly: false },
   reels_start_analysis: {
     description:
-      "Analyze a linked project folder with the selected image analyzer. Sends sampled images to the provider using existing CLI login. Async: query analysis for progress; never automatically retry uncertain starts. Photos and three video stills per source, no motion/audio claims. model/reasoning pick the Codex model per run. isolated: true makes a comparison run (e.g. a new model on the same cuts): always calls the model, records results and usage in runs/results with isolated: true, but they never replace effective results, search matches, selection or reuse, and a supplied context is used for that run only (no expectedRevision needed, saved context unchanged).",
+      "Analyze a linked project folder with the selected image analyzer. Sends sampled images to the provider using existing CLI login. Async: query analysis for progress; never automatically retry uncertain starts. Photos and three video stills per source, no motion/audio claims. batchImages (default 5, max 10) frames go to the model per call. model/reasoning pick the Codex model per run. isolated: true makes a comparison run (e.g. a new model on the same cuts): always calls the model, records results and usage in runs/results with isolated: true, but they never replace effective results, search matches, selection or reuse, and a supplied context is used for that run only (no expectedRevision needed, saved context unchanged).",
     input: analysisStart,
     readOnly: false,
   },

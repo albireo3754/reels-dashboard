@@ -15,12 +15,13 @@ const { values, positionals } = parseArgs({
     isolated: { type: "boolean", default: false },
     force: { type: "boolean", default: false },
     "max-files": { type: "string" },
+    "batch-images": { type: "string" },
   },
 });
 const [root, projectId, folder, contextFile] = positionals;
 if (!root || !projectId || !folder)
   throw new Error(
-    "Usage: node --import tsx scripts/analyze-project.ts USER_DATA PROJECT_ID LINKED_FOLDER [CONTEXT_JSON] [--model M] [--reasoning R] [--isolated] [--force] [--max-files N]",
+    "Usage: node --import tsx scripts/analyze-project.ts USER_DATA PROJECT_ID LINKED_FOLDER [CONTEXT_JSON] [--model M] [--reasoning R] [--isolated] [--force] [--max-files N] [--batch-images N]",
   );
 const store = new LocalStore(root);
 await store.initialize();
@@ -41,6 +42,7 @@ const run = await service.start({
   ...(values.model ? { model: values.model } : {}),
   ...(values.reasoning ? { reasoning: values.reasoning as "low" } : {}),
   ...(values["max-files"] ? { maxFiles: Number(values["max-files"]) } : {}),
+  ...(values["batch-images"] ? { batchImages: Number(values["batch-images"]) } : {}),
   isolated: values.isolated,
   force: values.force,
 });

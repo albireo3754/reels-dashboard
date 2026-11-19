@@ -284,8 +284,6 @@ async function awaitReady() {
       ? path.join(process.resourcesPath, "editor-runtime")
       : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
     logs,
-    undefined,
-    path.join(app.getAppPath(), "dist-electron/analysis-context-mcp.cjs"),
   );
   const coverPreferences = new CoverPreferencesStore(root);
   const planning = new PlanningStore(root);

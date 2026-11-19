@@ -45,6 +45,8 @@ export const analysisStart = z.strictObject({
   force: z.boolean().default(false),
   /** Comparison run: always calls the model, keeps results out of search/selection/reuse and leaves saved context untouched. */
   isolated: z.boolean().default(false),
+  /** Frames sent per model invocation; one call carries a large fixed prompt, so larger batches cost less per frame. */
+  batchImages: z.number().int().min(1).max(10).default(5),
   maxFiles: z.number().int().min(1).max(200).default(100),
 });
 export const analysisQuery = z.strictObject({
@@ -87,6 +89,7 @@ export interface AnalysisRun {
   settingsDigest?: string;
   force?: boolean;
   isolated?: boolean;
+  batchImages?: number;
   skippedSamples?: number;
   calls?: AnalysisUsage[];
   usage?: AnalysisUsage;
