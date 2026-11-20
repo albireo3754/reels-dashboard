@@ -261,7 +261,9 @@ test("inbox 13. the text boundary drops file URIs, local paths, control and form
   // The cut keeps whole characters: no half surrogate pair, no split emoji sequence.
   const cut = phoneText("😀😀😀😀😀", 3);
   assert.equal(cut, "😀😀…");
-  assert.equal(cut.isWellFormed(), true);
+  const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  assert.match("😀".slice(0, 1), loneSurrogate, "the check itself sees half a pair");
+  assert.doesNotMatch(cut, loneSurrogate, "no lone surrogate");
   assert.equal(phoneText("👍🏽👍🏽👍🏽", 2), "👍🏽…", "a skin tone stays with its emoji");
   assert.equal(phoneText("가".repeat(10), 10), "가".repeat(10), "no cut at the limit");
 });
