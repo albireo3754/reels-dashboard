@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Project } from "./contracts";
 import { seoulDate, type Planning } from "./planning";
-import { isActiveState, projectState } from "./project-state";
+import { isActiveState, projectState, projectStateLabels } from "./project-state";
 import { publicationChannelLabels, publicationStatusLabels } from "./publications";
 
 /**
@@ -226,16 +226,36 @@ export function freshnessOf(planning: Planning, now: Date, config: Pick<Autopilo
   return { ok: true, syncedAt: linear.syncedAt };
 }
 
-/** Source items before ranking, one per key. Review wins over active over candidate. */
-function sourceItems(planning: Planning, projects: Project[], now: Date = new Date()): RawItem[] {
-  const items = new Map<string, RawItem>();
-  const add = (item: RawItem) => items.set(item.key, items.has(item.key) ? merge(items.get(item.key)!, item) : item);
+/** One source's own entry for a key, before entries of the same key are merged. */
+interface SourceEntry {
+  item: RawItem;
+  /** `project:<id>` for a Dashboard project, the Linear identifier for an issue. */
+  ref: string;
+  /** The Linear state type, kept because the merged item only keeps the state name. */
+  linearState?: LinearIssue["state"];
+}
+/** A source record that exists for a key but feeds no queue entry (complete, scheduled, closed or shadowed). */
+interface ParkedSource { key: string; kind: "dashboard" | "linear"; ref: string; reason: string; }
+
+/**
+ * Every source's entry before merging, in the order {@link sourceItems} merges them, plus the records it leaves
+ * out and why. Merging keeps only the stronger kind (`source: "both"`), so whoever needs to know which source
+ * made an item wait for review reads these entries instead.
+ */
+function sourceEntries(planning: Planning, projects: Project[], now: Date): { entries: SourceEntry[]; parked: ParkedSource[] } {
+  const entries: SourceEntry[] = [];
+  const parked: ParkedSource[] = [];
   /** Linked projects with nothing left to do here: complete, or scheduled on every remaining channel. */
   const published = new Set<string>();
   for (const project of projects) {
     const view = projectState(project, now);
-    if (!isActiveState(view.state)) { published.add(project.id); continue; }
-    add({
+    const ref = `project:${project.id}`;
+    if (!isActiveState(view.state)) {
+      published.add(project.id);
+      parked.push({ key: project.id, kind: "dashboard", ref, reason: `Dashboard ${projectStateLabels[view.state]}` });
+      continue;
+    }
+    entries.push({ ref, item: {
       key: project.id, kind: view.needsUserReview ? "review" : "active", source: "dashboard",
       title: project.title, projectId: project.id, stage: project.stage, nextAction: project.nextAction, blockedBy: [],
       ...(project.priority !== undefined ? { order: project.priority } : {}),
@@ -245,16 +265,23 @@ function sourceItems(planning: Planning, projects: Project[], now: Date = new Da
         : {}),
       ...(project.localNotes ? { localNotes: project.localNotes } : {}),
       ...(project.resources?.length ? { resources: project.resources.map(({ role, label, path }) => ({ role, label, path })) } : {}),
-    });
+    } });
   }
   for (const issue of planning.linear?.issues ?? []) {
     const kind = classifyLinear(issue);
-    if (kind === "ignore") continue;
     const key = linearKey(issue);
+    const ref = issue.identifier;
+    if (kind === "ignore") {
+      parked.push({ key, kind: "linear", ref, reason: `Linear 닫힌 상태(${issue.stateName ?? issue.state})` });
+      continue;
+    }
     // The Dashboard is the state of record: a linked project that is complete or only waiting on a booked
     // publish time does not come back through a Linear issue that is still open, whatever its kind.
-    if (published.has(key)) continue;
-    add({
+    if (published.has(key)) {
+      parked.push({ key, kind: "linear", ref, reason: "연결된 Dashboard 프로젝트가 완료·공개 예약이라 큐에서 제외" });
+      continue;
+    }
+    entries.push({ ref, linearState: issue.state, item: {
       key, kind, source: "linear", title: issue.title, url: issue.url, identifier: issue.identifier,
       ...(issue.projectId ? { projectId: issue.projectId } : {}),
       ...(issue.stateName ? { stateName: issue.stateName } : {}),
@@ -265,8 +292,16 @@ function sourceItems(planning: Planning, projects: Project[], now: Date = new Da
       ...(issue.updatedAt ? { updatedAt: issue.updatedAt } : {}),
       ...(issue.startedAt ? { startedAt: issue.startedAt } : {}),
       ...(issue.description ? { description: issue.description } : {}),
-    });
+    } });
   }
+  return { entries, parked };
+}
+
+/** Source items before ranking, one per key. Review wins over active over candidate. */
+function sourceItems(planning: Planning, projects: Project[], now: Date = new Date()): RawItem[] {
+  const items = new Map<string, RawItem>();
+  for (const { item } of sourceEntries(planning, projects, now).entries)
+    items.set(item.key, items.has(item.key) ? merge(items.get(item.key)!, item) : item);
   return [...items.values()];
 }
 
@@ -490,25 +525,38 @@ export interface TodayPick {
   outcome?: Reservation["outcome"];
   changes?: Reservation["changes"];
 }
+const targetOf = (item: QueueItem) => item.url ?? (item.projectId ? `project:${item.projectId}` : item.key);
+
+/** How one review item reads: `pickToday` shows the first, `buildReviewInbox` every one, in the same words. */
+export interface ReviewPresentation { target: string; why: string[]; decision: string; doneWhen: string; }
+export function reviewPresentation(review: QueueItem): ReviewPresentation {
+  return {
+    target: targetOf(review),
+    why: review.reasons,
+    decision: review.outcome === "needs_user"
+      ? "자동 작업이 근거 부족으로 멈췄어요. 보고서의 빈칸에 필요한 사실·취향·인증을 채워 주세요"
+      : review.reportPath
+        ? review.outcome === "progressed" ? "수행된 변경과 검증 근거를 보고 승인할지, 되돌릴지 결정" : "준비된 보고서를 보고 승인할지, 고칠 점을 남길지 결정"
+        // Without a report, say what is actually owed: the channel still waiting and the stored next action.
+        : [review.waiting && `남은 채널: ${review.waiting}`, review.nextAction?.trim() && `다음 행동: ${review.nextAction.trim()}`]
+            .filter(Boolean).join(" · ") || "검토 후 승인 또는 수정 요청을 결정",
+    // `resolve` closes only the reservation. A Dashboard or Linear review on the same key keeps the item waiting.
+    doneWhen: review.reservationId
+      ? review.source === "ledger"
+        ? `결정을 마치고 \`reels autopilot resolve ${review.key}\`로 예약을 닫기(원천 항목은 이미 큐에 없음)`
+        : `결정을 마치고 \`reels autopilot resolve ${review.key}\`로 예약을 닫기. Linear/Dashboard도 검토 대기면 그 상태까지 바뀌어야 리뷰 대기에서 빠짐`
+      : review.waiting
+        ? `${review.waiting}을(를) 게시하고 Dashboard 채널 상태를 게시 완료(또는 공개 예약 시각)로 기록`
+        : "Linear/Dashboard에서 검토 결과가 반영돼 리뷰 대기에서 빠짐",
+  };
+}
+
 /** The single item to look at after work, or null when nothing needs the user. Never invents work. */
 export function pickToday(queue: Queue): TodayPick | null {
   const review = queue.review[0];
   if (review) {
-    const target = review.url ?? (review.projectId ? `project:${review.projectId}` : review.key);
     return {
-      key: review.key, kind: "review", title: review.title, target, why: review.reasons,
-      decision: review.outcome === "needs_user"
-        ? "자동 작업이 근거 부족으로 멈췄어요. 보고서의 빈칸에 필요한 사실·취향·인증을 채워 주세요"
-        : review.reportPath
-          ? review.outcome === "progressed" ? "수행된 변경과 검증 근거를 보고 승인할지, 되돌릴지 결정" : "준비된 보고서를 보고 승인할지, 고칠 점을 남길지 결정"
-          // Without a report, say what is actually owed: the channel still waiting and the stored next action.
-          : [review.waiting && `남은 채널: ${review.waiting}`, review.nextAction?.trim() && `다음 행동: ${review.nextAction.trim()}`]
-              .filter(Boolean).join(" · ") || "검토 후 승인 또는 수정 요청을 결정",
-      doneWhen: review.reservationId
-        ? `결정을 마치고 \`reels autopilot resolve ${review.key}\`로 닫기, 또는 Linear/Dashboard 상태가 바뀌어 큐에서 빠짐`
-        : review.waiting
-          ? `${review.waiting}을(를) 게시하고 Dashboard 채널 상태를 게시 완료(또는 공개 예약 시각)로 기록`
-          : "Linear/Dashboard에서 검토 결과가 반영돼 리뷰 대기에서 빠짐",
+      key: review.key, kind: "review", title: review.title, ...reviewPresentation(review),
       userDecisionRequired: true,
       ...(review.reportPath ? { reportPath: review.reportPath } : {}),
       ...(review.outcome ? { outcome: review.outcome } : {}),
@@ -517,13 +565,253 @@ export function pickToday(queue: Queue): TodayPick | null {
   }
   const active = queue.active.find(item => item.blockedBy.length === 0);
   if (!active) return null;
-  const target = active.url ?? (active.projectId ? `project:${active.projectId}` : active.key);
   return {
-    key: active.key, kind: "active", title: active.title, target, why: active.reasons,
+    key: active.key, kind: "active", title: active.title, target: targetOf(active), why: active.reasons,
     decision: active.nextAction?.trim() ? `다음 행동: ${active.nextAction.trim()}` : "저장된 다음 행동이 없어요. 다음 행동을 정해 주세요.",
     doneWhen: "다음 행동을 끝내거나 Linear/Dashboard 상태에 반영",
     userDecisionRequired: true,
   };
+}
+
+/**
+ * `reels autopilot inbox`: every item waiting for review, in queue order, with what holds it there.
+ * Read-only and computed from the same snapshots as `status`; it never resolves, writes or calls anything.
+ */
+export const reviewInboxVersion = 1 as const;
+export type InboxSourceKind = "dashboard" | "linear" | "reservation";
+export interface InboxSource {
+  kind: InboxSourceKind;
+  /** `project:<id>`, a Linear identifier, a reservation id, or the item key when the record is missing. */
+  ref: string;
+  /** Whether the record exists in what was read (a Dashboard project, a Linear issue in the copy, a reservation). */
+  present: boolean;
+  /** Whether this record by itself puts the item in the review queue. */
+  contributesReview: boolean;
+  reason: string;
+  /** Where and how this source stops holding the item; null when it does not hold it. */
+  closeBy: string | null;
+}
+export interface InboxResolution {
+  /** `reels autopilot resolve <key>` has an awaiting_review reservation to close. */
+  localResolveAvailable: boolean;
+  /** The reservations `resolve` would close: every awaiting_review one with this key. */
+  reservationIds: string[];
+  /**
+   * The queue recomputed in memory with those reservations marked done, from the input read now. Not a promise
+   * about later: sources can change, and leaving review frees no automatic slot unless every other gate also passes.
+   */
+  afterLocalResolve: {
+    stillInReview: boolean;
+    remainingReviewSources: { kind: Exclude<InboxSourceKind, "reservation">; ref: string }[];
+    occupancyAfter: number;
+  };
+}
+export interface InboxItem {
+  /** 1-based position in the review queue; 1 is today's item. */
+  rank: number;
+  key: string;
+  title: string;
+  target: string;
+  identifier?: string;
+  score: number;
+  why: string[];
+  decision: string;
+  doneWhen: string;
+  /** Only an executor stop for missing facts counts as evidence; everything else is left unclassified. */
+  decisionAssessment: { kind: "needs_user_fact" | "unclassified_review"; basis: string };
+  sources: InboxSource[];
+  resolution: InboxResolution;
+  /** Metadata of the reservations' results only: no report text, paths, notes or executor settings. */
+  evidence?: { reservationId: string; outcome?: NonNullable<Reservation["outcome"]>; changeCount: number; hasReport: boolean }[];
+}
+export interface ReviewInbox {
+  version: typeof reviewInboxVersion;
+  generatedAt: string;
+  readOnly: true;
+  summary: {
+    reviewCount: number;
+    occupancy: number;
+    /** The automatic limit in force: config `maxSlots`, never above 3. */
+    maxSlots: number;
+    runningReservations: number;
+    /**
+     * How many review items must leave before `admission` allows one automatic start, with the running
+     * reservations as they are. Null when the running ones alone fill the limit. Ignores hours, pause and candidates.
+     */
+    needToFree: number | null;
+    /** Items that have a reservation `resolve` can close. */
+    resolvableNow: number;
+    /** Items that would leave review if every such reservation were closed, from the input read now. */
+    freedByResolveAll: number;
+    freshness: Freshness;
+  };
+  /** Present when reclaiming dead runs was previewed in memory before counting; nothing was written. */
+  reservationPreview?: { inMemoryOnly: true; reclaimed: string[]; leaseExpiredAlive: string[] };
+  items: InboxItem[];
+  /** A short plain-text view for a phone: two lines per item, no local paths. */
+  text: string;
+}
+export interface ReviewInboxInput extends QueueInput {
+  config: Pick<AutopilotConfig, "staleAfterMinutes" | "maxSlots">;
+  /** What an in-memory reclaim preview took back before `ledger` was passed in. */
+  preview?: { reclaimed: string[]; leaseExpiredAlive: string[] };
+}
+
+const outcomeShort: Record<NonNullable<Reservation["outcome"]>, string> = {
+  progressed: "실제 변경 수행", prepared: "변경 없는 준비 보고", needs_user: "근거 부족으로 멈춤",
+};
+const awaitingFor = (ledger: readonly Reservation[], key?: string) =>
+  ledger.filter(r => r.status === "awaiting_review" && (key === undefined || r.key === key));
+const closeAll = (ledger: readonly Reservation[], key?: string): Reservation[] =>
+  ledger.map(r => (r.status === "awaiting_review" && (key === undefined || r.key === key) ? { ...r, status: "done" as const } : r));
+
+function dashboardSource(entry: SourceEntry): InboxSource {
+  const { item } = entry;
+  const waiting = item.waiting ? ` · 남은 채널: ${item.waiting}` : "";
+  if (item.kind !== "review")
+    return { kind: "dashboard", ref: entry.ref, present: true, contributesReview: false, reason: `Dashboard 진행 중(단계 ${item.stage})${waiting}`, closeBy: null };
+  return item.stage === "published"
+    ? {
+      kind: "dashboard", ref: entry.ref, present: true, contributesReview: true, reason: `Dashboard 게시 후 채널 남음: ${item.waiting}`,
+      closeBy: `${item.waiting}을(를) 게시하고 Dashboard 채널 상태를 게시 완료(또는 공개 예약 시각)로 기록`,
+    }
+    : {
+      kind: "dashboard", ref: entry.ref, present: true, contributesReview: true, reason: `Dashboard 단계 review(검토 대기)${waiting}`,
+      closeBy: `Dashboard에서 검토를 마치고 단계를 review 밖으로 옮기기${item.waiting ? "(남은 채널이 게시·공개 예약으로 기록돼야 완전히 빠짐)" : ""}`,
+    };
+}
+function linearSource(entry: SourceEntry): InboxSource {
+  const { item, ref } = entry;
+  const state = item.stateName ? `'${item.stateName}'` : (entry.linearState ?? "");
+  if (item.kind !== "review")
+    return { kind: "linear", ref, present: true, contributesReview: false, reason: `Linear ${state}(${item.kind === "active" ? "진행 중" : "후보"})`, closeBy: null };
+  return {
+    kind: "linear", ref, present: true, contributesReview: true,
+    reason: entry.linearState === "triage" && !(item.stateName && (inboxName.test(item.stateName) || reviewName.test(item.stateName)))
+      ? `Linear ${state}(triage)` : `Linear ${state}(검토·Inbox 이름)`,
+    closeBy: `Linear에서 ${ref}을(를) 검토하고 상태를 검토·Inbox 밖(진행·완료 등)으로 옮기기`,
+  };
+}
+
+/** Per source, what it says about one key: the provenance the merged queue item no longer has. */
+function provenance(key: string, entries: readonly SourceEntry[], parked: readonly ParkedSource[], ledger: readonly Reservation[]): InboxSource[] {
+  const mine = entries.filter(entry => entry.item.key === key);
+  const sources: InboxSource[] = [
+    ...mine.filter(entry => entry.item.source === "dashboard").map(dashboardSource),
+    ...parked.filter(p => p.key === key && p.kind === "dashboard")
+      .map((p): InboxSource => ({ kind: "dashboard", ref: p.ref, present: true, contributesReview: false, reason: p.reason, closeBy: null })),
+    ...mine.filter(entry => entry.item.source === "linear").map(linearSource),
+    ...parked.filter(p => p.key === key && p.kind === "linear")
+      .map((p): InboxSource => ({ kind: "linear", ref: p.ref, present: true, contributesReview: false, reason: p.reason, closeBy: null })),
+  ];
+  // A key names where it came from; say so when that record is gone rather than leave it out silently.
+  const origin = key.startsWith("linear:") ? "linear" : "dashboard";
+  if (!sources.some(source => source.kind === origin))
+    sources.unshift(origin === "linear"
+      ? { kind: "linear", ref: key, present: false, contributesReview: false, reason: "Linear 사본에 이 이슈가 없음(닫힘·팀 밖·조회 전)", closeBy: null }
+      : { kind: "dashboard", ref: `project:${key}`, present: false, contributesReview: false, reason: "Dashboard에 이 프로젝트가 없음", closeBy: null });
+  for (const r of awaitingFor(ledger, key))
+    sources.push({
+      kind: "reservation", ref: r.id, present: true, contributesReview: true,
+      reason: `자동 실행 결과 검토 대기(${r.outcome ? outcomeShort[r.outcome] : "결과 종류 없음"})`,
+      closeBy: `보고서를 검토한 뒤 \`reels autopilot resolve ${key}\`로 예약 닫기`,
+    });
+  return sources;
+}
+
+/** The least review items that must leave for `admission` to allow one automatic start, or null if none suffices. */
+function slotsToFree(occupancy: number, runningReservations: number, maxSlots: number): number | null {
+  for (let freed = 0; freed <= occupancy; freed++)
+    if (admission({ occupancy: occupancy - freed, runningReservations, mode: "auto", maxSlots }) > 0) return freed;
+  return null;
+}
+
+const sourceLabel = (source: InboxSource, stage?: Project["stage"]) =>
+  source.kind === "reservation" ? "로컬 resolve"
+    : source.kind === "linear" ? `Linear ${source.ref} 상태 변경`
+      : stage === "published" ? "Dashboard 채널 게시 기록" : "Dashboard 단계 변경";
+/** One line, no local paths, bounded: titles and next actions are user text and may carry either. */
+function phoneText(value: string, max = 120): string {
+  const flat = value.replace(/\s+/g, " ").trim().replace(/(^|[\s(\[{"'`])~?\/[^\s)\]}"'`]+/g, "$1<경로>");
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * Every item of `buildQueue().review` in its order, each with the sources that hold it, how each one closes,
+ * and what a local `resolve` would leave. Pure: the caller reads the snapshots (and previews reclaim) first.
+ */
+export function buildReviewInbox(input: ReviewInboxInput): ReviewInbox {
+  const { planning, projects, ledger, now, config } = input;
+  const queue = buildQueue(input);
+  const { entries, parked } = sourceEntries(planning, projects, now);
+  const maxSlots = Math.min(config.maxSlots, maxAutoSlots);
+  const runningReservations = ledger.filter(inFlight).length;
+  const items = queue.review.map((item, index): InboxItem => {
+    const sources = provenance(item.key, entries, parked, ledger);
+    const reservations = awaitingFor(ledger, item.key);
+    const after = buildQueue({ ...input, ledger: closeAll(ledger, item.key) });
+    const stuck = reservations.filter(r => r.outcome === "needs_user");
+    const evidence = reservations.map(r => ({
+      reservationId: r.id, ...(r.outcome ? { outcome: r.outcome } : {}), changeCount: r.changes?.length ?? 0, hasReport: Boolean(r.reportPath),
+    }));
+    return {
+      rank: index + 1, key: item.key, title: item.title, ...(item.identifier ? { identifier: item.identifier } : {}), score: item.score,
+      ...reviewPresentation(item),
+      decisionAssessment: stuck.length
+        ? { kind: "needs_user_fact", basis: `예약 ${stuck.map(r => r.id).join(", ")}의 자동 실행이 needs_user(근거 부족)로 멈춤` }
+        : { kind: "unclassified_review", basis: "사용자 결정이 필요한지 판단할 근거가 입력에 없어요. 원천 상태만으로 분류하지 않아요." },
+      sources,
+      resolution: {
+        localResolveAvailable: reservations.length > 0,
+        reservationIds: reservations.map(r => r.id),
+        afterLocalResolve: {
+          stillInReview: after.review.some(other => other.key === item.key),
+          remainingReviewSources: sources.filter(s => s.contributesReview && s.kind !== "reservation")
+            .map(s => ({ kind: s.kind as Exclude<InboxSourceKind, "reservation">, ref: s.ref })),
+          occupancyAfter: after.occupancy,
+        },
+      },
+      ...(evidence.length ? { evidence } : {}),
+    };
+  });
+  const summary: ReviewInbox["summary"] = {
+    reviewCount: items.length, occupancy: queue.occupancy, maxSlots, runningReservations,
+    needToFree: slotsToFree(queue.occupancy, runningReservations, maxSlots),
+    resolvableNow: items.filter(item => item.resolution.localResolveAvailable).length,
+    freedByResolveAll: queue.occupancy - buildQueue({ ...input, ledger: closeAll(ledger) }).occupancy,
+    freshness: queue.freshness,
+  };
+  const preview = input.preview && (input.preview.reclaimed.length || input.preview.leaseExpiredAlive.length)
+    ? { inMemoryOnly: true as const, reclaimed: input.preview.reclaimed, leaseExpiredAlive: input.preview.leaseExpiredAlive } : undefined;
+  return {
+    version: reviewInboxVersion, generatedAt: now.toISOString(), readOnly: true, summary,
+    ...(preview ? { reservationPreview: preview } : {}),
+    items, text: inboxText(summary, items, queue.review),
+  };
+}
+
+function inboxText(summary: ReviewInbox["summary"], items: readonly InboxItem[], review: readonly QueueItem[]): string {
+  const lines = [`리뷰 대기 ${summary.reviewCount}건 · 점유 ${summary.occupancy}/한도 ${summary.maxSlots} · 실행 중 ${summary.runningReservations}`];
+  if (summary.needToFree === null) lines.push("실행 중 예약만으로 한도가 차서 리뷰를 비워도 자동 실행이 시작되지 않아요.");
+  else if (summary.needToFree > 0) lines.push(`자동 1건이 시작되려면 리뷰 ${summary.needToFree}건이 더 빠져야 해요.`);
+  if (summary.resolvableNow)
+    lines.push(`로컬 resolve로 닫을 예약이 있는 항목 ${summary.resolvableNow}건(모두 닫으면 리뷰에서 ${summary.freedByResolveAll}건 빠짐).`);
+  if (!summary.freshness.ok) lines.push(`Linear 사본 최신성 미확인: ${phoneText(summary.freshness.detail)} 아래는 저장된 사본 기준이에요.`);
+  if (!items.length) lines.push("리뷰 대기 항목 없음.");
+  for (const item of items) {
+    const stage = review[item.rank - 1]?.stage;
+    const fact = item.decisionAssessment.kind === "needs_user_fact" ? "[사실 입력 필요] " : "";
+    const closers = item.sources.filter(s => s.contributesReview).map(s => sourceLabel(s, stage));
+    const { localResolveAvailable, afterLocalResolve } = item.resolution;
+    const remaining = afterLocalResolve.remainingReviewSources.map(s => (s.kind === "linear" ? `Linear ${s.ref}` : "Dashboard"));
+    const afterResolve = !localResolveAvailable ? "로컬 resolve 대상 아님"
+      : afterLocalResolve.stillInReview ? `resolve 뒤에도 남음: ${remaining.join(", ") || "원천 리뷰"}` : "resolve하면 리뷰에서 빠짐";
+    lines.push(
+      `${item.rank}. ${fact}${phoneText(item.title, 80)} — ${phoneText(item.decision)}`,
+      `   닫기: ${[...new Set(closers)].join(" · ")} | ${afterResolve}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /** What the renderer may ask for: a read-only summary, never a way to start or change anything. */

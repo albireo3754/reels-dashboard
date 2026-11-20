@@ -315,3 +315,90 @@ test(
     }
   },
 );
+
+test(
+  "autopilot inbox reads a profile and leaves every file as it was",
+  { skip: !built },
+  async () => {
+    const cwd = await realpath(
+      await mkdtemp(path.join(tmpdir(), "reels-bundle-inbox-")),
+    );
+    const root = path.join(cwd, "data");
+    try {
+      await mkdir(path.join(root, "autopilot"), { recursive: true });
+      await writeFile(
+        path.join(root, "dashboard.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          updatedAt: "2026-11-16T00:00:00.000Z",
+          projects: [
+            {
+              id: "p1",
+              title: "Synthetic\nreview",
+              date: "2026-11-10",
+              nextAction: "",
+              stage: "review",
+              publicURL: "",
+              shared: false,
+            },
+          ],
+        }),
+      );
+      await writeFile(
+        path.join(root, "autopilot", "state.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          lastTick: null,
+          paused: null,
+          order: null,
+          previousOrder: null,
+          reservations: [
+            {
+              id: "r1",
+              key: "p1",
+              mode: "auto",
+              status: "awaiting_review",
+              token: "t",
+              createdAt: "2026-11-16T03:00:00.000Z",
+              leaseUntil: "2026-11-16T09:00:00.000Z",
+              evidenceFingerprint: "e",
+            },
+          ],
+        }),
+      );
+      await writeFile(path.join(root, "autopilot", "today.md"), "# today\n");
+      const files = async () =>
+        Promise.all(
+          (await readdir(root, { recursive: true }))
+            .sort()
+            .map(async (name) => {
+              const file = path.join(root, name);
+              const info = await stat(file);
+              return [
+                name,
+                info.mtimeMs,
+                info.isFile() ? await readFile(file, "utf8") : "",
+              ];
+            }),
+        );
+      const before = await files();
+      const inbox = await runBundle(built, cwd, root, ["autopilot", "inbox"]);
+      assert.equal(inbox.code, 0);
+      assert.equal(inbox.document.ok, true);
+      assert.equal(inbox.document.data.readOnly, true);
+      assert.deepEqual(
+        inbox.document.data.items.map((item: any) => item.key),
+        ["p1"],
+      );
+      const [item] = inbox.document.data.items;
+      assert.equal(item.resolution.localResolveAvailable, true);
+      assert.equal(item.resolution.afterLocalResolve.stillInReview, true);
+      assert.equal(inbox.document.data.text.includes(cwd), false);
+      assert.deepEqual(await files(), before);
+      const help = await runBundle(built, cwd, root, ["help", "autopilot"]);
+      assert.match(help.document.data.help, /inbox/);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  },
+);

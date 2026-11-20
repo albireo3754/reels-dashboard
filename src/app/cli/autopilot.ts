@@ -5,7 +5,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
-  admission, afterOffWork, buildQueue, findItem, freshnessOf, inActiveHours, inFlight, interpretRun, maxAutoSlots, pickToday,
+  admission, afterOffWork, buildQueue, buildReviewInbox, findItem, freshnessOf, inActiveHours, inFlight, interpretRun, maxAutoSlots, pickToday,
   planManual, planTick, reclaim, renderToday, runnerAlive, selectCandidates,
   type AutopilotConfig, type AutopilotState, type Queue, type QueueItem, type Reservation, type RunOutput, type TickResult,
 } from "../../shared/autopilot";
@@ -470,6 +470,23 @@ export async function today(ctx: AutopilotContext, deps: AutopilotDeps): Promise
   return { date: seoulDate(now), today: pick, freshness: queue.freshness, queue: summary(queue), path: store.todayPath };
 }
 
+/**
+ * `reels autopilot inbox`: every review item with its sources, read-only like `status`. No lock, no file write,
+ * no Linear API, model or Keychain call; reclaim is previewed in memory only. `today()` is not used because it writes.
+ */
+export async function inbox(ctx: AutopilotContext, deps: AutopilotDeps): Promise<unknown> {
+  const now = deps.now();
+  const store = storeOf(ctx, deps);
+  const config = await store.readConfig().catch(error => { throw new CliError("STORE_UNREADABLE", `autopilot 설정을 읽지 못했어요: ${errorMessage(error)}`, { retry: "no" }); });
+  const state = await store.readState().catch(error => { throw new CliError("STORE_UNREADABLE", `autopilot 상태를 읽지 못했어요: ${errorMessage(error)}`, { retry: "no" }); });
+  const { planning, projects } = await loadSources(ctx.root);
+  const preview = reclaim(state, now, probeOf(deps));
+  return buildReviewInbox({
+    planning, projects, ledger: preview.state.reservations, now, config,
+    preview: { reclaimed: preview.reclaimed, leaseExpiredAlive: preview.leaseExpiredAlive },
+  });
+}
+
 async function mutateState(ctx: AutopilotContext, deps: AutopilotDeps, change: (state: AutopilotState, now: Date) => { state: AutopilotState; value: unknown }): Promise<unknown> {
   const store = storeOf(ctx, deps);
   const locked = await store.withLock(async () => {
@@ -691,10 +708,11 @@ export async function execute(ctx: AutopilotContext, runId: string, deps: Autopi
   };
 }
 
-export const autopilotUsage = "reels autopilot <status|tick|run|today|resolve|pause|resume|refresh-linear|connect-linear|disconnect-linear|execute> [options]";
+export const autopilotUsage = "reels autopilot <status|inbox|tick|run|today|resolve|pause|resume|refresh-linear|connect-linear|disconnect-linear|execute> [options]";
 export const autopilotHelp = `Usage: ${autopilotUsage}
 After-work autopilot: Linear/Dashboard queue, at most 3 automatic reservations, one item for after work.
   status                          Queue, occupancy, automatic slots, freshness, pause and last tick. Read-only.
+  inbox                           Every review item in queue order: what holds it, where it closes, what resolve leaves. Read-only.
   tick [--dry-run] [--now <iso>]  The automatic path a scheduler runs. --dry-run changes nothing and starts nothing.
   run --manual <key>...           Start named items now. Ignores the slot limit; refused when REELS_AUTOPILOT_AUTOMATED=1.
   today                           Print the one item to look at and write <profile>/autopilot/today.md.
@@ -707,9 +725,9 @@ After-work autopilot: Linear/Dashboard queue, at most 3 automatic reservations, 
   execute --run <id>              Internal: the executor a tick or manual run starts.
 Works without the app. REELS_USER_DATA selects the profile. Never prints credentials.
 Example: reels autopilot tick --dry-run`;
-const subcommands = ["status", "tick", "run", "today", "resolve", "pause", "resume", "refresh-linear", "connect-linear", "disconnect-linear", "execute"] as const;
+const subcommands = ["status", "inbox", "tick", "run", "today", "resolve", "pause", "resume", "refresh-linear", "connect-linear", "disconnect-linear", "execute"] as const;
 const optionsFor = {
-  status: {}, today: {}, resume: {}, resolve: {}, "connect-linear": {}, "disconnect-linear": {},
+  status: {}, inbox: {}, today: {}, resume: {}, resolve: {}, "connect-linear": {}, "disconnect-linear": {},
   "refresh-linear": { "dry-run": { type: "boolean" } },
   tick: { "dry-run": { type: "boolean" }, now: { type: "string" } },
   run: { manual: { type: "boolean" } },
@@ -736,9 +754,10 @@ export async function autopilotCommand(args: string[], ctx: AutopilotContext, sc
   const command = name as (typeof subcommands)[number];
   const { values, positionals } = parse(command, rest);
   const none = () => { if (positionals.length) throw new CliError("USAGE", `${command} takes no arguments.`, { usage: autopilotUsage }); };
-  scope.readOnly = command === "status" || ((command === "tick" || command === "refresh-linear") && values["dry-run"] === true);
+  scope.readOnly = command === "status" || command === "inbox" || ((command === "tick" || command === "refresh-linear") && values["dry-run"] === true);
   switch (command) {
     case "status": none(); return { data: await status(ctx, deps) };
+    case "inbox": none(); return { data: await inbox(ctx, deps) };
     case "tick": {
       none();
       const given = values.now as string | undefined;

@@ -85,7 +85,7 @@ On `INSTAGRAM_AUTH`, ask Codex to help renew the Instagram read token through th
 
 ## After-work autopilot
 
-`reels autopilot status|tick|today|run --manual <key>|resolve|pause|resume|refresh-linear [--dry-run]|connect-linear|disconnect-linear` reads the Linear copy and Dashboard queue without the app: at most 3 automatic reservations, nothing starts while 3 or more items wait for review, manual runs are unlimited, `today` shows the one item to look at. `reels autopilot tick --dry-run` changes nothing. `refresh-linear` reads Linear without a model through a Keychain API key (service `reels-dashboard-linear`); `connect-linear` runs only in a terminal and never takes the key as an argument, so do not ask the user to paste it. See `docs/autopilot.md`.
+`reels autopilot status|inbox|tick|today|run --manual <key>|resolve|pause|resume|refresh-linear [--dry-run]|connect-linear|disconnect-linear` reads the Linear copy and Dashboard queue without the app: at most 3 automatic reservations, nothing starts while 3 or more items wait for review, manual runs are unlimited, `today` shows the one item to look at, `inbox` lists every review item with what holds it, where it closes and what a local `resolve` would leave (read-only, `data.text` is a short phone summary). `reels autopilot tick --dry-run` changes nothing. `refresh-linear` reads Linear without a model through a Keychain API key (service `reels-dashboard-linear`); `connect-linear` runs only in a terminal and never takes the key as an argument, so do not ask the user to paste it. See `docs/autopilot.md`.
 
 ## More
 
