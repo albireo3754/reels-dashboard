@@ -47,8 +47,23 @@
 | `reels autopilot connect-linear` | **대화형 터미널에서만.** Keychain에 Linear API 키를 한 번 저장하고 곧바로 dry-run으로 확인한 뒤 이슈 수·상태별 수만 출력한다. TTY가 아니면 exit 2로 거절하고 아무것도 저장하지 않는다. |
 | `reels autopilot disconnect-linear` | Keychain의 `reels-dashboard-linear`/`linear` 항목만 지운다(없으면 `not_found`). |
 | `reels autopilot execute --run <id>` | 내부용. tick·수동 실행이 띄우며 `REELS_AUTOPILOT_RUN_TOKEN`이 필요하다. |
+| `reels autopilot inbox` | 리뷰 대기 전체를 큐 순서로, 항목마다 무엇이 대기를 만들었는지(원천)·어디서 닫히는지·로컬 `resolve` 뒤에 무엇이 남는지와 함께 출력한다. 읽기 전용. 아래 [리뷰 대기 목록](#리뷰-대기-목록-inbox--2026-11-20). |
 
 앱은 필요 없다. `REELS_USER_DATA`가 프로필을 고른다. 입력 오류는 exit 2, 다른 tick이 잠금을 쥐고 있으면 `AUTOPILOT_BUSY`(exit 6), 상태 파일을 못 읽으면 `STORE_UNREADABLE`(exit 11)이다. tick은 막힌 이유를 JSON의 `result`/`reason`으로 알리고 exit 0으로 끝난다.
+
+### 리뷰 대기 목록 (inbox) — 2026-11-20
+
+`reels autopilot inbox`는 휴대폰 에이전트가 "결정할 것 보여 줘"에 한 번에 답하도록 만든 **읽기 전용** 명령이다. `status`와 같은 읽기 흐름이다: 잠금을 잡지 않고, `state.json`·`today.md`·lock 어느 파일도 쓰지 않고, Linear API·모델·Keychain을 부르지 않으며 저장된 Linear 사본만 읽는다. 죽은 실행의 회수는 메모리에서만 미리 적용하고(`reservationPreview`), 실행·해제·외부 갱신은 하지 않는다. 계산은 순수 함수 `buildReviewInbox`(`src/shared/autopilot.ts`)다.
+
+- **목록.** `items`의 순서·개수·key는 `buildQueue().review`와 같고 1위는 `today`의 항목이다. 리뷰가 없으면 `items: []`이며, `today`가 진행 중 항목을 고르더라도 목록에 넣지 않는다. 기존 제외 정책(완료·전 채널 공개 예약된 연결 프로젝트의 Linear 이슈 제외)은 그대로다.
+- **원천(`sources[]`).** 같은 key의 Dashboard·Linear가 합쳐지면(`source: "both"`) 어느 쪽이 리뷰를 만들었는지 사라지므로, 합치기 전의 원천별 분류를 다시 읽어 `{kind: dashboard|linear|reservation, ref, present, contributesReview, reason, closeBy}`로 낸다. `contributesReview`는 그 원천 혼자서 항목을 리뷰 대기로 만드는지, `closeBy`는 그 원천을 닫는 위치와 방법이다(리뷰를 만들지 않는 원천은 `null`). `awaiting_review` 예약은 예약마다 한 줄이다. key가 가리키는 원천 기록이 없어졌으면 `present: false`로 남긴다.
+- **해제 예측(`resolution`).** `localResolveAvailable`, `reservationIds`(`resolve <key>`가 닫는 같은 key의 `awaiting_review` 예약 전부. 실행 중 예약은 닫지 않는다), `afterLocalResolve: {stillInReview, remainingReviewSources, occupancyAfter}`. 같은 key의 예약을 **메모리에서만** done으로 바꿔 `buildQueue`를 다시 계산한 결과다. **지금 읽은 입력 기준의 설명이지 미래 성공 보증이 아니다**: 원천은 바뀔 수 있고, 리뷰에서 빠져도 활성 시간·후보·일시정지·최신성·실행 중 예약까지 맞아야 자동 실행이 시작된다. 예약과 Dashboard/Linear 리뷰가 겹친 항목은 `resolve`로 예약만 닫히고 원천 리뷰가 남아 슬롯이 풀리지 않는다.
+- **문구.** `decision`·`doneWhen`·`why`·`target`은 `today`와 같은 함수(`reviewPresentation`)에서 온다. 예약이 있는 항목의 `doneWhen`은 "`resolve`로 예약을 닫기. Linear/Dashboard도 검토 대기면 그 상태까지 바뀌어야 리뷰 대기에서 빠짐"으로 말한다(원천이 이미 큐에 없으면 그렇게 적는다).
+- **판단 근거(`decisionAssessment`).** 예약 결과가 `needs_user`면 `needs_user_fact`(근거 `basis`에 예약 id), 그 밖은 `unclassified_review`다. "사용자 결정 불필요" 같은 분류는 만들지 않는다.
+- **요약(`summary`).** `reviewCount`, `occupancy`, `maxSlots`(한도, 3 이하), `runningReservations`, `needToFree`(실행 중 예약이 그대로일 때 자동 1건이 시작되려면 빠져야 할 리뷰 수. `admission`을 그대로 써서 구하며 실행 중 예약만으로 한도가 차면 `null`. 활성 시간·후보·일시정지는 보지 않는다), `resolvableNow`(닫을 예약이 있는 항목 수), `freedByResolveAll`(그 예약을 모두 닫았을 때 실제로 리뷰에서 빠지는 항목 수), `freshness`(Linear 사본 최신성. 낡거나 없어도 목록을 숨기지 않고 경고한다).
+- **`evidence`.** 예약 결과의 `outcome`·변경 건수·보고서 유무만. 보고서 경로와 본문, 변경 경로, 메모, 실행기 설정은 넣지 않는다(보고서 경로는 `status`).
+- **`text`.** 휴대폰용 짧은 텍스트. 머리 줄(점유·한도·필요 해제 수·최신성 경고) 뒤에 항목마다 `순번. 제목 — 필요한 일`과 `닫기: 위치 | resolve 뒤에도 남음: 원천` 두 줄. 제목·다음 행동은 한 줄로 접고 길이를 자르며, 절대 경로는 `<경로>`로 바꾼다. 새 출력 플래그 없이 같은 JSON 문서의 `data.text`로 나온다.
+- 그 밖: `version: 1`, `generatedAt`, `readOnly: true`. 상태·사본·Dashboard 파일을 읽지 못하면 빈 목록이 아니라 `STORE_UNREADABLE`(exit 11)이다. 검증은 `tests/unit/autopilot-inbox.test.ts`(합성 fixture)와 `tests/unit/reels-cli-bundle.test.ts`의 번들 실행이다.
 
 ## 파일과 설정
 

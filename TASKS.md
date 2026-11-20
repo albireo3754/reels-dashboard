@@ -1,5 +1,11 @@
 # Reels Dashboard 진행 상태
 
+## autopilot 리뷰 대기 목록 `inbox` — 2026-11-20
+
+- [x] `reels autopilot inbox`(읽기 전용): 리뷰 대기 전체를 `buildQueue().review` 순서로, 항목마다 원천별 기여(`sources[]`)·닫는 위치·메모리 `resolve` 예측(`afterLocalResolve`)·`needs_user` 근거·요약(`needToFree` 등)과 휴대폰용 `data.text`. 잠금·파일 쓰기·Linear API·모델·Keychain 호출 없음. merge·buildQueue·admission·rank·fingerprint·dispatch 동작은 그대로이고, `today`의 항목 문구를 같은 helper로 옮기며 예약이 있는 항목의 완료 기준이 "resolve만으로 닫힘"으로 읽히지 않게 고쳤다.
+- [x] 합성 fixture 단위 14개·번들 CLI 1개 추가, 타입·FSD·공개 소스 검사 통과. 전체 단위의 실패 2건은 worktree에 네이티브 ffmpeg 런타임이 없어서 생기는 ENOENT(이번 변경과 무관). `verify:spec`은 기존 `AppCommandRouterTests.swift` 기준 해시 불일치(해당 파일 미변경).
+- 계약: [리뷰 대기 목록](docs/autopilot.md#리뷰-대기-목록-inbox--2026-11-20).
+
 ## Linear 야간 자동 조회 — 2026-11-17
 
 - [x] Linear의 모델 0 조회를 자동 작업 활성 시간에서 분리. 기존 30분 tick·기본 90분 갱신 기준을 유지하며 야간에는 조회만 수행. 모델 작업 시간·점유 제한·비활성/일시정지·dry-run 유지.
