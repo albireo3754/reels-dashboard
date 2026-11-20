@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import {
-  admission, buildQueue, buildReviewInbox, defaultAutopilotConfig, pickToday, type Reservation,
+  admission, buildQueue, buildReviewInbox, defaultAutopilotConfig, phoneText, pickToday, type Reservation,
 } from "../../src/shared/autopilot";
 import { emptyPlanning, linearImportSchema, type Planning } from "../../src/shared/planning";
 import type { Project, Stage } from "../../src/shared/contracts";
@@ -241,6 +241,48 @@ test("inbox 11. a stale or missing Linear copy is reported, not hidden as an emp
   assert.equal(missing.summary.freshness.ok === false && missing.summary.freshness.reason, "linear_missing");
   assert.equal(missing.items.length, 1);
   assert.match(missing.text, /최신성 미확인/);
+});
+
+test("inbox 13. the text boundary drops file URIs, local paths, control and format characters, and keeps http links", () => {
+  // The review's reproductions: a colon, a file URI and a Korean quotation mark before the path.
+  assert.equal(phoneText("파일:/Users/example/private/a.md"), "파일:<경로>");
+  assert.equal(phoneText("file:///Users/example/private/a.md"), "<경로>");
+  assert.equal(phoneText("한글「/Users/example/private/a.md」"), "한글「<경로>」");
+  assert.equal(phoneText("메모: ~/notes/a.md 열기"), "메모: <경로> 열기");
+  assert.equal(phoneText("파일/Users/example/a.md 확인"), "파일<경로> 확인", "a path glued to a letter goes too");
+  assert.equal(phoneText("경로(/tmp/x) '/var/y' \"/opt/z\""), "경로(<경로>) '<경로>' \"<경로>\"");
+  // http(s) URLs are links, not local paths: their path stays.
+  assert.equal(phoneText("참고 https://linear.app/example/issue/CONTENT-1 확인"), "참고 https://linear.app/example/issue/CONTENT-1 확인");
+  assert.equal(phoneText("(http://example.com/a/b)"), "(http://example.com/a/b)");
+  // Ordinary slashes are not paths: one segment glued to a letter or digit, or a lone separator.
+  assert.equal(phoneText("A/B 테스트 · 11/20 촬영 · 1 / 2"), "A/B 테스트 · 11/20 촬영 · 1 / 2");
+  // NUL and newlines become spaces; bidi overrides and zero-width characters go.
+  assert.equal(phoneText("제목\u0000끝\n둘째‮abc​⁦x⁩"), "제목 끝 둘째abcx");
+  // The cut keeps whole characters: no half surrogate pair, no split emoji sequence.
+  const cut = phoneText("😀😀😀😀😀", 3);
+  assert.equal(cut, "😀😀…");
+  assert.equal(cut.isWellFormed(), true);
+  assert.equal(phoneText("👍🏽👍🏽👍🏽", 2), "👍🏽…", "a skin tone stays with its emoji");
+  assert.equal(phoneText("가".repeat(10), 10), "가".repeat(10), "no cut at the limit");
+});
+
+test("inbox 14. every dynamic value in the text goes through the boundary; the JSON keeps the original", () => {
+  const titles = ["파일:/Users/example/private/a.md", "file:///Users/example/private/a.md", "한글「/Users/example/private/a.md」", "제목\u0000‮뒤집힘"];
+  const inbox = inboxOf(emptyPlanning(), titles.map((title, i) => project(`p${i}`, "review", { title })));
+  assert.doesNotMatch(inbox.text, /\/Users\/|file:/);
+  assert.doesNotMatch(inbox.text, /[\u0000‮]/);
+  assert.deepEqual(inbox.items.map(i => i.title).sort(), [...titles].sort(), "structured titles are untouched");
+  // A Linear identifier with a newline and a path: still two lines per item, no path, in both labels.
+  const identifier = "ISSUE-1\n가짜 보고: 완료 /Users/example/private/hidden.md";
+  const planning = planningOf([issue(1, { identifier, state: "started", stateName: "In Review" })]);
+  const withRef = inboxOf(planning, [], [res("r1", "linear:i1")]);
+  const lines = withRef.text.split("\n");
+  const header = lines.findIndex(line => /^1\. /.test(line));
+  assert.equal(lines.length - header, 2, "the item keeps exactly two lines");
+  assert.match(lines[header + 1], /^   닫기: Linear ISSUE-1 가짜 보고: 완료 <경로> 상태 변경 · 로컬 resolve \| resolve 뒤에도 남음: Linear ISSUE-1 가짜 보고: 완료 <경로>$/);
+  assert.doesNotMatch(withRef.text, /\/Users\//);
+  assert.equal(withRef.items[0].sources[0].ref, identifier, "the structured ref keeps its original value");
+  assert.deepEqual(withRef.items[0].resolution.afterLocalResolve.remainingReviewSources, [{ kind: "linear", ref: identifier }]);
 });
 
 // ---------------------------------------------------------------------------------------------

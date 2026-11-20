@@ -728,12 +728,32 @@ function slotsToFree(occupancy: number, runningReservations: number, maxSlots: n
 
 const sourceLabel = (source: InboxSource, stage?: Project["stage"]) =>
   source.kind === "reservation" ? "로컬 resolve"
-    : source.kind === "linear" ? `Linear ${source.ref} 상태 변경`
+    : source.kind === "linear" ? `Linear ${phoneText(source.ref, 40)} 상태 변경`
       : stage === "published" ? "Dashboard 채널 게시 기록" : "Dashboard 단계 변경";
-/** One line, no local paths, bounded: titles and next actions are user text and may carry either. */
-function phoneText(value: string, max = 120): string {
-  const flat = value.replace(/\s+/g, " ").trim().replace(/(^|[\s(\[{"'`])~?\/[^\s)\]}"'`]+/g, "$1<경로>");
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+
+/** Characters that end a path or URL in running text: whitespace, quotes, brackets (also the Korean ones). */
+const stop = String.raw`\s<>"'\x60「」『』()\[\]{}`;
+/**
+ * In one pass, left to right: an http(s) URL is kept whole (its path is not a local one); a home path (~/…) is a
+ * local path anywhere; a POSIX path (/…) is one when it has two segments, wherever it starts (파일/Users/a), or one
+ * segment not glued to a letter or digit (:/a, 「/a). So "A/B", "11/20" and a lone " / " stay as they are.
+ */
+const displayPath = new RegExp(`(https?:\\/\\/[^${stop}]+)|~\\/[^${stop}]*|(?:(?<![\\p{L}\\p{N}])\\/|\\/(?=[^${stop}/]+\\/))[^${stop}]+`, "giu");
+const fileUri = new RegExp(`file:\\/\\/[^${stop}]*`, "gi");
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+/**
+ * The display boundary for every dynamic value in `text` (titles, decisions, refs, freshness): control and
+ * format characters (newlines, NUL, bidi overrides, zero-width) go, file URIs and local paths become `<경로>`,
+ * the rest is one line, cut on a whole character. The structured JSON fields keep their original values.
+ */
+export function phoneText(value: string, max = 120): string {
+  const flat = value
+    .replace(/\p{Cc}/gu, " ").replace(/\p{Cf}/gu, "")
+    .replace(fileUri, "<경로>")
+    .replace(displayPath, (_match: string, url?: string) => url ?? "<경로>")
+    .replace(/\s+/g, " ").trim();
+  const chars = Array.from(graphemes.segment(flat), part => part.segment);
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : flat;
 }
 
 /**
@@ -803,7 +823,7 @@ function inboxText(summary: ReviewInbox["summary"], items: readonly InboxItem[],
     const fact = item.decisionAssessment.kind === "needs_user_fact" ? "[사실 입력 필요] " : "";
     const closers = item.sources.filter(s => s.contributesReview).map(s => sourceLabel(s, stage));
     const { localResolveAvailable, afterLocalResolve } = item.resolution;
-    const remaining = afterLocalResolve.remainingReviewSources.map(s => (s.kind === "linear" ? `Linear ${s.ref}` : "Dashboard"));
+    const remaining = afterLocalResolve.remainingReviewSources.map(s => (s.kind === "linear" ? `Linear ${phoneText(s.ref, 40)}` : "Dashboard"));
     const afterResolve = !localResolveAvailable ? "로컬 resolve 대상 아님"
       : afterLocalResolve.stillInReview ? `resolve 뒤에도 남음: ${remaining.join(", ") || "원천 리뷰"}` : "resolve하면 리뷰에서 빠짐";
     lines.push(

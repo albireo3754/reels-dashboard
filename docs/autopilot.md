@@ -62,7 +62,7 @@
 - **판단 근거(`decisionAssessment`).** 예약 결과가 `needs_user`면 `needs_user_fact`(근거 `basis`에 예약 id), 그 밖은 `unclassified_review`다. "사용자 결정 불필요" 같은 분류는 만들지 않는다.
 - **요약(`summary`).** `reviewCount`, `occupancy`, `maxSlots`(한도, 3 이하), `runningReservations`, `needToFree`(실행 중 예약이 그대로일 때 자동 1건이 시작되려면 빠져야 할 리뷰 수. `admission`을 그대로 써서 구하며 실행 중 예약만으로 한도가 차면 `null`. 활성 시간·후보·일시정지는 보지 않는다), `resolvableNow`(닫을 예약이 있는 항목 수), `freedByResolveAll`(그 예약을 모두 닫았을 때 실제로 리뷰에서 빠지는 항목 수), `freshness`(Linear 사본 최신성. 낡거나 없어도 목록을 숨기지 않고 경고한다).
 - **`evidence`.** 예약 결과의 `outcome`·변경 건수·보고서 유무만. 보고서 경로와 본문, 변경 경로, 메모, 실행기 설정은 넣지 않는다(보고서 경로는 `status`).
-- **`text`.** 휴대폰용 짧은 텍스트. 머리 줄(점유·한도·필요 해제 수·최신성 경고) 뒤에 항목마다 `순번. 제목 — 필요한 일`과 `닫기: 위치 | resolve 뒤에도 남음: 원천` 두 줄. 제목·다음 행동은 한 줄로 접고 길이를 자르며, 절대 경로는 `<경로>`로 바꾼다. 새 출력 플래그 없이 같은 JSON 문서의 `data.text`로 나온다.
+- **`text`.** 휴대폰용 짧은 텍스트. 머리 줄(점유·한도·필요 해제 수·최신성 경고) 뒤에 항목마다 `순번. 제목 — 필요한 일`과 `닫기: 위치 | resolve 뒤에도 남음: 원천` 두 줄. 제목·결정·원천 참조(Linear identifier 포함)·최신성 문구 같은 동적 값은 모두 같은 표시 경계(`phoneText`)를 거친 뒤 조합한다: 제어문자(개행·NUL 등)는 공백으로, 서식 문자(bidi 재정렬·zero-width 등)는 제거하고, `file://` URI와 로컬 경로(`~/…`, 두 단계 이상인 `/a/b`는 어디서든, 한 단계 `/a`는 글자·숫자에 붙지 않았을 때 — 콜론·괄호·따옴표·한글 인용부호 뒤 포함)를 `<경로>`로 바꾸고, 한 줄로 접은 뒤 글자(grapheme) 단위로 자른다. `http(s)` URL은 링크라 경로까지 그대로 두고, `A/B`·`11/20`·` / ` 같은 일반 사선은 경로로 보지 않는다. JSON의 구조화 필드(`title`, `sources[].ref` 등)는 원문 그대로다. 새 출력 플래그 없이 같은 JSON 문서의 `data.text`로 나온다.
 - 그 밖: `version: 1`, `generatedAt`, `readOnly: true`. 상태·사본·Dashboard 파일을 읽지 못하면 빈 목록이 아니라 `STORE_UNREADABLE`(exit 11)이다. 검증은 `tests/unit/autopilot-inbox.test.ts`(합성 fixture)와 `tests/unit/reels-cli-bundle.test.ts`의 번들 실행이다.
 
 ## 파일과 설정
