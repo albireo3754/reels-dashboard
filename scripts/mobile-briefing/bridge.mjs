@@ -2,18 +2,34 @@ import { Client } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rename,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {tsImport} from 'tsx/esm/api';
 const {readMonitor}=await tsImport('./monitor.ts',import.meta.url);
+const {InstructionRunner,PaseoLauncher,createInstructionApi}=await tsImport('./instructions.ts',import.meta.url);
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {LocalObjectStore,projectSnapshot} from '../../packages/icloud-object-sdk/index.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const account=process.argv[2];if(!account)throw new Error('A Keychain account is required');
-const credential=JSON.parse(execFileSync(path.join(repo,'artifacts/mobile-bridge/keychain'),['read',account],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
-const origin=new URL(credential.url);if(origin.protocol!=='https:')throw new Error('HTTPS required');
-const root=path.join(os.homedir(),'Library/Application Support/Reels Dashboard/mobile-bridge');await mkdir(root,{recursive:true,mode:0o700});
+// Local tests and E2E inject the site URL and a key file instead of the Keychain:
+// REELS_BRIDGE_URL (https, or http on loopback) + REELS_BRIDGE_KEY_FILE (0600).
+async function readCredential(){
+ const url=process.env.REELS_BRIDGE_URL,keyFile=process.env.REELS_BRIDGE_KEY_FILE;
+ if(url||keyFile){
+  if(!url||!keyFile)throw new Error('REELS_BRIDGE_URL and REELS_BRIDGE_KEY_FILE go together');
+  const st=await lstat(keyFile);if(!st.isFile()||(st.mode&0o077))throw new Error('Key file must be a private regular file');
+  const token=(await readFile(keyFile,'utf8')).trim();if(!token)throw new Error('Key file is empty');
+  const u=new URL(url);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(u.hostname)))throw new Error('HTTPS required');
+  return {url,token};
+ }
+ const account=process.argv[2];if(!account)throw new Error('A Keychain account is required');
+ const credential=JSON.parse(execFileSync(path.join(repo,'artifacts/mobile-bridge/keychain'),['read',account],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+ if(new URL(credential.url).protocol!=='https:')throw new Error('HTTPS required');
+ return credential;
+}
+const credential=await readCredential();
+const origin=new URL(credential.url);
+const root=process.env.REELS_BRIDGE_DATA_DIR??path.join(os.homedir(),'Library/Application Support/Reels Dashboard/mobile-bridge');await mkdir(root,{recursive:true,mode:0o700});
 let objects=new LocalObjectStore(),snapshot=null;
 try{const cached=JSON.parse(await readFile(path.join(root,'registry.json'),'utf8'));objects=new LocalObjectStore(cached.objects);snapshot=cached.snapshot;}catch{}
 // The app serves MCP over local HTTP; connect lazily so an app that is not running yet is only "unavailable".
@@ -29,26 +45,41 @@ async function reportStatus(connected){
  const temp=path.join(root,'status.json.tmp');
  await writeFile(temp,JSON.stringify(status),{mode:0o600});await rename(temp,path.join(root,'status.json'));
 }
+function rawRequest(route,options={}){
+ return fetch(new URL(route,origin),{...options,headers:{'OAI-Sites-Authorization':'Bearer '+credential.token,'X-Reels-Bridge-Key':credential.token,...options.headers},redirect:'manual',signal:AbortSignal.timeout(30000)});
+}
 async function request(route,options={}){
- const r=await fetch(new URL(route,origin),{...options,headers:{'OAI-Sites-Authorization':'Bearer '+credential.token,'X-Reels-Bridge-Key':credential.token,...options.headers},redirect:'manual',signal:AbortSignal.timeout(30000)});
+ const r=await rawRequest(route,options);
  if(!r.ok)throw new Error(`Remote request failed (${r.status})`);return r;
+}
+// Sites instructions: off unless <root>/instructions.json enables them. Runs in its own
+// loop so media polling, heartbeats and metadata sync never wait on Paseo.
+const instructions=new InstructionRunner({root,api:createInstructionApi(rawRequest),launcher:new PaseoLauncher(),log});
+const heartbeat=()=>request('/api/bridge/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(instructions.heartbeat())});
+async function instructionLoop(){
+ while(running){
+  try{await instructions.tick();}catch{log('Instruction tick failed.');}
+  for(let i=0;i<10&&running;i++)await new Promise(r=>setTimeout(r,1000));
+ }
+ await instructions.release().catch(()=>{});
 }
 async function mcp(name){if(!client){const next=new Client({name:'reels-mobile-bridge',version:'1'});await next.connect(new StreamableHTTPClientTransport(mcpUrl));client=next;}const r=await client.callTool({name,arguments:{}},{timeout:20000});if(r.isError)throw new Error('Local app unavailable');return r.structuredContent;}
 async function refresh(){
  try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const progress=await readMonitor(state.dashboard,path.dirname(root));const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{...progress,countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;
  const temp=path.join(root,'registry.json.tmp');await writeFile(temp,JSON.stringify({objects:objects.exportRegistry(),snapshot}),{mode:0o600});await rename(temp,path.join(root,'registry.json'));
  }catch{log('Local app is unavailable; preserving last registered metadata.');}
- if(snapshot){const remote=await (await request('/api/bridge/heartbeat',{method:'POST'})).json();mediaEnabled=remote.mediaEnabled===true;if(remote.sourceRevision!==snapshot.sourceRevision){const result=await (await request('/api/bridge/snapshot',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)})).json();log(`Synced ${result.contents} content entries and ${result.assets} resource records.`);}}
+ if(snapshot){const remote=await (await heartbeat()).json();mediaEnabled=remote.mediaEnabled===true;if(remote.sourceRevision!==snapshot.sourceRevision){const result=await (await request('/api/bridge/snapshot',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)})).json();log(`Synced ${result.contents} content entries and ${result.assets} resource records.`);}}
  const remote=await (await request('/api/briefing')).json();
  summary={syncedAt:remote.syncedAt??null,contentCount:remote.contents.length,assetCount:remote.assets.length};
  await reportStatus(true);
 }
 let nextSync=0,nextHeartbeat=0,nextFailureLog=0;
+const instructionTask=instructionLoop();
 try{
  while(running){
   try{
    if(Date.now()>=nextSync){nextSync=Date.now()+60000;await refresh();}
-   if(Date.now()>=nextHeartbeat){const heartbeat=await (await request('/api/bridge/heartbeat',{method:'POST'})).json();mediaEnabled=heartbeat.mediaEnabled===true;nextHeartbeat=Date.now()+10000;await reportStatus(true);}
+   if(Date.now()>=nextHeartbeat){const beat=await (await heartbeat()).json();mediaEnabled=beat.mediaEnabled===true;nextHeartbeat=Date.now()+10000;await reportStatus(true);}
    if(!mediaEnabled){await new Promise(r=>setTimeout(r,1000));continue;}
    const {jobs}=await (await request('/api/bridge/jobs')).json();
    if(jobs.length)log(`Received ${jobs.length} media request(s).`);
@@ -59,4 +90,4 @@ try{
   }catch{await reportStatus(false).catch(()=>{});if(Date.now()>nextFailureLog){log('Connection unavailable; metadata retained. Retrying.');nextFailureLog=Date.now()+60000;}}
   await new Promise(r=>setTimeout(r,1000));
  }
-}finally{await client?.close();}
+}finally{running=false;await instructionTask.catch(()=>{});await client?.close();}

@@ -765,3 +765,9 @@
 - [x] 타입/FSD, 관련 단위, headless 웹 흐름 및 background Electron의 실제 CLI/dispatcher 연결 검증. 앱·CLI 빌드 완료.
 - [x] 새 패키지의 background Electron 검사 통과 후 실행 작업·미저장 편집 없음 확인, 기존 release 앱 교체 및 백그라운드 재시작. 기본 `~/.local/bin/reels photos-find`로 실제 Photos 검색 성공, 기존 프로젝트 보존 확인.
 - [사용법·검증 범위](docs/photos-find.md).
+
+## Sites 지시 기능 — Mac 브리지 — 2026-11-21
+
+- [x] 로컬 스위치(`instructions.json`, 기본 꺼짐)·준비 검사(잠김·Paseo·자리)·heartbeat 보고, claim → 원장 → Paseo 실행 → running → 검증된 결과 보고. 본문은 argv·로그에 없음.
+- [x] 한 번만 실행(재시작 시 label adopt 또는 failed), 결과 strict 검증·재요청 1회·업로드 재시도, 가짜 실행기 단위·통합 테스트 17개.
+- [ ] 실제 Paseo 무해 지시 1건, 사이트 로컬 dev 왕복, 잠긴 Mac 실측. 정본: [모바일 브리핑](docs/mobile-briefing.md#sites-지시-기능--2026-11-21).

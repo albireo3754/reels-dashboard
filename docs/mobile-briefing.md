@@ -79,3 +79,75 @@ iPhone은 Safari의 공유 메뉴에서 홈 화면에 추가하고, ‘웹 앱�
 사용자 요청으로 Linear 조회를 자동 작업 시간에서 분리했다. 기존 30분 tick이 밤에도 사본 나이를 확인하고, 기본 90분 이상 지났으면 모델 없이 Linear 읽기 API로 갱신한다. 모델 작업은 기존 09:00~18:30 KST 안에서만 시작한다. 모바일 브리지는 새 사본을 다음 메타데이터 동기화에 반영하므로, 조회 성공 뒤 오래된 사본 경고가 사라진다. 위 진단의 야간 조회 중단은 변경 전 동작이며 현재 규칙은 이 절과 `docs/autopilot.md`가 정본이다.
 
 운영 검증 완료: 2026-11-17 21:50 KST 야간 tick에서 Linear 사본 갱신 성공(이슈 5개), 모델 호출·새 작업 예약 모두 0건. 21:51에는 실제 모바일 서버의 새 요약을 확인했고 `notice: null`로 오래된 사본 경고가 해소됐다. 기존 30분 LaunchAgent가 새 CLI를 사용한다. 영수증: `artifacts/autopilot/overnight-refresh-20261117.json`, `artifacts/autopilot/overnight-mobile-verification-20261117.json`.
+
+
+## Sites 지시 기능 — 2026-11-21
+
+휴대폰 Sites에서 보낸 자유 문장 지시를 Mac 브리지가 가져가(claim) 보이는 Paseo 에이전트로 실행하고, 검증한 결과만 Sites로 돌려준다. 이 절은 브리지(Mac) 쪽 구현이다. 사이트 API·D1·화면은 별도 사이트 저장소가 맡고, 둘은 같은 계약(claim·status·heartbeat)을 따른다. 코드: `scripts/mobile-briefing/instructions.ts`(실행기·원장·결과 검증), `bridge.mjs`(연결), 테스트 `tests/unit/mobile-bridge-instructions.test.ts`.
+
+### 로컬 스위치와 설정
+
+`<user-data>/mobile-bridge/instructions.json`(`<user-data>` = `~/Library/Application Support/Reels Dashboard`). 파일이 없으면 꺼짐이다. 모르는 키, 형식이 틀린 값, `bypass`·`full-access` 류 mode가 있으면 설정 전체를 꺼짐으로 읽는다(fail closed).
+
+| 키 | 기본값 | 뜻 |
+|---|---|---|
+| `enabled` | `false` | 로컬 스위치. claim 직전과 launch 직전에 다시 읽는다 |
+| `maxActive` | `1` | 동시 실행 한도(0~2). 서버 한도와 작은 쪽이 적용된다 |
+| `launcher` | `paseo` | `paseo`가 아니면 실행하지 않는다. Herdr는 구현하지 않았다 |
+| `provider`/`model`/`mode` | `claude`/`claude-sonnet-5-5`/`auto` | `paseo run --provider --model --mode`로 넘긴다 |
+| `cwd` | `~/Obsidian` | 기본 작업 폴더. 서버가 보낸 값은 cwd에 쓰지 않는다 |
+| `preMergeCwd` | `~/side/reels-dashboard` | 끝이 `pre_merge`일 때 `--new-workspace worktree`로 독립 worktree를 만든다. 실패하면 메인 트리에서 대신 실행하지 않고 `failed` |
+| `stopAfterMinutes` | `0` | 0이면 오래 걸려도 멈추지 않고 `running`을 유지하며 자리를 계속 차지한다(화면이 `started_at` 경과로 지연 표시). 0보다 크면 그 시간 뒤 `paseo stop` 후 `failed TIMEOUT` |
+| `pollSeconds` | `15` | `paseo inspect` 폴링 간격(10~30) |
+| `retentionDays` | `7` | 보고까지 끝난 지시 폴더를 지우는 기간 |
+
+### 준비 검사와 heartbeat
+
+브리지는 별도 루프에서 10초마다 검사한다. 미디어 기능(`mediaEnabled`)이 꺼져 있어도 이 루프는 돈다. heartbeat 본문은 `{instructions:{ready, reason?}}`이다.
+
+1. 스위치·설정 → 아니면 `disabled`. 꺼져 있고 원장에 남은 일이 없으면 Paseo를 부르지도 않는다.
+2. 화면 잠김 → `locked`(claim하지 않음).
+3. `paseo status --json`이 `localDaemon: running`, `connectedDaemon: reachable`(1회 재시도) → 아니면 `launcher_down`.
+4. 남은 자리 > 0 → 아니면 `busy`. 다른 브리지 프로세스가 원장 잠금(`instructions/.dispatch.lock`)을 쥐고 있어도 `busy`.
+
+준비되면 `POST /api/bridge/instructions/claim {capacity: 남은 자리}`.
+
+**잠김 판정.** 본문 없이 로컬에서 `/usr/sbin/ioreg -n Root -d1 -a`를 읽고 `plutil -extract`로 `IOConsoleUsers`·`IOConsoleLocked`만 꺼낸다. 현재 uid의 세션이 없거나, 콘솔에 있지 않거나(사용자 전환), 로그인이 끝나지 않았거나, `CGSSessionScreenIsLocked`가 true거나, `IOConsoleLocked`가 true면 잠김이다. 명령 실패·파싱 실패처럼 **판정을 못 하면 잠김으로 본다**(claim하지 않고 `locked`). 2026-11-21에 잠기지 않은 상태에서 `unlocked` 판정을 확인했다. 실제 잠금 상태의 값은 실기에서 확인하지 않았다.
+
+### 한 번만 실행
+
+1. claim 직후 `<user-data>/mobile-bridge/instructions/<id>/state.json`(폴더 0700, 파일 0600, 임시 파일→rename)을 먼저 쓴다. 이 기록이 실패하면 실행하지 않고 `failed`.
+2. 본문은 `instruction.md`(0600)에만 쓴다. `paseo run` 인자에는 고정 머리말과 파일 경로만 들어간다. 로그에는 `instruction <id> <코드>`만 남는다.
+3. `phase: launching`을 기록한 뒤 `paseo run --no-wait --json --title sites-<id 앞 8자> --label source=sites --label instruction=<id>`. agent id를 기록하고 `running`을 보고한다.
+4. 브리지가 다시 떴을 때 agent id가 없는 기록은 **다시 띄우지 않는다.** `paseo ls -a -g --label instruction=<id>`로 정확히 하나를 찾으면 adopt, 없거나 둘 이상이거나 조회가 실패하면 `failed LAUNCH_FAILED`(요약에 세션 확인 안내). launch가 응답 없이 실패한 경우도 같은 label 조회로 먼저 adopt를 시도한다.
+
+### 결과 회수
+
+`paseo inspect --json`의 `Status`·`PendingPermissions`와 검증된 `result.json`의 교집합으로 정한다.
+
+- 권한 요청이 걸려 있으면 자동 허용하지 않고 `needs_user`(질문: Paseo 세션에서 권한 요청 확인).
+- idle인데 결과 파일이 없으면 30초 기다린 뒤 `paseo send --prompt-file`로 형식 재요청을 **한 번** 보낸다. 그래도 없으면 `failed RESULT_MISSING`. 형식 오류는 `RESULT_INVALID`, 결과 없이 `error` 상태면 `AGENT_FAILED`.
+- 스키마(strict, 16 KiB 이하, symlink·폴더 이탈·FIFO 거부, UTF-8): `{schemaVersion:1, instructionId, attemptId, status:'done'|'needs_user'|'failed', summaryLines:[1~10줄, 줄당 200자], question?(needs_user일 때만·필수, 500자), verification:'passed'|'failed'|'not_run'}`. `attemptId`는 claim마다 브리지가 새로 만든다.
+- 요약 각 줄에 제어·서식 문자, POSIX·home·file URI·Windows·UNC 경로, 토큰 모양(`sk-`, `ghp_`, JWT, `token:` 류, 32자 이상 연속 영숫자)이 보이면 그 줄을 "(경로·민감 문자열이 있어 가렸어요)"로 바꾼다. 의심스러운 질문은 "Paseo 세션 …에서 질문을 확인해 주세요."로 바꾼다. 요약 끝 줄은 `검증: 통과|실패|하지 않음`이고 에이전트 줄은 최대 9줄까지 쓴다.
+- Sites로 가는 것: 상태, 요약, 질문, 세션 이름(`sites-<id 앞 8자>`), 오류 코드. agent id·cwd·경로·로그·에이전트 출력은 보내지 않는다.
+- 상태 업로드가 네트워크·5xx·429로 실패하면 같은 결과만 다음 tick에 다시 보낸다. 400·404·409는 서버가 거절한 것으로 보고 기록만 한다. 실행은 다시 하지 않는다.
+
+### 자격과 로컬 E2E
+
+운영은 기존과 같이 Keychain에서 URL·키를 읽는다. 테스트·로컬 E2E는 `REELS_BRIDGE_URL`(https, 또는 loopback http) + `REELS_BRIDGE_KEY_FILE`(0600 일반 파일)로 주입하고, `REELS_BRIDGE_DATA_DIR`로 user-data 위치를 바꿀 수 있다. Paseo CLI에는 `PATH`·`LANG`·`HOME`·`USER`·`LOGNAME`·`TMPDIR`만 넘기고 `--env`는 쓰지 않는다.
+
+사이트 로컬 dev와 가짜 실행기로 왕복(실제 Paseo 기동 없음, 임시 폴더만 사용):
+
+```sh
+REELS_BRIDGE_URL=http://127.0.0.1:<port> REELS_BRIDGE_KEY_FILE=<0600 키 파일> \
+  node --import tsx scripts/mobile-briefing/instructions-e2e.ts 90
+```
+
+지시 본문에 `[fake:needs_user]`·`[fake:failed]`·`[fake:missing]` 등을 넣으면 가짜 에이전트의 결과를 고를 수 있다(기본 done).
+
+### 남은 확인
+
+- 실제 Paseo 무해 지시 1건: `--mode auto`가 Claude provider에서 받아들여지는지, auto 모드가 cwd 밖의 `instruction.md` 읽기와 `result.json` 쓰기를 권한 요청 없이 허용하는지(막히면 `needs_user`로 끝난다), LaunchAgent 환경에서 `paseo run`이 되는지.
+- 잠긴 Mac에서의 `ioreg` 값 실측.
+- 응답 유실 뒤 label 조회도 실패한 경우는 계약상 코드가 없어 `LAUNCH_FAILED`로 보낸다(요약에 "실행 여부를 확인하지 못했어요"). 별도 `LAUNCH_UNCERTAIN` 코드는 계약 변경이 필요하다.
+- 본문은 `instruction.md`와 Paseo·provider의 세션 기록에도 남는다(브리지 로그·argv·Sites 결과에는 없음).
