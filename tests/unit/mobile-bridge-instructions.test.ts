@@ -16,6 +16,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ApiError,
+  acquireDispatchLock,
+  readResultFile,
   InstructionRunner,
   MASKED_LINE,
   PASEO_BIN,
@@ -391,6 +393,7 @@ test("Paseo argv: fixed preamble and file paths only, absolute binary, minimal e
   );
   st.final = { status: "done", summary: "x", question: null, errorCode: null };
   st.finalReported = true;
+  st.agentEnded = true;
   await writeFile(
     path.join(s.root, "instructions", ID(1), "state.json"),
     JSON.stringify(st),
@@ -783,6 +786,9 @@ test("preamble carries the boundaries and no instruction text", () => {
     "git push",
     "설치본 교체",
     "LaunchAgent·설정 변경",
+    "git commit은 하지 않는다",
+    "pre_merge",
+    "~/Obsidian은 자동 백업이라 커밋하지 않는다",
     "외부 서비스 쓰기",
     "추정하지 않는다",
     "기다리지 말고 needs_user",
@@ -986,4 +992,165 @@ test("integration: bridge.mjs with injected credentials reports readiness in the
     site.server.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------- security review fixes
+
+test("F1: a permission wait reported as needs_user keeps its slot until the agent ends", async () => {
+  const s = await setup();
+  s.api.add(1, "[fake:permission]");
+  s.api.add(2);
+  await s.runner.tick();
+  const agent = agentFor(s.launcher, ID(1));
+  await s.launcher.complete(agent.id); // pending permission, still running
+  await s.advance();
+  assert.equal(s.api.statuses.at(-1)!.body.status, "needs_user");
+  assert.equal(s.api.queue.length, 1);
+  await s.advance();
+  await s.advance();
+  assert.equal(
+    launches(s.launcher),
+    1,
+    "no second run while the first waits on permission",
+  );
+  assert.equal(s.api.queue.length, 1);
+  assert.equal(s.runner.heartbeat().instructions.reason, "busy");
+  // inspect failing counts as "not ended"
+  const inspect = s.launcher.inspect.bind(s.launcher);
+  s.launcher.inspect = async () => {
+    throw new Error("daemon down");
+  };
+  await s.advance();
+  assert.equal(s.api.queue.length, 1);
+  s.launcher.inspect = inspect;
+  agent.pending = 0;
+  agent.status = "idle";
+  await s.advance();
+  assert.equal((await s.ledger(ID(1))).agentEnded, true);
+  assert.ok(s.logs.some((l) => l.endsWith(ID(1) + " AGENT_ENDED")));
+  assert.equal(
+    launches(s.launcher),
+    2,
+    "slot freed only after the agent ended",
+  );
+  assert.equal(
+    s.api.statuses
+      .filter((x) => x.id === ID(1))
+      .map((x) => x.body.status)
+      .join(","),
+    "running,needs_user",
+    "site status stays needs_user",
+  );
+});
+
+test("claim lost: a 409 on running is recorded, the agent is still tracked and holds the slot", async () => {
+  const s = await setup();
+  s.api.add(1, "[fake:done]");
+  s.api.add(2);
+  s.api.rejectStatus = 1;
+  s.api.rejectCode = 409;
+  await s.runner.tick();
+  const e = await s.ledger(ID(1));
+  assert.equal(e.rejected.status, 409);
+  assert.equal(e.rejected.report, "running");
+  assert.ok(s.logs.some((l) => l.endsWith(ID(1) + " CLAIM_LOST")));
+  await s.advance();
+  await s.advance();
+  assert.equal(s.api.queue.length, 1, "slot held while the agent runs");
+  await s.launcher.complete(agentFor(s.launcher, ID(1)).id);
+  await s.advance();
+  assert.equal(
+    s.api.statuses.filter((x) => x.id === ID(1)).length,
+    0,
+    "nothing reported for a lost claim",
+  );
+  assert.ok(s.logs.some((l) => l.endsWith(ID(1) + " FINAL_NOT_SENT")));
+  const after = await s.ledger(ID(1));
+  assert.equal(after.agentEnded, true);
+  await s.advance();
+  assert.equal(
+    s.api.queue.length,
+    0,
+    "next instruction claimed after the agent ended",
+  );
+});
+
+test("F3: concurrent takeover of a dead holder's lock leaves exactly one owner", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lock-"));
+  temps.push(dir);
+  const file = path.join(dir, ".dispatch.lock");
+  const isAlive = (pid: number) => pid >= 1 && pid <= 50;
+  for (let round = 0; round < 20; round++) {
+    await writeFile(file, "99999999:dead");
+    const tokens = Array.from(
+      { length: 8 },
+      (_, i) => i + 1 + ":t" + round + "-" + i,
+    );
+    const won = await Promise.all(
+      tokens.map((t) => acquireDispatchLock(file, t, { isAlive })),
+    );
+    assert.equal(won.filter(Boolean).length, 1, "round " + round);
+    assert.equal(await readFile(file, "utf8"), tokens[won.indexOf(true)]);
+  }
+  // While A takes over a stale lock, B cannot take it over too.
+  await writeFile(file, "99999999:dead");
+  const a = await acquireDispatchLock(file, "1:A", {
+    isAlive,
+    afterStaleCheck: async () => {
+      assert.equal(await acquireDispatchLock(file, "2:B", { isAlive }), false);
+    },
+  });
+  assert.equal(a, true);
+  assert.equal(await readFile(file, "utf8"), "1:A");
+  // a takeover file left by a dead process is cleared, then the next attempt succeeds
+  await writeFile(file, "99999999:dead");
+  await writeFile(file + ".takeover", "99999998:dead");
+  assert.equal(await acquireDispatchLock(file, "2:B", { isAlive }), false);
+  assert.equal(await acquireDispatchLock(file, "2:B", { isAlive }), true);
+  assert.equal(await readFile(file, "utf8"), "2:B");
+  // a live holder is never displaced
+  assert.equal(await acquireDispatchLock(file, "3:C", { isAlive }), false);
+  assert.equal(await readFile(file, "utf8"), "2:B");
+});
+
+test("F3: a runner whose lock token was replaced stops dispatching", async () => {
+  const s = await setup({ maxActive: 2 });
+  await s.runner.tick();
+  const claimsBefore = s.api.claims.length;
+  await writeFile(
+    path.join(s.root, "instructions", ".dispatch.lock"),
+    process.ppid + ":other",
+  );
+  s.api.add(1);
+  await s.advance();
+  assert.equal(s.api.claims.length, claimsBefore);
+  assert.equal(s.api.queue.length, 1);
+  assert.equal(s.runner.heartbeat().instructions.reason, "busy");
+  assert.ok(s.logs.some((l) => l.endsWith("LOCK_LOST")));
+});
+
+test("F4: a result folder swapped for a link between check and open is rejected", async () => {
+  const s = await setup();
+  s.api.add(1);
+  await s.runner.tick();
+  const agent = agentFor(s.launcher, ID(1));
+  await s.launcher.complete(agent.id);
+  const ledgerDir = path.join(s.root, "instructions");
+  const dir = path.join(ledgerDir, ID(1));
+  const ok = await readResultFile(ledgerDir, ID(1), agent.attemptId);
+  assert.equal(ok.kind, "valid");
+  const { rename: mv, symlink: ln } = await import("node:fs/promises");
+  const other = path.join(s.root, "elsewhere");
+  await mkdir(other);
+  await writeFile(
+    path.join(other, "result.json"),
+    await readFile(path.join(dir, "result.json"), "utf8"),
+  );
+  const swapped = await readResultFile(ledgerDir, ID(1), agent.attemptId, {
+    beforeOpen: async () => {
+      await mv(dir, dir + ".orig");
+      await ln(other, dir);
+    },
+  });
+  assert.equal(swapped.kind, "invalid");
 });

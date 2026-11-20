@@ -300,7 +300,14 @@ export interface LaunchSpec {
 export interface AgentInfo {
   status: string;
   pendingPermissions: number;
+  archived?: boolean;
 }
+
+/** The agent's turn is over: nothing pending and idle, closed, errored or archived.
+ * Until then (or while inspect fails) its instruction keeps a slot. */
+export const agentEnded = (info: AgentInfo) =>
+  info.pendingPermissions === 0 &&
+  (info.archived === true || ["idle", "closed", "error"].includes(info.status));
 export interface Launcher {
   ready(): Promise<boolean>;
   launch(spec: LaunchSpec): Promise<{ agentId: string }>;
@@ -367,6 +374,7 @@ export class PaseoLauncher implements Launcher {
       pendingPermissions: Array.isArray(a.PendingPermissions)
         ? a.PendingPermissions.length
         : 0,
+      archived: a.Archived === true,
     };
   }
   async findByLabel(key: string, value: string) {
@@ -439,7 +447,7 @@ export function buildPreamble(p: PreambleInput): string {
       ". 끝: " +
       end +
       ". 작업 폴더와 대상의 AGENTS.md·정본 규칙을 먼저 읽고 따른다. 읽은 규칙 파일 이름을 결과에 적는다.",
-    "4. 하지 않는 것: git push, 배포, 게시·업로드·예약, 결제, 삭제(원본 미디어 이동 포함), 설치본 교체, LaunchAgent·설정 변경, 외부 서비스 쓰기. 필요하면 준비물까지만 만들고 needs_user로 끝낸다. 권한 요청이 필요한 동작도 우회하지 말고 needs_user로 끝낸다.",
+    "4. 하지 않는 것: git push, 배포, 게시·업로드·예약, 결제, 삭제(원본 미디어 이동 포함), 설치본 교체, LaunchAgent·설정 변경, 외부 서비스 쓰기. 필요하면 준비물까지만 만들고 needs_user로 끝낸다. 권한 요청이 필요한 동작도 우회하지 말고 needs_user로 끝낸다. git commit은 하지 않는다. 끝이 앱 병합 전(pre_merge)인 worktree에서만 로컬 커밋을 허용한다. ~/Obsidian은 자동 백업이라 커밋하지 않는다.",
     "5. 사용자 경험·취향·사실은 추정하지 않는다. 필요하면 질문 하나로 needs_user.",
     "6. 끝나면 " +
       JSON.stringify(p.resultFile) +
@@ -552,26 +560,30 @@ type ReadResult =
 
 /** Reads result.json without following links: the instruction folder must be the
  * real folder under the ledger, and the file a regular file of at most 16 KiB. */
+/** The instruction folder is a real folder at the expected place (not a link). */
+async function folderIntact(ledgerDir: string, dir: string, id: string) {
+  const st = await lstat(dir);
+  if (!st.isDirectory() || st.isSymbolicLink()) return false;
+  return (await realpath(dir)) === path.join(await realpath(ledgerDir), id);
+}
+
 export async function readResultFile(
   ledgerDir: string,
   id: string,
   attemptId: string,
+  hooks: { beforeOpen?: () => Promise<void> } = {},
 ): Promise<ReadResult> {
   const dir = path.join(ledgerDir, id);
+  const file = path.join(dir, "result.json");
   try {
-    const st = await lstat(dir);
-    if (!st.isDirectory() || st.isSymbolicLink()) return { kind: "invalid" };
-    if ((await realpath(dir)) !== path.join(await realpath(ledgerDir), id))
-      return { kind: "invalid" };
+    if (!(await folderIntact(ledgerDir, dir, id))) return { kind: "invalid" };
   } catch {
     return { kind: "invalid" };
   }
+  await hooks.beforeOpen?.();
   let handle;
   try {
-    handle = await open(
-      path.join(dir, "result.json"),
-      fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK,
-    );
+    handle = await open(file, fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK);
   } catch (e) {
     return (e as NodeJS.ErrnoException).code === "ENOENT"
       ? { kind: "missing" }
@@ -580,6 +592,13 @@ export async function readResultFile(
   try {
     const st = await handle.stat();
     if (!st.isFile() || st.size > RESULT_MAX_BYTES) return { kind: "invalid" };
+    // The folder may have been swapped between the check and open (the agent runs
+    // as the same user): re-check it and require the opened file to be the one
+    // now at the expected path.
+    if (!(await folderIntact(ledgerDir, dir, id))) return { kind: "invalid" };
+    const now = await lstat(file);
+    if (!now.isFile() || now.dev !== st.dev || now.ino !== st.ino)
+      return { kind: "invalid" };
     const buf = await handle.readFile();
     if (buf.length > RESULT_MAX_BYTES) return { kind: "invalid" };
     const text = new TextDecoder("utf-8", { fatal: true }).decode(buf);
@@ -620,6 +639,78 @@ export interface Ledger {
   finishedAt: string | null;
   /** Set once a final body was refused with 400 and replaced by a fixed failure. */
   fallback?: boolean;
+  /** The agent's turn is over (see agentEnded); until then the entry holds a slot. */
+  agentEnded?: boolean;
+  /** The site refused a report for good (e.g. 409 after it marked the claim lost). */
+  rejected?: { status: number; report: "running" | "final"; at: string };
+}
+
+/** Holds a slot: unreadable entries, launches not yet settled, and agents not yet ended. */
+export const occupiesSlot = (e: Ledger | null) =>
+  !e || (e.agentId ? !e.agentEnded : !e.final);
+
+function pidAlive(pid: number) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** One dispatching process per ledger. The lock file holds "<pid>:<uuid>".
+ * Replacing a dead holder's lock happens only under a separate O_EXCL
+ * ".takeover" file, so two processes cannot both take it over; the stale lock is
+ * replaced by an atomic rename and read back. A lock that vanished is re-created
+ * with O_EXCL only, never overwritten. */
+export async function acquireDispatchLock(
+  file: string,
+  token: string,
+  opts: {
+    isAlive?: (pid: number) => boolean;
+    afterStaleCheck?: () => Promise<void>;
+  } = {},
+): Promise<boolean> {
+  const isAlive = opts.isAlive ?? pidAlive;
+  const pidOf = (t: string) => Number(t.split(":")[0]);
+  const read = (f: string) => readFile(f, "utf8").catch(() => null);
+  const create = async () => {
+    try {
+      await writeFile(file, token, { mode: 0o600, flag: "wx" });
+    } catch {
+      return false;
+    }
+    return (await read(file)) === token;
+  };
+  if (await create()) return true;
+  const seen = await read(file);
+  if (seen === token) return true;
+  if (seen !== null && isAlive(pidOf(seen))) return false;
+  const mutex = file + ".takeover";
+  try {
+    await writeFile(mutex, token, { mode: 0o600, flag: "wx" });
+  } catch {
+    // Someone else is taking over. Clear a takeover left by a dead process; retry next tick.
+    const m = await read(mutex);
+    if (m !== null && !isAlive(pidOf(m))) await unlink(mutex).catch(() => {});
+    return false;
+  }
+  try {
+    await opts.afterStaleCheck?.();
+    const current = await read(file);
+    if (current === null) return await create();
+    if (current === token) return true;
+    if (isAlive(pidOf(current))) return false;
+    const temp = file + "." + randomUUID() + ".tmp";
+    await writeFile(temp, token, { mode: 0o600, flag: "wx" });
+    await rename(temp, file);
+    return (await read(file)) === token;
+  } catch {
+    return false;
+  } finally {
+    if ((await read(mutex)) === token) await unlink(mutex).catch(() => {});
+  }
 }
 
 async function ensurePrivateDir(dir: string) {
@@ -769,6 +860,7 @@ export class InstructionRunner {
   private recovered = false;
   private readonly nextPoll = new Map<string, number>();
   private nextCleanup = 0;
+  private readonly lockToken = process.pid + ":" + randomUUID();
 
   constructor(private readonly o: RunnerOptions) {
     this.ledgerDir = path.join(o.root, "instructions");
@@ -801,41 +893,25 @@ export class InstructionRunner {
     return path.join(this.ledgerDir, id);
   }
 
-  /** Single process may dispatch: an O_EXCL lock file holding our pid. */
+  private get lockFile() {
+    return path.join(this.ledgerDir, ".dispatch.lock");
+  }
+
   private async acquireLock(): Promise<boolean> {
     await ensurePrivateDir(this.ledgerDir);
-    const file = path.join(this.ledgerDir, ".dispatch.lock");
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        await writeFile(file, String(process.pid), { mode: 0o600, flag: "wx" });
-        return true;
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EEXIST") return false;
-        const pid = Number(
-          (await readFile(file, "utf8").catch(() => "")).trim(),
-        );
-        if (pid === process.pid) return true;
-        let alive = false;
-        if (Number.isInteger(pid) && pid > 0) {
-          try {
-            process.kill(pid, 0);
-            alive = true;
-          } catch (err) {
-            alive = (err as NodeJS.ErrnoException).code === "EPERM";
-          }
-        }
-        if (alive) return false;
-        await unlink(file).catch(() => {});
-      }
-    }
-    return false;
+    return acquireDispatchLock(this.lockFile, this.lockToken);
+  }
+
+  /** The lock file still carries our token. */
+  private async holdsLock() {
+    return (
+      (await readFile(this.lockFile, "utf8").catch(() => "")) === this.lockToken
+    );
   }
 
   async release() {
     if (!this.lockHeld) return;
-    const file = path.join(this.ledgerDir, ".dispatch.lock");
-    const pid = Number((await readFile(file, "utf8").catch(() => "")).trim());
-    if (pid === process.pid) await unlink(file).catch(() => {});
+    if (await this.holdsLock()) await unlink(this.lockFile).catch(() => {});
     this.lockHeld = false;
   }
 
@@ -880,13 +956,17 @@ export class InstructionRunner {
     this.ticking = true;
     try {
       const config = await loadConfig(this.o.root, this.o.home);
+      if (this.lockHeld && !(await this.holdsLock())) {
+        this.lockHeld = false;
+        this.log("instruction lock LOCK_LOST");
+      }
       if (!this.lockHeld) this.lockHeld = await this.acquireLock();
       if (!this.lockHeld) {
         this.readiness = { ready: false, reason: "busy" };
         return;
       }
       const pending = (await this.entries()).some(
-        (e) => !e || !e.finalReported,
+        (e) => !e || !e.finalReported || occupiesSlot(e),
       );
       // With the switch off and nothing in the ledger, the launcher is not touched.
       const launcherUp =
@@ -932,7 +1012,7 @@ export class InstructionRunner {
     if (lock.locked) return { ready: false, reason: "locked" };
     if (!launcherUp) return { ready: false, reason: "launcher_down" };
     if (!this.recovered) return { ready: false, reason: "busy" };
-    const active = (await this.entries()).filter((e) => !e || !e.final).length;
+    const active = (await this.entries()).filter(occupiesSlot).length;
     const slots = Math.min(2, config.maxActive - active);
     return slots > 0
       ? { ready: true, slots }
@@ -978,8 +1058,12 @@ export class InstructionRunner {
   }
 
   private async claimAndLaunch(slots: number) {
-    // Switch check 1: immediately before claim.
+    // Switch check 1: immediately before claim; the dispatch lock must still be ours.
     if (!switchOn(await loadConfig(this.o.root, this.o.home))) return;
+    if (!(await this.holdsLock())) {
+      this.lockHeld = false;
+      return;
+    }
     const capacity = Math.max(0, Math.min(2, slots));
     if (!capacity) return;
     let claimed: { enabled: boolean; items: unknown[] };
@@ -1150,7 +1234,17 @@ export class InstructionRunner {
         this.note(e.id, "REPORT_RETRY");
         return false;
       }
-      this.note(e.id, "REPORT_REJECTED");
+      // e.g. 409 once the site marked the claim lost: keep tracking the agent
+      // (it still holds a slot) but stop reporting this instruction.
+      e.rejected = {
+        status: (err as ApiError).status,
+        report: "running",
+        at: this.iso(),
+      };
+      this.note(
+        e.id,
+        (err as ApiError).status === 409 ? "CLAIM_LOST" : "REPORT_REJECTED",
+      );
     }
     e.runningReported = true;
     await this.save(e);
@@ -1158,8 +1252,9 @@ export class InstructionRunner {
     return true;
   }
 
-  private async finish(e: Ledger, final: Final) {
+  private async finish(e: Ledger, final: Final, ended = false) {
     e.final = final;
+    if (ended) e.agentEnded = true;
     e.phase = "finished";
     e.finishedAt = this.iso();
     await this.save(e);
@@ -1170,6 +1265,12 @@ export class InstructionRunner {
   private async reportFinal(e: Ledger): Promise<void> {
     if (!e.final || e.finalReported) return;
     if (e.agentId && !(await this.reportRunning(e))) return;
+    if (e.rejected) {
+      e.finalReported = true;
+      await this.save(e);
+      this.note(e.id, "FINAL_NOT_SENT");
+      return;
+    }
     const f = e.final;
     const body: StatusBody = { status: f.status, sessionName: e.sessionName };
     if (f.summary) body.summary = f.summary;
@@ -1199,6 +1300,11 @@ export class InstructionRunner {
         this.note(e.id, "REPORT_FALLBACK");
         return this.reportFinal(e);
       }
+      e.rejected = {
+        status: (err as ApiError).status,
+        report: "final",
+        at: this.iso(),
+      };
       this.note(e.id, "REPORT_REJECTED");
     }
     e.finalReported = true;
@@ -1209,27 +1315,46 @@ export class InstructionRunner {
     );
   }
 
+  /** inspect with one retry, at most once per pollSeconds per instruction. */
+  private async poll(e: Ledger, config: LoadedConfig) {
+    const now = this.now();
+    if (!e.agentId || now < (this.nextPoll.get(e.id) ?? 0)) return null;
+    this.nextPoll.set(e.id, now + config.pollSeconds * 1000);
+    try {
+      return await this.o.launcher.inspect(e.agentId);
+    } catch {
+      try {
+        return await this.o.launcher.inspect(e.agentId);
+      } catch {
+        this.note(e.id, "INSPECT_FAILED");
+        return null;
+      }
+    }
+  }
+
   private async advance(e: Ledger, config: LoadedConfig, launcherUp: boolean) {
-    if (e.final) return this.reportFinal(e);
+    if (e.final) {
+      await this.reportFinal(e);
+      // After needs_user (permission wait), TIMEOUT or a lost claim the agent may
+      // still be working: it keeps its slot until inspect shows it has ended.
+      if (e.agentId && !e.agentEnded) {
+        const info = await this.poll(e, config);
+        if (info && agentEnded(info)) {
+          e.agentEnded = true;
+          await this.save(e);
+          this.note(e.id, "AGENT_ENDED");
+        }
+      }
+      return;
+    }
     if (!e.agentId) {
       if (this.recovered && launcherUp) await this.reconcile(e);
       return;
     }
     if (!e.runningReported) await this.reportRunning(e);
     const now = this.now();
-    if (now < (this.nextPoll.get(e.id) ?? 0)) return;
-    this.nextPoll.set(e.id, now + config.pollSeconds * 1000);
-    let info: AgentInfo;
-    try {
-      info = await this.o.launcher.inspect(e.agentId);
-    } catch {
-      try {
-        info = await this.o.launcher.inspect(e.agentId);
-      } catch {
-        this.note(e.id, "INSPECT_FAILED");
-        return;
-      }
-    }
+    const info = await this.poll(e, config);
+    if (!info) return;
     if (info.pendingPermissions > 0) {
       return this.finish(e, {
         status: "needs_user",
@@ -1273,28 +1398,36 @@ export class InstructionRunner {
     }
     const result = await readResultFile(this.ledgerDir, e.id, e.attemptId);
     if (result.kind === "valid")
-      return this.finish(e, this.fromResult(e, result.value));
+      return this.finish(e, this.fromResult(e, result.value), true);
     if (result.kind === "invalid") {
-      return this.finish(e, {
-        status: "failed",
-        errorCode: "RESULT_INVALID",
-        summary:
-          "결과 파일 형식이 맞지 않아요. Paseo 세션 " +
-          e.sessionName +
-          "에서 확인해 주세요.",
-        question: null,
-      });
+      return this.finish(
+        e,
+        {
+          status: "failed",
+          errorCode: "RESULT_INVALID",
+          summary:
+            "결과 파일 형식이 맞지 않아요. Paseo 세션 " +
+            e.sessionName +
+            "에서 확인해 주세요.",
+          question: null,
+        },
+        true,
+      );
     }
     if (info.status !== "idle") {
-      return this.finish(e, {
-        status: "failed",
-        errorCode: "AGENT_FAILED",
-        summary:
-          "에이전트가 결과 없이 멈췄어요. Paseo 세션 " +
-          e.sessionName +
-          "에서 확인해 주세요.",
-        question: null,
-      });
+      return this.finish(
+        e,
+        {
+          status: "failed",
+          errorCode: "AGENT_FAILED",
+          summary:
+            "에이전트가 결과 없이 멈췄어요. Paseo 세션 " +
+            e.sessionName +
+            "에서 확인해 주세요.",
+          question: null,
+        },
+        true,
+      );
     }
     if (!e.idleSince) {
       e.idleSince = this.iso();
@@ -1322,15 +1455,19 @@ export class InstructionRunner {
       this.note(e.id, "RESULT_REQUESTED");
       return;
     }
-    return this.finish(e, {
-      status: "failed",
-      errorCode: "RESULT_MISSING",
-      summary:
-        "결과 파일이 없어요. Paseo 세션 " +
-        e.sessionName +
-        "에서 확인해 주세요.",
-      question: null,
-    });
+    return this.finish(
+      e,
+      {
+        status: "failed",
+        errorCode: "RESULT_MISSING",
+        summary:
+          "결과 파일이 없어요. Paseo 세션 " +
+          e.sessionName +
+          "에서 확인해 주세요.",
+        question: null,
+      },
+      true,
+    );
   }
 
   private fromResult(e: Ledger, r: AgentResult): Final {
@@ -1361,6 +1498,7 @@ export class InstructionRunner {
       if (
         !e ||
         !e.finalReported ||
+        occupiesSlot(e) ||
         !e.finishedAt ||
         Date.parse(e.finishedAt) > cutoff
       )
