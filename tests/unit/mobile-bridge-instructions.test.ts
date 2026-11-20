@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import {
   ApiError,
   acquireDispatchLock,
+  conflictOutcome,
   readResultFile,
   InstructionRunner,
   MASKED_LINE,
@@ -47,6 +48,7 @@ class FakeApi implements InstructionApi {
   failStatus = 0;
   rejectStatus = 0;
   rejectCode = 409;
+  rejectCurrent: { status?: string; errorCode?: string } = {};
   onClaim?: () => Promise<void>;
   async claim(capacity: number) {
     this.claims.push(capacity);
@@ -61,7 +63,7 @@ class FakeApi implements InstructionApi {
     }
     if (this.rejectStatus > 0) {
       this.rejectStatus--;
-      throw new ApiError(this.rejectCode);
+      throw new ApiError(this.rejectCode, this.rejectCurrent);
     }
     this.statuses.push({ id, body });
   }
@@ -811,6 +813,10 @@ type SiteItem = {
   [k: string]: unknown;
 };
 function fakeSite(key: string) {
+  /** Commit a status report, then drop the connection before answering. */
+  const ctl: { drop: null | ((id: string, status: string) => boolean) } = {
+    drop: null,
+  };
   const items: SiteItem[] = [];
   const heartbeats: unknown[] = [];
   const claims: unknown[] = [];
@@ -868,7 +874,11 @@ function fakeSite(key: string) {
       const item = items.find((i) => i.id === m[1]);
       if (!item) return send(404, { error: "NOT_FOUND" });
       if (!allowed[item.status]?.includes(body.status))
-        return send(409, { error: "INVALID_TRANSITION" });
+        return send(409, {
+          error: "TRANSITION_NOT_ALLOWED",
+          status: item.status,
+          error_code: item.error_code ?? null,
+        });
       Object.assign(item, {
         status: body.status,
         session_name: body.sessionName ?? item.session_name,
@@ -876,11 +886,16 @@ function fakeSite(key: string) {
         question: body.question ?? null,
         error_code: body.errorCode ?? null,
       });
+      if (ctl.drop?.(m[1], body.status)) {
+        ctl.drop = null;
+        req.socket.destroy();
+        return;
+      }
       return send(200, { ok: true });
     }
     send(404, { error: "NOT_FOUND" });
   });
-  return { items, heartbeats, claims, statusBodies, server };
+  return { items, heartbeats, claims, statusBodies, server, ctl };
 }
 const listen = (server: http.Server) =>
   new Promise<string>((resolve) =>
@@ -1049,6 +1064,7 @@ test("claim lost: a 409 on running is recorded, the agent is still tracked and h
   s.api.add(2);
   s.api.rejectStatus = 1;
   s.api.rejectCode = 409;
+  s.api.rejectCurrent = { status: "failed", errorCode: "CLAIM_LOST" };
   await s.runner.tick();
   const e = await s.ledger(ID(1));
   assert.equal(e.rejected.status, 409);
@@ -1102,10 +1118,23 @@ test("F3: concurrent takeover of a dead holder's lock leaves exactly one owner",
   });
   assert.equal(a, true);
   assert.equal(await readFile(file, "utf8"), "1:A");
-  // a takeover file left by a dead process is cleared, then the next attempt succeeds
+  // a takeover file left by a dead process stays for the operator (R3); once removed, takeover works
   await writeFile(file, "99999999:dead");
   await writeFile(file + ".takeover", "99999998:dead");
-  assert.equal(await acquireDispatchLock(file, "2:B", { isAlive }), false);
+  let staleSeen = 0;
+  const onStaleTakeover = () => staleSeen++;
+  assert.equal(
+    await acquireDispatchLock(file, "2:B", { isAlive, onStaleTakeover }),
+    false,
+  );
+  assert.equal(
+    await acquireDispatchLock(file, "2:B", { isAlive, onStaleTakeover }),
+    false,
+  );
+  assert.equal(staleSeen, 2);
+  assert.equal(await readFile(file + ".takeover", "utf8"), "99999998:dead");
+  assert.equal(await readFile(file, "utf8"), "99999999:dead");
+  await rm(file + ".takeover");
   assert.equal(await acquireDispatchLock(file, "2:B", { isAlive }), true);
   assert.equal(await readFile(file, "utf8"), "2:B");
   // a live holder is never displaced
@@ -1153,4 +1182,297 @@ test("F4: a result folder swapped for a link between check and open is rejected"
     },
   });
   assert.equal(swapped.kind, "invalid");
+});
+
+// ---------------------------------------------------------------- security review round 2
+
+test("R1: conflictOutcome tells a lost acknowledgement from a lost claim", () => {
+  const e = (status?: string, errorCode?: string) =>
+    new ApiError(409, { status, errorCode });
+  assert.equal(conflictOutcome("running", e("running")), "acked");
+  assert.equal(conflictOutcome("running", e("done")), "acked");
+  assert.equal(
+    conflictOutcome("running", e("failed", "CLAIM_LOST")),
+    "claim_lost",
+  );
+  assert.equal(conflictOutcome("running", e("cancelled")), "rejected");
+  assert.equal(
+    conflictOutcome("running", e()),
+    "rejected",
+    "no state in the body: conservative",
+  );
+  assert.equal(conflictOutcome("done", e("done")), "acked");
+  assert.equal(conflictOutcome("done", e("needs_user")), "rejected");
+  assert.equal(
+    conflictOutcome("failed", e("failed", "CLAIM_LOST")),
+    "claim_lost",
+  );
+  assert.equal(
+    conflictOutcome("running", new ApiError(400, { status: "running" })),
+    "rejected",
+  );
+});
+
+async function siteRunner(
+  site: ReturnType<typeof fakeSite>,
+  base: string,
+  s: Awaited<ReturnType<typeof setup>>,
+) {
+  const api = createInstructionApi((route, init) =>
+    fetch(new URL(route, base), {
+      ...init,
+      headers: { ...init.headers, "X-Reels-Bridge-Key": "review-key" },
+    }),
+  );
+  return new InstructionRunner({
+    root: s.root,
+    api,
+    launcher: s.launcher,
+    home: s.home,
+    now: () => s.clock.t,
+    lockState: async () => ({ locked: false, known: true }),
+    retryDelayMs: 0,
+    log: (m) => s.logs.push(m),
+  });
+}
+
+test("running_ack_loss_still_reports_final_and_releases_server_slot", async () => {
+  const site = fakeSite("review-key");
+  const base = await listen(site.server);
+  const s = await setup();
+  const runner = await siteRunner(site, base, s);
+  for (const n of [41, 42])
+    site.items.push({
+      id: ID(n),
+      text: "[fake:done]",
+      target: null,
+      end_level: null,
+      status: "queued",
+    });
+  site.ctl.drop = (id, status) => id === ID(41) && status === "running";
+  try {
+    await runner.tick();
+    assert.equal(site.items[0].status, "running", "the site committed running");
+    assert.equal(
+      (await s.ledger(ID(41))).runningReported,
+      false,
+      "the bridge did not see the answer",
+    );
+    s.clock.t += 15000;
+    await runner.tick(); // resend → 409 {status: running} → acknowledged
+    assert.ok(s.logs.some((l) => l.endsWith(ID(41) + " REPORT_ACKED")));
+    assert.equal((await s.ledger(ID(41))).rejected, undefined);
+    await s.launcher.complete(agentFor(s.launcher, ID(41)).id);
+    s.clock.t += 15000;
+    await runner.tick();
+    assert.equal(site.items[0].status, "done");
+    assert.equal(
+      site.items[1].status,
+      "running",
+      "server slot released, next instruction runs",
+    );
+  } finally {
+    await runner.release();
+    site.server.close();
+  }
+});
+
+test("R1: a lost acknowledgement of the final result is treated as delivered", async () => {
+  const site = fakeSite("review-key");
+  const base = await listen(site.server);
+  const s = await setup();
+  const runner = await siteRunner(site, base, s);
+  site.items.push({
+    id: ID(43),
+    text: "[fake:needs_user]",
+    target: null,
+    end_level: null,
+    status: "queued",
+  });
+  site.ctl.drop = (id, status) => id === ID(43) && status === "needs_user";
+  try {
+    await runner.tick();
+    await s.launcher.complete(agentFor(s.launcher, ID(43)).id);
+    s.clock.t += 15000;
+    await runner.tick(); // final committed, answer dropped
+    assert.equal(site.items[0].status, "needs_user");
+    assert.equal((await s.ledger(ID(43))).finalReported, false);
+    s.clock.t += 15000;
+    await runner.tick(); // resend → 409 {status: needs_user} → acknowledged
+    const e = await s.ledger(ID(43));
+    assert.equal(e.finalReported, true);
+    assert.equal(e.rejected, undefined);
+    assert.ok(s.logs.some((l) => l.endsWith(ID(43) + " REPORT_ACKED")));
+  } finally {
+    await runner.release();
+    site.server.close();
+  }
+});
+
+test("uncertain_launch_keeps_slot_until_reconciled", async () => {
+  const s = await setup();
+  s.launcher.launchFails = "after"; // the agent starts, the response is lost
+  const find = s.launcher.findByLabel.bind(s.launcher);
+  s.launcher.findByLabel = async () => {
+    throw new Error("temporary lookup failure");
+  };
+  s.api.add(31, "[fake:hang]");
+  s.api.add(32, "[fake:hang]");
+  await s.runner.tick();
+  assert.equal(s.launcher.agents.size, 1);
+  const e = await s.ledger(ID(31));
+  assert.equal(e.launchUncertain, true);
+  assert.equal(e.agentId, null);
+  assert.deepEqual(
+    [s.api.statuses.at(-1)!.body.status, s.api.statuses.at(-1)!.body.errorCode],
+    ["failed", "LAUNCH_FAILED"],
+    "the site still gets the fixed failure",
+  );
+  s.launcher.launchFails = false;
+  await s.advance();
+  await s.advance(8 * 86400_000); // past retention: the uncertain entry is not pruned
+  assert.equal(
+    s.launcher.agents.size,
+    1,
+    "an unresolved first launch must reserve capacity",
+  );
+  assert.equal(s.api.queue.length, 1);
+  assert.equal(s.runner.heartbeat().instructions.reason, "busy");
+  assert.equal((await s.ledger(ID(31))).launchUncertain, true);
+  // the lookup recovers: adopt the one session and follow it to its end
+  s.launcher.findByLabel = find;
+  await s.advance();
+  const adopted = await s.ledger(ID(31));
+  assert.equal(adopted.agentId, agentFor(s.launcher, ID(31)).id);
+  assert.equal(adopted.launchUncertain, false);
+  assert.equal(s.api.queue.length, 1, "still running: slot held");
+  agentFor(s.launcher, ID(31)).status = "idle";
+  await s.advance();
+  assert.equal((await s.ledger(ID(31))).agentEnded, true);
+  assert.equal(
+    s.launcher.agents.size,
+    2,
+    "next instruction only after the adopted agent ended",
+  );
+  assert.equal(
+    s.api.statuses.filter((x) => x.id === ID(31)).length,
+    1,
+    "nothing more is reported for the uncertain one",
+  );
+});
+
+test("R2: a launch confirmed not started (lookup ok, no session) frees the slot", async () => {
+  const s = await setup();
+  s.launcher.launchFails = "before";
+  s.api.add(33);
+  s.api.add(34);
+  await s.runner.tick();
+  assert.equal((await s.ledger(ID(33))).launchUncertain, undefined);
+  s.launcher.launchFails = false;
+  await s.advance();
+  assert.equal(s.launcher.agents.size, 1);
+  assert.equal(agentFor(s.launcher, ID(34)).labels.instruction, ID(34));
+});
+
+test("R2: restart reconcile marks an unconfirmed launch uncertain and keeps its slot", async () => {
+  const s = await setup();
+  const dir = path.join(s.root, "instructions", ID(35));
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await writeFile(
+    path.join(dir, "state.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: ID(35),
+      attemptId: "a",
+      sessionName: "sites-00000000",
+      phase: "launching",
+      target: null,
+      endLevel: null,
+      claimedAt: "2026-11-21T00:00:00Z",
+      agentId: null,
+      launchedAt: null,
+      runningReported: false,
+      idleSince: null,
+      resultRequestedAt: null,
+      final: null,
+      finalReported: false,
+      finishedAt: null,
+    }),
+    { mode: 0o600 },
+  );
+  const find = s.launcher.findByLabel.bind(s.launcher);
+  s.launcher.findByLabel = async () => {
+    throw new Error("lookup failure");
+  };
+  s.api.add(36);
+  await s.runner.tick();
+  const e = await s.ledger(ID(35));
+  assert.equal(e.launchUncertain, true);
+  assert.equal(e.final.errorCode, "LAUNCH_FAILED");
+  assert.equal(s.api.queue.length, 1, "slot held");
+  s.launcher.findByLabel = find;
+  const seeded = s.launcher.seed({ instruction: ID(35) }, "idle");
+  await s.advance();
+  assert.equal((await s.ledger(ID(35))).agentId, seeded);
+  await s.advance();
+  assert.equal((await s.ledger(ID(35))).agentEnded, true);
+  await s.advance();
+  assert.equal(s.api.queue.length, 0, "claimed after the adopted agent ended");
+  assert.equal(
+    launches(s.launcher),
+    1,
+    "the uncertain one was never relaunched",
+  );
+});
+
+test("stale_takeover_cleanup_preserves_new_live_mutex", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "review-lock-"));
+  temps.push(dir);
+  const file = path.join(dir, ".dispatch.lock");
+  const mutex = file + ".takeover";
+  await writeFile(file, "99999999:old");
+  await writeFile(mutex, "99999998:old");
+  let scheduled = false;
+  await acquireDispatchLock(file, "3:review", {
+    isAlive: (pid) => {
+      if (pid === 99999998) {
+        // another contender replaces the dead mutex before this check resumes
+        scheduled = true;
+        writeFileSync(mutex, "1:live", { mode: 0o600 });
+        return false;
+      }
+      return pid === 1 || pid === 3;
+    },
+  });
+  assert.equal(scheduled, true);
+  assert.equal(
+    await readFile(mutex, "utf8").catch(() => null),
+    "1:live",
+    "cleanup must preserve a new live mutex",
+  );
+});
+
+test("R3: a runner facing a dead takeover file stays busy and logs STALE_TAKEOVER once", async () => {
+  const s = await setup();
+  const ledger = path.join(s.root, "instructions");
+  await mkdir(ledger, { recursive: true, mode: 0o700 });
+  await writeFile(path.join(ledger, ".dispatch.lock"), "99999999:dead");
+  await writeFile(
+    path.join(ledger, ".dispatch.lock.takeover"),
+    "99999998:dead",
+  );
+  s.api.add(1);
+  await s.runner.tick();
+  await s.advance();
+  assert.equal(s.runner.heartbeat().instructions.reason, "busy");
+  assert.equal(s.api.claims.length, 0);
+  assert.equal(s.logs.filter((l) => l.endsWith("STALE_TAKEOVER")).length, 1);
+  assert.equal(
+    await readFile(path.join(ledger, ".dispatch.lock.takeover"), "utf8"),
+    "99999998:dead",
+  );
+  await rm(path.join(ledger, ".dispatch.lock.takeover")); // operator clean-up
+  await s.advance();
+  assert.equal(s.api.claims.length, 1);
 });

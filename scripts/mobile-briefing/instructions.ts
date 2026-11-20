@@ -641,13 +641,17 @@ export interface Ledger {
   fallback?: boolean;
   /** The agent's turn is over (see agentEnded); until then the entry holds a slot. */
   agentEnded?: boolean;
+  /** Launch outcome unknown (response lost and the label lookup failed or was
+   * ambiguous). Holds a slot without an agent id until exactly one labelled session
+   * is found and has ended, or until the operator removes the entry. */
+  launchUncertain?: boolean;
   /** The site refused a report for good (e.g. 409 after it marked the claim lost). */
   rejected?: { status: number; report: "running" | "final"; at: string };
 }
 
 /** Holds a slot: unreadable entries, launches not yet settled, and agents not yet ended. */
 export const occupiesSlot = (e: Ledger | null) =>
-  !e || (e.agentId ? !e.agentEnded : !e.final);
+  !e || (e.agentId ? !e.agentEnded : !e.final || e.launchUncertain === true);
 
 function pidAlive(pid: number) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -670,6 +674,8 @@ export async function acquireDispatchLock(
   opts: {
     isAlive?: (pid: number) => boolean;
     afterStaleCheck?: () => Promise<void>;
+    /** A dead process left the takeover file behind; it is left for the operator. */
+    onStaleTakeover?: () => void;
   } = {},
 ): Promise<boolean> {
   const isAlive = opts.isAlive ?? pidAlive;
@@ -691,9 +697,10 @@ export async function acquireDispatchLock(
   try {
     await writeFile(mutex, token, { mode: 0o600, flag: "wx" });
   } catch {
-    // Someone else is taking over. Clear a takeover left by a dead process; retry next tick.
+    // Someone else is taking over. A takeover file of a dead process is NOT removed
+    // here (removing by path could delete a new live one); the operator clears it.
     const m = await read(mutex);
-    if (m !== null && !isAlive(pidOf(m))) await unlink(mutex).catch(() => {});
+    if (m !== null && !isAlive(pidOf(m))) opts.onStaleTakeover?.();
     return false;
   }
   try {
@@ -776,9 +783,32 @@ export interface ClaimedItem {
   endLevel: EndLevel | null;
 }
 export class ApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    /** For a 409: the instruction's current state as the site reports it. */
+    readonly current: { status?: string; errorCode?: string } = {},
+  ) {
     super("HTTP " + status);
   }
+}
+
+const TERMINAL = ["needs_user", "done", "failed"];
+
+/** Reads a refused status report. "acked": the site already holds what we sent
+ * (or, for running, a later state), i.e. an earlier report landed and only its
+ * response was lost. "claim_lost": the site failed the claim (CLAIM_LOST).
+ * Anything else, including a 409 without the current state, is "rejected". */
+export function conflictOutcome(
+  sent: StatusBody["status"],
+  err: ApiError,
+): "acked" | "claim_lost" | "rejected" {
+  const current = err.current.status;
+  if (err.status !== 409 || !current) return "rejected";
+  if (current === "failed" && err.current.errorCode === "CLAIM_LOST")
+    return "claim_lost";
+  if (current === sent) return "acked";
+  if (sent === "running" && TERMINAL.includes(current)) return "acked";
+  return "rejected";
 }
 export interface InstructionApi {
   claim(capacity: number): Promise<{ enabled: boolean; items: unknown[] }>;
@@ -812,7 +842,21 @@ export function createInstructionApi(request: RawRequest): InstructionApi {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new ApiError(r.status);
+      if (!r.ok) {
+        let current: { status?: string; errorCode?: string } = {};
+        if (r.status === 409) {
+          const b = (await r.json().catch(() => null)) as Record<
+            string,
+            unknown
+          > | null;
+          const code = b?.error_code ?? b?.errorCode;
+          current = {
+            ...(typeof b?.status === "string" ? { status: b.status } : {}),
+            ...(typeof code === "string" ? { errorCode: code } : {}),
+          };
+        }
+        throw new ApiError(r.status, current);
+      }
     },
   };
 }
@@ -897,9 +941,18 @@ export class InstructionRunner {
     return path.join(this.ledgerDir, ".dispatch.lock");
   }
 
+  private staleTakeover = false;
+
   private async acquireLock(): Promise<boolean> {
     await ensurePrivateDir(this.ledgerDir);
-    return acquireDispatchLock(this.lockFile, this.lockToken);
+    let stale = false;
+    const ok = await acquireDispatchLock(this.lockFile, this.lockToken, {
+      onStaleTakeover: () => (stale = true),
+    });
+    if (stale && !this.staleTakeover)
+      this.log("instruction lock STALE_TAKEOVER");
+    this.staleTakeover = stale;
+    return ok;
   }
 
   /** The lock file still carries our token. */
@@ -1044,7 +1097,13 @@ export class InstructionRunner {
       await this.reportRunning(e);
       return;
     }
-    const uncertain = ids === null || ids.length > 1 || e.phase === "launching";
+    // "claimed": the launch never started. A successful lookup with no session
+    // means it did not start either. Anything else is uncertain.
+    const uncertain = e.phase !== "claimed" && (ids === null || ids.length > 1);
+    if (uncertain) {
+      e.launchUncertain = true;
+      this.note(e.id, "LAUNCH_UNCERTAIN");
+    }
     await this.finish(e, {
       status: "failed",
       errorCode: "LAUNCH_FAILED",
@@ -1052,7 +1111,7 @@ export class InstructionRunner {
         ? "실행 여부를 확인하지 못해 다시 실행하지 않았어요. Paseo에서 " +
           e.sessionName +
           " 세션이 있는지 확인해 주세요."
-        : "실행기를 띄우기 전에 브리지가 멈춰 실행하지 않았어요. 필요하면 다시 지시해 주세요.",
+        : "실행되지 않은 것을 확인했어요. 다시 실행하지 않았어요. 필요하면 다시 지시해 주세요.",
       question: null,
     });
   }
@@ -1198,7 +1257,9 @@ export class InstructionRunner {
         .catch(() => null);
       if (ids && ids.length === 1) agentId = ids[0];
       else {
-        this.note(e.id, "LAUNCH_FAILED");
+        const uncertain = ids === null || ids.length > 1;
+        if (uncertain) e.launchUncertain = true;
+        this.note(e.id, uncertain ? "LAUNCH_UNCERTAIN" : "LAUNCH_FAILED");
         return this.finish(e, {
           status: "failed",
           errorCode: "LAUNCH_FAILED",
@@ -1234,17 +1295,21 @@ export class InstructionRunner {
         this.note(e.id, "REPORT_RETRY");
         return false;
       }
-      // e.g. 409 once the site marked the claim lost: keep tracking the agent
-      // (it still holds a slot) but stop reporting this instruction.
-      e.rejected = {
-        status: (err as ApiError).status,
-        report: "running",
-        at: this.iso(),
-      };
-      this.note(
-        e.id,
-        (err as ApiError).status === 409 ? "CLAIM_LOST" : "REPORT_REJECTED",
-      );
+      const outcome = conflictOutcome("running", err as ApiError);
+      if (outcome === "acked") this.note(e.id, "REPORT_ACKED");
+      else {
+        // The site failed the claim (or refused for good): keep tracking the agent
+        // (it still holds a slot) but stop reporting this instruction.
+        e.rejected = {
+          status: (err as ApiError).status,
+          report: "running",
+          at: this.iso(),
+        };
+        this.note(
+          e.id,
+          outcome === "claim_lost" ? "CLAIM_LOST" : "REPORT_REJECTED",
+        );
+      }
     }
     e.runningReported = true;
     await this.save(e);
@@ -1283,6 +1348,18 @@ export class InstructionRunner {
         this.note(e.id, "REPORT_RETRY");
         return;
       }
+      const outcome = conflictOutcome(f.status, err as ApiError);
+      if (outcome === "acked") {
+        // An earlier send of this result landed; only its response was lost.
+        this.note(e.id, "REPORT_ACKED");
+        e.finalReported = true;
+        await this.save(e);
+        this.note(
+          e.id,
+          f.status.toUpperCase() + (f.errorCode ? " " + f.errorCode : ""),
+        );
+        return;
+      }
       // A refused body would leave the row running and holding the site's slot:
       // send one fixed failure instead.
       if (err instanceof ApiError && err.status === 400 && !e.fallback) {
@@ -1305,7 +1382,10 @@ export class InstructionRunner {
         report: "final",
         at: this.iso(),
       };
-      this.note(e.id, "REPORT_REJECTED");
+      this.note(
+        e.id,
+        outcome === "claim_lost" ? "CLAIM_LOST" : "REPORT_REJECTED",
+      );
     }
     e.finalReported = true;
     await this.save(e);
@@ -1335,6 +1415,19 @@ export class InstructionRunner {
   private async advance(e: Ledger, config: LoadedConfig, launcherUp: boolean) {
     if (e.final) {
       await this.reportFinal(e);
+      // An uncertain launch: look for exactly one labelled session every tick and
+      // follow it to its end. Nothing is relaunched and nothing more is reported.
+      if (!e.agentId && e.launchUncertain) {
+        const ids = await this.o.launcher
+          .findByLabel("instruction", e.id)
+          .catch(() => null);
+        if (ids && ids.length === 1) {
+          e.agentId = ids[0];
+          e.launchUncertain = false;
+          await this.save(e);
+          this.note(e.id, "ADOPTED");
+        }
+      }
       // After needs_user (permission wait), TIMEOUT or a lost claim the agent may
       // still be working: it keeps its slot until inspect shows it has ended.
       if (e.agentId && !e.agentEnded) {

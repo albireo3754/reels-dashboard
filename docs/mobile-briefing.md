@@ -119,9 +119,17 @@ iPhone은 Safari의 공유 메뉴에서 홈 화면에 추가하고, ‘웹 앱�
 1. claim 직후 `<user-data>/mobile-bridge/instructions/<id>/state.json`(폴더 0700, 파일 0600, 임시 파일→rename)을 먼저 쓴다. 이 기록이 실패하면 실행하지 않고 `failed`.
 2. 본문은 `instruction.md`(0600)에만 쓴다. `paseo run` 인자에는 고정 머리말과 파일 경로만 들어간다. 로그에는 `instruction <id> <코드>`만 남는다.
 3. `phase: launching`을 기록한 뒤 `paseo run --no-wait --json --title sites-<id 앞 8자> --label source=sites --label instruction=<id>`. agent id를 기록하고 `running`을 보고한다.
-4. 자리는 원장 기준으로 센다. agent id가 있는 지시는 `inspect`가 끝남(대기 중인 권한 요청 없이 `idle`·`closed`·`error` 또는 보관됨)을 보일 때까지 자리를 차지한다. 확인이 안 되는 동안에도 차지한다. 권한 대기로 `needs_user`를 보고한 뒤, TIMEOUT 뒤, 사이트가 claim 유실로 `running` 보고를 409로 거절한 뒤에도 에이전트를 계속 확인하며, 끝난 것을 본 다음에야 다음 지시를 가져간다. 409로 거절된 지시는 원장에 `rejected`로 남기고 최종 결과는 보내지 않는다.
-5. dispatch 잠금(`instructions/.dispatch.lock`, `<pid>:<uuid>`)은 매 tick과 claim 직전에 내 토큰인지 다시 확인한다. 죽은 프로세스의 잠금은 별도 O_EXCL `.takeover` 파일을 쥔 프로세스 하나만 원자 rename으로 바꿀 수 있다.
-6. 브리지가 다시 떴을 때 agent id가 없는 기록은 **다시 띄우지 않는다.** `paseo ls -a -g --label instruction=<id>`로 정확히 하나를 찾으면 adopt, 없거나 둘 이상이거나 조회가 실패하면 `failed LAUNCH_FAILED`(요약에 세션 확인 안내). launch가 응답 없이 실패한 경우도 같은 label 조회로 먼저 adopt를 시도한다.
+4. 자리는 원장 기준으로 센다. agent id가 있는 지시는 `inspect`가 끝남(대기 중인 권한 요청 없이 `idle`·`closed`·`error` 또는 보관됨)을 보일 때까지 자리를 차지한다. 확인이 안 되는 동안에도 차지한다. 권한 대기로 `needs_user`를 보고한 뒤, TIMEOUT 뒤, 사이트가 claim 유실로 `running` 보고를 거절한 뒤에도 에이전트를 계속 확인하며, 끝난 것을 본 다음에야 다음 지시를 가져간다.
+   - 상태 보고의 409는 응답 본문의 현재 `status`·`error_code`로 나눈다. 사이트가 이미 보낸 상태(`running`이면 그 뒤 상태도)를 갖고 있으면 앞선 보고가 반영되고 응답만 유실된 것으로 보고 성공 처리한다(`REPORT_ACKED`, 최종 보고도 같다). `failed` + `CLAIM_LOST`면 claim 유실(`CLAIM_LOST`), 그 밖과 본문에 상태가 없는 409는 거절이다. claim 유실·거절된 지시는 원장에 `rejected`로 남기고 최종 결과는 보내지 않는다. 에이전트 추적과 자리 점유는 그대로다.
+5. dispatch 잠금(`instructions/.dispatch.lock`, `<pid>:<uuid>`)은 매 tick과 claim 직전에 내 토큰인지 다시 확인한다. 죽은 프로세스의 잠금은 별도 O_EXCL `.dispatch.lock.takeover` 파일을 쥔 프로세스 하나만 원자 rename으로 바꿀 수 있다. takeover 파일을 쥔 프로세스가 죽어 그 파일이 남으면 브리지는 자동으로 지우지 않고 `busy`로 멈춘다(로그 `STALE_TAKEOVER`). 정리 방법은 아래 「운영자 정리」.
+6. 브리지가 다시 떴을 때 agent id가 없는 기록은 **다시 띄우지 않는다.** `paseo ls -a -g --label instruction=<id>`로 정확히 하나를 찾으면 adopt한다. launch가 응답 없이 실패한 경우도 같은 label 조회로 먼저 adopt를 시도한다. adopt하지 못하면 사이트에는 `failed LAUNCH_FAILED`(고정 요약)를 보내되 원장에서 두 경우를 나눈다.
+   - **실행 안 됨 확정**: launch를 시작하기 전(`phase: claimed`)이었거나, label 조회가 성공했고 세션이 0개. 자리를 바로 푼다.
+   - **불확실**(`launchUncertain`): 조회가 실패했거나 세션이 둘 이상. agent id가 없어도 자리를 계속 차지하고 보관 기간 정리에서도 빠진다. 매 tick label을 다시 조회해 정확히 하나가 보이면 adopt하고 그 에이전트가 끝날 때까지 추적한 뒤 자리를 푼다. 사이트에는 더 보고하지 않는다.
+
+### 운영자 정리
+
+- **불확실한 launch가 자리를 잡고 있을 때**(heartbeat `busy`, 로그 `LAUNCH_UNCERTAIN`): `paseo ls -a -g --label instruction=<id>`로 그 지시의 세션이 없거나 이미 끝났음을 확인한다(둘 이상이면 Paseo에서 정리·보관). 그다음 `<user-data>/mobile-bridge/instructions/<id>/` 폴더를 지우거나 다른 곳으로 옮긴다. 브리지는 다음 tick에 원장을 다시 읽어 자리를 푼다(브리지가 돌고 있어도 된다).
+- **`STALE_TAKEOVER`**: `pgrep -fl mobile-briefing/bridge.mjs`로 브리지 프로세스를 확인하고, `<user-data>/mobile-bridge/instructions/.dispatch.lock.takeover` 안의 pid가 살아 있지 않음을 확인한 뒤 그 파일만 지운다. 다음 tick에 잠금 회수가 다시 시도된다.
 
 ### 결과 회수
 
@@ -133,7 +141,7 @@ iPhone은 Safari의 공유 메뉴에서 홈 화면에 추가하고, ‘웹 앱�
 - 스키마(strict, 16 KiB 이하, symlink·폴더 이탈·FIFO 거부, UTF-8): `{schemaVersion:1, instructionId, attemptId, status:'done'|'needs_user'|'failed', summaryLines:[1~10줄, 줄당 200자], question?(needs_user일 때만·필수, 500자), verification:'passed'|'failed'|'not_run'}`. `attemptId`는 claim마다 브리지가 새로 만든다.
 - 요약 각 줄에 제어·서식 문자, POSIX·home·file URI·Windows·UNC 경로, 토큰 모양(`sk-`, `ghp_`, JWT, `token:` 류, 32자 이상 연속 영숫자)이 보이면 그 줄을 "(경로·민감 문자열이 있어 가렸어요)"로 바꾼다. 의심스러운 질문은 "Paseo 세션 …에서 질문을 확인해 주세요."로 바꾼다. 요약 끝 줄은 `검증: 통과|실패|하지 않음`이고 에이전트 줄은 최대 9줄까지 쓴다.
 - Sites로 가는 것: 상태, 요약, 질문, 세션 이름(`sites-<id 앞 8자>`), 오류 코드. agent id·cwd·경로·로그·에이전트 출력은 보내지 않는다.
-- 상태 업로드가 네트워크·5xx·429로 실패하면 같은 결과만 다음 tick에 다시 보낸다. 400·404·409는 서버가 거절한 것으로 보고 기록만 한다. 실행은 다시 하지 않는다.
+- 상태 업로드가 네트워크·5xx·429로 실패하면 같은 결과만 다음 tick에 다시 보낸다. 409는 위 「한 번만 실행」 4번 규칙으로 나누고, 400·404는 서버가 거절한 것으로 보고 기록만 한다. 실행은 다시 하지 않는다.
 
 ### 자격과 로컬 E2E
 
