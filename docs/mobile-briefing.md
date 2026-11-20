@@ -145,9 +145,16 @@ REELS_BRIDGE_URL=http://127.0.0.1:<port> REELS_BRIDGE_KEY_FILE=<0600 키 파일>
 
 지시 본문에 `[fake:needs_user]`·`[fake:failed]`·`[fake:missing]` 등을 넣으면 가짜 에이전트의 결과를 고를 수 있다(기본 done).
 
+### 로컬 왕복 확인 — 2026-11-21
+
+로컬 사이트 dev(loopback)와 임시 user-data로 확인했다. 운영 Keychain·Sites·LaunchAgent는 쓰지 않았다.
+
+- 가짜 실행기(`instructions-e2e.ts`): 사이트 API로 만든 지시 2건이 claim → running → done / needs_user로 끝나고, 사이트 목록에 상태·요약·질문·세션 이름이 표시됐다.
+- 실제 `bridge.mjs` + 실제 Paseo, 읽기 전용 지시 1건: `--mode auto`와 `claude-sonnet-5-5`가 그대로 적용됐다(`inspect`의 `Mode: auto`). 세션 제목은 `sites-<id 앞 8자>`. 권한 요청 없이 cwd 밖 결과 폴더의 `instruction.md`를 읽고 `result.json`을 썼다. 재요청 없이 약 40초 만에 `done`. 관측한 `inspect` 상태 이름은 `running`, `idle`이고 보관 처리 뒤에는 `closed`였다. 작업 폴더에는 변경이 없었다.
+
 ### 남은 확인
 
-- 실제 Paseo 무해 지시 1건: `--mode auto`가 Claude provider에서 받아들여지는지, auto 모드가 cwd 밖의 `instruction.md` 읽기와 `result.json` 쓰기를 권한 요청 없이 허용하는지(막히면 `needs_user`로 끝난다), LaunchAgent 환경에서 `paseo run`이 되는지.
+- `--new-workspace worktree`(`pre_merge`) 실제 생성, LaunchAgent로 띄운 브리지에서의 실행.
 - 잠긴 Mac에서의 `ioreg` 값 실측.
 - 응답 유실 뒤 label 조회도 실패한 경우는 계약상 코드가 없어 `LAUNCH_FAILED`로 보낸다(요약에 "실행 여부를 확인하지 못했어요"). 별도 `LAUNCH_UNCERTAIN` 코드는 계약 변경이 필요하다.
 - 본문은 `instruction.md`와 Paseo·provider의 세션 기록에도 남는다(브리지 로그·argv·Sites 결과에는 없음).
