@@ -3,8 +3,12 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startWorkflowServer } from "../../src/app/workflow/server";
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { workflowRequest } from "../../src/app/workflow/client";
+import { startMcpHttpServer } from "../../src/app/mcp/http";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -44,19 +48,17 @@ test("YAML UI, real MCP and CLI share one persisted run and display its topology
     port: 0,
   });
   const client = new Client({ name: "dsl-e2e", version: "1" });
+  let mcp: Awaited<ReturnType<typeof startMcpHttpServer>> | undefined;
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   try {
+    mcp = await startMcpHttpServer({
+      port: 0,
+      dispatch: async () => ({}),
+      workflow: (action, input) => workflowRequest(action, input, handle.url),
+    });
     await client.connect(
-      new StdioClientTransport({
-        command: process.execPath,
-        args: ["--import", "tsx", "src/app/workflow/mcp.ts"],
-        env: { ...process.env, REELS_WORKFLOW_URL: handle.url } as Record<
-          string,
-          string
-        >,
-        stderr: "pipe",
-      }),
+      new StreamableHTTPClientTransport(new URL(mcp.workflowUrl)),
     );
     const validation = await client.callTool({
       name: "reels_workflow_validate-definition",
@@ -184,8 +186,13 @@ test("YAML UI, real MCP and CLI share one persisted run and display its topology
     expect(errors).toEqual([]);
   } finally {
     await client.close().catch(() => {});
-    await handle.close();
-    await rm(root, { recursive: true, force: true });
+    try {
+      await mcp?.close();
+    } finally {
+      await handle.close().finally(() =>
+        rm(root, { recursive: true, force: true }),
+      );
+    }
   }
 });
 
