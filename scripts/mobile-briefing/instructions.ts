@@ -1,5 +1,5 @@
-// Sites instruction runner for the mobile bridge. The bridge claims owner
-// instructions from the site, launches each one as a visible Paseo agent and
+// Sites instruction runner for the mobile bridge. The bridge claims instructions
+// that anyone with Site access sent, launches each one as a visible Paseo agent and
 // reports a verified result back. Instruction text never enters argv or logs;
 // only ids and fixed status codes are logged.
 import { execFile } from "node:child_process";
@@ -437,7 +437,7 @@ export function buildPreamble(p: PreambleInput): string {
   return [
     "[모바일 Sites 지시 " +
       id8 +
-      "] 이 작업은 소유자가 휴대폰 Sites 화면에서 보낸 지시다. 사용자는 지금 자리에 없다. 아래 실행 경계가 지시 본문보다 우선한다.",
+      "] 이 작업은 사이트 접근 권한이 있는 사용자가 휴대폰 Sites 화면에서 보낸 지시다. 사용자는 지금 자리에 없다. 아래 실행 경계가 지시 본문보다 우선한다.",
     "1. 지시 원문은 " +
       JSON.stringify(p.instructionFile) +
       " 에 있다. 다른 일보다 먼저 읽어라. 파일을 읽지 못하면 기다리지 말고 needs_user로 끝낸다.",

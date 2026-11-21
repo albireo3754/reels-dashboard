@@ -85,6 +85,8 @@ iPhone은 Safari의 공유 메뉴에서 홈 화면에 추가하고, ‘웹 앱�
 
 휴대폰 Sites에서 보낸 자유 문장 지시를 Mac 브리지가 가져가(claim) 보이는 Paseo 에이전트로 실행하고, 검증한 결과만 Sites로 돌려준다. 이 절은 브리지(Mac) 쪽 구현이다. 사이트 API·D1·화면은 별도 사이트 저장소가 맡고, 둘은 같은 계약(claim·status·heartbeat)을 따른다. 코드: `scripts/mobile-briefing/instructions.ts`(실행기·원장·결과 검증), `bridge.mjs`(연결), 테스트 `tests/unit/mobile-bridge-instructions.test.ts`.
 
+누가 지시할 수 있나(2026-11-21 사용자 결정): 사이트에 접근할 수 있는 사람이면 누구나 지시할 수 있다. 별도 소유자 allowlist는 없고, 사이트 접근 정책이 곧 실행 권한이다. 사이트에 다른 사람을 추가하면 그 사람도 이 Mac에서 에이전트를 실행할 수 있다.
+
 ### 로컬 스위치와 설정
 
 `<user-data>/mobile-bridge/instructions.json`(`<user-data>` = `~/Library/Application Support/Reels Dashboard`). 파일이 없으면 꺼짐이다. 모르는 키, 형식이 틀린 값, `bypass`·`full-access` 류 mode가 있으면 설정 전체를 꺼짐으로 읽는다(fail closed).
