@@ -22,6 +22,8 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/unit/*.test.ts",
+    "test:call-shorts": "node --import tsx --test pipelines/call-shorts/tests/*.test.ts",
+    "call-shorts": "node --import tsx pipelines/call-shorts/src/cli.ts",
     "test:web": "playwright test --config playwright.web.config.ts",
     "test:electron": "playwright test --config playwright.electron.config.ts",
     "test:native": "swift test --package-path native/photosindex",

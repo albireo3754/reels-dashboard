@@ -1,0 +1,16 @@
+# 로컬 실행 산출물 — 절대 커밋하지 않습니다.
+.env
+.env.*
+.venv/
+state/
+logs/
+projects/
+outbox/
+processed/
+failed/
+inbox/
+*.log
+*.mp4
+*.m4a
+*.wav
+*.png
