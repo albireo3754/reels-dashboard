@@ -28,6 +28,22 @@
 
 `packages/icloud-object-sdk`는 등록 객체의 HeadObject/GetObject/ListObjects 형태 읽기 SDK예요. S3 HTTP/SigV4 호환 서버가 아니에요. Sites 전용 터널을 등록하는 도구가 없어, 준비한 파일 전송 경로는 요청 큐와 R2를 통한 인증된 outbound HTTPS 중계예요.
 
+### 저화질 영상 미리보기
+
+사이트의 `MEDIA_PREVIEWS_ENABLED`를 켜면 Mac은 heartbeat의 `previewsEnabled`를 받아 별도 `/api/bridge/preview-jobs` 큐를 조회해요. 원본 큐는 기존 `mediaEnabled`가 켜졌을 때만 조회해요. 미리보기 작업은 등록된 동영상 키와 SDK ETag가 현재 파일과 일치해야 시작해요. 변환기는 로컬 경로 대신 SDK로 연 읽기 전용 파일 디스크립터를 받아요.
+
+`h264-540-v1`은 표시 회전을 반영해 세로 540×960, 가로 960×540 이내로 줄여요. 비율을 유지하고 작은 영상은 확대하지 않아요. H.264 yuv420p, 초당 최대 30프레임, 영상 비트레이트 상한 1.5Mbps, MP4 faststart를 사용하며 오디오 트랙이 있으면 AAC로 인코딩해요. HLG와 PQ는 `zscale`과 `tonemap`으로 BT.709 SDR로 변환해요.
+
+기본 변환 도구는 `npm run build:editor`가 준비하는 `native/editor-engine/.build/runtime/bin/ffmpeg`와 `ffprobe`예요. 별도 바이너리는 `REELS_PREVIEW_FFMPEG` 및 `REELS_PREVIEW_FFPROBE`에 절대 경로를 지정해요. FFmpeg에는 `libx264`, `aac`, `zscale`, `tonemap`, 그리고 seek 가능한 `fd` 입력 프로토콜이 필요해요. FFprobe에도 `fd` 입력이 필요해요.
+
+완성 파일은 `~/Library/Caches/Reels Dashboard/mobile-preview`의 사용자 전용 캐시에 저장해요. 원본 키·ETag·프리셋이 같으면 실행 중인 변환을 공유하고 이후에는 캐시로 응답해요. 변환 끝에 원본을 다시 확인하고 임시 파일을 원자적으로 확정해요. 변환 중에도 브리지의 heartbeat는 계속되며, 작업별 서버 만료시각과 최대 120초 제한 중 먼저 도달하는 시각에 변환을 중단해요. 종료·취소·실패 시 자식 프로세스와 임시 파일을 정리해요. 구간 작업은 완성된 미리보기의 ETag를 확인한 뒤 최대 2MiB까지 읽어요. 완성 파일은 브리지 재시작 뒤에도 재사용되며 자동 용량 정리나 만료 정책은 없어요.
+
+편집기 런타임을 준비하고 Mac 브리지의 로컬 검사를 실행할 수 있어요.
+
+```sh
+node --import tsx --test tests/unit/mobile-preview.test.ts tests/unit/local-object-store.test.ts
+```
+
 ## 사용자 확정 범위와 남은 확인
 
 사용자가 **진행사항 사이트만 먼저 마무리**하도록 선택했어요. 모바일 원본 열기는 `MEDIA_READS_ENABLED`를 꺼둔 상태이며 화면에서도 준비 중으로 표시해요. 로컬 중계 검사에서는 실제 파일 구간의 일치를 확인했지만, production 상시 서비스의 파일 open은 잠긴 Mac에서 대기해 전체 원본 열기는 검증하지 못했어요. 파일 읽기를 별도 프로세스와 제한 시간으로 격리해 메타데이터 동기화가 함께 멈추지 않게 했어요.

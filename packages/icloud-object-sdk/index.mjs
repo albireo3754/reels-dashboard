@@ -29,13 +29,30 @@ export class LocalObjectStore{
   if(fingerprint(info)!==e.etag)throw new Error('SOURCE_CHANGED');
   return {key,fileName:path.basename(e.path).normalize('NFC'),contentType:mimeType(e.path),contentLength:info.isDirectory()?0:info.size,etag:e.etag,isDirectory:info.isDirectory()};
  }
- async getObject({key,start=0,end,ifMatch}){
+ async #fileMetadata(key,ifMatch){
   const metadata=await this.headObject(key);if(metadata.isDirectory)throw new Error('NOT_A_FILE');
   if(ifMatch&&metadata.etag!==ifMatch)throw new Error('SOURCE_CHANGED');
+  return metadata;
+ }
+ async #openRegisteredFile(metadata){
+  const file=await open(this.entries.get(metadata.key).path,constants.O_RDONLY|constants.O_NOFOLLOW);
+  try{
+   const info=await file.stat();
+   if(!info.isFile()||fingerprint(info)!==metadata.etag)throw new Error('SOURCE_CHANGED');
+   return file;
+  }catch(error){await file.close();throw error;}
+ }
+ // Callers own the read-only descriptor and must close it when finished.
+ async openObject({key,ifMatch}){
+  const metadata=await this.#fileMetadata(key,ifMatch);
+  return {metadata,file:await this.#openRegisteredFile(metadata)};
+ }
+ async getObject({key,start=0,end,ifMatch}){
+  const metadata=await this.#fileMetadata(key,ifMatch);
   const last=end??Math.min(metadata.contentLength-1,start+2*1024*1024-1);
   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(last)||start<0||last<start||last>=metadata.contentLength||last-start+1>2*1024*1024)throw new Error('INVALID_RANGE');
-  const file=await open(this.entries.get(key).path,constants.O_RDONLY|constants.O_NOFOLLOW);
-  try{if(fingerprint(await file.stat())!==metadata.etag)throw new Error('SOURCE_CHANGED');const body=Buffer.alloc(last-start+1);let received=0;while(received<body.length){const r=await file.read(body,received,body.length-received,start+received);if(!r.bytesRead)throw new Error('SOURCE_CHANGED');received+=r.bytesRead;}return {...metadata,body,start,end:last};}finally{await file.close();}
+  const file=await this.#openRegisteredFile(metadata);
+  try{const body=Buffer.alloc(last-start+1);let received=0;while(received<body.length){const r=await file.read(body,received,body.length-received,start+received);if(!r.bytesRead)throw new Error('SOURCE_CHANGED');received+=r.bytesRead;}return {...metadata,body,start,end:last};}finally{await file.close();}
  }
  async listObjects({key,offset=0,limit=100}){
   const metadata=await this.headObject(key);if(!metadata.isDirectory)throw new Error('NOT_A_DIRECTORY');
