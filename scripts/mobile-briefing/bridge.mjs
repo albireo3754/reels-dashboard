@@ -4,6 +4,8 @@ import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import path from 'node:path';
+import {tsImport} from 'tsx/esm/api';
+const {readMonitor}=await tsImport('./monitor.ts',import.meta.url);
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {LocalObjectStore,projectSnapshot} from '../../packages/icloud-object-sdk/index.mjs';
@@ -33,7 +35,7 @@ async function request(route,options={}){
 }
 async function mcp(name){if(!client){const next=new Client({name:'reels-mobile-bridge',version:'1'});await next.connect(new StreamableHTTPClientTransport(mcpUrl));client=next;}const r=await client.callTool({name,arguments:{}},{timeout:20000});if(r.isError)throw new Error('Local app unavailable');return r.structuredContent;}
 async function refresh(){
- try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;
+ try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const progress=await readMonitor(state.dashboard,path.dirname(root));const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{...progress,countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;
  const temp=path.join(root,'registry.json.tmp');await writeFile(temp,JSON.stringify({objects:objects.exportRegistry(),snapshot}),{mode:0o600});await rename(temp,path.join(root,'registry.json'));
  }catch{log('Local app is unavailable; preserving last registered metadata.');}
  if(snapshot){const remote=await (await request('/api/bridge/heartbeat',{method:'POST'})).json();mediaEnabled=remote.mediaEnabled===true;if(remote.sourceRevision!==snapshot.sourceRevision){const result=await (await request('/api/bridge/snapshot',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)})).json();log(`Synced ${result.contents} content entries and ${result.assets} resource records.`);}}

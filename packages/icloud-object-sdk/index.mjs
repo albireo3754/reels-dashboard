@@ -49,7 +49,7 @@ export async function projectSnapshot(dashboard,sourceLabel='로컬 Mac',options
  const objects=new LocalObjectStore();const contents=[],assets=[];
  let routeUpdatedAt=dashboard.updatedAt;
  for(const p of dashboard.projects){
-  const content={id:p.id,title:p.title,date:p.date,dateBasis:p.dateBasis??'record',stage:p.stage,nextAction:p.nextAction,publicURL:p.publicURL,publishingCopy:null,routeMap:null,routeMapStatus:null};
+  const content={id:p.id,title:p.title,date:p.date,dateBasis:p.dateBasis??'record',stage:p.stage,nextAction:p.nextAction,publicURL:p.publicURL,kind:p.kind??'content',priority:p.priority??null,publications:(p.publications??[]).map(({channel,status,url,publishedAt,scheduledAt,format})=>({channel,status,url,...(publishedAt?{publishedAt}:{}),...(scheduledAt?{scheduledAt}:{}),...(format?{format}:{})})),state:options.states?.[p.id]??null,publishingCopy:null,routeMap:null,routeMapStatus:null};
   const routeResources=(p.resources??[]).filter(r=>r.role==='document'&&path.basename(r.path)===ROUTE_MAP_FILENAME);
   if(routeResources.length)content.routeMapStatus='unavailable';
   contents.push(content);
@@ -84,12 +84,12 @@ export async function projectSnapshot(dashboard,sourceLabel='로컬 Mac',options
   }
  }
  const sourceUpdatedAt=contents.reduce((latest,c)=>c.publishingCopy?.updatedAt>latest?c.publishingCopy.updatedAt:latest,routeUpdatedAt);
- const snapshot={sourceId:'primary-mac',sourceLabel,sourceRevision:'0'.repeat(64),sourceUpdatedAt,contents,assets};
+ const snapshot={sourceId:'primary-mac',sourceLabel,sourceRevision:'0'.repeat(64),sourceUpdatedAt,contents,assets,monitor:options.monitor??null};
  const routeCandidates=contents.filter(c=>c.routeMap).map(content=>({content,bytes:Buffer.byteLength(JSON.stringify(content.routeMap),'utf8')})).sort((a,b)=>b.bytes-a.bytes);
  for(const {content} of routeCandidates){
   if(Buffer.byteLength(JSON.stringify(snapshot),'utf8')<=SNAPSHOT_MAX_BYTES)break;
   content.routeMap=null;content.routeMapStatus='unavailable';
  }
- snapshot.sourceRevision=hash(JSON.stringify({updatedAt:dashboard.updatedAt,contents,assets}));
+ snapshot.sourceRevision=hash(JSON.stringify({updatedAt:dashboard.updatedAt,contents,assets,monitor:snapshot.monitor?{...snapshot.monitor,generatedAt:undefined}:null}));
  return {objects,snapshot};
 }

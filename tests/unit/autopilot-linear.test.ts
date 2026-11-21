@@ -431,6 +431,65 @@ test("L9. a tick refreshes a stale copy first and goes on; a failed refresh mean
   assert.equal(used.admitted, 0, "(the young copy has no issues)");
 });
 
+test("L9b. overnight ticks renew Linear without admitting work, and retain the age throttle", async t => {
+  const root = await makeRoot(t);
+  const night = new Date("2026-11-16T12:00:00Z"); // 21:00 KST, outside dispatch hours
+  const clock = { at: night };
+  await writeConfig(root, { linear: settings });
+  await seedCopy(root, "2026-11-16T01:00:00Z");
+  const store = new AutopilotStore(root);
+  await store.writeState({ ...await store.readState(), todayDate: "2026-11-16" });
+  const api = fakeApi({ open: [candidates(2)], closed: [[]] });
+  const f = fakeDeps(api, fakeKeychain(), clock);
+  const first = await tick(context(root), { dryRun: false, now: night }, f.deps);
+  assert.equal(first.result, "outside_hours");
+  assert.equal((first.refresh as { refreshed: boolean }).refreshed, true);
+  assert.equal(first.modelCalls, 0); assert.equal(first.admitted, 0);
+  assert.equal(f.launches.length, 0); assert.equal(f.models.length, 0);
+  assert.equal((await planningOf(root)).linear!.syncedAt, night.toISOString());
+  const calls = api.calls.length + api.orgCalls.length;
+  assert.ok(calls > 0);
+  clock.at = new Date(night.getTime() + 30 * 60_000);
+  const second = await tick(context(root), { dryRun: false, now: clock.at }, f.deps);
+  assert.equal(second.result, "outside_hours");
+  assert.equal(api.calls.length + api.orgCalls.length, calls, "a young copy does not cause another API read");
+  assert.equal(f.launches.length, 0);
+
+  // Early morning also refreshes; no off-work report is due yet and no model is admitted.
+  clock.at = new Date("2026-11-16T21:00:00Z"); // next day 06:00 KST
+  const morning = await tick(context(root), { dryRun: false, now: clock.at }, f.deps);
+  assert.equal(morning.result, "outside_hours");
+  assert.equal((await planningOf(root)).linear!.syncedAt, clock.at.toISOString());
+  assert.equal(f.launches.length, 0); assert.equal(f.models.length, 0);
+});
+
+test("L9c. overnight refresh preserves dry-run, disabled/pause and failure behavior", async t => {
+  const night = new Date("2026-11-16T12:00:00Z");
+  for (const gate of ["dry", "disabled", "paused"] as const) {
+    const root = await makeRoot(t);
+    await writeConfig(root, { linear: settings, ...(gate === "disabled" ? { enabled: false } : {}) });
+    await seedCopy(root, "2026-11-16T01:00:00Z");
+    const store = new AutopilotStore(root);
+    await store.writeState({ ...await store.readState(), todayDate: "2026-11-16", ...(gate === "paused" ? { paused: { at: night.toISOString(), reason: "user pause" } } : {}) });
+    const before = await planningOf(root);
+    const api = fakeApi({ open: [candidates(2)], closed: [[]] });
+    const f = fakeDeps(api, fakeKeychain(), { at: night });
+    await tick(context(root), { dryRun: gate === "dry", now: night }, f.deps);
+    assert.equal(api.calls.length + api.orgCalls.length, 0, gate);
+    assert.deepEqual(await planningOf(root), before, gate);
+    assert.equal(f.launches.length, 0, gate); assert.equal(f.models.length, 0, gate);
+  }
+  const root = await makeRoot(t);
+  await writeConfig(root, { linear: settings });
+  await seedCopy(root, "2026-11-16T01:00:00Z");
+  const f = fakeDeps(fakeApi({ org: () => reply(401, {}) }), fakeKeychain(), { at: night });
+  const failed = await tick(context(root), { dryRun: false, now: night }, f.deps);
+  assert.equal(failed.result, "freshness"); assert.equal(failed.admitted, 0);
+  assert.match(failed.reason as string, /linear_auth_invalid/);
+  assert.equal((await planningOf(root)).linear!.syncedAt, "2026-11-16T01:00:00Z");
+  assert.equal(f.launches.length, 0); assert.equal(f.models.length, 0);
+});
+
 test("L10. a refresh with the same content only moves syncedAt: the next tick is unchanged and starts nothing", async t => {
   const root = await makeRoot(t);
   await writeConfig(root, { linear: { teamKey: "P", workspaceUrlKey: "example-ws" } });

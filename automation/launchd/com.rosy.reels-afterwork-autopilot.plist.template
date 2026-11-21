@@ -7,6 +7,7 @@
                   `npm start` dev runs) unless the app runs with its own REELS_USER_DATA, then that exact path
     __HOME__     your home folder
   Create __USER_DATA__/autopilot first (mode 700): launchd does not create the log folder.
+  Linear refresh also runs outside activeHours; model dispatch still observes activeHours.
   Period: StartInterval is seconds; keep it equal to intervalMinutes * 60 in autopilot/config.json.
   See docs/autopilot.md before running launchctl bootstrap.
 -->

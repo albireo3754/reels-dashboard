@@ -38,7 +38,7 @@
 | 명령 | 동작 |
 | --- | --- |
 | `reels autopilot status` | 큐·점유·실행 중 예약·자동 slot·최신성·일시정지·마지막 tick. 읽기 전용. |
-| `reels autopilot tick [--dry-run] [--now <iso>]` | 자동 경로. 순서: 설정·일시정지·활성 시간 → 상태 읽기 → 최신성 → 잠금 → 회수 → `queue_full` → `unchanged` → 순위·순서 기록 → admission → 예약 → 실행기 시작. `--dry-run`은 상태·파일을 바꾸지 않고 같은 계산과 오늘 볼 1개를 보여 준다(`wouldAdmit`). `offWorkAt` 이후 첫 실제 tick은 `today.md`를 갱신한다. |
+| `reels autopilot tick [--dry-run] [--now <iso>]` | 자동 경로. 순서: 설정·상태 읽기 → 모델 0 Linear 갱신(활성 시간 밖에도, 비활성·일시정지는 제외) → 자동 작업 활성 시간 → 최신성 → 잠금 → 회수 → `queue_full` → `unchanged` → 순위·순서 기록 → admission → 예약 → 실행기 시작. `--dry-run`은 상태·파일을 바꾸지 않고 같은 계산과 오늘 볼 1개를 보여 준다(`wouldAdmit`). `offWorkAt` 이후 첫 실제 tick은 `today.md`를 갱신한다. |
 | `reels autopilot run --manual <key>...` | 수동 시작. key는 `reels autopilot status`의 `key` 또는 Linear identifier(예: `CONTENT-12`). 개수 제한 없음(3개씩 묶음으로 나눠 묶음마다 실행기를 띄운다). |
 | `reels autopilot today` | 오늘 볼 1개(정확한 링크 또는 `project:<id>`, 왜 지금인지, 필요한 한 결정, 완료 기준)를 출력하고 `<profile>/autopilot/today.md`에 쓴다. 리뷰 큐가 비면 차단되지 않은 진행 중 1위의 다음 행동, 그것도 없으면 `null`(없음)이다. 취향·실제 경험·인증이 필요한 항목은 `userDecisionRequired`로 표시하며 자동 완료하지 않는다. 보고서 없는 리뷰 항목의 "필요한 한 가지"는 남은 채널(예 `남은 채널: 블로그 임시저장`)과 저장된 다음 행동을 그대로 보여 준다. |
 | `reels autopilot resolve <key>` | `awaiting_review` 예약을 `done`으로 닫는다. 키가 Linear/Dashboard에서 사라지면 다음 tick이 `left_queue`로 정리한다. |
@@ -125,7 +125,7 @@ Workflow 소스는 `automation/claude-workflows/afterwork-autopilot.js`다. 항�
 
 ### tick 연결
 
-tick은 활성 시간 gate를 통과한 실제 실행에서만, 최신성 판정과 큐 읽기 **앞에** Linear 사본의 나이를 본다. `staleAfterMinutes`(기본 180분)의 **절반 이상** 지났으면 갱신을 한 번 시도하고(잠금 밖에서 하며 planning 쓰기는 `expectedUpdatedAt` 검사로 보호한다. 두 tick이 겹쳐도 한쪽은 재읽기하거나 이미 새로운 사본을 존중한다), 그보다 젊으면 API를 부르지 않는다. 실패하면 자동 실행 0건이고 `lastTick.reason`에 `freshness`와 이유 코드(예 `linear_auth_missing`)가 남는다. 성공하면 같은 tick에서 일반 gate로 이어간다. `--dry-run` tick은 갱신하지 않는다. 내용이 같은 사본은 `syncedAt`만 바뀌어 fingerprint가 같으므로 다음 tick은 `unchanged`다. 커넥터 수동 sync(`reels sync-planning`, `reels_sync_planning`)도 같은 `planning.json`에 쓰므로 tick이 같은 사본을 쓴다.
+tick의 Linear 조회는 모델 호출 없이 동작하므로 **자동 작업의 활성 시간 밖에도** 실행한다. 기존 30분 tick에서 활성 시간 gate로 반환하기 **전에** Linear 사본의 나이를 본다. 명시적 비활성·일시정지와 `--dry-run`은 자동 조회도 실행하지 않는다. `staleAfterMinutes`(기본 180분)의 **절반 이상** 지났으면 갱신을 한 번 시도하고(잠금 밖에서 하며 planning 쓰기는 `expectedUpdatedAt` 검사로 보호한다. 두 tick이 겹쳐도 한쪽은 재읽기하거나 이미 새로운 사본을 존중한다), 그보다 젊으면 API를 부르지 않는다. 실패하면 자동 실행 0건이고 `lastTick.reason`에 `freshness`와 이유 코드(예 `linear_auth_missing`)가 남는다. 성공하면 같은 tick에서 일반 gate로 이어간다. 야간이면 갱신만 마치고 `outside_hours`로 끝나며 작업 예약·실행기·모델 호출은 0건이다. `--dry-run` tick은 갱신하지 않는다. 내용이 같은 사본은 `syncedAt`만 바뀌어 fingerprint가 같으므로 다음 tick은 `unchanged`다. 커넥터 수동 sync(`reels sync-planning`, `reels_sync_planning`)도 같은 `planning.json`에 쓰므로 tick이 같은 사본을 쓴다.
 
 이 절반 경과 갱신은 캐시 사본을 신선하게 두고 상태를 보여 주기 위한 것이다. 실제 예약·모델 시작 직전의 **엄격 재확인**(항상 API를 새로 조회)은 별개이며 위 계약의 "예약 직전·실행 직전 엄격 재확인"을 따른다.
 
@@ -145,7 +145,7 @@ tick은 활성 시간 gate를 통과한 실제 실행에서만, 최신성 판정
 
 ## 스케줄
 
-`automation/launchd/com.rosy.reels-afterwork-autopilot.plist.template`은 30분마다 `node <repo>/dist-cli/reels.mjs autopilot tick`을 실행하는 템플릿이다(`REELS_AUTOPILOT_AUTOMATED=1`, 로그 `<profile>/autopilot/tick*.log`). `__REPO__`·`__USER_DATA__`·`__HOME__`을 바꾼 뒤 `~/Library/LaunchAgents/`에 두고 `<profile>/autopilot/`(0700)을 만든 다음 직접 `launchctl bootstrap gui/$(id -u) <plist>`로 설치한다. 중지는 `launchctl bootout gui/$(id -u)/com.rosy.reels-afterwork-autopilot`. 매 tick은 모델을 호출하지 않는다. `dist-cli`는 `npm run build:desktop`으로 갱신한다.
+`automation/launchd/com.rosy.reels-afterwork-autopilot.plist.template`은 30분마다 `node <repo>/dist-cli/reels.mjs autopilot tick`을 실행하는 템플릿이다(`REELS_AUTOPILOT_AUTOMATED=1`, 로그 `<profile>/autopilot/tick*.log`). `__REPO__`·`__USER_DATA__`·`__HOME__`을 바꾼 뒤 `~/Library/LaunchAgents/`에 두고 `<profile>/autopilot/`(0700)을 만든 다음 직접 `launchctl bootstrap gui/$(id -u) <plist>`로 설치한다. 중지는 `launchctl bootout gui/$(id -u)/com.rosy.reels-afterwork-autopilot`. 활성 시간 밖의 tick도 Linear 조회를 갱신하지만 모델 작업은 시작하지 않는다. `dist-cli`는 `npm run build:desktop`으로 갱신한다.
 
 ## 검증
 
@@ -153,3 +153,11 @@ tick은 활성 시간 gate를 통과한 실제 실행에서만, 최신성 판정
 - 실데이터 dry-run: `reels autopilot tick --dry-run`. Linear 가져오기가 없으면 `linear_missing`으로 자동 0건이 나오는 것이 정상이다. 실제 Linear 조회는 Keychain 키가 있는 사용자 환경에서 `reels autopilot refresh-linear --dry-run`으로 확인한다(이 저장소의 테스트는 실제 API를 부르지 않는다).
 - `tests/unit/autopilot-linear.test.ts`: 공식 계약 모양의 fixture와 주입한 Keychain·`fetch`로(실제 Keychain·네트워크 호출 없음) 쿼리 필드 이름 스냅샷, 3페이지 완전 저장, 커서 반복·페이지 초과·GraphQL 오류·네트워크 실패·500 초과의 `linear_incomplete`와 저장 안 함, 다른 팀·workspace 이슈의 `linear_scope_mismatch`, 키가 속한 workspace가 다르면(이슈 0개여도) `linear_workspace_mismatch`와 올바른 workspace의 빈 큐 성공, 예약 직전·실행 직전 엄격 재확인(캐시 2 vs API 3, 조회 실패, 수동은 통과, 캐시 가득이면 API 0회), 키 없음·401·429, 키가 출력·오류·저장 파일·인자 어디에도 없음, 상태 매핑(`triage`·`duplicate` 포함)과 중첩 페이지 처리, 리비전 충돌 재읽기, tick의 갱신 성공/실패/젊은 사본, 같은 내용 재갱신 시 `unchanged`, `connect-linear`의 TTY 전용·`-w` 마지막 인자·값 없음, `disconnect-linear`, `refresh-linear` 출력을 검증한다.
 - UI: `tests/web/autopilot-today.spec.ts`(headless, 폭 1500·390)가 오늘 볼 1개 있음·Dashboard project 열기·없음·사본 오래됨·인증 막힘과 일시정지를 확인하고, 캘린더 라벨은 `tests/web/publication-calendar.spec.ts`로 확인한다.
+
+
+### 야간 Linear 조회 분리 — 2026-11-17
+
+사용자 결정으로 Linear 자동 조회를 모델 작업 활성 시간(기본 09:00~18:30 KST)에서 제외했다. 별도 서비스 없이 기존 30분 LaunchAgent tick이 밤에도 갱신 시점을 확인하며, 기존 나이 기준(기본 90분 이상)을 넘으면 읽기 API로 사본을 갱신한다. 자동 작업 시간·점유 제한·명시적 비활성/일시정지·dry-run·인증 실패 처리는 유지한다. 관련 단위 79개 통과: 밤/이른 아침 조회, 젊은 사본 재조회 생략, 야간 예약·모델 0건, dry-run/비활성/일시정지에서 조회 없음, 조회 실패 시 기존 사본 유지.
+
+
+실행 적용 확인: `npm run build:desktop`으로 기존 LaunchAgent가 매번 읽는 `dist-cli/reels.mjs`를 갱신했다. 서비스의 1,800초 주기와 기존 모델 작업 시간은 그대로다. 실제 2026-11-17 21:50 KST tick에서 Linear 5개(읽기 요청 3회)를 새로 받아 `syncedAt`이 18:20에서 21:50으로 바뀌었고, 결과는 `outside_hours`, 모델 호출 0·작업 예약 0·기존 예약 보존이었다. 영수증은 `artifacts/autopilot/overnight-refresh-20261117.json`에 있다.

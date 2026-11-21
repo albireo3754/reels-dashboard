@@ -202,17 +202,19 @@ export async function tick(ctx: AutopilotContext, options: TickOptions, deps: Au
     : null;
   let today: Record<string, unknown> | undefined;
   const refreshToday = !dryRun && afterOffWork(config, now) && state.todayDate !== seoulDate(now);
-  // A gated real tick reads nothing unless today.md is due.
-  if (gate && !dryRun && !refreshToday) return skip(gate[0], gate[1]);
   // Runs outside the lock: a slow network call must not hold it. The planning store's revision check guards its write.
   const refreshHook = deps.refreshPlanning ?? (deps.linear ? linearRefreshHook(ctx, deps) : undefined);
-  if (!gate && !dryRun && refreshHook) {
+  // Linear reads use no model: keep the copy current overnight while dispatch stays inside activeHours.
+  // An explicit disable/pause still stops the automatic tick, including its refresh.
+  if ((!gate || gate[0] === "outside_hours") && !dryRun && refreshHook) {
     const refreshed = await refreshHook({ now, staleAfterMinutes: config.staleAfterMinutes })
       .catch((error): PlanningRefresh => ({ ok: false, reason: "refresh_error", detail: errorMessage(error) }));
     if (!refreshed.ok)
       return skip("freshness", `Linear 갱신에 실패해 자동 실행을 시작하지 않았어요: ${refreshed.reason}${refreshed.detail ? ` (${refreshed.detail})` : ""}`, { refresh: refreshed });
     if (refreshed.refreshed) refreshInfo = { refreshed: true, ...refreshed.summary };
   }
+  // Once the model-free refresh is done, gated ticks only read the queue when today.md is due.
+  if (gate && !dryRun && !refreshToday) return skip(gate[0], gate[1]);
   let sources: { planning: Planning; projects: Project[] };
   try { sources = await loadSources(ctx.root); } catch (error) {
     return gate && !dryRun ? skip(gate[0], gate[1]) : skip("state_unreadable", errorMessage(error));

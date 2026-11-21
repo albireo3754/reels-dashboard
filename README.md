@@ -24,7 +24,7 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 
 - Desktop **Instagram 인사이트** connects an owner-verified read token file, collects private metric history manually or through a one-shot headless CLI (Codex scheduling is not yet registered) and compares reach-based reaction/save/share rates by weekday, time and topic. Recent reels and date exclusions stay explicit; credentials and insights never enter shared snapshots. See [Instagram integration](docs/instagram-insights.md).
 
-- A private **캘린더** tab shows this/next week's posting goal, completed publications, imported Google Calendar events and Linear issue links. Providers own edits; connector sessions import bounded snapshots (no app OAuth or automatic sync). See [calendar integration](docs/publication-calendar.md).
+- A private **캘린더** tab shows this/next week's posting goal, completed publications, imported Google Calendar events and Linear issue links. Providers own edits; calendar connector sessions import bounded snapshots without app OAuth. The model-free Linear reader also renews its private copy overnight, outside automatic work hours (see [autopilot](docs/autopilot.md#linear-자동-갱신-모델-호출-0)). See [calendar integration](docs/publication-calendar.md).
 
 - Production projects group saved video/card-news edits, linked resources and output versions on one card. Merge existing cards with a pre-merge backup; future exports follow the owning project. See [project model and schema](docs/production-projects.md).
 
