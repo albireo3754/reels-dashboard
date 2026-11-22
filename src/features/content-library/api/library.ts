@@ -33,6 +33,7 @@ import {
 } from "../../../shared/local-resources";
 import { LocalStore } from "../../../shared/lib/storage";
 import { scanOrphanEdits } from "./orphan-edits";
+import { setSourceBoardSchema, type SetSourceBoardInput } from "../../../shared/source-board";
 import {
   decidePitch,
   decidePitchSchema,
@@ -298,11 +299,23 @@ export class ContentLibrary {
     return this.get(input.projectId);
   }
 
+  async setSourceBoard(value: SetSourceBoardInput) {
+    const input = setSourceBoardSchema.parse(value);
+    const dashboard = await this.store.update(current => {
+      const project = this.boardOwner(current, input.projectId);
+      if (input.board === null) delete project.sourceBoard;
+      else project.sourceBoard = input.board;
+      return current;
+    }, input.expectedUpdatedAt);
+    this.changed(dashboard);
+    return { projectId: input.projectId, updatedAt: dashboard.updatedAt, board: input.board };
+  }
+
   /** Replaces one entry's topic pitches. Other fields stay as they are. */
   async setPitches(value: SetPitchesInput) {
     const input = setPitchesSchema.parse(value);
     const dashboard = await this.store.update((current) => {
-      const old = this.pitchOwner(current, input.projectId);
+      const old = this.boardOwner(current, input.projectId);
       const { pitches: _previous, ...rest } = old;
       const project: Project = { ...rest, ...(input.pitches.length ? { pitches: input.pitches } : {}) };
       current.projects = current.projects.map((p) => (p.id === old.id ? project : p));
@@ -316,7 +329,7 @@ export class ContentLibrary {
   async decidePitch(value: DecidePitchInput) {
     const input = decidePitchSchema.parse(value);
     const dashboard = await this.store.update((current) => {
-      const old = this.pitchOwner(current, input.projectId);
+      const old = this.boardOwner(current, input.projectId);
       const project: Project = { ...old, pitches: decidePitch(old.pitches ?? [], input.pitchId, input.decision) };
       current.projects = current.projects.map((p) => (p.id === old.id ? project : p));
       return current;
@@ -325,7 +338,7 @@ export class ContentLibrary {
     return this.get(input.projectId);
   }
 
-  private pitchOwner(current: Dashboard, projectId: string) {
+  private boardOwner(current: Dashboard, projectId: string) {
     const old = current.projects.find((p) => p.id === projectId);
     if (!old)
       throw new Error(

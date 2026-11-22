@@ -79,6 +79,7 @@ export interface AgentPorts {
     setPublication?(
       input: import("../../../shared/local-resources").SetPublicationInput,
     ): Promise<unknown>;
+    setSourceBoard?(input: import("../../../shared/source-board").SetSourceBoardInput): Promise<unknown>;
     setPitches?(input: import("../../../shared/topic-pitch").SetPitchesInput): Promise<unknown>;
     decidePitch?(input: import("../../../shared/topic-pitch").DecidePitchInput): Promise<unknown>;
     listFolder(
@@ -226,6 +227,16 @@ export function createAgentDispatch(ports: AgentPorts) {
         const gaps = ports.planning ? topicGaps(weeklyGoalsView(await ports.planning.get(), projects, new Date())) : [];
         return topicBoard(projects, gaps);
       }
+      case "reels_get_source_board": {
+        const dashboard = await ports.dashboard();
+        const project = dashboard.projects.find(p => p.id === input.projectId);
+        if (!project) throw new Error("CONTENT_NOT_FOUND");
+        return { projectId: project.id, updatedAt: dashboard.updatedAt, board: project.sourceBoard ?? null };
+      }
+      case "reels_set_source_board":
+        session.assertWritable();
+        if (!ports.content.setSourceBoard) throw new Error("UNSUPPORTED");
+        return ports.content.setSourceBoard(input);
       case "reels_set_pitches":
         session.assertWritable();
         if (!ports.content.setPitches) throw new Error("UNSUPPORTED");

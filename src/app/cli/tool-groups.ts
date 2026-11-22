@@ -50,6 +50,8 @@ export const toolGroupOf = {
   reels_upsert_content: "content",
   reels_set_publication: "content",
   reels_get_topic_board: "content",
+  reels_get_source_board: "content",
+  reels_set_source_board: "content",
   reels_set_pitches: "content",
   reels_decide_pitch: "content",
   reels_merge_projects: "content",

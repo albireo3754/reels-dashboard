@@ -20,6 +20,7 @@ import {
   localPathSchema,
   setPublicationSchema,
 } from "../../../shared/local-resources";
+import { getSourceBoardSchema, setSourceBoardSchema } from "../../../shared/source-board";
 import { decidePitchSchema, setPitchesSchema } from "../../../shared/topic-pitch";
 import { settingsPatchSchema } from "../../../entities/agent-session";
 
@@ -212,6 +213,14 @@ export const toolDefinitions = {
       "Read the topic-selection board: pitches for what to make next (a proven hook crossed with footage we have), picked first, then by readiness (ready, needs_edit, needs_user, hold) and rank, plus how many posts each pitched channel still needs this/next week. Dropped pitches are only counted. Read-only.",
     input: z.strictObject({}),
     readOnly: true,
+  },
+  reels_get_source_board: {
+    description: "Read one content card's source board and current dashboard revision. An absent board is null.",
+    input: getSourceBoardSchema, readOnly: true,
+  },
+  reels_set_source_board: {
+    description: "Replace one card's ranked source board, or pass board: null to remove it. Use updatedAt from get_source_board as expectedUpdatedAt. The board is mirrored to mobile.",
+    input: setSourceBoardSchema, readOnly: false,
   },
   reels_set_pitches: {
     description:

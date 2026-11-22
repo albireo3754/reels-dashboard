@@ -72,6 +72,7 @@ export interface Project {
   publications?: import("./publications").Publication[];
   /** Drafts of what to make next from this footage: a proven hook crossed with this source. */
   pitches?: import("./topic-pitch").TopicPitch[];
+  sourceBoard?: import("./source-board").SourceBoard;
 }
 export interface Dashboard {
   schemaVersion: 1;

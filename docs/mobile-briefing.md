@@ -187,3 +187,9 @@ REELS_BRIDGE_URL=http://127.0.0.1:<port> REELS_BRIDGE_KEY_FILE=<0600 키 파일>
 - 잠긴 Mac에서의 `ioreg` 값 실측.
 - 응답 유실 뒤 label 조회도 실패한 경우는 계약상 코드가 없어 `LAUNCH_FAILED`로 보낸다(요약에 "실행 여부를 확인하지 못했어요"). 별도 `LAUNCH_UNCERTAIN` 코드는 계약 변경이 필요하다.
 - 본문은 `instruction.md`와 Paseo·provider의 세션 기록에도 남는다(브리지 로그·argv·Sites 결과에는 없음).
+
+## 소스 보드
+
+카드 하나에 순위별 소재 최대 40개를 저장한다. 모바일 첫 화면의 **소스 보드**에서 카드를 열거나 콘텐츠 상세에서 소재를 펼치면 촬영 상황과 Instagram 레퍼런스(최대 3개)를 볼 수 있다. 계약은 [source-board.ts](../src/shared/source-board.ts)에 있고, 브리지가 보드가 있는 카드만 `monitor.sourceBoards[]`에 담는다.
+
+`reels get-source-board --project-id <카드 ID>`가 돌려준 `data.updatedAt`을 쓰기 요청의 `expectedUpdatedAt`으로 넣는다. `reels set-source-board --input-file <요청.json>`은 `{projectId, expectedUpdatedAt, board}`를 받는다. `board: null`이면 삭제한다. MCP 이름은 `reels_get_source_board`와 `reels_set_source_board`다. 보드에 로컬 경로·파일명·인증정보를 적지 않는다.

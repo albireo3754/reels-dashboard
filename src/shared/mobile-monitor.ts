@@ -15,6 +15,7 @@ export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: A
     candidates: c.candidates.slice(0, c.remaining).map(({ projectId, title, status, ready }) => ({ projectId, title, status, ready })),
   })) });
   const pick = view.today;
+  const sourceBoards = dashboard.projects.flatMap(p => p.sourceBoard ? [{ projectId: p.id, board: p.sourceBoard }] : []);
   const topics = topicBoard(dashboard.projects, topicGaps(goals));
   return {
     states: Object.fromEntries(dashboard.projects.map(p => [p.id, projectState(p, now).state])),
@@ -22,6 +23,7 @@ export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: A
       generatedAt: now.toISOString(),
       // What to make next. Pitch text is validated path- and credential-free (topic-pitch.ts).
       // Sent only once pitches exist, so a site that predates the field is never handed one.
+      ...(sourceBoards.length ? { sourceBoards } : {}),
       ...(topics.items.length ? { topics } : {}),
       thisWeek: week(goals.thisWeek), nextWeek: week(goals.nextWeek),
       queue: { until: goals.queue.until, channels: goals.queue.channels.map(c => ({
