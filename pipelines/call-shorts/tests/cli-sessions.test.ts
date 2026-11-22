@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { BudgetGuard } from "../src/budget.js";
-import { cliEnvironment, findCliBinary, runCliProcess, textRoute, textRouteStatus, type CliRun, type CliRunner } from "../src/cli-sessions.js";
+import {
+  cliEnvironment,
+  findCliBinary,
+  probeCliBinary,
+  runCliProcess,
+  textRoute,
+  textRouteStatus,
+  type CliRun,
+  type CliRunner,
+} from "../src/cli-sessions.js";
 import { doctorReport, doctorRows } from "../src/cli.js";
 import { BudgetExceededError, ConfigError, ProviderError } from "../src/errors.js";
 import { validateEpisode } from "../src/episode.js";
@@ -56,7 +65,10 @@ test("the CLI child env keeps login locations and drops keys and session vars", 
   assert.equal(env.HOME, "/tmp/fake-home");
   assert.equal(env.CODEX_HOME, "/tmp/fake-home/.codex");
   assert.equal(env.CLAUDE_CONFIG_DIR, "/tmp/fake-home/.claude");
-  assert.equal(env.PATH, ["/usr/bin", "/bin", "/opt/homebrew/bin", "/usr/local/bin"].join(path.delimiter));
+  assert.equal(
+    env.PATH,
+    ["/usr/bin", "/bin", "/opt/homebrew/bin", "/usr/local/bin", "/tmp/fake-home/.local/bin"].join(path.delimiter),
+  );
   for (const name of [
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -78,6 +90,46 @@ test("a CLI binary is found only when it is executable on PATH", () => {
   assert.equal(findCliBinary("claude", { PATH: `relative-dir${path.delimiter}${bins}` }), path.join(bins, "claude"));
   assert.equal(findCliBinary(plain, {}), null);
   assert.equal(findCliBinary("claude", { PATH: "/does/not/exist" }), null);
+});
+
+test("a directory on PATH is not mistaken for a CLI binary", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "callshorts-dironly-"));
+  mkdirSync(path.join(dir, "claude"));
+  assert.equal(findCliBinary("claude", { PATH: dir, HOME: dir }), null, "디렉터리는 실행 파일이 아닙니다");
+});
+
+test("binary search and child env share the same fallback dirs", () => {
+  const home = mkdtempSync(path.join(tmpdir(), "callshorts-home-"));
+  const localBin = path.join(home, ".local", "bin");
+  mkdirSync(localBin, { recursive: true });
+  writeFileSync(path.join(localBin, "claude"), "#!/bin/sh\nexit 0\n");
+  chmodSync(path.join(localBin, "claude"), 0o755);
+  const env = { HOME: home, PATH: "/usr/bin:/bin" };
+
+  assert.equal(findCliBinary("claude", env), path.join(localBin, "claude"), "자식 env 가 보는 PATH 로 탐색해야 합니다");
+  assert.ok(cliEnvironment(env).PATH!.split(path.delimiter).includes(localBin));
+  assert.equal(cliEnvironment(env).PATH!.split(path.delimiter).at(-1), localBin);
+});
+
+test("a CLI that exits before reading a large prompt reports a provider error instead of crashing", async () => {
+  const refusing = script("refuses-claude", "exit 1");
+  const client = new ClaudeCliClient(makeConfig(), { binary: refusing, runner: runCliProcess });
+  const prompt = "여친 통화 전사문 ".repeat(12000);
+  assert.ok(prompt.length >= 60_000);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await assert.rejects(
+      () => client.complete({ prompt }),
+      (error: Error) => error instanceof ProviderError && /종료 코드 1/.test(error.message),
+    );
+  }
+});
+
+test("probeCliBinary tells a working binary from one that fails to run", () => {
+  assert.equal(probeCliBinary(script("working-claude", "exit 0"), { HOME: tmpdir() }).ok, true);
+  const broken = probeCliBinary(script("broken-claude", "echo 'not logged in' >&2; exit 2"), { HOME: tmpdir() });
+  assert.equal(broken.ok, false);
+  assert.match(broken.reason, /종료 코드 2.*not logged in/);
+  assert.equal(probeCliBinary(path.join(tmpdir(), "no-such-claude"), { HOME: tmpdir() }).ok, false);
 });
 
 test("the claude adapter parses the JSON result and keeps the prompt off argv", async () => {
@@ -308,7 +360,7 @@ test("doctor passes on CLI sessions without API keys and names the image key", (
 
   const planner = rows.find(([, label]) => label === "기획 (claude)")!;
   assert.equal(planner[0], "OK");
-  assert.match(planner[2], /^cli · /);
+  assert.match(planner[2], /^cli · 실행 확인: /);
   assert.equal(rows.find(([, label]) => label === "대본 (codex)")![0], "OK");
   assert.equal(rows.find(([, label]) => label === "anthropic key")![2], "필요 없음 (CLI 세션 사용)");
   const image = rows.find(([, label]) => label === "이미지 (illustrator)")!;
@@ -319,4 +371,19 @@ test("doctor passes on CLI sessions without API keys and names the image key", (
   const missing = doctorRows(makeConfig({ LLM_BACKEND: "cli", FFMPEG_BIN: ffmpeg }), { env: { PATH: "" } });
   assert.equal(missing.find(([, label]) => label === "대본 (codex)")![0], "FAIL");
   assert.match(missing.find(([, label]) => label === "기획 (claude)")![2], /CLAUDE_CLI_BIN/);
+});
+
+test("doctor fails a CLI binary that exists but cannot run", () => {
+  const bins = mkdtempSync(path.join(tmpdir(), "callshorts-broken-"));
+  for (const name of ["claude", "codex"]) {
+    const file = path.join(bins, name);
+    writeFileSync(file, "#!/bin/sh\necho 'not logged in' >&2\nexit 1\n");
+    chmodSync(file, 0o755);
+  }
+  const rows = doctorRows(makeConfig({ LLM_BACKEND: "cli", IMAGE_PROVIDER: "mock" }), { env: { PATH: bins, HOME: bins } });
+  const planner = rows.find(([, label]) => label === "기획 (claude)")!;
+  assert.equal(planner[0], "FAIL");
+  assert.match(planner[2], /실행 파일은 있으나 실행 실패/);
+  assert.match(planner[2], /종료 코드 1/);
+  assert.equal(rows.find(([, label]) => label === "대본 (codex)")![0], "FAIL");
 });

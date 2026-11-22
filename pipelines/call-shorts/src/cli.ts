@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { maskedConfig, ensureDirs, loadConfig, type Config } from "./config.js";
-import { TEXT_ROLE_LABELS, textRouteStatus } from "./cli-sessions.js";
+import { probeCliBinary, TEXT_ROLE_LABELS, textRouteStatus } from "./cli-sessions.js";
 import { ConfigError, NeedsHumanError, PipelineError } from "./errors.js";
 import { ffmpegVersion, resolveFfmpeg, resolveFfprobe, which } from "./media.js";
 import { Pipeline } from "./runner.js";
@@ -80,7 +80,19 @@ export function doctorRows(config: Config, deps: { env?: NodeJS.ProcessEnv } = {
   const routes = { planner: textRouteStatus(config, "planner", deps), formatter: textRouteStatus(config, "formatter", deps) };
   for (const role of ["planner", "formatter"] as const) {
     const status = routes[role];
-    rows.push([status.route ? "OK" : "FAIL", TEXT_ROLE_LABELS[role], status.detail]);
+    if (status.route?.backend !== "cli") {
+      rows.push([status.route ? "OK" : "FAIL", TEXT_ROLE_LABELS[role], status.detail]);
+      continue;
+    }
+    const binary = status.route.binary ?? "";
+    const probe = probeCliBinary(binary, deps.env);
+    rows.push([
+      probe.ok ? "OK" : "FAIL",
+      TEXT_ROLE_LABELS[role],
+      probe.ok
+        ? `cli · 실행 확인: ${binary}${probe.version ? ` — ${probe.version.slice(0, 60)}` : ""}`
+        : `cli · 실행 파일은 있으나 실행 실패: ${binary} — ${probe.reason}`,
+    ]);
   }
 
   const cliNote = (cli: boolean) => (cli ? "필요 없음 (CLI 세션 사용)" : "없음 (.env)");

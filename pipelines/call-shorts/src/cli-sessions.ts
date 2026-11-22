@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { execFile, spawnSync } from "node:child_process";
+import { accessSync, constants, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import type { Config } from "./config.js";
@@ -59,6 +60,11 @@ export const CODEX_ENV = { CODEX_LOCAL_CHANNEL_DISABLED: "1" } as const;
 /** 앱을 Finder/launchd 에서 띄워도 CLI 를 찾도록 PATH 뒤에 붙입니다(레포의 다른 CLI 호출과 같은 처리). */
 const CLI_PATH_FALLBACK = ["/opt/homebrew/bin", "/usr/local/bin"] as const;
 
+/** 탐색과 자식 env 가 같은 위치를 봐야 주석대로 동작합니다. `~/.local/bin` 은 Claude Code 공식 설치 경로입니다. */
+function fallbackDirs(env: NodeJS.ProcessEnv): string[] {
+  return [...CLI_PATH_FALLBACK, path.join(env.HOME || homedir(), ".local", "bin")];
+}
+
 export interface CliRun {
   file: string;
   args: string[];
@@ -89,7 +95,7 @@ export function cliEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.
     if (value !== undefined) env[name] = value;
   }
   const dirs = (env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  for (const dir of CLI_PATH_FALLBACK) if (!dirs.includes(dir)) dirs.push(dir);
+  for (const dir of fallbackDirs(env)) if (!dirs.includes(dir)) dirs.push(dir);
   env.PATH = dirs.join(path.delimiter);
   for (const name of Object.keys(env)) {
     if ((CLI_LOGIN_ENV_NAMES as readonly string[]).includes(name)) continue;
@@ -98,21 +104,27 @@ export function cliEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.
   return env;
 }
 
-/** PATH(절대경로 디렉터리만)에서 실행 가능한 `name` 을 찾습니다. 절대경로를 주면 그 파일을 검사합니다. */
+/**
+ * PATH(절대경로 디렉터리만)에서 실행 가능한 `name` 을 찾습니다. 절대경로를 주면 그 파일을 검사합니다.
+ * 디렉터리는 X_OK 가 통과해도 실행 파일이 아니므로 정규 파일인지 함께 확인하고,
+ * 자식 env 와 같은 폴백 디렉터리까지 탐색합니다.
+ */
 export function findCliBinary(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const executable = (candidate: string) => {
+  const executableFile = (candidate: string) => {
     try {
+      if (!statSync(candidate).isFile()) return false;
       accessSync(candidate, constants.X_OK);
       return true;
     } catch {
       return false;
     }
   };
-  if (name.includes(path.sep)) return executable(name) ? name : null;
-  for (const dir of (env.PATH ?? "").split(path.delimiter)) {
+  if (name.includes(path.sep)) return executableFile(name) ? name : null;
+  const dirs = [...(env.PATH ?? "").split(path.delimiter), ...fallbackDirs(env)];
+  for (const dir of dirs) {
     if (!dir || !path.isAbsolute(dir)) continue;
     const candidate = path.join(dir, name);
-    if (executable(candidate)) return candidate;
+    if (executableFile(candidate)) return candidate;
   }
   return null;
 }
@@ -139,6 +151,8 @@ export const runCliProcess: CliRunner = (run) =>
         });
       },
     );
+    // CLI 가 stdin 을 읽기 전에 끝나면 EPIPE 가 프로세스를 죽입니다. 실패는 종료 코드가 알려 주므로 무시합니다.
+    child.stdin?.on("error", () => {});
     child.stdin?.end(run.stdin);
   });
 
@@ -223,6 +237,32 @@ export function textRoute(config: Config, role: TextRole, deps: RouteDeps = {}):
   });
 }
 
+/**
+ * doctor 용: 바이너리가 실제로 실행되는지만 2초 안에 확인합니다.
+ * 로그인·사용량 문제는 `--version` 으로 드러나지 않으므로 실행 단계에서 `ProviderError` 로 알립니다.
+ */
+export function probeCliBinary(
+  binary: string,
+  env: NodeJS.ProcessEnv = process.env,
+): { ok: boolean; version: string; reason: string } {
+  const result = spawnSync(binary, ["--version"], {
+    env: cliEnvironment(env),
+    timeout: 2000,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const version = (result.stdout ?? "").trim().split("\n")[0]?.trim() ?? "";
+  if (result.error) {
+    const timedOut = (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+    return { ok: false, version, reason: timedOut ? "2초 안에 응답 없음" : result.error.message };
+  }
+  if (result.status !== 0) {
+    const tail = (result.stderr ?? "").trim().split("\n").pop()?.slice(0, 160) ?? "";
+    return { ok: false, version, reason: `종료 코드 ${result.status ?? "없음"}${tail ? `: ${tail}` : ""}` };
+  }
+  return { ok: true, version, reason: "" };
+}
+
 /** doctor 용: 예외 없이 이 단계가 지금 실행 가능한지만 알려 줍니다. */
 export function textRouteStatus(
   config: Config,
@@ -231,7 +271,10 @@ export function textRouteStatus(
 ): { route: TextRoute | null; detail: string } {
   try {
     const route = textRoute(config, role, deps);
-    return { route, detail: route.backend === "cli" ? `cli · ${route.binary}` : `api · ${route.provider}` };
+    return {
+      route,
+      detail: route.backend === "cli" ? `cli · 실행 파일 발견: ${route.binary}` : `api · ${route.provider}`,
+    };
   } catch (error) {
     return { route: null, detail: (error as Error).message };
   }
