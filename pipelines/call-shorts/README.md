@@ -238,8 +238,14 @@ node pipelines/call-shorts/scripts/install-launchd.mjs --uninstall              
 ## 12. 테스트
 
 ```bash
-npm run test:call-shorts     # node:test + tsx (ffmpeg가 있으면 실제 렌더까지)
+npm run test:call-shorts
+
+# macOS에서 기본 FFmpeg에 ass 필터가 빠져 있다면
+brew install ffmpeg-full
+FFMPEG_BIN="$(brew --prefix ffmpeg-full)/bin/ffmpeg" npm run test:call-shorts
 ```
+
+실제 렌더 검사는 검은 배경에 자막이 찍힌 프레임과 MP4의 해상도·오디오·길이, 표지를 확인합니다. 로컬 기본 FFmpeg에 `ass` 필터가 없으면 이 검사만 사유와 함께 건너뜁니다. CI 또는 `FFMPEG_BIN`을 지정한 실행에서는 필터가 없으면 실패합니다.
 
 테스트가 확인하는 것: 해시 멱등성, `.icloud` 필터, 크기 안정화, episode.json 검증 규칙,
 화자별 ASS 색·안전 영역, 렌더 명령 조립, dry-run 전 과정, 마스킹, 예산 가드.
