@@ -243,3 +243,21 @@ npm run test:call-shorts     # node:test + tsx (ffmpeg가 있으면 실제 렌�
 
 테스트가 확인하는 것: 해시 멱등성, `.icloud` 필터, 크기 안정화, episode.json 검증 규칙,
 화자별 ASS 색·안전 영역, 렌더 명령 조립, dry-run 전 과정, 마스킹, 예산 가드.
+
+## 이미 동기화된 녹음: API 전사·검수만
+
+`api-intake`는 이미 내려받은 로컬 파일을 **하나만** 받는 별도 경로다. 기존 기본 파이프라인, 감시·시작 프로그램, Apple Notes/iCloud 동기화는 변경하지 않는다. 음성을 FFmpeg로 정규화하고 메타데이터 및 파일명을 지운 다음, OpenAI `gpt-transcribe`에만 보내 한국어 전사를 한다. 이후 텍스트만 OpenAI로 검수하고, 조건이 맞지 않거나 실패하면 Claude 검수를 시도한다. Claude로는 원음이 전달되지 않는다. API 검수는 음성 대조가 아닌, 원문에서 확인되는 모호한 문구·불일치·비공개 정보 후보에 플래그를 붙이는 것이다. 인용은 원문과 일치해야 한다. 화자나 타임스탬프는 모델의 응답에 없으면 만들지 않는다.
+
+파일 내용의 SHA-256으로 구분한 개인 로컬 폴더에 공급자의 전사 JSON을 수정 없이 `transcript.raw.json`, 별도 검수 결과를 `transcript.review.json`으로 저장하고 멈춘다. 출력 상태는 `needs-human-review`(종료 코드 3)이며 플래그가 비어 있어도 승인이 아니다. 대본·이미지·렌더·게시·자동 승인은 하지 않는다. 저장된 단계는 다시 호출하지 않는다. 검수용 크레딧만 부족했다면 같은 파일을 지정해 원문에서 이어갈 수 있다. 결과를 받기 전에 중단된 요청은 청구 여부를 알 수 없으므로 예약과 시도 표시를 남기고 해당 공급자로 자동 재시도하지 않는다.
+
+### 운영자가 확인한 경우에만 켜기
+
+기본은 꺼짐. 해당 음성 및 원문을 지정된 API 제공자에 보낼 권한과 계정별 공식 혜택을 확인한 경우에만 환경변수와 `--live`를 모두 지정한다.
+
+```sh
+CALL_SHORTS_API_ENABLED=1 npm run call-shorts -- api-intake --file /absolute/recording.m4a --live
+```
+
+- 기존 **공식 API 조직의** 프로젝트 키 `OPENAI_API_KEY`와 Claude Console 키 `ANTHROPIC_API_KEY`를 앱 환경에서 참조한다. 관리 중인 소유자 전용(0600) dotenv의 절대 경로는 `REELS_MEETING_CREDENTIALS_FILE`로 지정할 수 있다. 키가 앱 환경에 없고 파일을 지정하지 않으면 사용자 홈의 `.config/reels-dashboard/meeting-credentials.env`를 참조한다. 프록시 URL의 키·Claude Code 로그인 토큰은 받지 않고, 값은 로그·산출물·Git에 남기지 않는다.
+- 로컬 상태의 기본 위치는 macOS의 개인 Application Support 아래 `Reels Dashboard/call-shorts-api`다. 필요하면 저장소·클라우드 동기화 밖의 소유자 전용(0700) 폴더를 `CALL_SHORTS_API_STATE_DIR` 절대 경로로 지정한다. 상태 폴더의 `credit-observations.json`(0600)에, 공식 콘솔에서 직접 확인한 제공자별 `observedAt`, `expiresAt`(ISO UTC 시각), `totalUsd`, `remainingUsd`, `exclusiveSpend`를 넣는다. 제공자 키 이름은 `openai`, `claude`다. 없는 잔액을 구독료로 가정하지 않는다.
+- 이 경로 밖에서 해당 조직의 같은 혜택 크레딧을 동시에 차감하지 않는 경우만 `exclusiveSpend: true`를 쓰며, **동일 조직을 Desktop 전사, Paseo 또는 다른 앱에서 함께 쓴다면 false를 유지**한다. 지급 잔액 API는 연결하지 않는다. 24시간을 넘긴 관측이나 만료·부족한 잔액, 유효하지 않은 키를 사용하지 않는다. API 호출 전에 보수적 예상 비용을 예약해 예상 잔액이 10% 이하면 막는다. 이 값은 로컬 추정이며 공급자 청구·무료 사용 보장이 아니다. 미정산 요청이 있을 때 관측을 갱신하지 않는다.

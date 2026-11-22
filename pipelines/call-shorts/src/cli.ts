@@ -12,6 +12,7 @@ import { Pipeline } from "./runner.js";
 import { StateStore } from "./state.js";
 import { discoverAudioFiles, stuckProcessingFiles } from "./watcher.js";
 import { mapSpeakers } from "./transcribe.js";
+import { apiIntake } from "./api-intake.js";
 import { STAGES, type RunResult, type Stage } from "./types.js";
 
 function exitCode(results: RunResult[]): number {
@@ -143,6 +144,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         verbose: { type: "boolean" },
         quiet: { type: "boolean" },
         file: { type: "string" },
+        live: { type: "boolean" },
         stage: { type: "string" },
         force: { type: "boolean" },
         "dry-run": { type: "boolean" },
@@ -166,6 +168,21 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (values.help || command === "help") {
     printHelp();
     return 0;
+  }
+
+  if (command === "api-intake") {
+    if (!values.file || parsed.positionals.length !== 1 || Object.keys(values).some(k => !["file", "live"].includes(k))) {
+      console.error("사용법: call-shorts api-intake --file /absolute/recording.m4a --live");
+      return 2;
+    }
+    try {
+      const result = await apiIntake(values.file, values.live === true);
+      console.log(JSON.stringify(result));
+      return 3; // artifacts ready; human review is still pending
+    } catch (error) {
+      console.error(error instanceof PipelineError ? error.message : "로컬 전사/검수 작업을 완료하지 못했습니다.");
+      return error instanceof PipelineError ? error.exitCode : 1;
+    }
   }
 
   const env: Record<string, string | undefined> = { ...process.env };
@@ -264,6 +281,7 @@ function printHelp(): void {
   npm run call-shorts -- run-once [--file <경로>] [--stage <단계>] [--force] [--limit N]
   npm run call-shorts -- watch [--interval 초]
   npm run call-shorts -- dry-run [--file <경로>] [--render]
+  npm run call-shorts -- api-intake --file <로컬 절대경로> --live
   npm run call-shorts -- doctor
   npm run call-shorts -- status [--json]
   npm run call-shorts -- resume --project <EP폴더> [--stage <단계>] [--force]
