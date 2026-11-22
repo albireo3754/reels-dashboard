@@ -772,3 +772,4 @@
 - [x] 한 번만 실행(재시작 시 label adopt 또는 failed), 결과 strict 검증·재요청 1회·업로드 재시도, 가짜 실행기 단위·통합 테스트 17개.
 - [x] 사이트 로컬 dev 왕복(가짜 실행기 done·needs_user), 실제 Paseo 무해 지시 1건(auto, 권한 요청 없이 done).
 - [ ] 잠긴 Mac 실측, `pre_merge` worktree 실제 생성, LaunchAgent 환경 실행. 정본: [모바일 브리핑](docs/mobile-briefing.md#sites-지시-기능--2026-11-21).
+- [ ] worktree 실행의 규칙 파일 공백: `/AGENTS.md`는 gitignore(`.gitignore:27`)라 worktree에 없어서, `pre_merge`(`--new-workspace worktree`)나 worktree cwd 실행에서는 머리말 3번 "작업 폴더의 AGENTS.md를 먼저 읽는다"가 조용히 빈다(11-21 실제 Paseo 실행 결과 "전역 CLAUDE.md만 적용"). 머리말에 원 저장소 `AGENTS.md` 절대 경로를 넣거나, worktree를 만든 직후 원 저장소 `AGENTS.md`를 심볼릭 링크로 둔다(gitignore라 커밋되지 않음). 둘 중 하나를 구현 때 정한다.
