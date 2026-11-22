@@ -267,3 +267,9 @@ CALL_SHORTS_API_ENABLED=1 npm run call-shorts -- api-intake --file /absolute/rec
 - 기존 **공식 API 조직의** 프로젝트 키 `OPENAI_API_KEY`와 Claude Console 키 `ANTHROPIC_API_KEY`를 앱 환경에서 참조한다. 관리 중인 소유자 전용(0600) dotenv의 절대 경로는 `REELS_MEETING_CREDENTIALS_FILE`로 지정할 수 있다. 키가 앱 환경에 없고 파일을 지정하지 않으면 사용자 홈의 `.config/reels-dashboard/meeting-credentials.env`를 참조한다. 프록시 URL의 키·Claude Code 로그인 토큰은 받지 않고, 값은 로그·산출물·Git에 남기지 않는다.
 - 로컬 상태의 기본 위치는 macOS의 개인 Application Support 아래 `Reels Dashboard/call-shorts-api`다. 필요하면 저장소·클라우드 동기화 밖의 소유자 전용(0700) 폴더를 `CALL_SHORTS_API_STATE_DIR` 절대 경로로 지정한다. 상태 폴더의 `credit-observations.json`(0600)에, 공식 콘솔에서 직접 확인한 제공자별 `observedAt`, `expiresAt`(ISO UTC 시각), `totalUsd`, `remainingUsd`, `exclusiveSpend`를 넣는다. 제공자 키 이름은 `openai`, `claude`다. 없는 잔액을 구독료로 가정하지 않는다.
 - 이 경로 밖에서 해당 조직의 같은 혜택 크레딧을 동시에 차감하지 않는 경우만 `exclusiveSpend: true`를 쓰며, **동일 조직을 Desktop 전사, Paseo 또는 다른 앱에서 함께 쓴다면 false를 유지**한다. 지급 잔액 API는 연결하지 않는다. 24시간을 넘긴 관측이나 만료·부족한 잔액, 유효하지 않은 키를 사용하지 않는다. API 호출 전에 보수적 예상 비용을 예약해 예상 잔액이 10% 이하면 막는다. 이 값은 로컬 추정이며 공급자 청구·무료 사용 보장이 아니다. 미정산 요청이 있을 때 관측을 갱신하지 않는다.
+
+## Mac 대시보드에서 메모 가져오기·로컬 전사
+
+Mac Desktop의 **쇼츠 → 메모에서 가져오기**에서 제목 접두사를 확인하고 **최근 녹음 확인**을 누른다. 기본 'Call with '를 그대로 쓰거나 사람 이름을 덧붙여 범위를 더 좁힌다. 이미 이 Mac의 메모에 동기화된 녹음의 최신 최대 두 건을 시간과 로컬 다운로드 상태만 보여준다. 잠긴 메모나 휴지통, 이름이 비슷한 다른 첨부 파일은 제외한다. 조회는 Apple의 동기화를 켜거나 강제하지 않고, 기기와 iCloud 설정을 변경하지 않는다. 최신 항목이 아직 Mac에 없으면 다른 파일로 대신하지 않는다.
+
+시간이 의도한 파일과 맞으면 **이 녹음 가져와 전사**를 눌러 임시 비공개 사본을 만든다. 이 동작은 이미 Mac에 설치된 MLX 전사 실행 환경과 캐시된 로컬 모델을 사용한다. 모델을 새로 받거나 API를 호출하지 않는다. 결과는 **Finder에서 전사 폴더 열기**로 확인할 수 있다. Electron의 로컬 프로필 아래 `call-shorts-notes`에 `통화녹음-…`의 TXT와 발화 구간 SRT를 저장한다. 화자를 추정해 이름으로 붙이지 않는다. 메모 원본, 기존 클라우드 iCloud inbox, 배경 스캔, 업로드/게시, API 전사 경로는 변경하지 않는다. 메모 본문과 계정 이름도 읽거나 저장하지 않는다.

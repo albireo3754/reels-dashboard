@@ -11,6 +11,7 @@ const iconPaths: Record<string, string> = {
   calendar: "M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4 M8 14h2 M14 14h2 M8 18h2",
   dashboard: "M3 3h7v7H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 14h7v7H3z",
   library: "M4 5h16v15H4z M8 2h8 M4 15l5-5 4 4 3-2 4 4",
+  shorts: "M3 12h2l2-5 3 10 3-13 3 15 3-7h2",
   transfers: "M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4",
   editor: "M4 4h16v16H4z M10 8l6 4-6 4z M4 8H2 M4 16H2 M20 8h2 M20 16h2",
   cards: "M6 3h15v16H6z M3 7v15h14 M9 8h9 M9 12h9 M9 16h5",

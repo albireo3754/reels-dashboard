@@ -15,6 +15,14 @@ const subscribe = (name: string, callback: (value: any) => void) => {
 };
 const workbench = createWorkbenchBridge(ipcRenderer);
 const bridge: DashboardBridge = {
+  ...(!process.argv.includes("--reels-demo") && process.platform === "darwin" ? {
+    callShorts: {
+      preview: (prefix: string) => invoke("callShorts:previewNotes", prefix),
+      transcribe: (input: Parameters<NonNullable<DashboardBridge["callShorts"]>["transcribe"]>[0]) =>
+        invoke("callShorts:transcribeNotes", input),
+      reveal: () => invoke("callShorts:revealNotesOutput"),
+    },
+  } : {}),
   instagramInsights: {
     get: input => invoke("instagram:get", input),
     connect: input => invoke("instagram:connect", input),

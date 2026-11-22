@@ -92,6 +92,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly callShorts?: import("./call-shorts").CallShortsBridge;
   readonly instagramInsights?: import("./instagram-insights").InstagramInsightsBridge;
   readonly planning?: import("./planning").PlanningBridge;
   /** Read-only after-work queue summary; absent in the web demo and shared read-only views. */

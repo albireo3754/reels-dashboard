@@ -1,0 +1,12 @@
+.call-notes-panel {
+  display: grid;
+  gap: .75rem;
+  max-width: 50rem;
+  padding: 1rem;
+  border: 1px solid var(--line, #7f87944d);
+  border-radius: 12px;
+}
+.call-notes-panel h2, .call-notes-panel p, .call-notes-panel ol, .call-notes-panel ul { margin-block: 0; }
+.call-notes-panel label { display: grid; gap: .25rem; max-width: 25rem; }
+.call-notes-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.call-notes-panel [role=alert] { color: var(--danger, #ae2a22); }

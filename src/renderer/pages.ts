@@ -6,6 +6,7 @@ export type Tab =
   | "library"
   | "editor"
   | "cards"
+  | "shorts"
   | "workflow"
   | "logs"
   | "blog"
@@ -44,6 +45,7 @@ export const pages: Record<Tab, Page> = {
     title: "읽는 속도에 맞춰 이야기를 전해요",
     description: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
   },
+  shorts: { label: "쇼츠", title: "통화 녹음 전사", description: "이 Mac에 동기화된 녹음을 확인하고 로컬에서 전사해요." },
   blog: {
     label: "블로그",
     title: "원고와 사진을 함께 살펴봐요",
