@@ -5,6 +5,12 @@ import { localDay, type StateStore } from "./state.js";
 // 토큰 실측 없이 호출 전에 예약하는 보수적 상한(USD). 실제 청구액과는 다를 수 있습니다.
 export const LLM_CALL_RESERVE_USD = 0.03;
 
+/**
+ * 로컬 `claude`/`codex` CLI 세션은 구독 로그인으로 돌아 API 종량 과금이 없습니다.
+ * 그래서 예약액 0으로 기록해 일일·편당 상한을 소모하지 않고, `status` 의 호출 수에만 남깁니다.
+ */
+export const CLI_SESSION_CALL_USD = 0;
+
 export class BudgetGuard {
   constructor(
     private readonly config: Config,
@@ -48,7 +54,9 @@ export class BudgetGuard {
     if (imageCall && projectDir) this.checkImage(projectDir, upcomingUsd);
   }
 
-  checkLlm(projectDir: string | null): void {
+  /** `billable=false`(CLI 세션)면 상한을 보지 않습니다 — 지출이 0이기 때문입니다. */
+  checkLlm(projectDir: string | null, billable = true): void {
+    if (!billable) return;
     this.checkAll(projectDir, LLM_CALL_RESERVE_USD);
   }
 
@@ -57,8 +65,12 @@ export class BudgetGuard {
     this.store.addCost(input);
   }
 
-  recordLlm(provider: string, stage: string, projectDir: string | null, note = ""): number {
-    this.record({ usd: LLM_CALL_RESERVE_USD, provider, stage, projectDir, note });
+  recordLlm(provider: string, stage: string, projectDir: string | null, billable = true): number {
+    if (!billable) {
+      this.store.addCost({ usd: CLI_SESSION_CALL_USD, provider, stage, projectDir, note: "cli-session" });
+      return CLI_SESSION_CALL_USD;
+    }
+    this.record({ usd: LLM_CALL_RESERVE_USD, provider, stage, projectDir });
     return LLM_CALL_RESERVE_USD;
   }
 

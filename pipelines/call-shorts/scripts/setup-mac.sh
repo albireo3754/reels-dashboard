@@ -64,7 +64,7 @@ for i, line in enumerate(lines):
         break
 p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
-  echo "  ✓ .env 생성 — API 키(ANTHROPIC/OPENAI/GEMINI)를 채우세요"
+  echo "  ✓ .env 생성 — LLM_BACKEND(cli|api|auto)와 이미지 키(GEMINI/OPENAI)를 확인하세요"
 fi
 
 if [ "$WITH_LOCAL_ASR" = "1" ]; then
@@ -97,7 +97,7 @@ node --import tsx "$PIPELINE_DIR/src/cli.ts" doctor --root "$ROOT" || true
 cat <<'NEXT'
 
 다음 단계
-  1) .env 에 API 키를 채웁니다 (없어도 dry-run은 동작)
+  1) claude/codex CLI 에 로그인했으면 텍스트는 키 없이 돕니다. 이미지에는 GEMINI_API_KEY 가 필요합니다 (dry-run 은 전부 키 없이 동작)
   2) 아이폰: 통화 녹음 → 파일 앱에서 오디오만 위 inbox 폴더로 저장
   3) 시험:   npm run call-shorts -- dry-run --render
   4) 첫 실행: npm run call-shorts -- run-once

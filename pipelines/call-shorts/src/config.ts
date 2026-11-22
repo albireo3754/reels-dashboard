@@ -33,8 +33,10 @@ export const DEFAULT_EXTENSIONS = [
 
 export const TRANSCRIBE_BACKENDS = ["auto", "whisperx", "whisper", "gemini", "mock"] as const;
 export const IMAGE_PROVIDERS = ["gemini", "openai", "mock"] as const;
+export const LLM_BACKENDS = ["auto", "cli", "api"] as const;
 export type TranscribeBackendName = (typeof TRANSCRIBE_BACKENDS)[number];
 export type ImageProviderName = (typeof IMAGE_PROVIDERS)[number];
+export type LlmBackendName = (typeof LLM_BACKENDS)[number];
 
 export interface Config {
   rootDir: string;
@@ -54,6 +56,13 @@ export interface Config {
   anthropicApiKey: string | null;
   openaiApiKey: string | null;
   geminiApiKey: string | null;
+
+  llmBackend: LlmBackendName;
+  claudeCliBin: string | null;
+  codexCliBin: string | null;
+  claudeCliModel: string | null;
+  codexCliModel: string | null;
+  llmCliTimeoutSec: number;
 
   claudeModel: string;
   gptModel: string;
@@ -209,6 +218,13 @@ export function loadConfig(options: ConfigOptions = {}): Config {
     openaiApiKey: pick(env, "OPENAI_API_KEY"),
     geminiApiKey: pick(env, "GEMINI_API_KEY"),
 
+    llmBackend: choice(env, "LLM_BACKEND", "auto", LLM_BACKENDS),
+    claudeCliBin: pick(env, "CLAUDE_CLI_BIN"),
+    codexCliBin: pick(env, "CODEX_CLI_BIN"),
+    claudeCliModel: pick(env, "CLAUDE_CLI_MODEL"),
+    codexCliModel: pick(env, "CODEX_CLI_MODEL"),
+    llmCliTimeoutSec: num(env, "LLM_CLI_TIMEOUT_SEC", 300),
+
     claudeModel: str(env, "CLAUDE_MODEL", "claude-sonnet-4-5"),
     gptModel: str(env, "GPT_MODEL", "gpt-5"),
     imageModel: str(env, "IMAGE_MODEL", "gemini-3-pro-image-preview"),
@@ -294,5 +310,5 @@ export function maskedConfig(config: Config): string {
     `openai=${config.openaiApiKey ? "set" : "missing"}`,
     `gemini=${config.geminiApiKey ? "set" : "missing"}`,
   ].join(" ");
-  return `root=${config.rootDir} backend=${config.transcribeBackend} image=${config.imageProvider} budget/day=$${config.dailyBudgetUsd} keys[${keys}] dryRun=${config.dryRun}`;
+  return `root=${config.rootDir} llm=${config.llmBackend} backend=${config.transcribeBackend} image=${config.imageProvider} budget/day=$${config.dailyBudgetUsd} keys[${keys}] dryRun=${config.dryRun}`;
 }

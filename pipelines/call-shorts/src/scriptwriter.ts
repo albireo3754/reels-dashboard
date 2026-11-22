@@ -5,7 +5,7 @@ import { BudgetGuard } from "./budget.js";
 import type { Config } from "./config.js";
 import { MAX_CAPTION_CHARS, saveEpisode, saveValidationErrors, totalDuration, validateEpisode } from "./episode.js";
 import { BudgetExceededError, NeedsHumanError } from "./errors.js";
-import { callAnthropic, callOpenAI, stripFence, type TextClient, type TextRequest } from "./providers.js";
+import { createTextClient, stripFence, type CliClientDeps, type TextClient, type TextRequest } from "./providers.js";
 import { redactEpisode } from "./redact.js";
 import type { StateStore } from "./state.js";
 import { planningText } from "./transcribe.js";
@@ -494,17 +494,27 @@ function parseJson(raw: string): unknown {
 export interface ScriptWriterDeps {
   planner?: TextClient;
   formatter?: TextClient;
+  /** CLI 세션 실행기 주입(테스트). 없으면 실제 claude/codex CLI 를 씁니다. */
+  cli?: CliClientDeps;
 }
 
 export class ScriptWriter {
   private readonly config: Config;
   private readonly deps: ScriptWriterDeps;
   private readonly guard?: BudgetGuard;
+  private readonly clients: Partial<Record<"planner" | "formatter", TextClient>> = {};
 
   constructor(config: Config, store?: StateStore, deps: ScriptWriterDeps = {}) {
     this.config = config;
     this.deps = deps;
     this.guard = store ? new BudgetGuard(config, store) : undefined;
+  }
+
+  /** 주입된 호출기가 있으면 그것을, 없으면 LLM_BACKEND 에 맞는 호출기를 한 번만 만듭니다. */
+  private clientFor(role: "planner" | "formatter"): TextClient {
+    const injected = role === "planner" ? this.deps.planner : this.deps.formatter;
+    if (injected) return injected;
+    return (this.clients[role] ??= createTextClient(this.config, role, this.deps.cli));
   }
 
   async plan(projectDir: string, transcript: Transcript): Promise<string> {
@@ -513,23 +523,23 @@ export class ScriptWriter {
     const text = planningText(projectDir) || transcriptAsPlain(transcript);
 
     let hooks: string;
-    if (this.deps.planner) {
-      hooks = await this.deps.planner.complete({ prompt: buildHookPrompt(text), system: HOOK_SYSTEM, maxTokens: 2000 });
-      this.guard?.recordLlm("planner", "plan", projectDir);
-    } else if (this.config.dryRun) {
+    let mode: string;
+    if (!this.deps.planner && this.config.dryRun) {
       hooks = mockHooks(transcript);
+      mode = "dry-run(mock)";
     } else {
-      this.guard?.checkLlm(projectDir);
-      hooks = await callAnthropic(this.config, { prompt: buildHookPrompt(text), system: HOOK_SYSTEM, maxTokens: 2000 });
-      this.guard?.recordLlm("anthropic", "plan", projectDir);
+      const planner = this.clientFor("planner");
+      const billable = planner.billable !== false;
+      this.guard?.checkLlm(projectDir, billable);
+      hooks = await planner.complete({ prompt: buildHookPrompt(text), system: HOOK_SYSTEM, maxTokens: 2000 });
+      this.guard?.recordLlm(planner.name, "plan", projectDir, billable);
+      mode = planner.name;
     }
 
     const file = path.join(planDir, "hooks.md");
     writeFileSync(
       file,
-      `# EP 기획 — 훅 후보\n\n생성: ${new Date().toISOString().slice(0, 10)} · 모드: ${
-        this.deps.planner ? "llm" : this.config.dryRun ? "dry-run(mock)" : "llm"
-      }\n\n${hooks.trim()}\n`,
+      `# EP 기획 — 훅 후보\n\n생성: ${new Date().toISOString().slice(0, 10)} · 모드: ${mode}\n\n${hooks.trim()}\n`,
       "utf8",
     );
     return file;
@@ -548,14 +558,14 @@ export class ScriptWriter {
 
     const build = async (request: TextRequest): Promise<Episode> => {
       if (useMock) return mockEpisode(transcript, { episodeId, callDate });
-      const raw = this.deps.formatter
-        ? await this.deps.formatter.complete(request)
-        : await callOpenAI(this.config, request);
-      this.guard?.recordLlm("formatter", "plan", projectDir);
+      const formatter = this.clientFor("formatter");
+      const billable = formatter.billable !== false;
+      this.guard?.checkLlm(projectDir, billable);
+      const raw = await formatter.complete(request);
+      this.guard?.recordLlm(formatter.name, "plan", projectDir, billable);
       return normalizeEpisode(parseJson(raw), transcript, { episodeId, callDate, audioName: "call.m4a" });
     };
 
-    if (!useMock && !this.deps.formatter) this.guard?.checkLlm(projectDir);
     let episode = await build({
       prompt: buildEpisodePrompt(hooks, text, transcript.durationSec),
       system: EPISODE_SYSTEM,
@@ -570,7 +580,7 @@ export class ScriptWriter {
     if (issues.length) {
       writeFileSync(path.join(planDir, "episode.rejected.json"), JSON.stringify(episode, null, 2), "utf8");
       if (this.deps.formatter || !this.config.dryRun) {
-        episode = await this.repair(episode, issues, transcript, text, projectDir, episodeId, callDate, build);
+        episode = await this.repair(episode, issues, transcript, text, build);
         episode = redactEpisode(episode, this.config.redactionTerms).episode;
         issues = validateEpisode(episode, transcript);
       }
@@ -606,13 +616,9 @@ export class ScriptWriter {
     issues: string[],
     transcript: Transcript,
     text: string,
-    projectDir: string,
-    episodeId: string,
-    callDate: string,
     build: (request: TextRequest) => Promise<Episode>,
   ): Promise<Episode> {
     try {
-      this.guard?.checkLlm(projectDir);
       return await build({
         prompt: buildRepairPrompt(issues, episode, text),
         system: EPISODE_SYSTEM,
