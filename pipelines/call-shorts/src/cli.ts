@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-/**
- * CLI — run-once / watch / dry-run / doctor / status / resume / map-speakers.
- *
- * 사용 예
- *   npm run call-shorts -- doctor
- *   npm run call-shorts -- dry-run --file ~/Desktop/test.m4a --render
- *   npm run call-shorts -- run-once
- *   npm run call-shorts -- map-speakers --project <EP폴더> --a GF --b BF
- *   npm run call-shorts -- resume --project <EP폴더> --stage illustrate
- */
 
 import { homedir } from "node:os";
 import path from "node:path";
@@ -20,7 +10,7 @@ import { ConfigError, NeedsHumanError, PipelineError } from "./errors.js";
 import { ffmpegVersion, resolveFfmpeg, resolveFfprobe, which } from "./media.js";
 import { Pipeline } from "./runner.js";
 import { StateStore } from "./state.js";
-import { discoverAudioFiles } from "./watcher.js";
+import { discoverAudioFiles, stuckProcessingFiles } from "./watcher.js";
 import { mapSpeakers } from "./transcribe.js";
 import { STAGES, type RunResult, type Stage } from "./types.js";
 
@@ -101,9 +91,19 @@ function doctor(config: Config): number {
 
 function status(config: Config, asJson: boolean): number {
   const store = new StateStore(config.stateFile);
+  const processing = store.listFiles(1000).filter((record) => record.status === "processing");
+  const stuck = stuckProcessingFiles(store);
+  const describe = (record: (typeof processing)[number]) => ({
+    sha256: record.sha256,
+    sourcePath: record.sourcePath,
+    projectDir: record.projectDir,
+    updatedAt: record.updatedAt,
+  });
   const payload = {
     summary: store.summary(),
     recentFiles: store.listFiles(10),
+    processingFiles: processing.map(describe),
+    stuckProcessing: stuck.map(describe),
     costByDay: store.costByDay(14),
     costByProvider: store.costByProvider(),
     inboxPending: discoverAudioFiles(config.inboxDir, config.allowedExtensions),
@@ -115,6 +115,12 @@ function status(config: Config, asJson: boolean): number {
   const summary = payload.summary;
   console.log(`에피소드 ${summary.episodes}편 · 오늘 $${summary.costTodayUsd.toFixed(2)} / 총 $${summary.costTotalUsd.toFixed(2)}`);
   console.log(`파일 상태: ${Object.keys(summary.files).length ? JSON.stringify(summary.files) : "없음"}`);
+  if (processing.length) {
+    console.log(
+      `처리 중 ${processing.length}건${stuck.length ? ` (3시간 이상 고착 ${stuck.length}건)` : ""} — 중단됐다면 run-once --force 로 재시도:`,
+    );
+    for (const record of processing.slice(0, 5)) console.log(`  · ${record.sourcePath} (${record.updatedAt})`);
+  }
   if (payload.inboxPending.length) {
     console.log(`inbox 대기 ${payload.inboxPending.length}개:`);
     for (const file of payload.inboxPending.slice(0, 5)) console.log(`  · ${file}`);
@@ -201,7 +207,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         limit: values.limit ? Number(values.limit) : 1,
       });
       if (!results.length) {
+        const processing = pipeline.store.listFiles(1000).filter((record) => record.status === "processing");
         console.log("처리할 새 통화가 없습니다.");
+        if (processing.length) console.log(`처리 중 ${processing.length}건 — 중단됐다면 run-once --force 로 재시도하세요.`);
         return 0;
       }
       for (const result of results) console.log(describe(result));

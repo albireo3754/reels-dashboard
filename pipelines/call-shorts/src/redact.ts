@@ -1,8 +1,3 @@
-/**
- * 대본·자막 마스킹 — 실명·회사명·연락처·주소가 영상에 남지 않게.
- * 원문은 transcript/ 에만 남기고, episode.json/자막/메타는 가립니다(가드레일 4).
- */
-
 import type { Episode } from "./types.js";
 
 export const MASK = "[마스킹]";
@@ -17,6 +12,8 @@ const PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "우편번호·주소", pattern: /\b\d{5}\s?(?:로|길)\b/g },
 ];
 
+export const SENSITIVE_PATTERN_COUNT = PATTERNS.length;
+
 export function scanText(text: string, terms: string[] = []): string[] {
   const hits: string[] = [];
   for (const { label, pattern } of patterns()) {
@@ -26,8 +23,8 @@ export function scanText(text: string, terms: string[] = []): string[] {
   return hits;
 }
 
+// g 플래그 정규식은 test() 마다 lastIndex 가 바뀌므로 검사할 때마다 새 인스턴스를 만듭니다.
 function patterns(): Array<{ label: string; pattern: RegExp }> {
-  // g 플래그 정규식은 test() 호출마다 lastIndex가 바뀌므로 매번 새로 만듭니다.
   return PATTERNS.map(({ label, pattern }) => ({ label, pattern: new RegExp(pattern.source, "g") }));
 }
 

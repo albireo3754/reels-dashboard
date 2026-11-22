@@ -1,12 +1,3 @@
-/**
- * episode.json 스키마 검증기 — 설계 §2-5 규칙 그대로.
- *  · cuts 5~8개, 자막 중복 금지(컷마다 새 정보 1개)
- *  · 자막 한 줄 14자 이내, 최대 2줄
- *  · 컷 길이 ≥ 자막 글자수 ÷ 9자/초
- *  · 첫 컷 t_start = 0, 컷은 끊김 없이 이어짐, 전체 25~55초
- *  · 첫 컷 source_range는 전사문의 실제 발화와 겹치고, 자막은 그 발화 인용
- */
-
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -133,7 +124,6 @@ export function validateEpisode(episode: unknown, transcript?: Transcript, optio
       issues.push(`${label}가 객체가 아닙니다.`);
       return;
     }
-    const cut = rawCut as unknown as EpisodeCut;
     if ((rawCut.idx as number) !== position + 1) {
       issues.push(`${label}.idx는 ${position + 1}이어야 합니다: ${String(rawCut.idx)}`);
     }
@@ -233,7 +223,6 @@ export function validateEpisode(episode: unknown, transcript?: Transcript, optio
       if (typeof bubble !== "string") issues.push(`${label}.bubble은 문자열 또는 null이어야 합니다.`);
       else if (bubble.length > 24) issues.push(`${label}.bubble이 너무 깁니다(${bubble.length}자): ${bubble.slice(0, 12)}…`);
     }
-    void cut;
   });
 
   const total = totalDuration(episode as unknown as Episode);

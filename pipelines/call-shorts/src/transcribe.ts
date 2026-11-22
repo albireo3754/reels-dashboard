@@ -1,23 +1,35 @@
-/**
- * Step 1 — 오디오 정규화 + 화자 2인 분리 전사.
- *
- * 기본: ffmpeg 정규화(mono 16k, highpass 80, loudnorm -16) → whisperx large-v3 + pyannote
- * 대체: whisper CLI(화자분리 없음) · Gemini Audio(유료·외부 전송) · mock(dry-run)
- *
- * 화자 라벨은 자동으로 누가 여자인지 알 수 없습니다. 매핑이 없으면 멈추고 한 번만 물어봅니다.
- */
-
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
-import { ConfigError, NeedsHumanError, TranscribeError } from "./errors.js";
+import { ConfigError, NeedsHumanError, TranscribeError, UsageError } from "./errors.js";
 import { requireFfmpeg, run, which } from "./media.js";
 import type { StateStore } from "./state.js";
 import type { SpeakerRole, Transcript, TranscriptSegment } from "./types.js";
 
 export const ROLE_NAMES: Record<string, string> = { GF: "여자", BF: "남자" };
+export const SPEAKER_ROLES: SpeakerRole[] = ["GF", "BF"];
+
+/** `--a/--b` 값을 GF|BF 로 정규화하고, 잘못된 값·중복은 저장 전에 거부합니다. */
+export function parseSpeakerRoles(girl?: string, boy?: string): { girl: SpeakerRole; boy: SpeakerRole } {
+  const normalize = (value?: string) => (value ?? "").trim().toUpperCase();
+  const a = normalize(girl);
+  const b = normalize(boy);
+  const invalid = [a, b].filter((value) => !SPEAKER_ROLES.includes(value as SpeakerRole));
+  if (invalid.length) {
+    throw new UsageError(
+      `화자 ID는 GF(여자) 또는 BF(남자)만 쓸 수 있습니다: ${invalid.map((value) => (value ? `'${value}'` : "(빈 값)")).join(", ")}`,
+      { hint: "예: map-speakers --project <EP폴더> --a GF --b BF" },
+    );
+  }
+  if (a === b) {
+    throw new UsageError(`--a 와 --b 가 같습니다(${a}). 여자와 남자를 서로 다른 값으로 지정하세요.`, {
+      hint: "예: --a GF --b BF",
+    });
+  }
+  return { girl: a as SpeakerRole, boy: b as SpeakerRole };
+}
 
 export function mmss(seconds: number): string {
   const total = Math.max(0, seconds);
@@ -26,9 +38,6 @@ export function mmss(seconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${rest.toFixed(1).padStart(4, "0")}`;
 }
 
-// ──────────────────────────────────────────────────────────────
-// 저장/읽기
-// ──────────────────────────────────────────────────────────────
 export function transcriptPath(projectDir: string): string {
   return path.join(projectDir, "transcript", "diarized.json");
 }
@@ -71,7 +80,6 @@ export function editedTranscriptPath(projectDir: string): string {
   return path.join(projectDir, "transcript", "transcript.edited.md");
 }
 
-/** 사람이 고친 전사문이 있으면 그것을, 없으면 원본을 씁니다. */
 export function planningText(projectDir: string): string {
   const edited = editedTranscriptPath(projectDir);
   if (existsSync(edited)) {
@@ -83,9 +91,58 @@ export function planningText(projectDir: string): string {
   return transcriptAsMarkdown(loadTranscript(projectDir));
 }
 
-// ──────────────────────────────────────────────────────────────
-// 전사문 → 마크다운
-// ──────────────────────────────────────────────────────────────
+const EDITED_LINE = /^\[(\d{1,3}):(\d{1,2}(?:\.\d+)?)\]\s*([^:]+?)\s*:\s*(.+)$/;
+
+function roleLabels(speaker: string, role: string): string[] {
+  return [speaker, role, ROLE_NAMES[role]].filter((value): value is string => Boolean(value));
+}
+
+/**
+ * 기획·검증·대본이 함께 읽는 전사문. `transcript.edited.md` 가 있으면 사람이 고친 발화를
+ * 원본 타임스탬프에 얹어 돌려줍니다(원본 diarized.json 은 건드리지 않습니다).
+ */
+export function loadPlanningTranscript(projectDir: string): Transcript {
+  const transcript = loadTranscript(projectDir);
+  const edited = editedTranscriptPath(projectDir);
+  if (!existsSync(edited)) return transcript;
+
+  const entries: Array<{ start: number; label: string; text: string }> = [];
+  for (const line of readFileSync(edited, "utf8").split(/\r?\n/)) {
+    const match = EDITED_LINE.exec(line.trim());
+    if (!match) continue;
+    const start = Number(match[1]) * 60 + Number(match[2]);
+    const text = match[4].trim();
+    if (!text || !Number.isFinite(start)) continue;
+    entries.push({ start, label: match[3].trim(), text });
+  }
+  if (!entries.length) return transcript;
+
+  const segments = transcript.segments.map((segment) => ({ ...segment }));
+  const used = new Set<number>();
+  let changed = false;
+  for (const entry of entries) {
+    let best = -1;
+    let bestScore = Number.POSITIVE_INFINITY;
+    segments.forEach((segment, index) => {
+      if (used.has(index)) return;
+      const role = transcript.speakerMap[segment.speaker] ?? segment.speaker;
+      const labelPenalty = roleLabels(segment.speaker, role).includes(entry.label) ? 0 : 10_000;
+      const score = Math.abs(segment.start - entry.start) + labelPenalty;
+      if (score < bestScore) {
+        bestScore = score;
+        best = index;
+      }
+    });
+    if (best < 0) continue;
+    used.add(best);
+    if (segments[best].text !== entry.text) {
+      segments[best].text = entry.text;
+      changed = true;
+    }
+  }
+  return changed ? { ...transcript, segments } : transcript;
+}
+
 export function transcriptAsMarkdown(transcript: Transcript): string {
   const lines = [
     `# 통화 전사문 (${transcript.language}, ${transcript.durationSec.toFixed(1)}초, ${transcript.backend})`,
@@ -100,15 +157,6 @@ export function transcriptAsMarkdown(transcript: Transcript): string {
   return lines.join("\n").trimEnd() + "\n";
 }
 
-export function transcriptAsPlainText(transcript: Transcript): string {
-  return transcript.segments
-    .map((segment) => {
-      const role = transcript.speakerMap[segment.speaker] ?? segment.speaker;
-      return `[${mmss(segment.start)}] ${ROLE_NAMES[role] ?? role}: ${segment.text}`;
-    })
-    .join("\n");
-}
-
 export function rawSpeakers(transcript: Transcript): string[] {
   const seen: string[] = [];
   for (const segment of transcript.segments) {
@@ -117,7 +165,6 @@ export function rawSpeakers(transcript: Transcript): string[] {
   return seen;
 }
 
-/** sourceRange에 가장 많이 겹치는 해당 화자 발화. */
 export function segmentAt(
   transcript: Transcript,
   start: number,
@@ -138,9 +185,6 @@ export function segmentAt(
   return best;
 }
 
-// ──────────────────────────────────────────────────────────────
-// ffmpeg 정규화 / 무음 트랙
-// ──────────────────────────────────────────────────────────────
 export function normalizeCommand(ffmpeg: string, src: string, dest: string): string[] {
   return [
     "-y",
@@ -166,7 +210,6 @@ export function normalizeAudio(src: string, dest: string, config: Config): strin
   return dest;
 }
 
-/** dry-run용 자리표시 WAV — 들리지 않을 만큼 작은 220Hz 톤(라우드니스 측정·검수용). */
 export function writeSilenceWav(file: string, durationSec: number, sampleRate = 16_000): string {
   mkdirSync(path.dirname(file), { recursive: true });
   const frames = Math.max(1, Math.trunc(durationSec * sampleRate));
@@ -185,7 +228,7 @@ export function writeSilenceWav(file: string, durationSec: number, sampleRate = 
   buffer.writeUInt16LE(16, 34);
   buffer.write("data", 36, "ascii");
   buffer.writeUInt32LE(dataSize, 40);
-  const amplitude = 200; // 약 -44dBFS: 무음이 아니라서 loudnorm이 측정값을 냅니다
+  const amplitude = 200; // 약 -44dBFS — 무음이면 loudnorm 이 측정값을 내지 않습니다
   for (let index = 0; index < frames; index += 1) {
     buffer.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * index) / sampleRate) * amplitude), 44 + index * 2);
   }
@@ -193,9 +236,6 @@ export function writeSilenceWav(file: string, durationSec: number, sampleRate = 
   return file;
 }
 
-// ──────────────────────────────────────────────────────────────
-// 백엔드 선택
-// ──────────────────────────────────────────────────────────────
 export type ResolvedBackend = "whisperx" | "whisper" | "gemini" | "mock";
 
 export function detectBackend(config: Config): ResolvedBackend {
@@ -209,9 +249,6 @@ export function detectBackend(config: Config): ResolvedBackend {
   });
 }
 
-// ──────────────────────────────────────────────────────────────
-// mock 전사문 — 데모/테스트/드라이런용 고정 대화
-// ──────────────────────────────────────────────────────────────
 export const MOCK_DIALOGUE: Array<[string, string]> = [
   ["SPEAKER_00", "여보세요? 자고 있었어?"],
   ["SPEAKER_01", "아니 그냥 누워 있었지"],
@@ -273,9 +310,6 @@ export function mockTranscript(): Transcript {
   };
 }
 
-// ──────────────────────────────────────────────────────────────
-// whisperx / whisper
-// ──────────────────────────────────────────────────────────────
 function runCli(binary: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(binary, args, { timeout: 7_200_000, maxBuffer: 64 * 1024 * 1024 }, (error, _stdout, stderr) => {
@@ -375,9 +409,6 @@ export async function transcribeWithWhisper(wav: string, outDir: string, config:
   };
 }
 
-// ──────────────────────────────────────────────────────────────
-// Gemini Audio (B안 — 외부 전송)
-// ──────────────────────────────────────────────────────────────
 export const GEMINI_TRANSCRIBE_PROMPT = `이 오디오는 한국어 2인 전화 통화입니다. 화자 A/B를 구분해 JSON으로만 답하세요.
 규칙:
 - segments 배열: 각 항목 {"start": 초, "end": 초, "speaker": "A"|"B", "text": "발화"}
@@ -432,9 +463,6 @@ export async function transcribeWithGemini(
   };
 }
 
-// ──────────────────────────────────────────────────────────────
-// 오케스트레이션
-// ──────────────────────────────────────────────────────────────
 export interface TranscriberDeps {
   transcribeGemini?: (wav: string, config: Config) => Promise<Transcript>;
 }
@@ -535,8 +563,8 @@ export class Transcriber {
   }
 }
 
-/** 사람이 한 번 지정하는 화자 매핑. */
 export function mapSpeakers(projectDir: string, girlLabel: string, boyLabel: string, store?: StateStore): Transcript {
+  const roles = parseSpeakerRoles(girlLabel, boyLabel);
   const transcript = loadTranscript(projectDir);
   const labels = rawSpeakers(transcript);
   if (labels.length < 2) {
@@ -544,7 +572,7 @@ export function mapSpeakers(projectDir: string, girlLabel: string, boyLabel: str
       hint: "whisperx + pyannote로 다시 전사하세요 (TRANSCRIBE_BACKEND=whisperx).",
     });
   }
-  const map = { [labels[0]]: girlLabel, [labels[1]]: boyLabel };
+  const map = { [labels[0]]: roles.girl, [labels[1]]: roles.boy };
   saveSpeakerMap(projectDir, map);
   store?.saveSpeakerMap(projectDir, map);
   const updated: Transcript = { ...transcript, speakerMap: map as Record<string, SpeakerRole> };

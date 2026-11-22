@@ -53,7 +53,7 @@ npm run call-shorts -- doctor
 | `watch` | inbox 폴링 감시 (launchd 없이) |
 | `dry-run` | 네트워크·비용 없이 mock으로 전 과정 (`--render`면 렌더까지 실제 실행) |
 | `resume` | 멈춘 프로젝트를 이어서 (`--project <EP폴더> --stage <단계>`) |
-| `map-speakers` | 화자 라벨을 여자/남자로 한 번만 지정 (`--project … --a GF --b BF`) |
+| `map-speakers` | 화자 라벨을 여자/남자로 한 번만 지정 (`--a`/`--b` 는 `GF`\|`BF` 만, 서로 달라야 함) |
 | `doctor` / `status` | 환경 점검 / 처리 이력·비용 |
 
 ```bash
@@ -94,6 +94,11 @@ npm run call-shorts -- resume --project "<iCloud>/projects/2026-11-22_EP03" --st
 2. 파일 크기가 `STABLE_SECONDS`(기본 20초) 동안 변하지 않아야 시작합니다 (동기화 중 잘린 오디오 방지).
 3. SHA-256 해시를 `state/pipeline-state.json`에 기록합니다. 이미 있으면 skip —
    같은 통화를 두 번 처리해 돈을 두 번 쓰는 사고가 이 파이프라인의 가장 흔한 사고입니다.
+4. 처리 중에 프로세스가 죽어 `processing` 으로 남은 기록은 3시간이 지나면 자동으로 재시도하고,
+   기다리지 않으려면 `run-once --force` 로 바로 다시 돌립니다(같은 프로젝트를 이어서 실행).
+   `status` 는 그런 파일을 "처리 중 고착"으로 보여 줍니다.
+5. `state.json` 이 깨져 JSON 해석에 실패하면 빈 상태로 덮어쓰지 않고 멈춥니다. 직전 정상 상태는
+   `pipeline-state.json.bak` 에 남고, 손상 원본은 `.corrupt-<시각>` 으로 보관합니다.
 
 ### 4-2. 전사 (`src/transcribe.ts`)
 
@@ -107,7 +112,8 @@ whisperx norm.wav --model large-v3 --language ko \
 - `TRANSCRIBE_BACKEND=gemini`는 빠르지만 원본이 외부로 나가고 타임스탬프 정밀도가 떨어집니다.
 - 화자 라벨(`SPEAKER_00/01`)은 자동으로 성별을 알 수 없습니다. 매핑이 없으면 **멈추고**
   `map-speakers`를 안내합니다. 한 번 정하면 이후 자동입니다.
-- `transcript/transcript.edited.md`를 만들면 이후 단계는 그 파일을 우선 사용합니다(사람 검수 지점).
+- `transcript/transcript.edited.md`를 만들면 기획·대본·검증기가 모두 그 편집본을 같은 원본으로 씁니다
+  (원본 `diarized.json` 은 그대로 두고 발화만 편집본으로 바꿔 읽습니다 — 사람 검수 지점).
 
 ### 4-3. 기획·대본 (`src/scriptwriter.ts`)
 
@@ -147,6 +153,8 @@ Node/Remotion 라이선스 조건도 피할 수 있습니다.
 
 `meta.json`에 플랫폼별 제목/캡션/해시태그 5개, 커버, SRT, **AI 라벨 판정 + 근거**를 남기고
 `checklist.md`를 실측값(해상도·fps·라우드니스·자막 위치·마스킹)으로 채웁니다.
+측정하지 못한 항목은 ✅ 가 아니라 `확인 필요`/`⚠️ 미측정` 으로 남기고, 마스킹 항목은
+정규식 7종만 검사했는지 사용자 금지어(`REDACTION_TERMS`)까지 검사했는지 그대로 적습니다.
 `outbox/`에 mp4·cover·srt·meta·checklist를 복사합니다.
 
 ## 5. AI 라벨 — 우리 포맷은 의무 대상이 아님
@@ -222,6 +230,9 @@ node pipelines/call-shorts/scripts/install-launchd.mjs --uninstall              
 | 같은 통화를 두 번 처리 | 멱등성 없음 | 해시 skip (`state/pipeline-state.json`) |
 | 잘린 오디오 전사 | 동기화 중 읽음 | `STABLE_SECONDS` 늘리기 (기본 20초) |
 | `화자 매핑이 아직 없습니다` | 첫 실행 | `map-speakers --a GF --b BF` |
+| `화자 ID는 GF(여자) 또는 BF(남자)만` | `--a`/`--b` 오타·한글 | `--a GF --b BF` (서로 달라야 함) |
+| 영상에 아무 일도 없이 "새 통화 없음" | 처리 중 고착 | `status` 로 확인 후 `run-once --force` |
+| `state 파일이 손상됐습니다` | iCloud 동기화 충돌·전원 손실 | `.bak` 복사로 되돌리고 손상 원본(`.corrupt-*`)은 보관 |
 | 15초에서 이탈 | 중반 정보 없음 | 15초 지점에 반전·숫자 펀치 |
 
 ## 12. 테스트

@@ -1,10 +1,3 @@
-/**
- * 자막 — 화자별 색 고정 ASS + 업로드용 SRT.
- *
- * 여자 #FF6B9D / 남자 #4FC3F7, 흰 외곽선 3px, 하단 12~18%(MarginV 300/1920),
- * 1~2줄·줄당 12~14자, 훅은 0~3초 상단 고정, 말풍선은 속마음용.
- * 흰 글씨 스타일(훅·펀치라인·말풍선·커버)은 크림색 종이 위에서도 읽히도록 검은 외곽선을 씁니다.
- */
 
 import type { Config } from "./config.js";
 import { totalDuration } from "./episode.js";
@@ -40,7 +33,6 @@ export function srtTime(seconds: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
 }
 
-/** 공백 기준 줄바꿈. 한 단어가 최대 길이보다 길면 강제로 자릅니다. */
 export function wrapCaption(text: string, maxChars = 14, maxLines = 2): string[] {
   const value = (text ?? "").trim();
   if (!value) return [];
@@ -90,7 +82,6 @@ function escapeText(text: string): string {
 }
 
 const OUTLINE_WHITE = "&H00FFFFFF";
-/** 흰 글씨 밑에 깔 검은 외곽선. */
 export const OUTLINE_BLACK = "&H00000000";
 
 function styleLine(options: {

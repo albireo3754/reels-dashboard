@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * launchd 등록 — launchd/com.firyoon.callshorts.plist.template 을 실제 값으로 채워
- * ~/Library/LaunchAgents 에 설치하고 bootstrap 합니다. (대화형 질문 없음)
- *
- *   node pipelines/call-shorts/scripts/install-launchd.mjs [--root <iCloud폴더>] [--dry-run] [--uninstall]
- *
- * - 매일 07:30 (StartCalendarInterval)
- * - inbox 폴더에 파일이 생기면 (WatchPaths)
- * - 로그: <root>/logs/launchd.out.log, launchd.err.log
- */
+//   node pipelines/call-shorts/scripts/install-launchd.mjs [--root <iCloud폴더>] [--dry-run] [--uninstall]
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";

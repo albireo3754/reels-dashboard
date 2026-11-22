@@ -1,9 +1,3 @@
-/**
- * 여친 탐구생활 — 통화 녹음 → 손그림 9:16 숏폼 파이프라인 (TypeScript).
- *
- * 공용 타입: 전사문, episode.json, 렌더 결과, 실행 결과.
- */
-
 export type SpeakerRole = "GF" | "BF";
 
 export interface Word {
@@ -38,7 +32,6 @@ export interface CutVisual {
 }
 
 export interface CutCamera {
-  zoom: string;
   rotateDeg: number;
 }
 

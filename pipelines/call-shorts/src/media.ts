@@ -1,8 +1,3 @@
-/**
- * ffmpeg/ffprobe 실행 도우미 + 미디어 정보 파싱.
- * ffmpeg가 없으면 설치 안내와 함께 명확히 실패합니다.
- */
-
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -135,7 +130,6 @@ export function probeMedia(file: string, config?: Config): MediaInfo {
         }
         return info;
       } catch {
-        // ffmpeg 출력 파싱으로 대체
       }
     }
   }

@@ -1,20 +1,11 @@
-/**
- * Step 2 — 기획(Claude) → 대본 구조화(GPT).
- *
- *  · Claude: 감정선·코믹 포인트, 서로 다른 심리축의 훅 5개, 버릴 구간, 제목 → plan/hooks.md
- *  · GPT   : 선택된 훅과 비트를 episode.json으로 강제 변환 (JSON schema strict)
- *  · 검증 실패 시 **1회만** 재생성, 그래도 실패하면 멈추고 사람에게 보여줍니다.
- *  · dry-run에서는 같은 규칙을 코드로 지킨 결정적 대본을 만듭니다(네트워크·비용 0).
- */
-
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { BudgetGuard } from "./budget.js";
 import type { Config } from "./config.js";
 import { MAX_CAPTION_CHARS, saveEpisode, saveValidationErrors, totalDuration, validateEpisode } from "./episode.js";
-import { NeedsHumanError } from "./errors.js";
-import { callAnthropic, callOpenAI, type TextClient, type TextRequest } from "./providers.js";
+import { BudgetExceededError, NeedsHumanError } from "./errors.js";
+import { callAnthropic, callOpenAI, stripFence, type TextClient, type TextRequest } from "./providers.js";
 import { redactEpisode } from "./redact.js";
 import type { StateStore } from "./state.js";
 import { planningText } from "./transcribe.js";
@@ -144,19 +135,20 @@ export const EPISODE_SCHEMA = {
           visual: {
             type: "object",
             additionalProperties: false,
-            required: ["scene", "emotion", "props"],
+            required: ["scene", "emotion", "props", "action"],
             properties: {
               scene: { type: "string" },
               emotion: { type: "string" },
               props: { type: "array", items: { type: "string" } },
+              action: { type: "string" },
             },
           },
           sfx: { type: ["string", "null"] },
           camera: {
             type: "object",
             additionalProperties: false,
-            required: ["zoom", "rotateDeg"],
-            properties: { zoom: { type: "string" }, rotateDeg: { type: "number" } },
+            required: ["rotateDeg"],
+            properties: { rotateDeg: { type: "number" } },
           },
         },
       },
@@ -208,9 +200,6 @@ export const EPISODE_SCHEMA = {
   },
 } as const;
 
-// ──────────────────────────────────────────────────────────────
-// mock 기획
-// ──────────────────────────────────────────────────────────────
 export function fitCaption(text: string, maxChars = MAX_CAPTION_CHARS): string {
   const cleaned = text.split(/\s+/).join(" ").trim().replace(/^[\s,.!?~…"'"]+|[\s,.!?~…"'"]+$/g, "");
   if (cleaned.length <= maxChars) return cleaned;
@@ -270,6 +259,15 @@ const MOCK_SCENES = [
   "폰을 사이에 두고 서로 다른 방향을 보는 두 사람",
 ];
 const MOCK_EMOTIONS = ["진지", "당황", "억울", "배신감", "뻔뻔함"];
+const MOCK_ACTIONS = [
+  "이불을 끝까지 끌어올리며 폰을 귀에 붙임",
+  "천장을 보며 눈을 감았다 뜨고 입술을 오므림",
+  "폰을 내려다보다가 식은땀을 닦음",
+  "손으로 입을 막고 눈을 크게 뜸",
+  "고개를 끄덕이다가 말이 끊겨 멈춤",
+  "이불 밖으로 다리를 내리고 앉음",
+  "폰을 이마에 대고 한숨을 쉼",
+];
 
 export function mockHooks(transcript: Transcript): string {
   const beats = dialogueBeats(transcript);
@@ -351,9 +349,10 @@ export function mockEpisode(
         scene: MOCK_SCENES[index % MOCK_SCENES.length],
         emotion: MOCK_EMOTIONS[index % MOCK_EMOTIONS.length],
         props: ["이불", "스마트폰", "달"],
+        action: MOCK_ACTIONS[index % MOCK_ACTIONS.length],
       },
       sfx: index === 0 || index === 3 ? "record_scratch" : null,
-      camera: { zoom: "in_slow", rotateDeg: [1.5, -1.2, 0.9, -0.8, 1.1, -1.4, 0.7][index % 7] },
+      camera: { rotateDeg: [1.5, -1.2, 0.9, -0.8, 1.1, -1.4, 0.7][index % 7] },
     });
     cursor = Number((cursor + duration).toFixed(2));
   });
@@ -394,9 +393,6 @@ export function mockEpisode(
   };
 }
 
-// ──────────────────────────────────────────────────────────────
-// 정규화
-// ──────────────────────────────────────────────────────────────
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -434,9 +430,9 @@ export function normalizeEpisode(
           scene: String(cut.visual?.scene ?? "").trim(),
           emotion: String(cut.visual?.emotion ?? "").trim(),
           props: Array.isArray(cut.visual?.props) ? cut.visual.props.map(String) : [],
+          action: String(cut.visual?.action ?? "").trim(),
         },
         camera: {
-          zoom: String(cut.camera?.zoom ?? "in_slow"),
           rotateDeg: asNumber(cut.camera?.rotateDeg),
         },
         bubble: cut.bubble === undefined ? null : cut.bubble,
@@ -479,12 +475,8 @@ export function normalizeEpisode(
   return data;
 }
 
-// ──────────────────────────────────────────────────────────────
-// ScriptWriter
-// ──────────────────────────────────────────────────────────────
 function parseJson(raw: string): unknown {
-  let text = (raw ?? "").trim();
-  if (text.startsWith("```")) text = text.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
+  const text = stripFence(raw);
   try {
     return JSON.parse(text);
   } catch {
@@ -527,7 +519,7 @@ export class ScriptWriter {
     } else if (this.config.dryRun) {
       hooks = mockHooks(transcript);
     } else {
-      this.guard?.checkAll(projectDir, 0.02);
+      this.guard?.checkLlm(projectDir);
       hooks = await callAnthropic(this.config, { prompt: buildHookPrompt(text), system: HOOK_SYSTEM, maxTokens: 2000 });
       this.guard?.recordLlm("anthropic", "plan", projectDir);
     }
@@ -552,22 +544,19 @@ export class ScriptWriter {
     const episodeId = baseName.includes("_") ? baseName.split("_")[1].split("-")[0] : baseName || "EP";
     const callDate = /^\d{4}-\d{2}-\d{2}/.test(baseName) ? baseName.slice(0, 10) : new Date().toISOString().slice(0, 10);
 
+    const useMock = !this.deps.formatter && this.config.dryRun;
+
     const build = async (request: TextRequest): Promise<Episode> => {
-      const raw = await (this.deps.formatter
-        ? this.deps.formatter.complete(request)
-        : this.config.dryRun
-          ? Promise.resolve("")
-          : callOpenAI(this.config, request));
-      if (!this.deps.formatter && this.config.dryRun) {
-        return mockEpisode(transcript, { episodeId, callDate });
-      }
+      if (useMock) return mockEpisode(transcript, { episodeId, callDate });
+      const raw = this.deps.formatter
+        ? await this.deps.formatter.complete(request)
+        : await callOpenAI(this.config, request);
       this.guard?.recordLlm("formatter", "plan", projectDir);
       return normalizeEpisode(parseJson(raw), transcript, { episodeId, callDate, audioName: "call.m4a" });
     };
 
-    let episode: Episode;
-    if (!this.deps.formatter && !this.config.dryRun) this.guard?.checkAll(projectDir, 0.03);
-    episode = await build({
+    if (!useMock && !this.deps.formatter) this.guard?.checkLlm(projectDir);
+    let episode = await build({
       prompt: buildEpisodePrompt(hooks, text, transcript.durationSec),
       system: EPISODE_SYSTEM,
       maxTokens: 6000,
@@ -623,7 +612,7 @@ export class ScriptWriter {
     build: (request: TextRequest) => Promise<Episode>,
   ): Promise<Episode> {
     try {
-      this.guard?.checkAll(projectDir, 0.03);
+      this.guard?.checkLlm(projectDir);
       return await build({
         prompt: buildRepairPrompt(issues, episode, text),
         system: EPISODE_SYSTEM,
@@ -631,7 +620,7 @@ export class ScriptWriter {
         schema: EPISODE_SCHEMA as unknown as Record<string, unknown>,
       });
     } catch (error) {
-      if (error instanceof NeedsHumanError) throw error;
+      if (error instanceof NeedsHumanError || error instanceof BudgetExceededError) throw error;
       return episode;
     }
   }

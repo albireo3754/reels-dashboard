@@ -1,18 +1,11 @@
-/**
- * inbox 감시 — iCloud 플레이스홀더 제외, 크기 안정화 대기, SHA-256 멱등성.
- *
- * 1) `.m4a.icloud`는 아직 내려받지 않은 파일 → `brctl download` 시도 후 대기
- * 2) 크기가 STABLE_SECONDS 동안 변하지 않아야 시작 (동기화 중 잘린 오디오 방지)
- * 3) 같은 해시가 state에 있으면 skip (같은 통화 두 번 처리 = 돈 두 번)
- */
-
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
-import type { StateStore } from "./state.js";
+import { DEFAULT_STALE_MS } from "./lock.js";
+import type { FileRecord, StateStore } from "./state.js";
 
 const ICLOUD_SUFFIX = ".icloud";
 
@@ -31,6 +24,7 @@ export interface ScannerOptions {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   sizeOf?: (file: string) => number;
+  staleProcessingMs?: number;
 }
 
 export function isIcloudPlaceholder(file: string): boolean {
@@ -83,7 +77,6 @@ function sizeOf(file: string): number {
   }
 }
 
-/** 크기가 stableSeconds 동안 그대로면 true. 테스트를 위해 시계/슬립을 주입할 수 있습니다. */
 export async function isStable(
   file: string,
   stableSeconds: number,
@@ -119,7 +112,7 @@ export async function isStable(
   }
 }
 
-/** macOS 전용: iCloud 파일을 내려받게 요청합니다. */
+/** macOS 전용: iCloud 파일을 내려받게 요청합니다 (brctl 은 Apple 비공식 CLI). */
 export function requestIcloudDownload(file: string): boolean {
   if (process.platform !== "darwin") return false;
   try {
@@ -128,6 +121,24 @@ export function requestIcloudDownload(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isStaleProcessing(
+  record: Pick<FileRecord, "status" | "updatedAt">,
+  now = Date.now(),
+  staleMs = DEFAULT_STALE_MS,
+): boolean {
+  if (record.status !== "processing") return false;
+  const updated = Date.parse(record.updatedAt);
+  return !Number.isFinite(updated) || now - updated >= staleMs;
+}
+
+export function stuckProcessingFiles(
+  store: StateStore,
+  options: { staleMs?: number; now?: number } = {},
+): FileRecord[] {
+  const now = options.now ?? Date.now();
+  return store.listFiles(1000).filter((record) => isStaleProcessing(record, now, options.staleMs));
 }
 
 export class InboxScanner {
@@ -177,10 +188,16 @@ export class InboxScanner {
 
       const digest = await sha256File(file);
       const existing = this.store.getFile(digest);
+      const now = (this.options.now ?? Date.now)();
       if (!existing) {
         items.push({ path: file, status: "new", sha256: digest, size, reason: "새 파일" });
       } else if (existing.status === "failed" && force) {
         items.push({ path: file, status: "new", sha256: digest, size, reason: "실패 재시도" });
+      } else if (existing.status === "processing" && force) {
+        items.push({ path: file, status: "new", sha256: digest, size, reason: "중단된 처리 재시작(--force)" });
+      } else if (isStaleProcessing(existing, now, this.options.staleProcessingMs)) {
+        const hours = (this.options.staleProcessingMs ?? DEFAULT_STALE_MS) / 3_600_000;
+        items.push({ path: file, status: "new", sha256: digest, size, reason: `처리 중 고착 복구(${hours}시간 경과)` });
       } else {
         items.push({
           path: file,
@@ -196,15 +213,14 @@ export class InboxScanner {
   }
 }
 
-/** 새 파일이 생기면 handler를 부르는 폴링 감시 루프. */
 export async function watchForever(
   config: Config,
   store: StateStore,
   handler: (item: ScanItem) => Promise<void>,
-  options: { intervalSec?: number; force?: boolean; signal?: AbortSignal } = {},
+  options: { intervalSec?: number; force?: boolean; signal?: AbortSignal; staleProcessingMs?: number } = {},
 ): Promise<void> {
   const intervalMs = Math.max(1000, (options.intervalSec ?? config.pollIntervalSec) * 1000);
-  const scanner = new InboxScanner(config, store);
+  const scanner = new InboxScanner(config, store, { staleProcessingMs: options.staleProcessingMs });
   for (;;) {
     if (options.signal?.aborted) return;
     try {

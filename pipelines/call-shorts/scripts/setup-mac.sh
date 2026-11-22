@@ -1,17 +1,7 @@
 #!/bin/bash
-# 여친 탐구생활 숏폼 파이프라인 — macOS 설치·연동 (결정론적, 대화형 질문 없음)
-#
 #   bash pipelines/call-shorts/scripts/setup-mac.sh            # 설치 + launchd 등록
 #   bash pipelines/call-shorts/scripts/setup-mac.sh --no-launchd
 #   bash pipelines/call-shorts/scripts/setup-mac.sh --with-local-asr   # whisperx(로컬 전사)까지
-#
-# 하는 일
-#   1) node/ffmpeg 확인 (없으면 설치 명령을 안내만 하고 계속)
-#   2) iCloud Drive 폴더 생성: inbox/ processed/ failed/ projects/ outbox/ state/ logs/ assets/{characters,sfx,bgm}
-#   3) env.example → .env (없을 때만) + PIPELINE_ROOT 채우기
-#   4) (선택) 로컬 전사용 Python venv + whisperx
-#   5) launchd 등록: 매일 07:30 + inbox 새 파일 감시
-#   6) doctor 실행
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -24,7 +14,7 @@ for arg in "$@"; do
   case "$arg" in
     --no-launchd) WITH_LAUNCHD=0 ;;
     --with-local-asr) WITH_LOCAL_ASR=1 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,4p' "$0"; exit 0 ;;
     *) echo "알 수 없는 옵션: $arg"; exit 2 ;;
   esac
 done

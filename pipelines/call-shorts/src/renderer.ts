@@ -1,13 +1,4 @@
-/**
- * Step 4 — FFmpeg 합성: 9:16 세로 숏폼(1080x1920, 30fps).
- *
- * Remotion 대신 FFmpeg + ASS를 고른 이유: 정지 이미지 + 자막 + 미세 모션이라 React 이점이 없고,
- * 한국어 자막 줄바꿈·화자별 색은 ASS가 정확하며, 렌더가 가장 빠릅니다.
- *
- * 하드컷만, 컷당 줌 100→104%, 회전 ±1.5°, 지터(보일링), BGM 사이드체인 덕킹, loudnorm -14 LUFS.
- */
-
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
@@ -288,8 +279,4 @@ function shellQuote(value: string): string {
   if (!value) return "''";
   if (/[\s'"$`\\!*?()&;|<>]/.test(value)) return `'${value.replace(/'/g, "'\\''")}'`;
   return value;
-}
-
-export function readFileSafe(file: string): string {
-  return existsSync(file) ? readFileSync(file, "utf8") : "";
 }

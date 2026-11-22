@@ -1,10 +1,3 @@
-/**
- * mock 이미지 — 의존성 없이 '삐뚤빼뚤 손그림' 자리표시 PNG를 그립니다.
- *
- * 실생성 모델을 부를 수 없는 dry-run·테스트에서 렌더가 끝까지 돌도록 컷 수만큼 9:16 이미지를 만듭니다.
- * 스타일 가이드(미색 종이+그레인, 두꺼운 삐뚤한 검정 선, 핑크/하늘색 액센트)를 최소한으로 흉내 냅니다.
- */
-
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
@@ -229,30 +222,6 @@ export function renderDoodleCut(
       Math.trunc(height * 0.05 + 6 * scale),
       SOFT,
     );
-  }
-  mkdirSync(path.dirname(dest), { recursive: true });
-  writeFileSync(dest, canvas.toPng());
-  return dest;
-}
-
-export function renderCharacterSheet(dest: string, options: { width?: number; height?: number; variant?: number } = {}): string {
-  const width = options.width ?? 900;
-  const height = options.height ?? 900;
-  const variant = options.variant ?? 0;
-  const canvas = new Canvas(width, height, PAPER);
-  canvas.grain(42 + variant);
-  const cellW = Math.floor(width / 3);
-  const cellH = Math.floor(height / 2);
-  const moods = ["neutral", "annoyed", "guilty"];
-  for (let row = 0; row < 2; row += 1) {
-    for (let col = 0; col < 3; col += 1) {
-      const cx = cellW * col + cellW / 2;
-      const cy = cellH * row + cellH * 0.52;
-      const seed = 100 + row * 10 + col + variant * 37;
-      if (row === 0) drawGirl(canvas, cx, cy, 0.62, seed, moods[col]);
-      else drawBoy(canvas, cx, cy, 0.62, seed, moods[col]);
-      canvas.rect(cellW * col + 8, cellH * row + 8, cellW * (col + 1) - 8, cellH * (row + 1) - 8, SOFT, { fill: false, width: 3 });
-    }
   }
   mkdirSync(path.dirname(dest), { recursive: true });
   writeFileSync(dest, canvas.toPng());

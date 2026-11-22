@@ -1,14 +1,7 @@
-/**
- * 상태 저장소 — 파일 해시(멱등성), 단계 상태, 비용, 화자 매핑, 에피소드 번호.
- *
- * SQLite 대신 단일 JSON 파일을 임시 파일 + rename(원자적)으로 씁니다.
- * 이 파이프라인은 launchd가 한 번에 하나만 돌리므로 이 정도면 충분하고,
- * Node 내장 모듈 외에 네이티브 의존성이 필요 없습니다.
- * (같은 통화를 두 번 처리해 돈을 두 번 쓰는 사고를 막는 것이 목적)
- */
-
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
+import { PipelineError } from "./errors.js";
 
 export type FileStatus = "processing" | "done" | "failed" | "needs_review" | "blocked" | "skipped";
 
@@ -57,11 +50,27 @@ interface StateData {
 
 const EMPTY: StateData = { version: 1, files: {}, stages: {}, costs: [], counters: {}, speakerMaps: {} };
 
+export class StateCorruptError extends PipelineError {
+  override readonly exitCode = 2;
+  readonly file: string;
+  readonly preserved: string | null;
+
+  constructor(file: string, preserved: string | null) {
+    super(`state 파일이 손상됐습니다(JSON 해석 실패): ${file}`, {
+      hint: preserved
+        ? `손상 원본을 ${preserved} 에 보관하고 쓰기를 중단했습니다. ${file}.bak 이 있으면 복사해 되돌린 뒤 다시 실행하세요.`
+        : `${file}.bak 이 있으면 복사해 되돌린 뒤 다시 실행하세요.`,
+    });
+    this.name = "StateCorruptError";
+    this.file = file;
+    this.preserved = preserved;
+  }
+}
+
 export function utcNowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-/** 일일 예산 계산용 로컬 날짜 (기본 Asia/Seoul). */
 export function localDay(now: Date = new Date(), timeZone = "Asia/Seoul"): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -85,29 +94,44 @@ export class StateStore {
 
   private read(): StateData {
     if (!existsSync(this.file)) return structuredClone(EMPTY);
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(readFileSync(this.file, "utf8")) as Partial<StateData>;
-      return {
-        version: 1,
-        files: parsed.files ?? {},
-        stages: parsed.stages ?? {},
-        costs: parsed.costs ?? [],
-        counters: parsed.counters ?? {},
-        speakerMaps: parsed.speakerMaps ?? {},
-      };
+      parsed = JSON.parse(readFileSync(this.file, "utf8"));
     } catch {
-      return structuredClone(EMPTY);
+      throw new StateCorruptError(this.file, this.preserveCorrupt());
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new StateCorruptError(this.file, this.preserveCorrupt());
+    }
+    const data = parsed as Partial<StateData>;
+    return {
+      version: 1,
+      files: data.files ?? {},
+      stages: data.stages ?? {},
+      costs: data.costs ?? [],
+      counters: data.counters ?? {},
+      speakerMaps: data.speakerMaps ?? {},
+    };
+  }
+
+  private preserveCorrupt(): string | null {
+    try {
+      const target = `${this.file}.corrupt-${utcNowIso().replace(/[:.]/g, "-")}`;
+      copyFileSync(this.file, target);
+      return target;
+    } catch {
+      return null;
     }
   }
 
   private save(): void {
     const temp = `${this.file}.tmp`;
     mkdirSync(path.dirname(this.file), { recursive: true });
+    if (existsSync(this.file)) copyFileSync(this.file, `${this.file}.bak`);
     writeFileSync(temp, JSON.stringify(this.data, null, 2), "utf8");
     renameSync(temp, this.file);
   }
 
-  // ── 파일(해시) ───────────────────────────────────────
   getFile(sha256: string): FileRecord | null {
     return this.data.files[sha256] ?? null;
   }
@@ -116,7 +140,6 @@ export class StateStore {
     return Boolean(this.data.files[sha256]);
   }
 
-  /** 해시를 '처리 중'으로 선점. 이미 있으면 false (중복). */
   claimFile(sha256: string, sourcePath: string, sizeBytes: number, now = utcNowIso()): boolean {
     if (this.data.files[sha256]) return false;
     this.data.files[sha256] = {
@@ -147,7 +170,6 @@ export class StateStore {
       .slice(0, limit);
   }
 
-  // ── 단계 ─────────────────────────────────────────────
   startStage(projectDir: string, stage: string): void {
     this.data.stages[projectDir] ??= {};
     this.data.stages[projectDir][stage] = { status: "running", startedAt: utcNowIso() };
@@ -175,7 +197,6 @@ export class StateStore {
     return Object.fromEntries(Object.entries(stages).map(([stage, record]) => [stage, record.status]));
   }
 
-  // ── 비용 ─────────────────────────────────────────────
   addCost(input: {
     usd: number;
     provider: string;
@@ -238,7 +259,6 @@ export class StateStore {
       .sort((a, b) => b.usd - a.usd);
   }
 
-  // ── 화자 ─────────────────────────────────────────────
   saveSpeakerMap(projectDir: string, map: Record<string, string>, confidence = "human"): void {
     this.data.speakerMaps[projectDir] = { map, confidence, updatedAt: utcNowIso() };
     this.save();
@@ -248,7 +268,6 @@ export class StateStore {
     return this.data.speakerMaps[projectDir] ?? null;
   }
 
-  // ── 카운터 ───────────────────────────────────────────
   nextEpisodeNumber(name = "episode"): number {
     const value = (this.data.counters[name] ?? 0) + 1;
     this.data.counters[name] = value;
@@ -265,7 +284,6 @@ export class StateStore {
     this.save();
   }
 
-  // ── 요약 ─────────────────────────────────────────────
   summary(): {
     files: Record<string, number>;
     episodes: number;

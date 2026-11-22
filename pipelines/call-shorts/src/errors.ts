@@ -1,5 +1,3 @@
-/** 파이프라인 예외 — '멈추고 보고' 세 경우를 타입으로 구분합니다. */
-
 export class PipelineError extends Error {
   readonly exitCode: number = 1;
   readonly status: string = "failed";
@@ -13,6 +11,12 @@ export class PipelineError extends Error {
 }
 
 export class ConfigError extends PipelineError {
+  override readonly exitCode = 2;
+  override readonly status = "failed";
+}
+
+/** 잘못된 인자값 — 저장하기 전에 멈추고 사용법을 알려 줍니다. */
+export class UsageError extends PipelineError {
   override readonly exitCode = 2;
   override readonly status = "failed";
 }

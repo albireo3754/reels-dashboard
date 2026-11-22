@@ -1,17 +1,9 @@
-/**
- * Step 3 — 캐릭터 시트 고정 → 컷별 손그림 일러스트.
- *
- * 캐릭터 시트를 먼저 만들고 사람이 한 세트를 고정합니다. 이후 모든 컷이 그 시트를 참조합니다.
- * AI 티 제거: 네거티브 + 후처리(그레인·회전·채도·검정 #1A1A1A).
- * 실사화 금지: 실제 인물로 알아볼 수 있게 그리는 변형을 만들지 않습니다(가드레일 5).
- */
-
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { BudgetGuard } from "./budget.js";
 import type { Config } from "./config.js";
-import { NeedsHumanError, PipelineError } from "./errors.js";
+import { BudgetExceededError, NeedsHumanError, PipelineError } from "./errors.js";
 import { requireFfmpeg, run } from "./media.js";
 import { createImageModel, type ImageModel } from "./providers.js";
 import type { StateStore } from "./state.js";
@@ -179,6 +171,7 @@ export class Illustrator {
           lastError = null;
           break;
         } catch (error) {
+          if (error instanceof BudgetExceededError) throw error;
           lastError = error as Error;
           console.warn(`[illustrator] 컷 ${idx} 실패 (${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}`);
         }
@@ -233,12 +226,4 @@ export class Illustrator {
     this.guard.checkAll(projectDir, price, true);
     if (price > 0) this.guard.record({ usd: price, provider: this.model.name, stage: "illustrate", projectDir, note });
   }
-}
-
-export function listPngs(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".png"))
-    .map((name) => path.join(dir, name))
-    .sort();
 }

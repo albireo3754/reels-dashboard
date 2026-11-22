@@ -1,13 +1,4 @@
-/**
- * 외부 모델 클라이언트 — Node 내장 fetch만 사용합니다.
- *
- *  Claude : 맥락·코믹 포인트·훅 5개 (plan/hooks.md)
- *  GPT    : episode.json 구조화 + 자막 타이밍 (JSON schema strict)
- *  Gemini : 캐릭터 시트·컷 이미지 (Nano Banana, 참조 이미지 슬롯)
- *  GPT Image: 대안 (글자·간판이 많은 컷)
- *
- * 라이브 API 호출은 키가 없어 이 저장소에서 검증되지 않았습니다. 요청 형식은 2026-11 공식 문서 기준입니다.
- */
+// 라이브 API 호출은 키가 없어 이 저장소에서 검증되지 않았습니다. 요청 형식은 2026-11 공식 문서 기준입니다.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -63,7 +54,7 @@ export async function postJson<T = Record<string, unknown>>(url: string, request
   }
 }
 
-function stripFence(text: string): string {
+export function stripFence(text: string): string {
   let value = (text ?? "").trim();
   if (value.startsWith("```")) {
     const lines = value.split("\n").slice(1);
@@ -157,7 +148,6 @@ export async function callOpenAI(config: Config, request: TextRequest): Promise<
   return stripFence(text);
 }
 
-/** Gemini generateContent — 텍스트 응답 추출. */
 export async function callGemini(config: Config, payload: unknown, model: string, timeoutMs = 300_000): Promise<string> {
   if (!config.geminiApiKey) throw new ConfigError("GEMINI_API_KEY가 필요합니다 (.env).");
   const url = `${GEMINI_URL.replace("{model}", model)}?key=${config.geminiApiKey}`;
@@ -173,9 +163,6 @@ export async function callGemini(config: Config, payload: unknown, model: string
   return stripFence(text);
 }
 
-// ──────────────────────────────────────────────────────────────
-// 이미지
-// ──────────────────────────────────────────────────────────────
 export interface ImageRequest {
   prompt: string;
   dest: string;

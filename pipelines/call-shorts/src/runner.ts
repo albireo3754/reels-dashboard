@@ -1,12 +1,4 @@
-/**
- * 오케스트레이션 — 한 통화를 EP 폴더로 만들고 5단계를 실행합니다.
- * transcribe → plan → illustrate → render → publish
- *
- * 멈춤 규칙(가드레일 6): 화자 매핑/캐릭터 시트/스키마 검증 → needs_review,
- * 예산 초과 → blocked, 그 밖의 실패 → failed(+ 원본 사본과 error.log).
- */
-
-import { copyFileSync, existsSync, mkdirSync, renameSync, statSync, writeFileSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
@@ -16,15 +8,15 @@ import { BudgetExceededError, NeedsHumanError, PipelineError } from "./errors.js
 import { Illustrator } from "./illustrator.js";
 import { acquireLock } from "./lock.js";
 import { notifyBlocked, notifyFailed, notifyReady } from "./notify.js";
-import { callGemini } from "./providers.js";
+import { callGemini, type ImageModel } from "./providers.js";
 import { copyToOutbox, publish } from "./publish.js";
 import { render } from "./renderer.js";
 import { ScriptWriter } from "./scriptwriter.js";
 import { StateStore, utcNowIso } from "./state.js";
-import { loadTranscript, Transcriber, transcribeWithGemini } from "./transcribe.js";
-import type { Episode, ProjectMeta, RunResult, RunStatus, Stage, Transcript } from "./types.js";
+import { Transcriber, loadPlanningTranscript, transcribeWithGemini } from "./transcribe.js";
+import type { Episode, ProjectMeta, RunResult, RunStatus, Stage } from "./types.js";
 import { STAGES } from "./types.js";
-import { InboxScanner, sha256File, type ScanItem } from "./watcher.js";
+import { InboxScanner, sha256File } from "./watcher.js";
 
 const ARTIFACTS: Record<Stage, string> = {
   transcribe: "transcript/diarized.json",
@@ -34,9 +26,12 @@ const ARTIFACTS: Record<Stage, string> = {
   publish: "publish/meta.json",
 };
 
+const REUSABLE_PROJECT_STATUSES = ["processing", "needs_review", "blocked", "failed"];
+
 export interface PipelineOptions {
   executeRender?: boolean;
   notifier?: (kind: "ready" | "blocked" | "failed", projectDir: string, stage: string, message: string) => void;
+  imageModel?: ImageModel;
 }
 
 export class Pipeline {
@@ -44,17 +39,17 @@ export class Pipeline {
   readonly store: StateStore;
   readonly executeRender: boolean;
   private readonly notifier?: PipelineOptions["notifier"];
+  private readonly imageModel?: ImageModel;
 
   constructor(config: Config, store?: StateStore, options: PipelineOptions = {}) {
     this.config = config;
     this.store = store ?? new StateStore(config.stateFile);
     this.executeRender = options.executeRender ?? !config.dryRun;
     this.notifier = options.notifier;
+    this.imageModel = options.imageModel;
     ensureDirs(config);
   }
 
-  // ── 동시 실행 ─────────────────────────────────────────
-  /** launchd 중복 실행 방지 — 같은 state 파일을 두 프로세스가 동시에 만지지 않게 합니다. */
   async runExclusive<T>(command: string, work: () => Promise<T>): Promise<T> {
     const lock = acquireLock(this.config.stateFile, { command });
     try {
@@ -64,7 +59,6 @@ export class Pipeline {
     }
   }
 
-  // ── inbox ────────────────────────────────────────────
   async runOnce(options: { file?: string; startStage?: Stage; force?: boolean; limit?: number } = {}): Promise<RunResult[]> {
     return this.runExclusive("run-once", () => this.runOnceUnlocked(options));
   }
@@ -80,9 +74,9 @@ export class Pipeline {
     if (limit !== undefined) items = items.slice(0, limit);
     const results: RunResult[] = [];
     for (const item of items) {
-      if (!this.store.claimFile(item.sha256!, item.path, item.size)) continue;
-      // 방금 claim 으로 status 가 `processing` 이 됐으니, 이미 처리한 파일 skip 을 우회합니다.
-      results.push(await this.runFile(item.path, { ...options, sha256: item.sha256, claimed: true }));
+      const digest = item.sha256!;
+      if (!this.store.getFile(digest) && !this.store.claimFile(digest, item.path, item.size)) continue;
+      results.push(await this.runFile(item.path, { ...options, sha256: digest, claimed: true }));
     }
     return results;
   }
@@ -97,11 +91,15 @@ export class Pipeline {
 
     if (existing && !options.force && !options.claimed) {
       if (["done", "processing", "needs_review", "blocked"].includes(existing.status)) {
+        const message =
+          existing.status === "processing"
+            ? "처리 중인 기록이 있습니다 (중단됐다면 --force 로 재시작)"
+            : `이미 처리한 통화입니다 (${existing.status})`;
         return {
           projectDir: existing.projectDir ?? this.config.projectsDir,
           episodeId: existing.projectDir ? path.basename(existing.projectDir).split("_").at(-1) ?? "EP" : "EP",
           status: "skipped",
-          message: `이미 처리한 통화입니다 (${existing.status})`,
+          message,
           stages: {},
           video: null,
           cover: null,
@@ -112,7 +110,7 @@ export class Pipeline {
 
     if (!existing) this.store.claimFile(digest, path.resolve(file), statSync(file).size);
     this.store.setFileStatus(digest, "processing");
-    const project = this.projectFor(digest, existing, file, options.force ?? false);
+    const project = this.projectFor(digest, existing, file);
     this.store.setFileStatus(digest, "processing", { projectDir: project });
     return this.runStages(project, { startStage: options.startStage, digest, source: file, force: options.force });
   }
@@ -127,7 +125,6 @@ export class Pipeline {
     return this.runStages(projectDir, { startStage, digest: meta.sha256, source, force });
   }
 
-  // ── 단계 실행 ────────────────────────────────────────
   private async runStages(
     projectDir: string,
     options: { startStage?: Stage; digest?: string; source: string | null; force?: boolean },
@@ -214,21 +211,20 @@ export class Pipeline {
   private async runStage(projectDir: string, stage: Stage, source: string | null): Promise<void> {
     if (stage === "transcribe") {
       if (!source) throw new PipelineError("원본 오디오 경로를 찾을 수 없습니다.", { hint: "project.json 의 sourcePath 확인" });
-      // TRANSCRIBE_BACKEND=gemini 가 실제로 연결되도록 호출 함수를 주입합니다.
       await new Transcriber(this.config, this.store, {
         transcribeGemini: (wav, cfg) => transcribeWithGemini(wav, cfg, callGemini),
       }).run(projectDir, source);
       return;
     }
     if (stage === "plan") {
-      const transcript = loadTranscript(projectDir);
+      const transcript = loadPlanningTranscript(projectDir);
       const writer = new ScriptWriter(this.config, this.store);
       await writer.plan(projectDir, transcript);
       await writer.writeEpisode(projectDir, transcript);
       return;
     }
     if (stage === "illustrate") {
-      await new Illustrator(this.config, this.store).generate(projectDir, loadEpisode(projectDir));
+      await new Illustrator(this.config, this.store, this.imageModel).generate(projectDir, loadEpisode(projectDir));
       return;
     }
     if (stage === "render") {
@@ -243,9 +239,8 @@ export class Pipeline {
     throw new PipelineError(`알 수 없는 단계: ${stage}`);
   }
 
-  // ── 상태·파일 ───────────────────────────────────────
-  private projectFor(digest: string, existing: ReturnType<StateStore["getFile"]>, file: string, force: boolean): string {
-    if (existing?.projectDir && ["needs_review", "blocked", "failed"].includes(existing.status) && existsSync(existing.projectDir)) {
+  private projectFor(digest: string, existing: ReturnType<StateStore["getFile"]>, file: string): string {
+    if (existing?.projectDir && REUSABLE_PROJECT_STATUSES.includes(existing.status) && existsSync(existing.projectDir)) {
       this.ensureLayout(existing.projectDir);
       return existing.projectDir;
     }
@@ -274,7 +269,6 @@ export class Pipeline {
       status: "processing",
       audio: path.relative(project, audioDest),
     });
-    void force;
     return project;
   }
 
@@ -316,7 +310,7 @@ export class Pipeline {
       mkdirSync(target, { recursive: true });
       copyFileSync(source, path.join(target, path.basename(source)));
     } catch {
-      /* 보존 실패는 기록만 */
+      /* 원본 보존 실패는 파이프라인을 멈추지 않습니다 */
     }
   }
 
@@ -330,7 +324,7 @@ export class Pipeline {
         mkdirSync(path.dirname(target), { recursive: true });
         writeFileSync(target, content, "utf8");
       } catch {
-        /* 무시 */
+        /* error.log 를 못 써도 실패 처리는 계속합니다 */
       }
     }
   }
@@ -385,5 +379,3 @@ export class Pipeline {
     }
   }
 }
-
-export type { ScanItem, Transcript };

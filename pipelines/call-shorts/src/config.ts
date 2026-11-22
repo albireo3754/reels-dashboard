@@ -1,9 +1,3 @@
-/**
- * 설정 — 환경변수와 `.env`를 읽어 하나의 Config로 모읍니다.
- *
- * 기본 경로(맥): ~/Library/Mobile Documents/com~apple~CloudDocs/여친탐구생활/
- *   inbox/  processed/  failed/  projects/  outbox/  state/  logs/  assets/{characters,sfx,bgm}/
- */
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";

@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { mockHooks, mockEpisode, normalizeEpisode } from "../src/scriptwriter.js";
+import { EPISODE_SCHEMA } from "../src/scriptwriter.js";
 import { redactEpisode, redactText } from "../src/redact.js";
 import { validateEpisode } from "../src/episode.js";
 import { deepCopy, fixtureEpisode, fixtureTranscript, makeConfig, makeProject } from "./helpers.js";
@@ -127,6 +128,14 @@ test("prefer transcript.edited.md when present", async () => {
   await new ScriptWriter(config, undefined, { planner }).plan(project, transcript);
   assert.match(prompts[0], /고친 대사/);
   assert.doesNotMatch(prompts[0], /여보세요/);
+});
+
+test("the schema drops the unused camera.zoom and asks for visual.action", () => {
+  const cut = EPISODE_SCHEMA.properties.cuts.items.properties;
+  assert.deepEqual(cut.camera.required, ["rotateDeg"]);
+  assert.ok(!("zoom" in cut.camera.properties));
+  assert.ok((cut.visual.required as readonly string[]).includes("action"));
+  assert.ok("action" in cut.visual.properties);
 });
 
 test("budget guard blocks excessive spend", () => {

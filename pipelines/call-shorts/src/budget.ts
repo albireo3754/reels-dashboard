@@ -1,11 +1,9 @@
-/** 예산 가드 — 하루 / 한 편 / 이미지 상한을 넘으면 멈춥니다(가드레일 6). */
-
 import type { Config } from "./config.js";
 import { BudgetExceededError } from "./errors.js";
-import type { StateStore } from "./state.js";
-import { localDay } from "./state.js";
+import { localDay, type StateStore } from "./state.js";
 
-export const LLM_CALL_USD: Record<string, number> = { anthropic: 0.02, openai: 0.03 };
+// 토큰 실측 없이 호출 전에 예약하는 보수적 상한(USD). 실제 청구액과는 다를 수 있습니다.
+export const LLM_CALL_RESERVE_USD = 0.03;
 
 export class BudgetGuard {
   constructor(
@@ -50,15 +48,18 @@ export class BudgetGuard {
     if (imageCall && projectDir) this.checkImage(projectDir, upcomingUsd);
   }
 
+  checkLlm(projectDir: string | null): void {
+    this.checkAll(projectDir, LLM_CALL_RESERVE_USD);
+  }
+
   record(input: { usd: number; provider: string; stage: string; projectDir?: string | null; note?: string }): void {
     if (!(input.usd > 0)) return;
     this.store.addCost(input);
   }
 
   recordLlm(provider: string, stage: string, projectDir: string | null, note = ""): number {
-    const usd = LLM_CALL_USD[provider.split(":")[0]] ?? 0.03;
-    this.record({ usd, provider, stage, projectDir, note });
-    return usd;
+    this.record({ usd: LLM_CALL_RESERVE_USD, provider, stage, projectDir, note });
+    return LLM_CALL_RESERVE_USD;
   }
 
   statusLine(): string {

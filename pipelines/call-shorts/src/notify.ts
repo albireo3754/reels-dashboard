@@ -1,20 +1,17 @@
-/** macOS 알림 — "EP.03 준비됨: <경로>" (osascript). 알림 실패는 파이프라인 실패가 아닙니다. */
-
 import { execFile } from "node:child_process";
 import path from "node:path";
 
-function escape(text: string): string {
+function escapeAppleScriptString(text: string): string {
   return String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 export function notify(title: string, message: string): void {
   console.log(`[알림] ${title} — ${message}`);
   if (process.platform !== "darwin") return;
-  const script = `display notification "${escape(message)}" with title "${escape(title)}" sound name "Glass"`;
+  const script = `display notification "${escapeAppleScriptString(message)}" with title "${escapeAppleScriptString(title)}" sound name "Glass"`;
   try {
     execFile("osascript", ["-e", script], { timeout: 15_000 }, () => undefined);
   } catch {
-    /* 알림은 실패해도 무시 */
   }
 }
 

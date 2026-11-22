@@ -1,19 +1,17 @@
-/**
- * Step 5 — 발행 준비물: meta.json · checklist.md · 커버 · SRT · outbox 복사.
- * 업로드는 자동화하지 않습니다(가드레일 2). 끝은 '알림 → 1분 검수 → 수동 업로드'입니다.
- */
-
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
 import { totalDuration } from "./episode.js";
+import { SENSITIVE_PATTERN_COUNT, scanText } from "./redact.js";
 import { measureLoudness, mediaReport } from "./renderer.js";
-import { scanText } from "./redact.js";
 import { HOOK_SECONDS, SUBTITLE_MARGIN_V } from "./subtitles.js";
 import type { Episode, MediaInfo } from "./types.js";
 
 export const DISCLOSURE_COMMENT = "그림은 AI 생성(손그림 스타일), 목소리는 실제 통화 녹음입니다.";
+
+export const LOUDNESS_TARGET_LUFS = -14;
+export const LOUDNESS_TOLERANCE_LUFS = 1.5;
 
 export const UPLOAD_STEPS = [
   "1. render/short.mp4 를 눈으로 한 번 봅니다 (첫 3초·자막 위치·오탈자).",
@@ -70,18 +68,30 @@ export function buildChecklist(
   options: { media?: MediaInfo; loudness?: Record<string, number>; rendered?: boolean } = {},
 ): string {
   const media: Partial<MediaInfo> = options.media ?? {};
-  const loudness: Record<string, number> = options.loudness ?? {};
+  const inputI = typeof options.loudness?.input_i === "number" ? options.loudness.input_i : null;
   const rendered = options.rendered ?? true;
   const cuts = episode.cuts ?? [];
   const duration = totalDuration(episode);
   const marginRatio = SUBTITLE_MARGIN_V / Math.max(1, config.renderHeight);
   const captionsText = cuts.map((cut) => cut.caption ?? "").join("\n");
   const leaks = scanText(captionsText, config.redactionTerms);
+  const terms = config.redactionTerms.filter(Boolean);
   const hashtagsMax = Math.max(
     0,
     ...Object.values(episode.platformMeta ?? {}).map((block) => block?.hashtags?.length ?? 0),
   );
   const disclosure = episode.aiDisclosure;
+
+  const resolutionOk = rendered
+    ? media.width === config.renderWidth && media.height === config.renderHeight && (media.fps ?? 0) >= 29
+    : null;
+  const loudnessOk = !rendered || inputI === null ? null : Math.abs(inputI - LOUDNESS_TARGET_LUFS) <= LOUDNESS_TOLERANCE_LUFS;
+  const redactionOk = leaks.length ? false : terms.length ? true : null;
+  const redactionDetail = leaks.length
+    ? `발견: ${[...new Set(leaks)].join(", ")}`
+    : terms.length
+      ? `정규식 ${SENSITIVE_PATTERN_COUNT}종 + 금지어 ${terms.length}개 검사 — 해당 없음`
+      : `정규식 ${SENSITIVE_PATTERN_COUNT}종만 검사(사용자 금지어 미설정) — 실명·회사명은 사람이 확인`;
 
   const rows: Array<[boolean | null, string, string]> = [
     [
@@ -103,11 +113,20 @@ export function buildChecklist(
     ],
     [true, "워터마크·테두리·레터박스가 없는가 (Reels 감점)", "오버레이·테두리 필터 없음"],
     [
-      rendered ? media.width === config.renderWidth && media.height === config.renderHeight && (media.fps ?? 0) >= 29 : null,
-      "1080×1920, 30fps, 라우드니스 -14 LUFS",
-      rendered ? `${media.width}x${media.height} @ ${media.fps}fps · loudnorm input_i=${loudness.input_i ?? "미측정"}` : "미렌더링 (dry-run)",
+      resolutionOk,
+      `${config.renderWidth}×${config.renderHeight}, ${config.fps}fps`,
+      rendered ? `${media.width ?? "?"}x${media.height ?? "?"} @ ${media.fps ?? "?"}fps` : "미렌더링 (dry-run)",
     ],
-    [leaks.length === 0, "실명·회사명·연락처·지명이 없는가", leaks.length ? `발견: ${[...new Set(leaks)].join(", ")}` : "민감정보 패턴 없음"],
+    [
+      loudnessOk,
+      `라우드니스 ${LOUDNESS_TARGET_LUFS} ± ${LOUDNESS_TOLERANCE_LUFS} LUFS (loudnorm 실측)`,
+      !rendered
+        ? "미렌더링 (dry-run)"
+        : inputI === null
+          ? "⚠️ 미측정 — 렌더 후 다시 실행하세요"
+          : `${inputI.toFixed(1)} LUFS · 기준 ${LOUDNESS_TARGET_LUFS}±${LOUDNESS_TOLERANCE_LUFS} ${loudnessOk ? "통과" : "벗어남"}`,
+    ],
+    [redactionOk, "등록된 민감 패턴·금지어가 자막에 없는가 (실명·회사명은 사람이 확인)", redactionDetail],
     [true, "얼굴이 실제 인물로 알아볼 수 있게 그려지지 않았는가", "프롬프트에 실사 금지·likeness 금지 가드 포함"],
     [
       Boolean(disclosure?.reason),
@@ -144,6 +163,7 @@ export function buildChecklist(
     "",
     "## 남은 사람 손",
     "",
+    "- [ ] 실명·회사명이 자막·제목에 남아 있지 않은가 (정규식이 못 잡습니다 — 직접 읽어 보세요)",
     "- [ ] 펀치라인 한 줄은 사람이 직접 다듬었는가 (자동 대본 그대로면 밋밋합니다)",
     "- [ ] 이번 편의 사건이 지난 편과 다른가 (비진짜 콘텐츠 정책)",
     "- [ ] transcript/transcript.edited.md 의 오탈자가 최종 자막에 반영됐는가",

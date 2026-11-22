@@ -1,22 +1,12 @@
-/**
- * 동시 실행 락 — launchd 가 run-once/watch 를 겹쳐 띄워도 한 번에 하나만 돌게 합니다.
- *
- * state 폴더의 `pipeline.lock` 을 `wx`(O_EXCL)로 원자적으로 만들고, PID·시작 시각·명령을
- * 적어 둡니다. 이미 있으면 멈춘 실행인지 확인해(프로세스 없음 또는 오래됨) 안전하게 지우고
- * 다시 잡습니다. 정상 종료·예외 모두 `finally` 에서 내 락만 지웁니다.
- *
- * 이 락이 없으면 두 인스턴스가 같은 state JSON 을 각자 읽어 각자 claim 하고,
- * 같은 통화로 이미지·대본 API 를 두 번 결제합니다.
- */
+// 락 파일은 `wx`(O_EXCL)로 원자적으로 만들고 pid 생존 여부로 멈춘 실행을 가립니다.
+// 두 인스턴스가 같은 통화로 API 를 두 번 결제하는 것을 막는 유일한 장치입니다.
 
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
 import path from "node:path";
 
 import { PipelineError } from "./errors.js";
 
-/** 최장 통화 처리(전사+이미지+렌더)보다 넉넉한 시간. 넘으면 멈춘 실행으로 봅니다. */
 export const DEFAULT_STALE_MS = 3 * 60 * 60 * 1000;
-/** 깨진 락 파일(내용 없음)을 멈춘 것으로 보기까지의 유예. */
 const BROKEN_LOCK_GRACE_MS = 60_000;
 
 export interface LockRecord {
@@ -28,7 +18,6 @@ export interface LockRecord {
 export interface LockHandle {
   readonly file: string;
   readonly record: LockRecord;
-  /** 여러 번 불러도 안전합니다. 내가 잡은 락이 아니면 건드리지 않습니다. */
   release(): void;
 }
 
@@ -55,11 +44,8 @@ export function lockFileFor(stateFile: string): string {
 
 export interface AcquireOptions {
   command?: string;
-  /** 테스트용 시각 주입 (ms). */
   now?: number;
-  /** 이 시간보다 오래된 락은 멈춘 것으로 보고 풉니다. */
   staleMs?: number;
-  /** 테스트용 살아있는 프로세스 판정. */
   isAlive?: (pid: number) => boolean;
 }
 
@@ -121,12 +107,11 @@ function handleFor(file: string, record: LockRecord): LockHandle {
       if (released) return;
       released = true;
       const current = readRecord(file);
-      // 내 락이 아니면(멈춘 락을 지운 뒤 다른 프로세스가 새로 잡은 경우) 그대로 둡니다.
       if (current && (current.pid !== record.pid || current.startedAt !== record.startedAt)) return;
       try {
         unlinkSync(file);
       } catch {
-        /* 이미 지워졌습니다 */
+        /* 이미 지워졌으면 그대로 둡니다 */
       }
     },
   };
