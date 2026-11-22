@@ -45,6 +45,16 @@ function describe(result: RunResult): string {
   return lines.join("\n");
 }
 
+/** positional `dry-run` 명령과 `--dry-run` 플래그 둘 다 실제 DRY_RUN=1 로 만듭니다. */
+export function applyDryRunEnv(
+  env: Record<string, string | undefined>,
+  command: string,
+  values: { "dry-run"?: boolean },
+): Record<string, string | undefined> {
+  if (values["dry-run"] || command === "dry-run") env.DRY_RUN = "1";
+  return env;
+}
+
 function doctor(config: Config): number {
   const rows: Array<[string, string, string]> = [];
   rows.push(["OK", "node", process.version]);
@@ -154,7 +164,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   const env: Record<string, string | undefined> = { ...process.env };
   if (values.root) env.PIPELINE_ROOT = values.root.startsWith("~") ? path.join(homedir(), values.root.slice(1)) : values.root;
-  if (values["dry-run"]) env.DRY_RUN = "1";
+  applyDryRunEnv(env, command, values);
 
   let config: Config;
   try {
@@ -200,10 +210,13 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
     if (command === "watch") {
       const { watchForever } = await import("./watcher.js");
-      await watchForever(config, pipeline.store, async (item) => {
-        const result = await pipeline.runFile(item.path, { sha256: item.sha256, force: Boolean(values.force) });
-        console.log(describe(result));
-      }, { intervalSec: values.interval ? Number(values.interval) : undefined, force: Boolean(values.force) });
+      // watch 는 오래 떠 있으므로 시작할 때 락을 잡아 launchd 의 run-once 와 겹치지 않게 합니다.
+      await pipeline.runExclusive("watch", async () => {
+        await watchForever(config, pipeline.store, async (item) => {
+          const result = await pipeline.runFile(item.path, { sha256: item.sha256, force: Boolean(values.force) });
+          console.log(describe(result));
+        }, { intervalSec: values.interval ? Number(values.interval) : undefined, force: Boolean(values.force) });
+      });
       return 0;
     }
 

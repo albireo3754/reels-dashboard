@@ -3,6 +3,7 @@
  *
  * 여자 #FF6B9D / 남자 #4FC3F7, 흰 외곽선 3px, 하단 12~18%(MarginV 300/1920),
  * 1~2줄·줄당 12~14자, 훅은 0~3초 상단 고정, 말풍선은 속마음용.
+ * 흰 글씨 스타일(훅·펀치라인·말풍선·커버)은 크림색 종이 위에서도 읽히도록 검은 외곽선을 씁니다.
  */
 
 import type { Config } from "./config.js";
@@ -88,12 +89,17 @@ function escapeText(text: string): string {
   return (text ?? "").replace(/\\/g, "\\\\").replace(/[{}]/g, (match) => (match === "{" ? "(" : ")")).replace(/\n/g, "\\N");
 }
 
+const OUTLINE_WHITE = "&H00FFFFFF";
+/** 흰 글씨 밑에 깔 검은 외곽선. */
+export const OUTLINE_BLACK = "&H00000000";
+
 function styleLine(options: {
   name: string;
   font: string;
   size: number;
   primary: string;
   outline?: number;
+  outlineColor?: string;
   bold?: boolean;
   italic?: boolean;
   alignment?: number;
@@ -108,7 +114,7 @@ function styleLine(options: {
     String(options.size),
     options.primary,
     "&H000000FF",
-    "&H00FFFFFF",
+    options.outlineColor ?? OUTLINE_WHITE,
     "&H64000000",
     String(bold),
     String(italic),
@@ -162,6 +168,7 @@ export function buildAss(episode: Episode, config: Config): string {
       size: 52,
       primary: "&H00FFFFFF",
       outline: 4,
+      outlineColor: OUTLINE_BLACK,
       bold: false,
       alignment: 8,
       marginV: 250,
@@ -173,6 +180,7 @@ export function buildAss(episode: Episode, config: Config): string {
       size: 46,
       primary: "&H00F2F2F2",
       outline: 3,
+      outlineColor: OUTLINE_BLACK,
       bold: false,
       italic: true,
       alignment: 8,
@@ -185,10 +193,21 @@ export function buildAss(episode: Episode, config: Config): string {
       size: 92,
       primary: "&H00FFFFFF",
       outline: 5,
+      outlineColor: OUTLINE_BLACK,
       alignment: 2,
       marginV: PUNCH_MARGIN_V,
     }),
-    styleLine({ name: "Cover", font: config.hookFont, size: 84, primary: "&H00FFFFFF", outline: 5, alignment: 5, marginV: 0, marginLR: 110 }),
+    styleLine({
+      name: "Cover",
+      font: config.hookFont,
+      size: 84,
+      primary: "&H00FFFFFF",
+      outline: 5,
+      outlineColor: OUTLINE_BLACK,
+      alignment: 5,
+      marginV: 0,
+      marginLR: 110,
+    }),
   ]);
 
   const events: Array<{ start: number; layer: number; line: string }> = [];
@@ -262,6 +281,7 @@ export function buildCoverAss(episode: Episode, config: Config): string {
           size: 86,
           primary: "&H00FFFFFF",
           outline: 6,
+          outlineColor: OUTLINE_BLACK,
           alignment: 5,
           marginV: 0,
           marginLR: 100,

@@ -117,6 +117,15 @@ export async function callAnthropic(config: Config, request: TextRequest): Promi
   return stripFence(chunks.join("\n"));
 }
 
+/**
+ * gpt-5 · o1/o3/o4 계열(reasoning 모델)은 `temperature` 를 거부합니다(HTTP 400).
+ * 요청 payload 에서 아예 빼야 합니다.
+ */
+export function omitsTemperature(model: string): boolean {
+  const name = (model ?? "").trim().toLowerCase().replace(/^[a-z-]+\//, "");
+  return /^gpt-5/.test(name) || /^o\d/.test(name);
+}
+
 export async function callOpenAI(config: Config, request: TextRequest): Promise<string> {
   if (!config.openaiApiKey) throw new ConfigError("OPENAI_API_KEY가 필요합니다 (.env).");
   const messages: Array<{ role: string; content: string }> = [];
@@ -126,8 +135,8 @@ export async function callOpenAI(config: Config, request: TextRequest): Promise<
     model: config.gptModel,
     messages,
     max_completion_tokens: request.maxTokens ?? 4000,
-    temperature: request.temperature ?? 0.4,
   };
+  if (!omitsTemperature(config.gptModel)) payload.temperature = request.temperature ?? 0.4;
   if (request.schema) {
     payload.response_format = {
       type: "json_schema",

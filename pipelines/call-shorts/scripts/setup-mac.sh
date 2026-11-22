@@ -67,8 +67,12 @@ else
 import sys, pathlib
 path, root = sys.argv[1], sys.argv[2]
 p = pathlib.Path(path)
-text = p.read_text(encoding="utf-8").replace("# PIPELINE_ROOT=", f"PIPELINE_ROOT={root}", 1)
-p.write_text(text, encoding="utf-8")
+lines = p.read_text(encoding="utf-8").splitlines()
+for i, line in enumerate(lines):
+    if line.strip().startswith("PIPELINE_ROOT="):
+        lines[i] = "PIPELINE_ROOT=" + root
+        break
+p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
   echo "  ✓ .env 생성 — API 키(ANTHROPIC/OPENAI/GEMINI)를 채우세요"
 fi

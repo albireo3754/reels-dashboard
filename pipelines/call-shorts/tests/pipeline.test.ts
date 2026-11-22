@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { applyDryRunEnv, main } from "../src/cli.js";
 import { validateEpisode } from "../src/episode.js";
 import { Pipeline } from "../src/runner.js";
 import { STAGES } from "../src/types.js";
@@ -80,6 +82,53 @@ test("resume skips completed stages", async () => {
   const resumed = await pipeline(config).resume(first.projectDir);
   assert.equal(resumed.status, "done");
   assert.ok(Object.values(resumed.stages).every((status) => status === "이미 완료"));
+});
+
+test("runOnce() with no arguments picks up a new recording from inbox", async () => {
+  const config = makeDryConfig();
+  const audio = path.join(config.inboxDir, "call.m4a");
+  writeFileSync(audio, Buffer.alloc(2048, 1));
+
+  // claim 이 status 를 processing 으로 바꿔도 runOnce 는 그 파일을 끝까지 처리해야 합니다 (P0-1).
+  const results = await pipeline(config).runOnce();
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "done", results[0].message);
+  assert.match(path.basename(results[0].projectDir), /_EP01$/);
+
+  // 같은 파일을 직접 다시 돌리면 멱등성으로 skipped — 돈을 두 번 쓰지 않습니다.
+  const again = await pipeline(config).runFile(audio);
+  assert.equal(again.status, "skipped");
+  assert.match(again.message, /이미 처리한 통화/);
+
+  // 2회차 runOnce() 는 새 통화가 없으므로 아무것도 처리하지 않습니다.
+  const second = await pipeline(config).runOnce();
+  assert.equal(second.length, 0);
+  assert.equal(readdirSync(config.projectsDir).length, 1);
+});
+
+test("positional dry-run sets DRY_RUN, the flag and other commands do not", () => {
+  assert.equal(applyDryRunEnv({}, "dry-run", {}).DRY_RUN, "1");
+  assert.equal(applyDryRunEnv({}, "run-once", { "dry-run": true }).DRY_RUN, "1");
+  for (const command of ["run-once", "watch", "doctor", "resume"]) {
+    assert.equal(applyDryRunEnv({}, command, {}).DRY_RUN, undefined, command);
+  }
+});
+
+test("the dry-run command runs end to end through the CLI without encoding", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "callshorts-cli-"));
+  const inbox = path.join(root, "inbox");
+  mkdirSync(inbox, { recursive: true });
+  writeFileSync(path.join(inbox, "call.m4a"), Buffer.alloc(3072, 2));
+
+  const code = await main(["dry-run", "--root", root]);
+  assert.equal(code, 0);
+
+  const projects = readdirSync(path.join(root, "projects"));
+  assert.equal(projects.length, 1, projects.join(","));
+  const project = path.join(root, "projects", projects[0]);
+  // --render 없이는 MP4 를 만들지 않고 ASS/계획만 남깁니다.
+  assert.ok(existsSync(path.join(project, "render", "captions.ass")));
+  assert.ok(!existsSync(path.join(project, "render", "short.mp4")));
 });
 
 test("input with a json stderr does not crash the runner", async () => {

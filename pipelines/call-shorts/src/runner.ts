@@ -14,12 +14,14 @@ import { ensureDirs, episodeIdFor, projectDirFor, projectSubdirs } from "./confi
 import { loadEpisode } from "./episode.js";
 import { BudgetExceededError, NeedsHumanError, PipelineError } from "./errors.js";
 import { Illustrator } from "./illustrator.js";
+import { acquireLock } from "./lock.js";
 import { notifyBlocked, notifyFailed, notifyReady } from "./notify.js";
+import { callGemini } from "./providers.js";
 import { copyToOutbox, publish } from "./publish.js";
 import { render } from "./renderer.js";
 import { ScriptWriter } from "./scriptwriter.js";
 import { StateStore, utcNowIso } from "./state.js";
-import { loadTranscript, Transcriber } from "./transcribe.js";
+import { loadTranscript, Transcriber, transcribeWithGemini } from "./transcribe.js";
 import type { Episode, ProjectMeta, RunResult, RunStatus, Stage, Transcript } from "./types.js";
 import { STAGES } from "./types.js";
 import { InboxScanner, sha256File, type ScanItem } from "./watcher.js";
@@ -51,8 +53,25 @@ export class Pipeline {
     ensureDirs(config);
   }
 
+  // ── 동시 실행 ─────────────────────────────────────────
+  /** launchd 중복 실행 방지 — 같은 state 파일을 두 프로세스가 동시에 만지지 않게 합니다. */
+  async runExclusive<T>(command: string, work: () => Promise<T>): Promise<T> {
+    const lock = acquireLock(this.config.stateFile, { command });
+    try {
+      return await work();
+    } finally {
+      lock.release();
+    }
+  }
+
   // ── inbox ────────────────────────────────────────────
   async runOnce(options: { file?: string; startStage?: Stage; force?: boolean; limit?: number } = {}): Promise<RunResult[]> {
+    return this.runExclusive("run-once", () => this.runOnceUnlocked(options));
+  }
+
+  private async runOnceUnlocked(
+    options: { file?: string; startStage?: Stage; force?: boolean; limit?: number } = {},
+  ): Promise<RunResult[]> {
     if (options.file) return [await this.runFile(options.file, options)];
 
     const scanner = new InboxScanner(this.config, this.store);
@@ -62,20 +81,21 @@ export class Pipeline {
     const results: RunResult[] = [];
     for (const item of items) {
       if (!this.store.claimFile(item.sha256!, item.path, item.size)) continue;
-      results.push(await this.runFile(item.path, { ...options, sha256: item.sha256 }));
+      // 방금 claim 으로 status 가 `processing` 이 됐으니, 이미 처리한 파일 skip 을 우회합니다.
+      results.push(await this.runFile(item.path, { ...options, sha256: item.sha256, claimed: true }));
     }
     return results;
   }
 
   async runFile(
     file: string,
-    options: { sha256?: string; startStage?: Stage; force?: boolean } = {},
+    options: { sha256?: string; startStage?: Stage; force?: boolean; claimed?: boolean } = {},
   ): Promise<RunResult> {
     if (!existsSync(file)) throw new PipelineError(`파일이 없습니다: ${file}`);
     const digest = options.sha256 ?? (await sha256File(file));
     const existing = this.store.getFile(digest);
 
-    if (existing && !options.force) {
+    if (existing && !options.force && !options.claimed) {
       if (["done", "processing", "needs_review", "blocked"].includes(existing.status)) {
         return {
           projectDir: existing.projectDir ?? this.config.projectsDir,
@@ -98,6 +118,10 @@ export class Pipeline {
   }
 
   async resume(projectDir: string, startStage?: Stage, force = false): Promise<RunResult> {
+    return this.runExclusive("resume", () => this.resumeUnlocked(projectDir, startStage, force));
+  }
+
+  private async resumeUnlocked(projectDir: string, startStage?: Stage, force = false): Promise<RunResult> {
     const meta = this.readProject(projectDir);
     const source = meta.sourcePath && existsSync(meta.sourcePath) ? meta.sourcePath : null;
     return this.runStages(projectDir, { startStage, digest: meta.sha256, source, force });
@@ -190,7 +214,10 @@ export class Pipeline {
   private async runStage(projectDir: string, stage: Stage, source: string | null): Promise<void> {
     if (stage === "transcribe") {
       if (!source) throw new PipelineError("원본 오디오 경로를 찾을 수 없습니다.", { hint: "project.json 의 sourcePath 확인" });
-      await new Transcriber(this.config, this.store).run(projectDir, source);
+      // TRANSCRIBE_BACKEND=gemini 가 실제로 연결되도록 호출 함수를 주입합니다.
+      await new Transcriber(this.config, this.store, {
+        transcribeGemini: (wav, cfg) => transcribeWithGemini(wav, cfg, callGemini),
+      }).run(projectDir, source);
       return;
     }
     if (stage === "plan") {

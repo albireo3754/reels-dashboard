@@ -7,6 +7,7 @@ import {
   buildAss,
   buildCoverAss,
   buildSrt,
+  OUTLINE_BLACK,
   srtTime,
   SUBTITLE_MARGIN_V,
   wrapCaption,
@@ -99,4 +100,34 @@ test("events are sorted by start time", () => {
       return Number(hours) * 3600 + Number(minutes) * 60 + Number(rest);
     });
   assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+});
+
+/** `Style: 이름,...` 줄을 필드 배열로 나눕니다. */
+function styleFields(text: string, name: string): string[] {
+  const line = text.split("\n").find((entry) => entry.startsWith(`Style: ${name},`));
+  assert.ok(line, `Style: ${name} 줄이 없습니다`);
+  return line.slice("Style: ".length).split(",");
+}
+
+test("white hook, punch and cover text use a black outline", () => {
+  const text = buildAss(episode, config);
+  // OutlineColour 는 6번째 필드(index 5) — 크림색 종이 위에서도 읽히도록 검정.
+  for (const name of ["Hook", "Punch"]) {
+    const fields = styleFields(text, name);
+    assert.equal(fields[5], OUTLINE_BLACK, `${name} outline=${fields[5]}`);
+    assert.equal(fields[3], "&H00FFFFFF", `${name} primary=${fields[3]}`);
+  }
+  assert.equal(OUTLINE_BLACK, "&H00000000");
+});
+
+test("speaker captions and bubbles keep their dark-aware stroke", () => {
+  const text = buildAss(episode, config);
+  assert.equal(styleFields(text, "GF")[5], "&H00FFFFFF");
+  assert.equal(styleFields(text, "BF")[5], "&H00FFFFFF");
+  assert.equal(styleFields(text, "Bubble")[5], OUTLINE_BLACK);
+});
+
+test("cover ASS styles the cover line with a black outline too", () => {
+  const cover = buildCoverAss(episode, config);
+  assert.equal(styleFields(cover, "Cover")[5], OUTLINE_BLACK);
 });

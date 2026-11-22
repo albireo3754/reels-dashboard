@@ -225,7 +225,7 @@ export function loadConfig(options: ConfigOptions = {}): Config {
     imageProvider: choice(env, "IMAGE_PROVIDER", "gemini", IMAGE_PROVIDERS),
 
     dailyBudgetUsd: num(env, "DAILY_BUDGET_USD", 2.0),
-    maxImageUsd: num(env, "MAX_IMAGE_USD", 1.5),
+    maxImageUsd: num(env, "MAX_IMAGE_USD", 2.5),
     maxEpisodeUsd: num(env, "MAX_EPISODE_USD", 2.5),
     imagePriceUsd: num(env, "IMAGE_PRICE_USD", 0.134),
 
