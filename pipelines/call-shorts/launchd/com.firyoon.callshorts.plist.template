@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  여친 탐구생활 숏폼 파이프라인 — launchd 템플릿.
+  직접 고치지 말고 scripts/install-launchd.mjs 로 설치하세요(플레이스홀더 자동 치환).
+
+    __REPO__         reels-dashboard 체크아웃 절대 경로
+    __PIPELINE_DIR__ pipelines/call-shorts 절대 경로
+    __NODE__         node 실행 파일 (nvm이면 그 경로)
+    __ROOT__         iCloud Drive 여친탐구생활 폴더 (inbox/ 가 여기 있음)
+    __HOME__         홈 폴더
+    __PATH__         PATH (node, ffmpeg, brctl)
+
+  두 가지로 실행됩니다: 매일 07:30(StartCalendarInterval), inbox에 파일이 생길 때(WatchPaths).
+  처음 등록할 때 맥이 '전체 디스크 접근 권한'을 물으면 허용하세요.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.firyoon.callshorts</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>--import</string>
+    <string>tsx</string>
+    <string>__PIPELINE_DIR__/src/cli.ts</string>
+    <string>run-once</string>
+    <string>--root</string>
+    <string>__ROOT__</string>
+    <string>--limit</string>
+    <string>1</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>WatchPaths</key>
+  <array>
+    <string>__ROOT__/inbox</string>
+  </array>
+
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>PIPELINE_ROOT</key>
+    <string>__ROOT__</string>
+    <key>LANG</key>
+    <string>ko_KR.UTF-8</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__ROOT__/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__ROOT__/logs/launchd.err.log</string>
+</dict>
+</plist>
