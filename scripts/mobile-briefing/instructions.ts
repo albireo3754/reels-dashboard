@@ -317,23 +317,34 @@ export interface Launcher {
   stop(agentId: string): Promise<void>;
 }
 
+const READY_TTL_MS = 5 * 60_000;
+
 export class PaseoLauncher implements Launcher {
   constructor(
     private readonly exec: Exec = execText,
     private readonly bin = PASEO_BIN,
+    private readonly now: () => number = Date.now,
   ) {}
+  /** `paseo status` makes the daemon re-probe every provider (agy models etc.),
+   * so a healthy answer is reused for READY_TTL_MS; failures are never cached. */
+  private readyUntil = 0;
   private async json(args: string[], timeoutMs = 20000): Promise<unknown> {
     const { stdout } = await this.exec(this.bin, args, { timeoutMs });
     return JSON.parse(stdout);
   }
   async ready() {
+    if (this.now() < this.readyUntil) return true;
     try {
       const s = (await this.json(["status", "--json"], 10000)) as Record<
         string,
         unknown
       >;
-      return s?.localDaemon === "running" && s?.connectedDaemon === "reachable";
+      const up =
+        s?.localDaemon === "running" && s?.connectedDaemon === "reachable";
+      this.readyUntil = up ? this.now() + READY_TTL_MS : 0;
+      return up;
     } catch {
+      this.readyUntil = 0;
       return false;
     }
   }

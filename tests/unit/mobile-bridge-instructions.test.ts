@@ -1476,3 +1476,30 @@ test("R3: a runner facing a dead takeover file stays busy and logs STALE_TAKEOVE
   await s.advance();
   assert.equal(s.api.claims.length, 1);
 });
+
+test("PaseoLauncher.ready reuses a healthy status and rechecks failures", async () => {
+  let t = 0;
+  let statusCalls = 0;
+  let healthy = true;
+  const exec: Exec = async (_file, args) => {
+    if (args[0] !== "status") throw new Error("unexpected " + args[0]);
+    statusCalls++;
+    return {
+      stdout: JSON.stringify(
+        healthy
+          ? { localDaemon: "running", connectedDaemon: "reachable" }
+          : { localDaemon: "stopped", connectedDaemon: "unreachable" },
+      ),
+    };
+  };
+  const launcher = new PaseoLauncher(exec, PASEO_BIN, () => t);
+  assert.equal(await launcher.ready(), true);
+  t += 10_000;
+  assert.equal(await launcher.ready(), true);
+  assert.equal(statusCalls, 1, "healthy status cached");
+  t += 5 * 60_000;
+  healthy = false;
+  assert.equal(await launcher.ready(), false);
+  assert.equal(await launcher.ready(), false);
+  assert.equal(statusCalls, 3, "failures are not cached");
+});
