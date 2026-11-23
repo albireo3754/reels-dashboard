@@ -129,6 +129,7 @@ whisperx norm.wav --model large-v3 --language ko \
   - CLI 에는 `ANTHROPIC_API_KEY`·`OPENAI_API_KEY`·`CODEX_API_KEY`·`CLAUDE_CODE_*` 를 넘기지 않습니다(부모 키로 과금되는 일 방지). `CODEX_HOME`·`CLAUDE_CONFIG_DIR`(로그인 위치)과 PATH 만 넘깁니다.
   - 프롬프트는 argv 가 아니라 **stdin** 으로 넣습니다 — 통화 전사문이 프로세스 목록에 남지 않습니다.
   - `CLAUDE_CLI_MODEL`/`CODEX_CLI_MODEL` 을 넣지 않으면 CLI 로그인 세션의 기본 모델을 씁니다.
+  - `LLM_CLI_TIMEOUT_SEC`(기본 300초)를 넘기면 CLI 를 **프로세스 그룹째** 끝냅니다 — `codex` 가 띄운 손자 프로세스까지 SIGTERM, 2초 유예 뒤 SIGKILL. 출력이 8MB 를 넘으면 같은 방식으로 끊고 `ProviderError` 로 알립니다.
 - Claude: 감정선·코믹 포인트, **서로 다른 심리축의 훅 5개**(충격/공감/의문/숫자/배신), 회수 타임스탬프.
 - GPT/codex: `plan/episode.json`으로 강제 변환 (codex 는 `--output-schema`, API 는 JSON schema strict).
 - 검증기(`src/episode.ts`)가 다음을 확인하고, 실패하면 **1회만** 재생성합니다.
@@ -242,6 +243,7 @@ node pipelines/call-shorts/scripts/install-launchd.mjs --uninstall              
 | `ffmpeg를 찾을 수 없습니다` | 미설치 | `brew install ffmpeg` |
 | `claude CLI 를 찾지 못했습니다` | CLI 미설치/및 PATH 밖 | `claude` 설치·로그인, 또는 `CLAUDE_CLI_BIN` 지정. API 로 돌리려면 `LLM_BACKEND=api` |
 | `codex CLI 종료 코드 …` | codex 미로그인·사용량 | `codex exec` 로 한 번 실행해 로그인 확인, 필요하면 `CODEX_CLI_BIN` |
+| `claude CLI 가 300초 안에 끝나지 않았습니다` | 모델 응답 지연·사용량 대기 | CLI 프로세스 그룹을 정리하고 멈춥니다. `LLM_CLI_TIMEOUT_SEC` 를 늘리거나 전사문을 줄이세요 |
 | `CLI 로는 PNG 를 만들 수 없습니다` | 이미지 키 없음 | `GEMINI_API_KEY`(또는 `OPENAI_API_KEY` + `IMAGE_PROVIDER=openai`), 시험은 `IMAGE_PROVIDER=mock` |
 | 컷마다 얼굴이 다름 | 참조 시트 미지정 | `assets/characters/`에 시트 3장 고정 |
 | 자막이 늦거나 겹침 | 문장 단위로 자름 | whisperx 단어 타임스탬프 + 12~14자 분절 |
@@ -268,7 +270,8 @@ FFMPEG_BIN="$(brew --prefix ffmpeg-full)/bin/ffmpeg" npm run test:call-shorts
 테스트가 확인하는 것: 해시 멱등성, `.icloud` 필터, 크기 안정화, episode.json 검증 규칙,
 화자별 ASS 색·안전 영역, 렌더 명령 조립, dry-run 전 과정, 마스킹, 예산 가드,
 claude/codex CLI 어댑터(JSON 파싱·종료 코드·EPIPE 처리·env 스크럽·임시 파일 정리), `LLM_BACKEND` 라우팅,
-키 없이 CLI 세션으로 기획·대본 완주, CLI 호출의 예산 0 기록, CLI 실행 파일 탐색(디렉터리 제외·PATH 폴백).
+키 없이 CLI 세션으로 기획·대본 완주, CLI 호출의 예산 0 기록, CLI 실행 파일 탐색(디렉터리 제외·PATH 폴백),
+타임아웃 시 손자 프로세스까지 정리·SIGTERM 무시 CLI 의 SIGKILL 에스컬레이션·8MB 출력 상한.
 
 ## 이미 동기화된 녹음: API 전사·검수만
 

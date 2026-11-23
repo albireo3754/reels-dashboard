@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -65,6 +65,15 @@ function fallbackDirs(env: NodeJS.ProcessEnv): string[] {
   return [...CLI_PATH_FALLBACK, path.join(env.HOME || homedir(), ".local", "bin")];
 }
 
+/** 자식 출력 상한(`execFile` 시절과 같은 8MB). 넘으면 그룹을 끊고 오류로 돌려줍니다. */
+const CLI_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+
+/** 타임아웃 SIGTERM 뒤 SIGKILL 까지의 유예. */
+const CLI_KILL_GRACE_MS = 2_000;
+
+/** 그룹을 끊은 뒤 `close` 가 오지 않을 때(파이프를 쥔 채 그룹을 벗어난 손자) 기다리는 시간. */
+const CLI_CLOSE_WAIT_MS = 1_000;
+
 export interface CliRun {
   file: string;
   args: string[];
@@ -130,27 +139,144 @@ export function findCliBinary(name: string, env: NodeJS.ProcessEnv = process.env
 }
 
 /**
+ * detached 로 띄운 CLI 프로세스 그룹들. 자식은 새 세션이라 터미널 전경 그룹이 아니고,
+ * 부모가 Ctrl-C 로 끝나도 그 신호를 받지 못합니다. 그래서 여기서 함께 정리합니다.
+ */
+const liveCliGroups = new Set<number>();
+const PARENT_EXIT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
+function signalCliGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // 이미 끝났거나 그룹이 없습니다(ESRCH).
+  }
+}
+
+const onParentExit: NodeJS.SignalsListener = (signal) => {
+  for (const pid of liveCliGroups) signalCliGroup(pid, signal);
+  liveCliGroups.clear();
+  for (const name of PARENT_EXIT_SIGNALS) process.removeListener(name, onParentExit);
+  // 리스너를 붙이면 Node 가 스스로는 죽지 않으므로, 남은 리스너가 없으면 기본 종료로 돌려 놓습니다.
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+};
+
+function trackCliGroup(pid: number | undefined): void {
+  if (pid === undefined) return;
+  if (liveCliGroups.size === 0) for (const name of PARENT_EXIT_SIGNALS) process.on(name, onParentExit);
+  liveCliGroups.add(pid);
+}
+
+function untrackCliGroup(pid: number | undefined): void {
+  if (pid === undefined || !liveCliGroups.delete(pid)) return;
+  if (liveCliGroups.size === 0) for (const name of PARENT_EXIT_SIGNALS) process.removeListener(name, onParentExit);
+}
+
+/**
  * 자식 CLI 를 한 번 실행하고 결과를 그대로 돌려줍니다(예외를 던지지 않음).
  * 프롬프트는 argv 가 아니라 stdin 으로 넣어 통화 전사문이 프로세스 목록에 남지 않게 합니다.
+ *
+ * POSIX 에서는 자식을 새 프로세스 그룹의 리더로 띄웁니다(detached). `codex` 처럼 손자 프로세스를
+ * 두는 CLI 를 타임아웃에 끊을 때 직계 자식만 죽이면 손자가 고아로 남고, 그 손자가 stdout 파이프를
+ * 쥐고 있으면 호출 자체가 끝나지 않습니다. 그래서 타임아웃에는 그룹 전체에 SIGTERM,
+ * 유예 뒤 SIGKILL 을 보냅니다(Windows 는 그룹 신호가 없어 직계 자식만 끊습니다).
  */
 export const runCliProcess: CliRunner = (run) =>
   new Promise((resolve) => {
-    const child = execFile(
-      run.file,
-      run.args,
-      { cwd: run.cwd, env: run.env, timeout: run.timeoutMs, maxBuffer: 8 * 1024 * 1024, encoding: "utf8" },
-      (error, stdout, stderr) => {
-        if (!error) return resolve({ code: 0, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
-        const failure = error as NodeJS.ErrnoException & { killed?: boolean; signal?: string };
-        resolve({
-          code: typeof failure.code === "number" ? failure.code : null,
-          stdout: String(stdout ?? ""),
-          stderr: String(stderr ?? ""),
-          ...(failure.killed || failure.signal ? { timedOut: true } : {}),
-          error: failure.message,
+    const group = process.platform !== "win32";
+    const child = spawn(run.file, run.args, {
+      cwd: run.cwd,
+      env: run.env,
+      detached: group,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    if (group) trackCliGroup(child.pid);
+
+    let stdout = "";
+    let stderr = "";
+    let outputBytes = 0;
+    let timedOut = false;
+    let overflowed = false;
+    let settled = false;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    let graceTimer: NodeJS.Timeout | undefined;
+    let closeTimer: NodeJS.Timeout | undefined;
+
+    const stop = (signal: NodeJS.Signals) => {
+      if (group && child.pid !== undefined) signalCliGroup(child.pid, signal);
+      else child.kill(signal);
+    };
+
+    const finish = (result: CliResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      clearTimeout(graceTimer);
+      clearTimeout(closeTimer);
+      if (group) untrackCliGroup(child.pid);
+      child.stdout?.removeAllListeners();
+      child.stderr?.removeAllListeners();
+      child.removeAllListeners();
+      resolve(result);
+    };
+
+    const timeoutResult = (): CliResult => ({
+      code: null,
+      stdout,
+      stderr,
+      timedOut: true,
+      error: `CLI 가 ${run.timeoutMs}ms 안에 끝나지 않았습니다(프로세스 그룹 종료).`,
+    });
+
+    const collect = (stream: "stdout" | "stderr") => (chunk: string) => {
+      if (overflowed) return;
+      outputBytes += Buffer.byteLength(chunk);
+      if (stream === "stdout") stdout += chunk;
+      else stderr += chunk;
+      if (outputBytes > CLI_MAX_BUFFER_BYTES) {
+        overflowed = true;
+        stdout = stdout.slice(0, CLI_MAX_BUFFER_BYTES);
+        stderr = stderr.slice(0, CLI_MAX_BUFFER_BYTES);
+        stop("SIGKILL");
+      }
+    };
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", collect("stdout"));
+    child.stderr?.on("data", collect("stderr"));
+
+    child.on("error", (error) => finish({ code: null, stdout, stderr, error: error.message }));
+
+    child.on("close", (code, signal) => {
+      if (overflowed) {
+        return finish({
+          code,
+          stdout,
+          stderr,
+          error: `CLI 출력이 ${CLI_MAX_BUFFER_BYTES / 1024 / 1024}MB 를 넘어 중단했습니다.`,
         });
-      },
-    );
+      }
+      if (timedOut) return finish(timeoutResult());
+      if (code === 0) return finish({ code: 0, stdout, stderr });
+      finish({
+        code,
+        stdout,
+        stderr,
+        error: code === null ? `CLI 가 시그널 ${signal ?? "없음"} 로 끝났습니다.` : `CLI 가 종료 코드 ${code} 로 끝났습니다.`,
+      });
+    });
+
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      stop("SIGTERM");
+      graceTimer = setTimeout(() => {
+        stop("SIGKILL");
+        // 그룹을 벗어난 손자가 파이프를 쥐고 있으면 close 가 오지 않습니다.
+        closeTimer = setTimeout(() => finish(timeoutResult()), CLI_CLOSE_WAIT_MS);
+      }, CLI_KILL_GRACE_MS);
+    }, run.timeoutMs);
+
     // CLI 가 stdin 을 읽기 전에 끝나면 EPIPE 가 프로세스를 죽입니다. 실패는 종료 코드가 알려 주므로 무시합니다.
     child.stdin?.on("error", () => {});
     child.stdin?.end(run.stdin);

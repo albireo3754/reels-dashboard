@@ -254,6 +254,48 @@ test("a missing binary and a timeout surface as provider errors", async () => {
   await assert.rejects(() => timed.complete({ prompt: "p" }), /0.2초 안에 끝나지 않았습니다/);
 });
 
+test("runCliProcess passes stdin and returns stdout of a normal exit", async () => {
+  const echo = script("echo-claude", "cat");
+  const result = await runCliProcess({ file: echo, args: [], stdin: "안녕", env: process.env, cwd: tmpdir(), timeoutMs: 5_000 });
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout, "안녕");
+  assert.equal(result.timedOut, undefined);
+  assert.equal(result.error, undefined);
+});
+
+test("a timeout kills the grandchildren the CLI started", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "callshorts-tree-"));
+  // 손자 프로세스가 살아 있는 동안 계속 늘어나는 파일 — 프로세스 표(ps)가 없는 환경에서도 확인됩니다.
+  const ticks = path.join(dir, "ticks.log");
+  const tree = script("tree-claude", [`( while :; do echo tick >> "${ticks}"; sleep 0.1; done ) &`, "wait"].join("\n"));
+
+  const result = await runCliProcess({ file: tree, args: [], stdin: "", env: process.env, cwd: dir, timeoutMs: 600 });
+  assert.equal(result.timedOut, true);
+
+  const before = readFileSync(ticks, "utf8").length;
+  assert.ok(before > 0, "검사 전에 손자 프로세스가 돌고 있어야 합니다");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(readFileSync(ticks, "utf8").length, before, "타임아웃 뒤 손자 프로세스가 남아 있으면 안 됩니다");
+});
+
+test("a CLI that ignores SIGTERM is killed after the grace period", async () => {
+  const stubborn = script("stubborn-claude", ["trap '' TERM", "while :; do sleep 1; done"].join("\n"));
+  const started = Date.now();
+  const result = await runCliProcess({ file: stubborn, args: [], stdin: "", env: process.env, cwd: tmpdir(), timeoutMs: 300 });
+  assert.equal(result.timedOut, true);
+  assert.ok(Date.now() - started >= 2_000, "SIGTERM 유예를 기다린 뒤 SIGKILL 해야 합니다");
+  assert.ok(Date.now() - started < 10_000, "유예를 넘겨 오래 매달리면 안 됩니다");
+});
+
+test("output over the buffer limit stops the child instead of growing memory", async () => {
+  const noisy = script("noisy-claude", "head -c 9000000 /dev/zero | tr '\\0' 'a'");
+  const result = await runCliProcess({ file: noisy, args: [], stdin: "", env: process.env, cwd: tmpdir(), timeoutMs: 10_000 });
+  assert.equal(result.timedOut, undefined, "출력 초과를 타임아웃으로 보고하면 안 됩니다");
+  assert.ok(result.code !== 0);
+  assert.match(result.error ?? "", /8MB/);
+  assert.ok(result.stdout.length <= 8 * 1024 * 1024);
+});
+
 test("LLM_BACKEND decides between the CLI session and the REST API", () => {
   const bins = fakeBins("claude", "codex");
   const env = { PATH: bins };
