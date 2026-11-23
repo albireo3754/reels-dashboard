@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {snapshotSchema} from '../lib/contracts';
+import {routeMapSchema} from '../lib/route-map';
+import {routeFixture} from './route-map-fixture.mjs';
+const extra=structuredClone(routeFixture) as any;extra.source='/private/local';extra.assets[0].source='/private/photo';extra.assets[0].thumbnail='data:private';
+const clean=routeMapSchema.parse(extra);assert.deepEqual(clean,routeFixture);
+const bad=structuredClone(routeFixture);bad.assets[1].time='15:00:00';assert.equal(routeMapSchema.safeParse(bad).success,false);
+bad.assets[1].time='16:10:00';bad.assets[1].name=bad.assets[0].name;assert.equal(routeMapSchema.safeParse(bad).success,false);
+bad.assets[1].name='../escape.mp4';assert.equal(routeMapSchema.safeParse(bad).success,false);
+const minimal={sourceId:'primary-mac',sourceLabel:'test',sourceRevision:'1',sourceUpdatedAt:'2026-01-02T00:00:00.000Z',contents:[{id:'test',title:'test',date:'2026-01-02',dateBasis:'capture',stage:'selected',nextAction:'',publicURL:'',routeMap:clean,routeMapStatus:'ready'}],assets:[]};assert(snapshotSchema.safeParse(minimal).success);
+const large=structuredClone(routeFixture);large.ways=Array.from({length:150},()=>({kind:'path',points:Array.from({length:1000},()=>[127,37])}));assert.equal(routeMapSchema.safeParse(large).success,false);
+const row:any=structuredClone(minimal);row.contents[0].publishingCopy={status:'ready',publicationStatus:'draft',updatedAt:null,sections:Array.from({length:30},(_,i)=>({id:String(i),kind:'caption',label:'test',parentId:null,text:'가'.repeat(20000)}))};row.contents[0].routeMap.ways=Array.from({length:20},()=>({kind:'path',points:Array.from({length:1000},()=>[127,37])}));assert.equal(snapshotSchema.safeParse(row).success,false);
+console.log('PASS: route contract, chronology, duplicate/path rejection and sanitized snapshot');

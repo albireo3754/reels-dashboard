@@ -1,3 +1,4 @@
+import { WeeklyChannelCard, GoalMeter } from "../../../../packages/briefing/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import type { Planning, PlanningBridge } from "../../../shared/planning";
@@ -69,32 +70,11 @@ function ProjectName({ id, title, hint, onOpenProject }: { id: string; title: st
     : <span title={tip}>{title}</span>;
 }
 
-/** One color axis: solid = live, light = booked. */
-function Meter({ done, booked, total, label }: { done: number; booked: number; total: number; label: string }) {
-  const part = (n: number) => `${total ? Math.min(100, (n / total) * 100) : 0}%`;
-  return (
-    <div className="weekly-goal-meter" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(total, done + booked)}>
-      <span className="done" style={{ width: part(done) }} />
-      <span className="booked" style={{ width: part(Math.min(booked, Math.max(0, total - done))) }} />
-    </div>
-  );
-}
-
 function ChannelTile({ week, onOpenProject }: { week: ChannelWeek; onOpenProject?: (projectId: string) => void }) {
   const count = week.published + week.scheduled;
-  const met = week.target > 0 && week.remaining === 0;
   const fill = week.candidates.slice(0, Math.max(week.remaining, 0));
   return (
-    <article className="weekly-goal-tile" aria-label={`${week.label} 이번 주`} data-met={met ? "" : undefined}>
-      <header>
-        <h4>{week.label}</h4>
-        <strong>{count}<small> / {week.target}</small></strong>
-      </header>
-      <Meter done={week.published} booked={week.scheduled} total={week.target} label={`${week.label} ${count}/${week.target}`} />
-      <p className="weekly-goal-meta">
-        {week.target === 0 ? "이번 주 목표 없음" : `게시 ${week.published} · 이번 주 예약 ${week.scheduled} · `}
-        {week.target > 0 && (met ? <span className="weekly-goal-met">달성</span> : `남은 ${week.remaining}`)}
-      </p>
+    <WeeklyChannelCard goal={week} period="이번 주" meterLabel={`${week.label} ${count}/${week.target}`}>
       {week.posts.length > 0 && (
         <ol className="weekly-goal-posts" aria-label={`${week.label} 이번 주 게시·예약`}>{week.posts.map(post => (
           <li key={post.key} data-status={post.status}>
@@ -112,7 +92,7 @@ function ChannelTile({ week, onOpenProject }: { week: ChannelWeek; onOpenProject
             </li>))}</ol>
           : <p className="weekly-goal-empty">채울 후보 없음 · 새 소재가 필요해요</p>
       )}
-    </article>
+    </WeeklyChannelCard>
   );
 }
 
@@ -131,7 +111,7 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
         <span className="booking-count">앞으로 예약 {ahead} / {q.cap}</span>
         <span className="booking-state">{q.cap === 0 ? "목표 없음" : q.full ? "2주치 예약 완료" : `${q.open}개 더 예약 가능`}</span>
       </header>
-      <Meter done={0} booked={ahead} total={q.cap} label={`${q.label} 앞으로 예약 ${ahead}/${q.cap}`} />
+      <GoalMeter published={0} scheduled={ahead} target={q.cap} label={`${q.label} 앞으로 예약 ${ahead}/${q.cap}`} />
       {q.beyond.length > 0 && <Notice tone="warning">2주 넘게 앞선 예약 {q.beyond.length}개 · {q.beyond.map(b => `${dayLabel(b.day)} ${b.title}`).join(", ")}</Notice>}
       {rows.length > 0 && <ul className="booking-list">
         {visible.map(row => <li key={`${row.kind}:${row.projectId}`} className={row.kind}><time>{dayLabel(row.day)}</time><ProjectName id={row.projectId} title={row.title} hint={row.kind === "slot" ? phaseHint[row.phase] : undefined} onOpenProject={onOpenProject} />{row.kind === "booked" ? <Badge>예약됨</Badge> : <><span className="booking-phase" data-phase={row.phase}>{goalPhaseLabels[row.phase]}</span><Badge tone="primary">예약 제안</Badge></>}</li>)}

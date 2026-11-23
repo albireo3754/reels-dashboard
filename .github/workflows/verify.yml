@@ -5,6 +5,29 @@ on:
 permissions:
   contents: read
 jobs:
+  mobile-briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/mobile-briefing/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm --prefix apps/mobile-briefing run install:ci
+      - run: npm run check:architecture
+      - run: npm run build:site
+      - working-directory: apps/mobile-briefing
+        run: |
+          npx tsc --noEmit
+          npx playwright install --with-deps chromium
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          npm run test:built
+          npm run test:preview
   verify:
     runs-on: macos-15
     timeout-minutes: 30

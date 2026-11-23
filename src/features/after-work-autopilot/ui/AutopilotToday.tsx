@@ -6,7 +6,7 @@ import { Notice, Section, SectionHeader, StatusText } from "../../../shared/ui/p
 import { blockedNotice, statusLine } from "../model/notices";
 import "./autopilot-today.css";
 
-const projectPrefix = "project:";
+import { TodayPickView } from "../../../../packages/briefing/ui";
 
 /**
  * The one item to look at after work, and how full the queue is. Read-only: it asks the app for the same
@@ -35,21 +35,9 @@ export function AutopilotToday({ api, revision, onOpenProject }: { api?: Autopil
       {blocked && <Notice tone="warning" data-testid="autopilot-blocked">{blocked}</Notice>}
       {view?.paused && <Notice tone="warning" data-testid="autopilot-paused">자동 실행 일시정지 중 · {view.paused.reason}</Notice>}
       {view && (pick ? (
-        <div className="autopilot-pick">
-          <h4 className="autopilot-pick-title">
-            {/^https?:\/\//.test(pick.target)
-              ? <a href={pick.target} target="_blank" rel="noreferrer">{pick.title} ↗</a>
-              : pick.target.startsWith(projectPrefix) && onOpenProject
-                ? <button type="button" className="quiet autopilot-open" onClick={() => onOpenProject(pick.target.slice(projectPrefix.length))}>{pick.title}</button>
-                : <span>{pick.title}</span>}
-          </h4>
-          <dl className="autopilot-facts">
-            <dt>왜 지금</dt><dd>{pick.why.join(" · ")}</dd>
-            <dt>필요한 한 가지</dt><dd>{pick.decision}</dd>
-            <dt>완료 기준</dt><dd>{pick.doneWhen}</dd>
-            {pick.outcome && (<><dt>자동 작업</dt><dd>{outcomeLabel[pick.outcome]}{pick.changes?.length ? ` · 변경 ${pick.changes.length}건` : ""}</dd></>)}
-          </dl>
-        </div>
+        <TodayPickView heading="h4" onOpenProject={onOpenProject} pick={{
+          ...pick, outcome: pick.outcome ? outcomeLabel[pick.outcome] : null, changeCount: pick.changes?.length ?? 0,
+        }} />
       ) : (
         <StatusText className="autopilot-none">오늘 볼 항목 없음</StatusText>
       ))}

@@ -1,24 +1,9 @@
-.topic-selection { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
-.topic-selection .ui-section-header { margin-bottom: 0; }
-.topic-selection .ui-notice { margin: 0; }
-.topic-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
-/* Hairline rows like the weekly goals: no boxes. */
-.topic-row { display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--color-border); }
-.topic-row[data-readiness="hold"]:not([data-picked]) { opacity: .72; }
-.topic-main { display: grid; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
-.topic-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
-.topic-title strong { font-size: var(--text-md); font-weight: 600; }
-.topic-rank { min-width: 1.5em; font-variant-numeric: tabular-nums; color: var(--color-text-subtle); font-size: var(--text-sm); }
-.topic-meta { font-size: var(--text-sm); color: var(--color-text-subtle); }
-.topic-hook { display: inline-grid; justify-self: start; padding-left: var(--space-3); border-left: 3px solid var(--color-primary); font-weight: 600; line-height: 1.4; }
-.topic-asks { margin: 0; font-size: var(--text-sm); color: var(--color-warning-text, var(--color-text)); }
-.topic-asks span { font-weight: 600; margin-right: var(--space-1); }
-.topic-asks[data-readiness="hold"] { color: var(--color-text-subtle); }
-/* Korean reads by word: never split 문안 into 문/안. */
-.topic-main { word-break: keep-all; overflow-wrap: anywhere; }
-.topic-detail { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
-.topic-detail dt { color: var(--color-text-subtle); }
-.topic-detail dd { margin: 0; display: grid; gap: var(--space-1); }
-.topic-detail ul { margin: 0; padding-left: 1.1em; }
-.topic-actions { display: flex; flex: none; gap: var(--space-1); align-items: center; }
-.topic-empty, .topic-dropped { margin: 0; font-size: var(--text-sm); color: var(--color-text-subtle); }
+.topic-selection {
+  --line: var(--color-border);
+  --paper: var(--color-surface);
+  --ink: var(--color-text);
+  --muted: var(--color-text-subtle);
+  --rose: var(--color-primary);
+  margin-bottom: var(--space-6);
+}
+.topic-selection h2 { margin: 0; font-size: var(--text-lg); }

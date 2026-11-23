@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { TopicBoard } from "../../packages/briefing/model";
+export type { TopicBoard } from "../../packages/briefing/model";
 import type { Project } from "./contracts";
 import { publicationChannelLabels, publicationChannels, type PublicationChannel } from "./publications";
 import { dashboardRevision } from "./production-project";
@@ -96,29 +98,8 @@ export const topicPitchesSchema = z
   .max(maxPitchesPerProject)
   .refine((list) => new Set(list.map((p) => p.id)).size === list.length, "소재 후보 ID가 겹쳐요.");
 
-/** One row of the board: the pitch plus the card it lives on. */
-export interface TopicBoardItem extends TopicPitch {
-  projectId: string;
-  projectTitle: string;
-  channelLabel: string;
-  readinessLabel: string;
-  effortLabel: string;
-}
-
-/** How many posts a channel still needs, so the board says why picking matters now. */
-export interface TopicGap {
-  channel: PublicationChannel;
-  label: string;
-  week: "this" | "next";
-  remaining: number;
-}
-
-export interface TopicBoard {
-  /** Picked pitches first, then proposals by readiness and rank. Dropped ones are only counted. */
-  items: TopicBoardItem[];
-  counts: { picked: number; ready: number; needs_edit: number; needs_user: number; hold: number; dropped: number };
-  gaps: TopicGap[];
-}
+export type TopicBoardItem = TopicBoard["items"][number];
+export type TopicGap = TopicBoard["gaps"][number];
 
 const readinessOrder: Record<PitchReadiness, number> = { ready: 0, needs_edit: 1, needs_user: 2, hold: 3 };
 
@@ -135,6 +116,7 @@ export function topicBoard(projects: Pick<Project, "id" | "title" | "pitches">[]
       else counts[pitch.readiness] += 1;
       items.push({
         ...pitch,
+        decision: pitch.decision,
         projectId: project.id,
         projectTitle: project.title,
         channelLabel: publicationChannelLabels[pitch.channel],

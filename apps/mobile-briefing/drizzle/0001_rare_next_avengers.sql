@@ -1,0 +1,1 @@
+ALTER TABLE `contents` ADD `publishing_copy` text;

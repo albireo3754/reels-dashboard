@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793148049138,
+      "tag": "0000_broken_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793163357916,
+      "tag": "0001_rare_next_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793419256752,
+      "tag": "0002_narrow_proemial_gods",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794876045124,
+      "tag": "0003_unknown_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795239908260,
+      "tag": "0004_mobile_video_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795332846546,
+      "tag": "0005_clean_shooting_star",
+      "breakpoints": true
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import {
   type Project,
   type Stage,
 } from "../shared/contracts";
+import { SourceBoardPanel } from "../../packages/briefing/ui";
 import { Icon } from "./ui";
 import {
   publicationChannelLabels,
@@ -300,6 +301,7 @@ export function ProjectDialog({
             />
             모바일에 공유
           </label>
+          {project.sourceBoard && <SourceBoardPanel board={project.sourceBoard} />}
           {children}
         </div>
         <footer className="ui-dialog-footer">

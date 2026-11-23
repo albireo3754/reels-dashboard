@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const built = process.env.REELS_TEST_BUILT === "1";
+const baseURL = `http://127.0.0.1:${built ? 4187 : 4173}`;
+
 export default defineConfig({
   testDir: "./tests/web",
   fullyParallel: true,
@@ -15,15 +18,15 @@ export default defineConfig({
   ],
   use: {
     headless: true,
-    baseURL: "http://127.0.0.1:4173",
+    baseURL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev -- --port 4173 --strictPort",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command: built ? "vite preview --host 127.0.0.1 --port 4187 --strictPort" : "npm run dev -- --port 4173 --strictPort",
+    url: baseURL,
+    reuseExistingServer: !built && !process.env.CI,
     timeout: 30_000,
   },
 });

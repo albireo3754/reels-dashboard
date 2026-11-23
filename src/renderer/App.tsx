@@ -1,3 +1,4 @@
+import { ProductionOverview } from "../../packages/briefing/ui";
 import { PublicationCalendar } from "../features/publication-calendar";
 import { AutopilotToday } from "../features/after-work-autopilot";
 import { WeeklyGoals } from "../features/weekly-goals";
@@ -530,7 +531,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             <MobileBriefing bridge={bridge} compact={tab === "dashboard"} />
           )}
         {tab === "dashboard" && !readOnly && (
-          <WeeklyGoals
+          <ProductionOverview weeklyGoals={<WeeklyGoals
             api={bridge.planning}
             projects={dashboard.projects}
             revision={dashboard.updatedAt}
@@ -541,10 +542,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               setEditingRevision(dashboard.updatedAt);
               setEditingProject({ ...project });
             }}
-          />
-        )}
-        {tab === "dashboard" && !readOnly && (
-          <TopicSelection
+          />} topics={<TopicSelection
             projects={dashboard.projects}
             revision={dashboard.updatedAt}
             planningRevision={planningRevision}
@@ -556,10 +554,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               setEditingProject({ ...project });
             }}
             onDecide={decideTopic}
-          />
-        )}
-        {tab === "dashboard" && !readOnly && (
-          <AutopilotToday
+          />} today={<AutopilotToday
             api={bridge.autopilot}
             revision={dashboard.updatedAt}
             onOpenProject={id => {
@@ -568,7 +563,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
               setEditingRevision(dashboard.updatedAt);
               setEditingProject({ ...project });
             }}
-          />
+          />} />
         )}
         {tab === "dashboard" && (
           <section className="content-section" aria-labelledby="board-heading">

@@ -12,7 +12,19 @@
 - 로컬 앱 MCP → 소유자 전용 서버 메타데이터 동기화: 매분, 연결 상태 heartbeat: 10초.
 - 마지막 완료 snapshot은 Mac이 꺼져도 서버에서 조회 가능.
 
-사이트 소스는 `sites/mobile-briefing`의 별도 Sites 저장소에서 관리해요. 호스팅 DB는 D1(SQLite)이며 PostgreSQL 엔진을 배포한 것은 아니에요. 콘텐츠·자료·동기화 이력·소스 테이블을 관계형으로 설계했고, 서버 데이터 모델은 해당 사이트의 `docs/architecture.md`에 기록했어요.
+사이트 소스는 [apps/mobile-briefing](../apps/mobile-briefing), 공용 React 화면과 보드 계약은 [packages/briefing](../packages/briefing)에서 관리해요. 데스크톱과 사이트 모두 주간 목표 → 소재 선정 → 오늘 볼 작업 순서로 같은 제작 현황 뷰를 조립해요. 주간 채널 카드·진행률, 소재 후보·근거, 오늘 볼 작업과 판단 기준, 프로젝트의 소스 보드를 공유해요. 데스크톱은 로컬 편집 콜백을 주입하고, 사이트는 완료된 D1 스냅샷을 읽어요. 동기화·파일 중계와 지시 큐는 기존 브리지를 사용해요.
+
+공용 화면의 진입점은 `packages/briefing/ui.ts`, 데이터 계약은 `packages/briefing/model.ts`예요. 모바일의 원격 조회·재연결·인증 만료는 `features/briefing-sync`에서 관리하고, 페이지는 선택 상태와 화면 조립을 담당해요.
+
+### 빌드와 배포
+
+두 앱은 각자의 lockfile과 React 런타임을 사용해요. 새 체크아웃에서는 루트에서 `npm ci`, 사이트에서 `npm --prefix apps/mobile-briefing run install:ci`로 의존성을 설치해요.
+
+- 데스크톱은 `npm run build` 후 `REELS_TEST_BUILT=1 npm run test:web -- tests/web/topic-selection.spec.ts tests/web/weekly-goals.spec.ts tests/web/autopilot-today.spec.ts`로 빌드 결과를 검사해요.
+- 사이트는 `npm run build:site` 후 `npm --prefix apps/mobile-briefing run test:built`로 빌드된 Worker와 Chromium을 실행해요. 일회용 로컬 D1에 합성 데이터를 넣어 390px·1280px의 브리핑, 후보 펼치기, 소스 보드를 검사해요.
+- 배포 소스는 `npm run audit:public` 후 `node scripts/mobile-briefing/export-site.mjs <빈-폴더>`로 만들어요. Git에서 추적하는 사이트·공용 패키지 파일의 현재 내용을 내보내므로 파일 목록과 diff를 확인해요. 기존 운영 Sites를 새 임시 체크아웃으로 열고 원격 변경을 대조한 뒤, 내보낸 소스로 맞춰요. 체크아웃의 Git과 기존 `.openai/hosting.json`을 유지하고 여기서 다시 Worker를 빌드·검증한 뒤 Sites 도구로 배포해요.
+- 공개 저장소의 `hosting.local.json`에는 로컬 바인딩 이름만 있어요. 실제 사이트 ID, 접근 정책, 비밀값과 운영 DB는 기존 비공개 Sites에서 관리해요.
+
 
 ## 로컬 서비스
 

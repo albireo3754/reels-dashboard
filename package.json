@@ -14,6 +14,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "build:site": "npm --prefix apps/mobile-briefing run build",
     "build:web": "vite build",
     "build:desktop": "node scripts/build-desktop.mjs",
     "build:icons": "node scripts/build-icons.mjs",

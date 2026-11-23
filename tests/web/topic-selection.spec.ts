@@ -13,7 +13,9 @@ const pitch = (id: string, title: string, readiness: string, extra: Record<strin
 const project = (id: string, title: string, stage: string, extra: Record<string, unknown> = {}) =>
   ({ id, title, date: "2026-11-01", nextAction: "다음 행동", stage, publicURL: "", shared: false, ...extra });
 const projects = [
-  project("tax", "면세 아이디어", "idea", { pitches: [pitch("d2", "면세 변경 정보", "needs_edit", { rank: 2, coverHooks: ["11월부터 바뀐 / 면세 받는 법", "쇼핑 가기 전에 / 바뀐 면세 순서"], captionHead: "11월부터 면세 순서가 달라졌어요", hypothesis: "지금 알릴 이유가 공유를 올릴까" })] }),
+  project("tax", "면세 아이디어", "idea", { sourceBoard: {
+    title: "촬영 소스 보드", basis: "현장에서 확인한 촬영 순서", updatedAt: at, units: [],
+  }, pitches: [pitch("d2", "면세 변경 정보", "needs_edit", { rank: 2, coverHooks: ["11월부터 바뀐 / 면세 받는 법", "쇼핑 가기 전에 / 바뀐 면세 순서"], captionHead: "11월부터 면세 순서가 달라졌어요", hypothesis: "지금 알릴 이유가 공유를 올릴까" })] }),
   project("izakaya", "이자카야 영상", "review", { pitches: [pitch("d1", "단골 간접체험", "ready", { rank: 1 })] }),
   project("smoothie", "스무디 촬영분", "editing", { pitches: [pitch("d4", "편의점 스무디", "needs_user", { rank: 4, asks: ["직접 마셔 본 맛 감상 한 줄"] }), pitch("d9", "버린 후보", "hold", { decision: "dropped" })] }),
 ];
@@ -45,8 +47,8 @@ test("topic selection: pitches in readiness order with the gap they fill, detail
   await expect(panel.getByText("제외한 후보 1개")).toBeVisible();
   // The recommended cover hook shows as two lines; the rest waits behind 근거.
   await expect(rows.nth(1).getByLabel("표지 훅: 11월부터 바뀐 면세 받는 법")).toBeVisible();
-  await expect(rows.nth(1).getByText("쇼핑 가기 전에")).toHaveCount(0);
-  await rows.nth(1).getByRole("button", { name: "근거" }).click();
+  await expect(rows.nth(1).getByText("쇼핑 가기 전에")).toBeHidden();
+  await rows.nth(1).locator("summary").click();
   await expect(rows.nth(1).getByText("쇼핑 가기 전에")).toBeVisible();
   await expect(rows.nth(1).getByText("예전 히트 릴스")).toBeVisible();
   await expect(rows.nth(1).getByText("지금 알릴 이유가 공유를 올릴까")).toBeVisible();
@@ -57,6 +59,13 @@ test("topic selection: pitches in readiness order with the gap they fill, detail
     expect(overflow, `no horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
   }
   await page.setViewportSize({ width: 1500, height: 1000 });
+
+  await rows.nth(1).getByRole("button", { name: "면세 아이디어" }).click();
+  const dialog = page.getByRole("dialog", { name: "콘텐츠 기록" });
+  const sourceBoard = dialog.getByRole("region", { name: "소스 보드" });
+  await expect(sourceBoard.getByRole("heading", { name: "촬영 소스 보드" })).toBeVisible();
+  await expect(sourceBoard.getByText("등록된 소재가 없어요.")).toBeVisible();
+  await dialog.getByRole("button", { name: "콘텐츠 기록 닫기" }).click();
 
   // Picking moves it to the top and is saved; dropping removes it from the board.
   await rows.nth(2).getByRole("button", { name: "선정", exact: true }).click();

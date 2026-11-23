@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "로지 제작 브리핑",
+  "short_name": "로지 브리핑",
+  "description": "제작 현황과 게시 문안을 홈 화면에서 확인해요.",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fa",
+  "theme_color": "#f7f8fa",
+  "icons": [
+    {"src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}

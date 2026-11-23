@@ -14,7 +14,7 @@ The existing Obsidian editing CLI and the bundled app engine have separate sourc
 
 Transition status (2026-10-27): the entire checkout was moved to the new path, preserving Git history, uncommitted changes and source files. The previous path contains redirect documentation only. This move does not establish build or runtime validation at the new path.
 
-A local-first reel production app for finding footage in Apple Photos and local folders, editing video captions and covers, exporting finished media, and tracking work through publication. Built with **Electron + React**; the same dashboard also supports a shared web build for ChatGPT Sites.
+A local-first reel production app for finding footage in Apple Photos and local folders, editing video captions and covers, exporting finished media, and tracking work through publication. Built with **Electron + React**; the owner-private ChatGPT Site lives in `apps/mobile-briefing` and shares production views and data contracts from `packages/briefing`. See the [build and deployment workflow](docs/mobile-briefing.md#빌드와-배포).
 
 ![Synthetic demo of the shared dashboard](docs/images/dashboard-demo.png)
 
