@@ -52,6 +52,7 @@ import {
   useWorkspaceNavigation,
 } from "../features/workspace-shell";
 import { Editor } from "./Editor";
+import { CallShortsPanel } from "./CallShortsPanel";
 import { MobileBriefing } from "./MobileBriefing";
 import { pages, permissionLabels, type Tab } from "./pages";
 import { ProjectCard } from "./ProjectCard";
@@ -328,6 +329,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     "library",
     "editor",
     "cards",
+    ...(bridge.mode === "desktop" && bridge.callShorts ? (["shorts"] as const) : []),
     "blog",
     "workflow",
     "transfers",
@@ -484,6 +486,8 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             </>
           )}
         </div>
+        {tab === "shorts" && bridge.mode === "desktop" && bridge.callShorts &&
+          <CallShortsPanel bridge={bridge.callShorts} />}
         {!protocolOK && (
           <div className="alert error" role="alert">
             도우미 프로토콜 {status?.protocolVersion}은 지원하지 않아요. 앱과

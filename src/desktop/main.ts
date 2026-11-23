@@ -43,6 +43,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { callNotesPrefixSchema, recentNotesRecordings, withImportedCallNotes } from "./notes-recordings";
+import { transcribeLocalCallRecordings } from "./call-shorts-local-stt";
 import { Workbench, PREVIEW_URL } from "./workbench";
 import { TerminalSettingStore, resolveTerminalSetting } from "./terminal-setting";
 import { DEFAULT_KEYMAP, matchAction, type KeyAction } from "../shared/keymap";
@@ -597,6 +599,26 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  if (!fixture && process.platform === "darwin") {
+    const notesRoot = path.join(os.homedir(), "Library/Group Containers/group.com.apple.notes");
+    const notesOutput = path.join(root, "call-shorts-notes");
+    let runningNotes = false;
+    handle("callShorts:previewNotes", async (prefix: unknown) =>
+      (await recentNotesRecordings(notesRoot, callNotesPrefixSchema.parse(prefix)))
+        .map(({ id, createdAt, available }) => ({ id, createdAt, available })));
+    handle("callShorts:transcribeNotes", async (selection: unknown) => {
+      if (runningNotes) throw new Error("다른 녹음을 전사 중이에요.");
+      runningNotes = true;
+      try { return await withImportedCallNotes(notesRoot, notesOutput, selection, transcribeLocalCallRecordings); }
+      finally { runningNotes = false; }
+    });
+    handle("callShorts:revealNotesOutput", async () => {
+      const expected = path.join(await realpath(root), "call-shorts-notes");
+      const found = await realpath(notesOutput).catch(() => "");
+      if (found !== expected || await shell.openPath(found))
+        throw new Error("로컬 전사 폴더를 열 수 없어요.");
+    });
+  }
   handle("executionLogs:list", () => logs.list());
   handle("workflow:request", (action, input) => requestWorkflow(workflowAction.parse(action), input));
   handle("workflow:hostStatus", () => workflowHost.status());
