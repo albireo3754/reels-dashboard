@@ -1,3 +1,5 @@
+import type { ProjectState } from "../../packages/briefing/model";
+export { projectStates, projectStateLabels, isActiveState, compareProductionPriority, type ProjectState } from "../../packages/briefing/model";
 import type { Project, Stage } from "./contracts";
 import type { Publication, PublicationChannel } from "./publications";
 
@@ -14,16 +16,6 @@ import type { Publication, PublicationChannel } from "./publications";
  * - `review`: the project's own stage is review.
  * - `in_progress`: idea, captured, selected or editing.
  */
-export const projectStates = ["complete", "scheduled", "channel_pending", "review", "in_progress"] as const;
-export type ProjectState = (typeof projectStates)[number];
-export const projectStateLabels: Record<ProjectState, string> = {
-  complete: "완료",
-  scheduled: "공개 예약 대기",
-  channel_pending: "채널 남음",
-  review: "검토 대기",
-  in_progress: "진행 중",
-};
-
 export interface ProjectStateView {
   id: string;
   kind: NonNullable<Project["kind"]>;
@@ -65,7 +57,3 @@ export function projectState(project: StateInput, now: Date = new Date()): Proje
     scheduledPast,
   };
 }
-
-/** Active means a person or a production step still owes work: not complete, not only waiting on a booked time. */
-export const isActiveState = (state: ProjectState) =>
-  state === "review" || state === "channel_pending" || state === "in_progress";

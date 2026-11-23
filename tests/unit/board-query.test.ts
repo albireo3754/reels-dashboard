@@ -5,6 +5,7 @@ import {
   parseBoardQuery,
   selectBoardProjects,
 } from "../../src/features/content-board/model/board-query";
+import { compareProductionPriority } from "../../packages/briefing/model";
 import type { Project } from "../../src/shared/contracts";
 const project = (
   id: string,
@@ -119,4 +120,13 @@ test("the default board shows unfinished work and all content is opt-in", () => 
     selectBoardProjects(input, { ...defaultBoardQuery, stage: "all" }).length,
     2,
   );
+});
+
+test("production order resolves state and explicit priority before the stage, with unknown stages last on a tie", () => {
+  const review = {stage: "review", priority: null};
+  const legacy = {stage: "legacy"};
+  assert.ok(compareProductionPriority(legacy, review, "review", "scheduled") < 0);
+  assert.ok(compareProductionPriority({...legacy, priority: 0}, review, "channel_pending", "review") < 0);
+  assert.ok(compareProductionPriority(legacy, review, "review", "channel_pending") > 0);
+  assert.equal(compareProductionPriority(legacy, {stage: "other"}, "review", "review"), 0);
 });

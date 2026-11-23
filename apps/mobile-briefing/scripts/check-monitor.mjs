@@ -61,6 +61,16 @@ try{
   await cards.first().click();await page.getByRole('dialog',{name:'검증 pending',exact:true}).waitFor();
   fixture.contents[0].nextAction='동기화 후 다음 행동';fixture.sourceRevision='monitor-updated-'+Date.now();assert.equal((await api('/api/bridge/snapshot',{method:'PUT',body:JSON.stringify(fixture)})).status,200);
   await page.evaluate(()=>window.dispatchEvent(new Event('pageshow')));await page.getByRole('dialog').getByText('동기화 후 다음 행동',{exact:true}).waitFor();
+  if (width === 1280) {
+   const capture = {id:'capture:old', title:'지난 촬영 묶음', date:'2026-11-15', dateBasis:'capture', stage:'done', nextAction:'', publicURL:''};
+   const legacy = {...fixture, sourceRevision:'legacy-capture', contents:[...fixture.contents, capture]};
+   assert.equal((await api('/api/bridge/snapshot',{method:'PUT',body:JSON.stringify(legacy)})).status,200);
+   await page.reload();
+   await page.getByRole('navigation',{name:'제작 현황 탐색'}).getByRole('button',{name:/촬영함/}).click();
+   await cards.getByRole('heading',{name:capture.title}).waitFor();
+   assert.equal(await cards.count(),1);
+   assert.ok(await cards.getByText('완료',{exact:true}).isVisible());
+  }
   await context.close();
  }
  assert.deepEqual(errors,[]);
