@@ -62,3 +62,4 @@ Herdr의 agy 리뷰어(Gemini 4 Hydrogen)가 실데이터·합성 캡처와 코�
 - blog run이 `ready`인 글은 `완성본`으로 예약 제안을 받는다(위 「게시 대기열」). 데스크톱·MCP·모바일 모니터·상태 보고가 같은 규칙을 쓴다.
 - 아직 만드는 글은 `제작 중 n` 줄에 제목으로 보인다.
 - 실데이터 확인: 11/24 기준 블로그 대기열에 예약 2(육밀도 11/24·토리톤 11/26), 예약 제안 `11/29 사당 전주전집 · 완성본`, 제작 중 `이시가키 삿포로 라멘 돈야 블로그`.
+- 설치(2026-11-24 01:03 KST): main 작업 트리(다른 세션의 미커밋 기능 포함, 기존 설치본과 같은 방식)에서 `npm run build` → `electron-builder --mac dir --config.npmRebuild=false --config.directories.output=release/blog-queue-ready-20261124`. 패키지 Electron `background`·`blog-projects`·`mcp` 검사 통과(blog-projects 한 건은 병렬 실행 때만 타이밍 실패, 단독 재실행 통과). 기존 앱을 `release/blog-publish-20261122-final-before-blog-queue/`에 백업하고 같은 경로에 교체·재실행했다(app.asar SHA-256 일치). 실제 앱 화면과 MCP `reels_get_weekly_goals` 모두 블로그 대기열에 `11/29 사당 전주전집 · 완성본 · 예약 제안`, `제작 중 1 · 이시가키 삿포로 라멘 돈야 블로그`를 보였다. 모바일 브리지(`com.rosy.reels-mobile-bridge`)는 모니터 코드를 시작할 때 읽어서 재시작했고 동기화 정상(100개).
