@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { emptyPlanning, planningSchema, weekPlan, type Planning } from "../../src/shared/planning";
 import { PlanningStore } from "../../src/shared/lib/planning-store";
-import { bookingQueue, defaultWeeklyTargets, targetFields, weekGoals, weeklyGoalsView, weeklyTargetsOf } from "../../src/shared/weekly-goals";
+import { bookingQueue, defaultWeeklyTargets, finishedBlogRuns, targetFields, weekGoals, weeklyGoalsView, weeklyTargetsOf } from "../../src/shared/weekly-goals";
 import type { Project } from "../../src/shared/contracts";
 import type { Publication } from "../../src/shared/publications";
 
@@ -197,6 +197,7 @@ test("posting queue: the blog is queued like the videos — bookings count, draf
   assert.deepEqual(blog.ready.map(c => [c.projectId, c.phase]), [["blog-draft", "draft"]]);
   assert.deepEqual(blog.inReview.map(c => c.projectId), ["blog-review"]);
   assert.equal(blog.inProduction, 1, "the unwritten post");
+  assert.deepEqual(blog.production.map(c => c.projectId), ["blog-unwritten"], "named, not just counted");
   assert.deepEqual(blog.slots.map(s => [s.projectId, s.phase]), [["blog-draft", "draft"]]);
   const slot = blog.slots[0].day;
   assert.ok(slot > "2026-11-16" && slot < "2026-11-30", slot);
@@ -204,6 +205,35 @@ test("posting queue: the blog is queued like the videos — bookings count, draf
 
   const tile = weekGoals(planning, projects, "2026-11-15", now).channels.find(c => c.channel === "blog")!;
   assert.deepEqual(tile.candidates.find(c => c.projectId === "blog-unwritten")?.phase, "production", "the tile badge agrees with the queue");
+});
+
+test("posting queue: a blog post whose blog run finished is proposed before it is a Naver draft", () => {
+  const planning: Planning = { ...emptyPlanning(), weeklyTargets: { blog: 2, "naver-clip": 0, instagram: 0, youtube: 0 } };
+  const projects = [
+    project("booked", [scheduled("blog", "2026-11-18T12:00:00+09:00")], { stage: "captured" }),
+    project("run-ready", [planned("blog")], { stage: "captured" }),
+    project("still-writing", [planned("blog")], { stage: "captured" }),
+    project("in-review", [planned("blog")], { stage: "review" }),
+  ];
+  const finishedBlogs = finishedBlogRuns({ runs: [
+    { builtinDefinition: "blog", projectId: "run-ready", status: "ready" },
+    { builtinDefinition: "blog", projectId: "still-writing", status: "waiting" },
+    { builtinDefinition: "blog", projectId: "in-review", status: "ready" },
+    { builtinDefinition: "reels", projectId: "booked", status: "ready" },
+    { builtinDefinition: "blog", status: "ready" },
+  ] });
+  assert.deepEqual([...finishedBlogs].sort(), ["in-review", "run-ready"]);
+  const blog = bookingQueue(planning, projects, now, { finishedBlogs }).channels.find(c => c.channel === "blog")!;
+  assert.deepEqual(blog.ready.map(c => [c.projectId, c.phase]), [["run-ready", "final"]]);
+  assert.deepEqual(blog.slots.map(s => [s.projectId, s.phase]), [["run-ready", "final"]]);
+  assert.deepEqual(blog.production.map(c => c.projectId), ["still-writing"]);
+  assert.deepEqual(blog.inReview.map(c => c.projectId), ["in-review"], "a project waiting for review stays there");
+  // Without the run signal (old callers, workflow host down) the same post stays in production, by name.
+  const plain = bookingQueue(planning, projects, now).channels.find(c => c.channel === "blog")!;
+  assert.deepEqual([plain.ready.length, plain.production.map(c => c.projectId)], [0, ["run-ready", "still-writing"]]);
+  const tile = weeklyGoalsView(planning, projects, now, { finishedBlogs }).thisWeek.channels.find(c => c.channel === "blog")!;
+  assert.equal(tile.candidates.find(c => c.projectId === "run-ready")?.phase, "final", "the tile badge agrees with the queue");
+  assert.deepEqual([finishedBlogRuns(null).size, finishedBlogRuns({ runs: "x" }).size], [0, 0]);
 });
 
 test("the view covers this week, next week and the queue from one snapshot", () => {

@@ -60,7 +60,11 @@ test("weekly goals: four channels with progress, what fills each, and the two-we
   await expect(reels.getByText("4개 더 예약 가능")).toBeVisible();
   // Only reviewed work is proposed, and each slot says whether it is already on the channel.
   await expect(reels.getByRole("listitem").filter({ hasText: "예약 제안" })).toHaveText([/완성된 새 릴스.*완성본/, /채널 임시저장 릴스.*임시저장/]);
-  await expect(reels.getByText("나머지 2칸은 새 완성본이 생기면 채워져요 · 제작 중 1개")).toBeVisible();
+  await expect(reels.getByText("나머지 2칸은 새 완성본이 생기면 채워져요")).toBeVisible();
+  // Work still being made is named, not just counted.
+  const making = reels.getByLabel("릴스 제작 중");
+  await expect(making).toContainText("제작 중 1");
+  await expect(making).toContainText("편집 중인 릴스");
   const review = reels.getByLabel("릴스 검토 대기");
   await expect(review).toContainText("검토 대기 1");
   await expect(review).toContainText("검토 대기 릴스");

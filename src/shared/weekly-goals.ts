@@ -61,12 +61,32 @@ export const goalPhaseLabels: Record<GoalPhase, string> = { draft: "임시저장
 export const isReadyToBook = (project: Project) =>
   project.stage !== "review" && (project.stage === "published" || project.stage === "done" || Boolean(project.resources?.some(r => r.role === "final")));
 /**
+ * What the queue knows besides the projects. `finishedBlogs`: projects whose built-in `blog` workflow run is
+ * `ready` (visual_review passed). The post is reviewed and only the upload is left, and the Dashboard's blog
+ * publish can book it straight from the manuscript, so it is proposed like a finished video.
+ */
+export interface QueueSignals { finishedBlogs?: ReadonlySet<string> }
+
+/** Project ids of built-in `blog` runs that finished (`ready`), from the workflow `list` result. */
+export function finishedBlogRuns(list: unknown): Set<string> {
+  const runs = (list as { runs?: unknown } | null)?.runs;
+  if (!Array.isArray(runs)) return new Set();
+  return new Set(runs.flatMap(run => {
+    const r = run as { builtinDefinition?: unknown; projectId?: unknown; status?: unknown };
+    return r?.builtinDefinition === "blog" && r.status === "ready" && typeof r.projectId === "string" && r.projectId ? [r.projectId] : [];
+  }));
+}
+
+/**
  * Review comes first: a channel draft uploaded before the review is over is still waiting for review.
  * A final video file or a post live on another channel says nothing about the blog post, so a planned blog post
- * stays `production` until it is saved as a draft on the blog.
+ * stays `production` until its blog run has finished (`final`) or it is saved as a draft on the blog.
  */
-const phaseOf = (project: Project, status: "planned" | "draft", channel: PublicationChannel): GoalPhase =>
-  project.stage === "review" ? "review" : status === "draft" ? "draft" : channel !== "blog" && isReadyToBook(project) ? "final" : "production";
+const phaseOf = (project: Project, status: "planned" | "draft", channel: PublicationChannel, signals: QueueSignals): GoalPhase =>
+  project.stage === "review" ? "review"
+    : status === "draft" ? "draft"
+      : (channel === "blog" ? signals.finishedBlogs?.has(project.id) : isReadyToBook(project)) ? "final"
+        : "production";
 const byWorkOrder = (a: Project, b: Project) =>
   (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
   || readiness[a.stage] - readiness[b.stage]
@@ -97,7 +117,7 @@ const reelDay = (p: Project) => p.publications?.find(x => x.channel === "instagr
  * Projects still to post on a channel: not complete, and the channel entry is planned or a draft, in the work
  * order. For Naver Clip the live Reels without a clip entry follow, newest first.
  */
-function pendingFor(projects: Project[], channel: PublicationChannel, now: Date): GoalCandidate[] {
+function pendingFor(projects: Project[], channel: PublicationChannel, now: Date, signals: QueueSignals): GoalCandidate[] {
   const planned = projects
     .filter(p => projectState(p, now).state !== "complete")
     .flatMap(p => {
@@ -105,7 +125,7 @@ function pendingFor(projects: Project[], channel: PublicationChannel, now: Date)
       return entry && (entry.status === "planned" || entry.status === "draft") ? [{ p, status: entry.status }] : [];
     })
     .sort((a, b) => byWorkOrder(a.p, b.p))
-    .map(({ p, status }) => candidate(p, status, phaseOf(p, status, channel)));
+    .map(({ p, status }) => candidate(p, status, phaseOf(p, status, channel, signals)));
   if (channel !== "naver-clip") return planned;
   const reuse = projects
     .filter(p => p.stage !== "done" && reelDay(p) && !p.publications?.some(x => x.channel === "naver-clip"))
@@ -114,7 +134,7 @@ function pendingFor(projects: Project[], channel: PublicationChannel, now: Date)
   return [...planned, ...reuse];
 }
 
-export function weekGoals(planning: Planning, projects: Project[], from: string, now: Date = new Date()): WeekGoals {
+export function weekGoals(planning: Planning, projects: Project[], from: string, now: Date = new Date(), signals: QueueSignals = {}): WeekGoals {
   const targets = weeklyTargetsOf(planning);
   const channels = goalChannels.map(channel => {
     const target = targets[channel];
@@ -122,7 +142,7 @@ export function weekGoals(planning: Planning, projects: Project[], from: string,
     return {
       channel, label: goalChannelLabels[channel], target,
       published: week.published, scheduled: week.scheduled, remaining: Math.max(0, target - week.posts.length),
-      posts: week.posts, candidates: pendingFor(projects, channel, now),
+      posts: week.posts, candidates: pendingFor(projects, channel, now, signals),
     };
   });
   const target = channels.reduce((sum, c) => sum + c.target, 0);
@@ -152,6 +172,8 @@ export interface ChannelQueue {
   inReview: GoalCandidate[];
   /** Planned for this channel but not finished yet. */
   inProduction: number;
+  /** The same posts by name, in the user's work order, so an unfinished post is never just a number. */
+  production: GoalCandidate[];
   /** The next days to book, one ready post each, never past the horizon or the cap. */
   slots: Slot[];
 }
@@ -159,7 +181,7 @@ export interface BookingQueue { now: string; until: string; horizonDays: number;
 
 const dayOf = (at: string) => seoulDate(at);
 
-export function bookingQueue(planning: Planning, projects: Project[], now: Date = new Date()): BookingQueue {
+export function bookingQueue(planning: Planning, projects: Project[], now: Date = new Date(), signals: QueueSignals = {}): BookingQueue {
   const targets = weeklyTargetsOf(planning);
   const today = seoulDate(now);
   const until = addDays(today, bookingHorizonDays);
@@ -183,13 +205,14 @@ export function bookingQueue(planning: Planning, projects: Project[], now: Date 
     const booked = sorted.filter(b => b.day < until);
     const beyond = sorted.filter(b => b.day >= until);
     const open = Math.max(0, cap - booked.length - beyond.length);
-    const pending = pendingFor(projects, channel, now).filter(c => !all.has(c.projectId));
+    const pending = pendingFor(projects, channel, now, signals).filter(c => !all.has(c.projectId));
     const ready = pending.filter(c => c.ready);
     const inReview = pending.filter(c => c.phase === "review");
+    const production = pending.filter(c => c.phase === "production");
     const slots = target > 0 ? spread(sorted.map(b => b.day), ready, Math.min(open, ready.length), today, until, Math.max(1, Math.floor(7 / target))) : [];
     return {
       channel, label: goalChannelLabels[channel], target, cap, booked, beyond, open, full: open === 0,
-      ready, inReview, inProduction: pending.length - ready.length - inReview.length, slots,
+      ready, inReview, inProduction: production.length, production, slots,
     };
   });
   return { now: now.toISOString(), until, horizonDays: bookingHorizonDays, channels };
@@ -215,12 +238,12 @@ function spread(taken: string[], items: GoalCandidate[], wanted: number, today: 
 }
 
 export interface WeeklyGoalsView { thisWeek: WeekGoals; nextWeek: WeekGoals; queue: BookingQueue; targets: WeeklyTargets }
-export function weeklyGoalsView(planning: Planning, projects: Project[], now: Date = new Date()): WeeklyGoalsView {
+export function weeklyGoalsView(planning: Planning, projects: Project[], now: Date = new Date(), signals: QueueSignals = {}): WeeklyGoalsView {
   const from = weekStart(now);
   return {
-    thisWeek: weekGoals(planning, projects, from, now),
-    nextWeek: weekGoals(planning, projects, addDays(from, 7), now),
-    queue: bookingQueue(planning, projects, now),
+    thisWeek: weekGoals(planning, projects, from, now, signals),
+    nextWeek: weekGoals(planning, projects, addDays(from, 7), now, signals),
+    queue: bookingQueue(planning, projects, now, signals),
     targets: weeklyTargetsOf(planning),
   };
 }

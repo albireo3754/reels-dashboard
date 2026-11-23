@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import type { Planning, PlanningBridge } from "../../../shared/planning";
 import { addDays } from "../../../shared/planning";
-import { goalChannels, goalChannelLabels, goalPhaseLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalPhase, type WeeklyTargets } from "../../../shared/weekly-goals";
+import { finishedBlogRuns, goalChannels, goalChannelLabels, goalPhaseLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalPhase, type WeeklyTargets } from "../../../shared/weekly-goals";
 import { errorMessage } from "../../../shared/lib/errors";
+import { workflowCall } from "../../../shared/workflow-client";
 import { Badge, Button, Notice, Section, SectionHeader } from "../../../shared/ui/primitives";
 import { Popover } from "../../../shared/ui/Popover";
 import "./weekly-goals.css";
@@ -16,7 +17,7 @@ const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateStrin
 /** What each phase still needs, for the title tooltip. */
 const phaseHint: Record<GoalPhase, string> = {
   draft: "채널에 임시저장됨 · 예약·발행만 남음",
-  final: "검토 끝난 완성본 · 채널에 올리기 전",
+  final: "검토 끝난 완성본 · 채널에 올리기 전 (블로그는 blog run 완료)",
   review: "검토 대기 · 검토를 마치면 예약 제안에 올라와요",
   production: "아직 제작 중",
   reuse: "인스타 릴스를 클립으로 재업",
@@ -35,8 +36,11 @@ export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanning
   const [planning, setPlanning] = useState<Planning | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [finishedBlogs, setFinishedBlogs] = useState<ReadonlySet<string>>(() => new Set());
   const load = useCallback(async () => {
     if (!api) return;
+    // A finished blog run makes its post bookable; without the workflow host the queue keeps the last answer.
+    void workflowCall("list").then(list => setFinishedBlogs(finishedBlogRuns(list)), () => {});
     try { setPlanning(await api.get()); setError(""); } catch (e) { setError(errorMessage(e)); }
   }, [api]);
   useEffect(() => { void load(); }, [load, revision]);
@@ -44,7 +48,7 @@ export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanning
     window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
   }, [load]);
-  const view = useMemo(() => (planning ? weeklyGoalsView(planning, projects) : null), [planning, projects]);
+  const view = useMemo(() => (planning ? weeklyGoalsView(planning, projects, new Date(), { finishedBlogs }) : null), [planning, projects, finishedBlogs]);
   if (!api || (!view && !error)) return null;
   const week = view?.thisWeek;
   return (
@@ -120,7 +124,13 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
       {!q.full && q.cap > 0 && left > 0 && (
         <p className="weekly-goal-empty">{q.slots.length < q.ready.length
           ? `나머지 ${left}칸은 2주 안에 남는 날이 없어요`
-          : `나머지 ${left}칸은 ${q.channel === "blog" ? "새 글을 임시저장하면" : "새 완성본이 생기면"} 채워져요${q.inProduction ? ` · 제작 중 ${q.inProduction}개` : ""}`}</p>
+          : `나머지 ${left}칸은 ${q.channel === "blog" ? "새 글의 blog run이 끝나면" : "새 완성본이 생기면"} 채워져요`}</p>
+      )}
+      {q.cap > 0 && q.production.length > 0 && (
+        <p className="booking-review" aria-label={`${q.label} 제작 중`}>
+          <Badge tone="warning">제작 중 {q.production.length}</Badge>
+          <span className="booking-review-names">{q.production.map((c, i) => <span key={c.projectId}>{i > 0 && " · "}<ProjectName id={c.projectId} title={c.title} hint={c.nextAction || phaseHint.production} onOpenProject={onOpenProject} /></span>)}</span>
+        </p>
       )}
       {q.cap > 0 && q.inReview.length > 0 && (
         <p className="booking-review" aria-label={`${q.label} 검토 대기`}>
@@ -137,7 +147,7 @@ function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQue
     <section className="booking-queue" aria-label="게시 대기열">
       <h4>게시 대기열 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 검토 끝난 것만</span>
         <Popover label="게시 대기열 안내">
-          <p className="booking-help">블로그 글과 영상을 채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 블로그는 임시저장한 글만 제안해요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 블로그는 발행 예약, 영상은 공개 예약을 한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
+          <p className="booking-help">블로그 글과 영상을 채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 블로그는 blog run을 마친 글(visual_review 통과)과 임시저장한 글을 제안해요. 아직 만드는 글은 ‘제작 중’ 줄에 제목으로 보여요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 블로그는 발행 예약, 영상은 공개 예약을 한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
         </Popover>
       </h4>
       <div className="booking-rows">{channels.map(q => <QueueRow key={q.channel} q={q} onOpenProject={onOpenProject} />)}</div>
