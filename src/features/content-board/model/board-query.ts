@@ -1,4 +1,3 @@
-import { compareProductionPriority } from "../../../../packages/briefing/model";
 import {
   projectStages,
   type Project,
@@ -12,6 +11,7 @@ import {
   type PublicationChannel,
 } from "../../../shared/publications";
 import {
+  compareProductionPriority,
   isActiveState,
   projectState,
 } from "../../../shared/project-state";

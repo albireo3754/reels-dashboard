@@ -1,5 +1,5 @@
 import type { ProjectState } from "../../packages/briefing/model";
-export { projectStates, projectStateLabels, isActiveState, type ProjectState } from "../../packages/briefing/model";
+export { projectStates, projectStateLabels, isActiveState, compareProductionPriority, type ProjectState } from "../../packages/briefing/model";
 import type { Project, Stage } from "./contracts";
 import type { Publication, PublicationChannel } from "./publications";
 

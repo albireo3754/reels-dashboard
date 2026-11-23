@@ -28,6 +28,24 @@ type BoardOptions = {
 };
 const normalize = (value: string) => value.normalize("NFKC").toLowerCase();
 
+function matchesStage(c: Content, filter: string, liveOnChannel: boolean) {
+  switch (filter) {
+    case "all":
+      return true;
+    case "active":
+      return active(c) && !liveOnChannel;
+    case "complete":
+      return stateOf(c) === "complete";
+    case "scheduled":
+      return (
+        stateOf(c) === "scheduled" ||
+        !!c.publications?.some((p) => p.status === "scheduled")
+      );
+    default:
+      return c.stage === filter;
+  }
+}
+
 export function selectContents(
   contents: readonly Content[],
   { tab, filter, channel, kind, query, sort }: BoardOptions,
@@ -35,25 +53,21 @@ export function selectContents(
   const needle = normalize(query);
   const matches = contents.filter((c) => {
     if (tab === "captures" && !c.id.startsWith("capture:")) return false;
-    const entry = c.publications?.find((p) => p.channel === channel);
+    const entry =
+      channel === "all"
+        ? undefined
+        : c.publications?.find((p) => p.channel === channel);
     if (channel !== "all" && !entry) return false;
     if (kind !== "all" && (c.kind ?? "content") !== kind) return false;
-    if (!normalize(`${c.title} ${c.next_action} ${c.date}`).includes(needle))
+    if (
+      tab !== "captures" &&
+      !matchesStage(c, filter, entry?.status === "published")
+    )
       return false;
-    if (tab === "captures" || filter === "all") return true;
-    switch (filter) {
-      case "active":
-        return active(c) && entry?.status !== "published";
-      case "complete":
-        return stateOf(c) === "complete";
-      case "scheduled":
-        return (
-          stateOf(c) === "scheduled" ||
-          !!c.publications?.some((p) => p.status === "scheduled")
-        );
-      default:
-        return c.stage === filter;
-    }
+    return (
+      !needle ||
+      normalize(`${c.title} ${c.next_action} ${c.date}`).includes(needle)
+    );
   });
   if (sort === "priority") return matches.sort(byPriority);
   if (sort === "title")

@@ -25,15 +25,17 @@ const stateRank: Record<ProjectState, number> = {
   scheduled: 2,
   complete: 3,
 };
-const stagesByPriority = [
-  "review",
-  "editing",
-  "selected",
-  "captured",
-  "idea",
-  "done",
-  "published",
-];
+const stageRank = new Map(
+  [
+    "review",
+    "editing",
+    "selected",
+    "captured",
+    "idea",
+    "done",
+    "published",
+  ].map((stage, index) => [stage, index] as const),
+);
 type BoardItem = { priority?: number | null; stage: string };
 
 /** Each surface supplies its resolved state and applies its own date/title tie-breakers. */
@@ -46,6 +48,7 @@ export function compareProductionPriority(
   return (
     stateRank[stateA] - stateRank[stateB] ||
     (a.priority ?? Infinity) - (b.priority ?? Infinity) ||
-    stagesByPriority.indexOf(a.stage) - stagesByPriority.indexOf(b.stage)
+    (stageRank.get(a.stage) ?? stageRank.size) -
+      (stageRank.get(b.stage) ?? stageRank.size)
   );
 }
