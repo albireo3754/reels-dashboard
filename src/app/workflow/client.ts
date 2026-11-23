@@ -4,6 +4,7 @@ import {
   workflowFetchInit,
   type WorkflowAction,
 } from "../../shared/workflow";
+import { finishedBlogRuns } from "../../shared/weekly-goals";
 export async function workflowRequest(
   action: WorkflowAction,
   input: unknown = {},
@@ -28,4 +29,16 @@ export async function workflowRequest(
     throw new Error(STALE_WORKFLOW_SERVER_MESSAGE);
   if (!result.ok) throw new Error(data.error ?? "Workflow request failed");
   return data;
+}
+
+/**
+ * Projects whose built-in blog run finished, read from the local workflow server for the posting queue.
+ * Empty when the server is not running or slow; the queue then keeps its older rule (Naver drafts only).
+ */
+export async function finishedBlogsFromServer(timeoutMs = 1500): Promise<Set<string>> {
+  try {
+    return finishedBlogRuns(await workflowRequest("list", {}, undefined, AbortSignal.timeout(timeoutMs)));
+  } catch {
+    return new Set();
+  }
 }

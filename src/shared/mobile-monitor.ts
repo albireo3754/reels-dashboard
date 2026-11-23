@@ -2,14 +2,14 @@ import type { Dashboard } from "./contracts";
 import type { Planning } from "./planning";
 import { computeAutopilotView, outcomeLabel, type AutopilotConfig, type AutopilotState, type ProcessProbe } from "./autopilot";
 import { projectState } from "./project-state";
-import { weeklyGoalsView } from "./weekly-goals";
+import { weeklyGoalsView, type QueueSignals } from "./weekly-goals";
 import { blockedNotice, statusLine } from "./autopilot-notices";
 import { topicBoard, topicGaps } from "./topic-pitch";
 
 /** Owner-private progress only. No source paths, private notes, reports, executor config or provider credentials. */
-export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: AutopilotState, config: AutopilotConfig, now: Date, probe: ProcessProbe) {
+export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: AutopilotState, config: AutopilotConfig, now: Date, probe: ProcessProbe, signals: QueueSignals = {}) {
   const view = computeAutopilotView({ projects: dashboard.projects, planning, state, config, now, probe });
-  const goals = weeklyGoalsView(planning, dashboard.projects, now);
+  const goals = weeklyGoalsView(planning, dashboard.projects, now, signals);
   const week = (w: typeof goals.thisWeek) => ({ from: w.from, to: w.to, totals: w.totals, channels: w.channels.map(c => ({
     channel: c.channel, label: c.label, target: c.target, published: c.published, scheduled: c.scheduled, remaining: c.remaining,
     candidates: c.candidates.slice(0, c.remaining).map(({ projectId, title, status, ready }) => ({ projectId, title, status, ready })),

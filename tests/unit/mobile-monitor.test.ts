@@ -42,3 +42,15 @@ test("snapshot includes current progress and hashes planning changes even withou
  assert.notEqual(first.sourceRevision,next.sourceRevision);
 
 });
+test("mobile queue follows the desktop: a finished blog run is suggested as 완성본 with the same payload fields", () => {
+ const blog = project("blog-run-ready", "captured", [{channel:"blog",status:"planned",url:""}]);
+ const board: Dashboard = { ...dashboard, projects: [...dashboard.projects, blog] };
+ const run = (signals?: Parameters<typeof mobileMonitor>[6]) => mobileMonitor(board,planning,emptyAutopilotState(),defaultAutopilotConfig(),now,{isAlive:()=>false},signals).monitor.queue.channels.find(c=>c.channel==="blog")!;
+ const before = run(), after = run({ finishedBlogs: new Set(["blog-run-ready"]) });
+ assert.equal(before.rows.some(r => r.projectId === "blog-run-ready"), false);
+ assert.equal(before.inProduction, 1);
+ const row = after.rows.find(r => r.projectId === "blog-run-ready");
+ assert.deepEqual([row?.status, (row as { phase?: string } | undefined)?.phase], ["suggested", "final"]);
+ assert.equal(after.inProduction, 0);
+ assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort(), "no new fields for the strict site schema");
+});

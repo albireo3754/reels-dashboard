@@ -9,7 +9,7 @@ import {
   type PublicationStatus,
 } from "../../../shared/publications";
 import { projectState, projectStateLabels, type ProjectState } from "../../../shared/project-state";
-import { weeklyGoalsView, type WeeklyGoalsView } from "../../../shared/weekly-goals";
+import { weeklyGoalsView, type QueueSignals, type WeeklyGoalsView } from "../../../shared/weekly-goals";
 
 /**
  * A read-only picture of where the work stands, built from the same stores and rules the app uses
@@ -73,6 +73,8 @@ export interface StatusReportInput {
   /** Null when the autopilot store cannot be read; the report then says so instead of guessing. */
   autopilot: AutopilotView | null;
   now: Date;
+  /** Finished built-in blog runs (`finishedBlogRuns`), so the queue part matches the desktop. */
+  signals?: QueueSignals;
 }
 
 function channelsOf(project: Project, now: Date): ReportChannel[] {
@@ -131,7 +133,7 @@ function withoutCalendarLinks(goals: WeeklyGoalsView): WeeklyGoalsView {
   return { ...goals, thisWeek: strip(goals.thisWeek), nextWeek: strip(goals.nextWeek) };
 }
 
-export function buildStatusReport({ dashboard, planning, autopilot, now }: StatusReportInput): StatusReport {
+export function buildStatusReport({ dashboard, planning, autopilot, now, signals }: StatusReportInput): StatusReport {
   const today = seoulDate(now);
   const projects = dashboard.projects;
   const rows = projects.map((p) => ({ p, state: projectState(p, now).state }));
@@ -193,7 +195,7 @@ export function buildStatusReport({ dashboard, planning, autopilot, now }: Statu
     autopilot: autopilot
       ? { today: autopilot.today, counts: autopilot.counts, freshness: autopilot.freshness, enabled: autopilot.enabled, paused: autopilot.paused }
       : null,
-    goals: withoutCalendarLinks(weeklyGoalsView(planning, projects, now)),
+    goals: withoutCalendarLinks(weeklyGoalsView(planning, projects, now, signals)),
     groups,
     recent,
     warnings,

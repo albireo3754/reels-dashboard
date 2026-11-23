@@ -7,6 +7,7 @@ import { writeFileAtomic } from "../../shared/lib/fs";
 import { PlanningStore } from "../../shared/lib/planning-store";
 import { LocalStore, StoreUnreadable } from "../../shared/lib/storage";
 import { buildStatusReport, renderStatusReportHtml, statusReportMarker } from "../../features/status-report";
+import { finishedBlogsFromServer } from "../workflow/client";
 import { CliError } from "./outcome";
 import { localPath, parseOptions, wantsHelp, type CliIO } from "./tool-command";
 
@@ -99,7 +100,7 @@ export async function reportCommand(args: string[], { root, io, now = () => new 
     autopilot = null;
   }
 
-  const report = buildStatusReport({ dashboard, planning, autopilot, now: at });
+  const report = buildStatusReport({ dashboard, planning, autopilot, now: at, signals: { finishedBlogs: await finishedBlogsFromServer() } });
   const html = renderStatusReportHtml(report);
   try {
     await writeFileAtomic(target, html, { mode: 0o600 });

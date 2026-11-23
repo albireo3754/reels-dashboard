@@ -19,7 +19,7 @@ import { AgentSession, patchProject } from "../../../entities/agent-session";
 import { toolDefinitions, type ToolName } from "../model/tools";
 import { projectState } from "../../../shared/project-state";
 import { topicBoard, topicGaps } from "../../../shared/topic-pitch";
-import { weeklyGoalsView } from "../../../shared/weekly-goals";
+import { finishedBlogRuns, weeklyGoalsView } from "../../../shared/weekly-goals";
 
 export interface AgentEditorPort extends EditorBridge {
   busy: boolean;
@@ -41,6 +41,10 @@ export interface AgentEditorPort extends EditorBridge {
     output: string,
     target: "video" | "cover" | "both",
   ): Promise<RenderJob | null>;
+}
+/** Finished built-in blog runs for the posting queue; without the workflow server the queue uses its older rule. */
+async function queueSignals(ports: Pick<AgentPorts, "forms">) {
+  return { finishedBlogs: finishedBlogRuns(await ports.forms?.request("list").catch(() => null)) };
 }
 export interface AgentPorts {
   edits?: EditsBridge;
@@ -140,7 +144,7 @@ export function createAgentDispatch(ports: AgentPorts) {
       case "reels_sync_planning":
         return port("planning").update(input);
       case "reels_get_weekly_goals":
-        return weeklyGoalsView(await port("planning").get(), (await ports.dashboard()).projects, new Date());
+        return weeklyGoalsView(await port("planning").get(), (await ports.dashboard()).projects, new Date(), await queueSignals(ports));
       case "reels_get_cover_preferences":
         return port("coverPreferences").get();
       case "reels_set_cover_preferences":
@@ -224,7 +228,7 @@ export function createAgentDispatch(ports: AgentPorts) {
         return ports.content.setPublication(input);
       case "reels_get_topic_board": {
         const projects = (await ports.dashboard()).projects;
-        const gaps = ports.planning ? topicGaps(weeklyGoalsView(await ports.planning.get(), projects, new Date())) : [];
+        const gaps = ports.planning ? topicGaps(weeklyGoalsView(await ports.planning.get(), projects, new Date(), await queueSignals(ports))) : [];
         return topicBoard(projects, gaps);
       }
       case "reels_get_source_board": {
