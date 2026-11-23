@@ -21,6 +21,12 @@
 - [x] 기존 본인 전용 사이트 배포 성공(source `55bec85`), 자동 동기화 서비스 재기동. 실제 서버의 88개 프로젝트·745개 자료, 주간 목표/오늘 항목/채널 상태/문안이 로컬 snapshot과 일치. 모바일 390px·PC 1280px 브라우저·기존 문안/지도·PWA 설치/오프라인/복구/인증 회귀 통과. 실제 iPhone 설치/로그인 유지는 미검증.
 - 계약·운영: [모바일 브리핑](docs/mobile-briefing.md#데스크톱-첫-화면-ux-동기화--2026-11-17).
 
+## 현황 HTML 보고서 `reels report` — 2026-11-17
+
+- [x] 화면만으로 진행 상황 파악이 어렵다는 요청: 앱 없이 저장 데이터를 읽어 HTML 한 파일(+내장 JSON)로 뽑는 CLI 빌트인. 계산은 `projectState`·`weeklyGoalsView`·autopilot view 재사용. [문서](docs/status-report.md).
+- [x] 공유 안전: 로컬 경로·메모·캘린더 링크 제외, 자기 파일만 덮어쓰기. 단위 테스트·typecheck·아키텍처 검사.
+- [ ] 사용자 실사용 확인 뒤 origin push. 앱 안 버튼·자동 갱신은 필요가 확인되면.
+
 ## Edits 외부 앱 자동화 — 2026-11-14
 
 - [x] main 기준 격리 worktree에서 TS 서비스·공통 MCP/CLI 도구·edits 필터·main 주입 경로 작성. 앱을 우회하는 독립 CLI/helper 실행 경로 없음.
