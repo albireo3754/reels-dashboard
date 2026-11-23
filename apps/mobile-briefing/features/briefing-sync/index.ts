@@ -1,1 +1,2 @@
-export { useBriefingSync, type Content, type Asset } from "./use-briefing-sync";
+export { useBriefingSync } from "./use-briefing-sync";
+export type { Asset, Content } from "../../lib/briefing-data";

@@ -1,3 +1,4 @@
+import { compareProductionPriority } from "../../../../packages/briefing/model";
 import {
   projectStages,
   type Project,
@@ -13,7 +14,6 @@ import {
 import {
   isActiveState,
   projectState,
-  type ProjectState,
 } from "../../../shared/project-state";
 
 export const channelLabels = {
@@ -69,23 +69,6 @@ export function parseBoardQuery(value: unknown): BoardQuery {
   return result;
 }
 const normalize = (v: string) => v.normalize("NFKC").toLocaleLowerCase("ko");
-/** What needs the user first; then work in progress; booked and finished work last. */
-const stateOrder: Record<ProjectState, number> = {
-  review: 0,
-  channel_pending: 0,
-  in_progress: 1,
-  scheduled: 2,
-  complete: 3,
-};
-const priority: Record<Stage, number> = {
-  review: 0,
-  editing: 1,
-  selected: 2,
-  captured: 3,
-  idea: 4,
-  done: 5,
-  published: 6,
-};
 export function selectBoardProjects(
   projects: Project[],
   query: BoardQuery,
@@ -139,10 +122,7 @@ export function selectBoardProjects(
     if (query.sort === "priority") {
       // State first (needs the user > in progress > booked > done), then the user's own order
       // (numbered before unnumbered), then the stage.
-      const order =
-        stateOrder[states.get(a.id)!] - stateOrder[states.get(b.id)!] ||
-        (a.priority ?? Infinity) - (b.priority ?? Infinity) ||
-        priority[a.stage] - priority[b.stage];
+      const order = compareProductionPriority(a, b, states.get(a.id)!, states.get(b.id)!);
       if (order) return order;
     }
     // Missing dates stay last in both directions; record dates are never treated as publication dates.

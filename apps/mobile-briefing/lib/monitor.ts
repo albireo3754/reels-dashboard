@@ -1,3 +1,5 @@
+import { projectStates } from "@briefing/model";
+export { projectStateLabels as stateLabels } from "@briefing/model";
 import {z} from 'zod';
 import {sourceBoardSchema} from "./source-board";
 import {topicBoardSchema} from './topic-board';
@@ -5,11 +7,10 @@ const text=(max=2000)=>z.string().max(max);
 const day=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const count=z.number().int().min(0).max(10000);
 const channel=z.enum(['blog','naver-clip','instagram','youtube']);
-export const stateLabels={complete:'완료',scheduled:'공개 예약 대기',channel_pending:'채널 남음',review:'검토 대기',in_progress:'진행 중'} as const;
 export const channelLabels={blog:'블로그','naver-clip':'네이버클립',instagram:'인스타그램',youtube:'유튜브'} as const;
 export const statusLabels={planned:'예정',draft:'임시저장',scheduled:'공개 예약',published:'게시 완료'} as const;
 export const phaseLabels={draft:'임시저장',final:'완성본',review:'검토 대기',production:'제작 중',reuse:'재업 후보'} as const;
-const state=z.enum(['complete','scheduled','channel_pending','review','in_progress']);
+const state=z.enum(projectStates);
 const url=text(2048).refine(v=>!v||/^https?:\/\//.test(v));
 export const progressShape={
  kind:z.enum(['content','operation']).optional(),priority:count.nullable().optional(),state:state.nullable().optional(),

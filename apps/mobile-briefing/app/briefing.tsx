@@ -13,12 +13,11 @@ import {InstructionsPanel,type InstructionTarget} from '../components/instructio
 import {validPaseoTarget} from '../lib/paseo-request.mjs';
 import {useBriefingSync,type Content,type Asset} from "../features/briefing-sync";
 import {ArrowUpRight,ArrowLeft,Camera,Check,ChevronRight,Cloud,FileText,Film,Folder,Image as ImageIcon,RefreshCw,Search,Wifi,WifiOff,X} from 'lucide-react';
+import { active, byPriority, selectContents, stateOf } from "../lib/content-board";
 const roleNames:Record<string,string>={footage:'촬영본',final:'완성본',cover:'표지',draft:'시안',document:'제작 문서',folder:'자료 폴더'};
 const date=(value:string|null)=>value?new Date(value).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}):'아직 동기화 전';
 const size=(bytes:number)=>bytes>1024*1024?`${(bytes/1024/1024).toFixed(1)} MB`:bytes>1024?`${Math.round(bytes/1024)} KB`:`${bytes} B`;
 const title=(c:Content)=>c.title.replace(/^촬영 · /,'').replace(/\d{4}-\d{2}-\d{2}_?/,'').replaceAll('_',' ');
-const stateOf=(c:Content)=>c.state??(c.stage==='done'||c.stage==='published'?'complete':c.stage==='review'?'review':'in_progress');
-const active=(c:Content)=>['review','channel_pending','in_progress'].includes(stateOf(c));
 const badge=(c:Content)=>stateLabels[stateOf(c)];
 function Channels({c}:{c:Content}){return c.publications?.length?<div className="channel-chips">{c.publications.map(p=><span key={p.channel} className={p.status} title={p.scheduledAt?`예약 ${date(p.scheduledAt)}`:undefined}>{channelLabels[p.channel]}{p.channel==='youtube'?` ${p.format==='shorts'?'쇼츠':'본편'}`:''} · {statusLabels[p.status]}</span>)}</div>:null;}
 function Kind({a}:{a:Asset}){return a.is_directory?<Folder size={18}/>:a.mime_type.startsWith('image')?<ImageIcon size={18}/>:a.mime_type.startsWith('video')?<Film size={18}/>:<FileText size={18}/>;}
@@ -37,31 +36,32 @@ export function Briefing(){
  useEffect(()=>{setSelectedId(new URLSearchParams(window.location.search).get('content'));},[]);
  useEffect(()=>{const listener=(e:KeyboardEvent)=>{if(e.key==='Escape'){if(openedMedia)setOpenedMedia(null);else setSelectedId(null);}};window.addEventListener('keydown',listener);return()=>window.removeEventListener('keydown',listener);},[openedMedia]);
  const contents=data?.contents??[];
- const captures=data?.contents.filter(c=>c.id.startsWith('capture:'))??[];
+ const captureCount=contents.filter(c=>c.id.startsWith('capture:')).length;
+ const assetCounts = new Map<string,number>();
+ for (const asset of data?.assets ?? []) assetCounts.set(asset.content_id,(assetCounts.get(asset.content_id)??0)+1);
  const counts={active:contents.filter(active).length,review:contents.filter(c=>stateOf(c)==='review').length,complete:contents.filter(c=>stateOf(c)==='complete').length};
- const order:Record<string,number>={review:0,channel_pending:0,in_progress:1,scheduled:2,complete:3};
- const byPriority=(a:Content,b:Content)=>order[stateOf(a)]-order[stateOf(b)]||(a.priority??Infinity)-(b.priority??Infinity)||(['review','editing','selected','captured','idea','done','published'].indexOf(a.stage)-['review','editing','selected','captured','idea','done','published'].indexOf(b.stage))||b.date.localeCompare(a.date)||a.title.localeCompare(b.title,'ko');
  const priority=contents.filter(active).sort(byPriority);
- const results=(tab==='captures'?captures:contents).filter(c=>{
-  const state=stateOf(c),entry=c.publications?.find(p=>p.channel===channel);
-  if(channel!=='all'&&!entry)return false;
-  if(kind!=='all'&&(c.kind??'content')!==kind)return false;
-  if(tab!=='captures'&&filter!=='all'&&(filter==='active'?!active(c)||entry?.status==='published':filter==='review'?c.stage!=='review':filter==='complete'?state!=='complete':filter==='scheduled'?!c.publications?.some(p=>p.status==='scheduled')&&state!=='scheduled':c.stage!==filter))return false;
-  return `${c.title} ${c.next_action} ${c.date}`.normalize('NFKC').toLowerCase().includes(query.normalize('NFKC').toLowerCase());
- }).sort(sort==='priority'?byPriority:sort==='title'?(a,b)=>a.title.localeCompare(b.title,'ko'):(a,b)=>(sort==='oldest'?1:-1)*a.date.localeCompare(b.date));
+ const results=tab==='briefing'?[]:selectContents(contents,{tab,filter,channel,kind,query,sort});
  const selectedBoard=data?.monitor?.sourceBoards?.find(entry=>entry.projectId===selected?.id)?.board;
  const assets=selected?data?.assets.filter(a=>a.content_id===selected.id)??[]:[];
  // Instruction targets: only ids from the synchronized data that pass the Paseo target check (the server re-checks).
  const instructTargets:InstructionTarget[]=[];
  const todayTarget=validPaseoTarget(data?.monitor?.autopilot.today?.target);
  if(todayTarget&&data?.monitor?.autopilot.today)instructTargets.push({value:todayTarget,label:'오늘 볼 항목 · '+data.monitor.autopilot.today.title});
- for(const c of [...contents].sort(byPriority)){const v=validPaseoTarget('project:'+c.id);if(v&&!instructTargets.some(t=>t.value===v))instructTargets.push({value:v,label:title(c)+' · '+c.date});}
+ const targetIds = new Set(instructTargets.map(target => target.value));
+ for(const c of [...contents].sort(byPriority)){
+   const value=validPaseoTarget('project:'+c.id);
+   if(value && !targetIds.has(value)){
+     targetIds.add(value);
+     instructTargets.push({value,label:title(c)+' · '+c.date});
+   }
+ }
  function navigate(next:typeof tab){setTab(next);setQuery('');setFilter('active');setChannel('all');setKind('all');setSelected(null);}
- function card(c:Content,compact=false){const n=data?.assets.filter(a=>a.content_id===c.id).length??0;return <button className={`content-card ${compact?'compact':''}`} key={c.id} onClick={()=>setSelected(c)}><div className={`card-symbol ${stateOf(c)}`}><span>{c.id.startsWith('capture:')?<Camera size={22}/>:stateOf(c)==='complete'?<Check size={22}/>:<Film size={22}/>}</span><span className={`badge ${stateOf(c)}`}>{badge(c)}</span></div><div className="card-copy"><p className="eyebrow">{c.date_basis==='publication'?'게시일':c.date_basis==='capture'?'촬영일':'기록일'} · {c.date}</p><h3>{title(c)}{c.kind==='operation'&&<small className="kind-tag">운영</small>}{c.priority!=null&&<small className="kind-tag">순서 {c.priority}</small>}</h3><Channels c={c}/><p className="next-action">{c.next_action||'다음 작업을 확인해요'}</p><div className="card-foot"><span>연결 자료 {n}개</span><ChevronRight size={17}/></div></div></button>}
+ function card(c:Content,compact=false){const n=assetCounts.get(c.id)??0;return <button className={`content-card ${compact?'compact':''}`} key={c.id} onClick={()=>setSelected(c)}><div className={`card-symbol ${stateOf(c)}`}><span>{c.id.startsWith('capture:')?<Camera size={22}/>:stateOf(c)==='complete'?<Check size={22}/>:<Film size={22}/>}</span><span className={`badge ${stateOf(c)}`}>{badge(c)}</span></div><div className="card-copy"><p className="eyebrow">{c.date_basis==='publication'?'게시일':c.date_basis==='capture'?'촬영일':'기록일'} · {c.date}</p><h3>{title(c)}{c.kind==='operation'&&<small className="kind-tag">운영</small>}{c.priority!=null&&<small className="kind-tag">순서 {c.priority}</small>}</h3><Channels c={c}/><p className="next-action">{c.next_action||'다음 작업을 확인해요'}</p><div className="card-foot"><span>연결 자료 {n}개</span><ChevronRight size={17}/></div></div></button>}
  return <div className="shell"><header className="topbar"><a className="brand" href="/" aria-label="로지 제작 브리핑 홈"><span className="brand-mark">r<span>•</span></span><span>rosy<span className="brand-sub">PRODUCTION NOTES</span></span></a><div className="private-pill"><span/> 우리의 작업실</div></header>
  <main><div className="page-top"><h1>제작 현황</h1><div className="sync-card"><div><span className={`status-dot ${connected&&!error&&data?.online?'online':''}`}/><strong>{!connected?'인터넷 연결 끊김':error?'최신 현황 확인 필요':data?.online?'Mac 연결됨':'서버에 저장된 기록'}</strong></div><p>마지막 동기화 {date(data?.syncedAt??null)}</p>{checkedAt&&<p className="last-checked">이 기기에서 확인 {date(checkedAt)}</p>}<button onClick={()=>void refresh()} disabled={loading} aria-label="진행 정보 새로고침"><RefreshCw size={14} className={loading?'spinning':''}/> 새로고침</button></div></div>
 
- <nav className="tabs" aria-label="제작 현황 탐색">{([['briefing','대시보드'],['contents','콘텐츠'],['captures','촬영함']] as const).map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>navigate(key)}>{label}{key!=='briefing'&&<span>{key==='contents'?contents.length:captures.length}</span>}</button>)}</nav>
+ <nav className="tabs" aria-label="제작 현황 탐색">{([['briefing','대시보드'],['contents','콘텐츠'],['captures','촬영함']] as const).map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>navigate(key)}>{label}{key!=='briefing'&&<span>{key==='contents'?contents.length:captureCount}</span>}</button>)}</nav>
  {error&&<div className="notice error" role="alert">{error} {data&&'마지막으로 불러온 정보를 표시하고 있어요.'}{authRequired&&<a className="reauth-link" href="/">로그인 다시 확인</a>}</div>}
  {data&&tab==='briefing'&&<ScheduledPublications contents={data.contents} monitor={data.monitor??null} onOpen={setSelectedId}/>}
  {!authRequired&&<InstructionsPanel targets={instructTargets} showList={tab==='briefing'} request={instructRequest}/>}
