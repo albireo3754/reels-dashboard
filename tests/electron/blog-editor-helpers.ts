@@ -19,11 +19,14 @@ export async function openBlogEditor(
   card?: Locator,
 ): Promise<Frame> {
   const before = await windowCount(app);
-  await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
-  await (card ?? main).getByRole("button", { name: "프로젝트 열기", exact: true }).click();
   const iframe = editorIframe(main, projectId);
-  // Each project starts its own editor server; a cold CI runner can take longer than the default 10 s.
-  await expect(iframe).toBeVisible({ timeout: 30_000 });
+  // On a GitHub macOS runner the click on 프로젝트 열기 was sometimes delivered with no click event on
+  // the button (CI diagnostic 2026-11-25), so retry until the tab shows. Opening an open project reuses it.
+  await expect(async () => {
+    await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
+    await (card ?? main).getByRole("button", { name: "프로젝트 열기", exact: true }).click();
+    await expect(iframe).toBeVisible({ timeout: 10_000 });
+  }).toPass({ timeout: 45_000 });
   const frame = await (await iframe.elementHandle())!.contentFrame();
   if (!frame) throw new Error("embedded editor frame missing");
   await expect(frame.locator("#ce-save-status")).toContainText("✓ 저장 완료", { timeout: 15000 });
