@@ -38,7 +38,7 @@ test("project terminal carries exact identity and content request as one quoted 
     args.at(-1),
     /Reels Dashboard 개발 작업|private note|private\/media/,
   );
-  assert.ok(args.includes("workspace-write"));
+  assert.ok(args.includes("--approve-for-me"));
   assert.ok(!args.includes("--dangerously-bypass-approvals-and-sandbox"));
 });
 
