@@ -16,6 +16,9 @@ const subscribe = (name: string, callback: (value: any) => void) => {
 const workbench = createWorkbenchBridge(ipcRenderer);
 const bridge: DashboardBridge = {
   ...(!process.argv.includes("--reels-demo") && process.platform === "darwin" ? {
+    episodeTranscription: {
+      run: (id: string, source?: string) => invoke("episodeTranscription:run", id, source),
+    },
     callShorts: {
       preview: (prefix: string) => invoke("callShorts:previewNotes", prefix),
       transcribe: (input: Parameters<NonNullable<DashboardBridge["callShorts"]>["transcribe"]>[0]) =>

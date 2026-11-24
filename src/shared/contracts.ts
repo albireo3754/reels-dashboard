@@ -92,6 +92,7 @@ export interface OpenDocument {
   data: unknown;
 }
 export interface DashboardBridge {
+  readonly episodeTranscription?: import("./episode-transcription").EpisodeTranscriptionBridge;
   readonly callShorts?: import("./call-shorts").CallShortsBridge;
   readonly instagramInsights?: import("./instagram-insights").InstagramInsightsBridge;
   readonly planning?: import("./planning").PlanningBridge;

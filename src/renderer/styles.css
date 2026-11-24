@@ -1006,3 +1006,7 @@ dialog.clip-upload-dialog {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.episode-transcription { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.episode-transcription select { min-width: 0; max-width: 100%; }
+.episode-transcription small { width: 100%; white-space: pre-line; overflow-wrap: anywhere; }

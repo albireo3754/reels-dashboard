@@ -44,6 +44,8 @@ import {
 import os from "node:os";
 import { syncSnapshot } from "./sync";
 import { callNotesPrefixSchema, recentNotesRecordings, withImportedCallNotes } from "./notes-recordings";
+import { transcribeEpisode, episodeFiles, episodeWorkDir } from "./episode-transcription";
+import { isYoutubeEpisode, isEpisodeVideo } from "../shared/episode-transcription";
 import { transcribeLocalCallRecordings } from "./call-shorts-local-stt";
 import { Workbench, PREVIEW_URL } from "./workbench";
 import { TerminalSettingStore, resolveTerminalSetting } from "./terminal-setting";
@@ -600,6 +602,51 @@ async function awaitReady() {
       return fn(...args);
     });
   if (!fixture && process.platform === "darwin") {
+    let transcribingEpisode = false;
+    handle("episodeTranscription:run", async (id: string, linkedSource?: string) => {
+      agentSession.assertWritable();
+      if (transcribingEpisode) throw new Error("다른 회차 원본을 전사 중이에요.");
+      transcribingEpisode = true;
+      activeOperations++;
+      try {
+        const project = (await store.load()).projects.find(p => p.id === id);
+        if (!project || !isYoutubeEpisode(project)) throw new Error("유튜브 회차 카드를 선택해 주세요.");
+        let source: string;
+        if (linkedSource !== undefined) {
+          const checked = await contentLibrary.resolveMedia(id, linkedSource);
+          if (checked.role !== "footage" || !checked.info.isFile()) throw new Error("연결된 촬영 원본을 선택해 주세요.");
+          source = checked.path;
+        } else {
+          const picked = await dialog.showOpenDialog(window, { title: "회차에 연결하고 전사할 촬영 원본",
+            properties: ["openFile"], filters: [{ name: "촬영 영상", extensions: ["mov", "mp4", "m4v"] }] });
+          if (picked.canceled || !picked.filePaths[0]) return null;
+          source = await realpath(picked.filePaths[0]);
+        }
+        if (!isEpisodeVideo(source)) throw new Error("MOV, MP4 또는 M4V 촬영 원본을 선택해 주세요.");
+        let directory = episodeWorkDir(source);
+        if (!directory) {
+          const picked = await dialog.showOpenDialog(window, { title: "이 회차의 전사 결과를 저장할 작업 폴더",
+            defaultPath: path.dirname(source), properties: ["openDirectory", "createDirectory"] });
+          if (picked.canceled || !picked.filePaths[0]) return null;
+          directory = await realpath(picked.filePaths[0]);
+        }
+        const result = await transcribeEpisode(source, directory);
+        const dashboard = await store.update(current => {
+          const card = current.projects.find(p => p.id === id);
+          if (!card) throw new Error("전사 중 회차 카드가 삭제됐어요. 결과는 작업 폴더에 저장했어요.");
+          const resources = card.resources ??= [];
+          const file = path.basename(source);
+          const outputs = episodeFiles.map(name => ({ role: "document" as const,
+            label: file + " · " + name, path: path.join(result.directory, name) }));
+          for (const item of [{ role: "footage" as const, label: file, path: source }, ...outputs]) {
+            if (!resources.some(r => r.path === item.path && r.role === item.role)) resources.push(item);
+          }
+          return current;
+        });
+        emit("dashboard:changed", dashboard);
+        return result;
+      } finally { transcribingEpisode = false; activeOperations--; }
+    });
     const notesRoot = path.join(os.homedir(), "Library/Group Containers/group.com.apple.notes");
     const notesOutput = path.join(root, "call-shorts-notes");
     let runningNotes = false;
