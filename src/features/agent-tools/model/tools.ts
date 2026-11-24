@@ -23,6 +23,7 @@ import {
 import { getSourceBoardSchema, setSourceBoardSchema } from "../../../shared/source-board";
 import { decidePitchSchema, setPitchesSchema } from "../../../shared/topic-pitch";
 import { settingsPatchSchema } from "../../../entities/agent-session";
+import { getScheduleRunsInput, getSchedulesInput, runScheduleNowInput, setScheduleInput } from "../../../shared/scheduler";
 
 /** Operating rules shared by the MCP server and the `reels` CLI. */
 export const agentGuidance =
@@ -166,6 +167,26 @@ export const toolDefinitions = {
     description: "Delete one recorded comment by id with updatedAt revision protection. Does not touch the comment on Naver.",
     input: blogCommentDelete,
     readOnly: false,
+  },
+  reels_get_schedules: {
+    description: "Read built-in schedules of the desktop app (definition, next run time, catch-up cursor, runs started today, last run and pending/running runs). Read-only; the app must be running.",
+    input: getSchedulesInput,
+    readOnly: true,
+  },
+  reels_set_schedule: {
+    description: "Create or change one built-in schedule by id: name, enabled (false pauses, true resumes and clears pausedReason), cron trigger, catch-up window, limits and the aside action (skill, hostProfile, model, params). A new id needs action.skill; other fields default to 10 18 * * * Asia/Seoul, catch-up 300 min, timeout 45 min, 1 run per day. A changed trigger restarts catch-up from now. There is no delete; pause instead. The aside executable is never configurable.",
+    input: setScheduleInput,
+    readOnly: false,
+  },
+  reels_run_schedule_now: {
+    description: "Queue one manual run of a schedule and tick the scheduler now. It counts toward the daily limit (DAILY_LIMIT when today's runs are used up) and is rejected with ALREADY_RUNNING while one runs. Returns runId; poll reels_get_schedule_runs for the verdict. An aside run acts on the browser profile signed in to the site; never retry an uncertain start.",
+    input: runScheduleNowInput,
+    readOnly: false,
+  },
+  reels_get_schedule_runs: {
+    description: "Read schedule run history, newest first: trigger (cron/catchup/manual), status (pending/running/ok/partial/failed/blocked/missed/skipped/interrupted), reason code, Aside session id, exit code, the parsed result summary and the run folder with handoff.md and stdout.log. Read-only.",
+    input: getScheduleRunsInput,
+    readOnly: true,
   },
   reels_merge_projects: {
     description: "Merge explicit source dashboard cards into one target production project. Preserves files and edit bindings, creates a full pre-merge backup, and rejects stale revisions. Target title, stage, date and sharing win; differing publication URLs are rejected.",

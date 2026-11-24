@@ -1,0 +1,87 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { judgeAsideRun, lastJsonBlock, type RecordFact, type VerdictInput } from "../../src/features/scheduler";
+
+const day = "2026-11-25";
+const url = "https://m.blog.naver.com/example-blog/223000000001";
+const report = (extra: Record<string, unknown> = {}) => ({
+  runId: "r_test",
+  accountVerified: true,
+  accepted: 1,
+  visited: 1,
+  commented: 1,
+  liked: 1,
+  records: [{ postUrl: "https://blog.naver.com/example-blog/223000000001", action: "create", status: "posted" }],
+  blocked: null,
+  ...extra,
+});
+const fenced = (value: unknown) => "작업 로그\n```json\n" + JSON.stringify(value) + "\n```\n";
+const good = new Map<string, RecordFact>([[url, { postedAt: day, note: `[${day} 루프] 수락함 / 답방 댓글 / 공감 확인` }]]);
+const judge = (input: Partial<VerdictInput>) =>
+  judgeAsideRun({ exitCode: 0, signal: null, stdout: fenced(report()), runId: "r_test", days: [day], records: good, maxRecords: 5, ...input });
+
+test("a valid report whose records match the app store is ok", () => {
+  const verdict = judge({});
+  assert.equal(verdict.status, "ok");
+  assert.equal(verdict.matched, 1);
+});
+
+test("exit code 0 is not enough: CLI errors, no JSON, schema and run id fail", () => {
+  assert.equal(judge({ exitCode: 1 }).reason, "exit");
+  assert.equal(judge({ signal: "SIGTERM" }).reason, "exit");
+  assert.equal(judge({ stdout: "error: unknown option '--permission'\n" + fenced(report()) }).reason, "cli-error");
+  assert.equal(judge({ stdout: "Session not found\n" }).reason, "cli-error");
+  assert.equal(judge({ stdout: "done, all good" }).reason, "no-result");
+  assert.equal(judge({ stdout: "```json\n{broken\n```" }).reason, "schema");
+  assert.equal(judge({ stdout: fenced({ ...report(), accepted: -1 }) }).reason, "schema");
+  assert.equal(judge({ stdout: fenced(report({ runId: "r_other" })) }).reason, "run-id-mismatch");
+  for (const stdout of ["Chrome extension not connected for the requested browser profile\n", "x"])
+    assert.equal(judge({ stdout }).status, "failed");
+});
+
+test("a CLI error phrase quoted inside the JSON report does not fail the run", () => {
+  const verdict = judge({ stdout: fenced(report({ notes: "earlier attempt said Operation not permitted; retried with reels" })) });
+  assert.equal(verdict.status, "ok");
+});
+
+test("the last json block wins and unknown keys are ignored", () => {
+  const stdout = fenced(report({ runId: "r_old" })) + "더 진행\n" + fenced(report({ extraKey: { anything: 1 } }));
+  assert.equal(lastJsonBlock(stdout).json?.includes("r_test"), true);
+  assert.equal(judge({ stdout }).status, "ok");
+});
+
+test("accountVerified other than true fails", () => {
+  assert.equal(judge({ stdout: fenced(report({ accountVerified: false })) }).reason, "account-unverified");
+});
+
+test("blocked: partial after some work, failed with none; account-level codes pause", () => {
+  const some = judge({ stdout: fenced(report({ blocked: { code: "errors", detail: "two errors in a row" } })) });
+  assert.deepEqual([some.status, some.reason, some.pause], ["partial", "blocked:errors", undefined]);
+  const none = judge({
+    stdout: fenced(report({ accepted: 0, visited: 0, commented: 0, liked: 0, records: [], accountVerified: false, blocked: { code: "captcha" } })),
+  });
+  assert.deepEqual([none.status, none.reason, none.pause], ["failed", "blocked:captcha", "captcha"]);
+  const restricted = judge({ stdout: fenced(report({ blocked: { code: "restricted", detail: "등록 제한" } })) });
+  assert.deepEqual([restricted.status, restricted.pause], ["partial", "restricted"]);
+});
+
+test("records must exist with today's postedAt and the loop note; counts must agree", () => {
+  assert.equal(judge({ records: new Map() }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, { postedAt: "2026-11-24", note: `[${day} 루프]` }]]) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, { postedAt: day, note: "수동 기록" }]]) }).reason, "record-mismatch");
+  assert.equal(judge({ stdout: fenced(report({ commented: 2 })) }).reason, "count-mismatch");
+  const many = Array.from({ length: 6 }, (_, i) => ({ postUrl: `https://m.blog.naver.com/example-blog/22300000000${i}` }));
+  assert.equal(judge({ stdout: fenced(report({ records: many, commented: 6 })) }).reason, "over-limit");
+  assert.equal(judge({ records: new Map([[url, { postedAt: day, note: "x" }]]), stdout: fenced(report({ records: [{ postUrl: "not a url" }] })) }).reason, "record-mismatch");
+});
+
+test("a run that crossed midnight passes with either the start or the end day", () => {
+  const next = "2026-11-26";
+  const facts = new Map([[url, { postedAt: next, note: `[${next} 루프] 답방 댓글` }]]);
+  assert.equal(judge({ days: [day, next], records: facts }).status, "ok");
+  assert.equal(judge({ days: [day], records: facts }).reason, "record-mismatch");
+});
+
+test("no requests to handle is ok when the report is valid", () => {
+  assert.equal(judge({ stdout: fenced(report({ accepted: 0, visited: 0, commented: 0, liked: 0, records: [] })) }).status, "ok");
+});

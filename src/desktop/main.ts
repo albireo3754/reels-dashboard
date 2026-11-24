@@ -23,6 +23,8 @@ import { WorkflowNotifications } from "./workflow-notifications";
 import { BlogExtractor } from "./blog-extractor";
 import { MediaAnalysis } from "./media-analysis";
 import { BlogLibrary } from "./blog-library";
+import { Scheduler, schedulerEnabled } from "./scheduler";
+import { AsideRunner, asideEnv, resolveAsideBin } from "./scheduler-aside";
 import {
   app,
   BrowserWindow,
@@ -32,6 +34,7 @@ import {
   protocol,
   nativeImage,
   Notification,
+  powerMonitor,
 } from "electron";
 import path from "node:path";
 import {
@@ -263,6 +266,31 @@ async function awaitReady() {
   );
   const blogResults = new BlogResults(store, () => emit("blog:results-changed", null));
   const blogComments = new BlogComments(store);
+  // Built-in schedules (docs/scheduler.md). A failure to open its database never stops the app.
+  let scheduler: Scheduler | undefined;
+  if (schedulerEnabled(process.env)) {
+    try {
+      const home = os.homedir();
+      scheduler = new Scheduler({
+        root,
+        runner: new AsideRunner({
+          root,
+          asideBin: resolveAsideBin(process.env, home),
+          skillsDir: path.join(home, ".aside/u/0/skills/user"),
+          reelsCli: path.join(home, ".local/bin/reels"),
+          env: asideEnv(process.env, home),
+          comments: blogComments,
+          logs,
+        }),
+        notify: (notice) => {
+          if (Notification.isSupported()) new Notification({ title: notice.title, body: notice.body, silent: true }).show();
+        },
+      });
+    } catch (error) {
+      console.warn("[scheduler] unavailable:", error instanceof Error ? error.message : error);
+    }
+  }
+  const schedulerRuns = () => scheduler?.running() ?? 0;
   const blogExtractor = new BlogExtractor({
     store,
     viewerAssets: path.join(app.getAppPath(), "dist-electron/blog-restore-viewer"),
@@ -549,7 +577,7 @@ async function awaitReady() {
       });
       return;
     }
-    if (workflowHost.runningJobs() > 0 && !confirmed && !confirmAbortJobs()) {
+    if ((workflowHost.runningJobs() > 0 || schedulerRuns() > 0) && !confirmed && !confirmAbortJobs()) {
       cancelCloseAttempt();
       return;
     }
@@ -569,8 +597,10 @@ async function awaitReady() {
     boardMedia.dispose();
     void shutdown.run(
       () =>
-        editorService
-          .dispose()
+        // A running schedule stops first (process group, then its Aside session) and is recorded as interrupted.
+        Promise.resolve(scheduler?.dispose())
+          .catch((error) => console.error("Scheduler close failed:", error))
+          .then(() => editorService.dispose())
           .then(() => canonicalEditor.dispose())
           .then(() =>
             workflowHost
@@ -808,7 +838,7 @@ async function awaitReady() {
     return terminalSetting();
   });
   handle("terminal-setting:relaunch", () => {
-    if (workBusy() || workflowHost.runningJobs() > 0)
+    if (workBusy() || workflowHost.runningJobs() > 0 || schedulerRuns() > 0)
       throw new Error("진행 중인 작업이 끝난 뒤 다시 시작해주세요.");
     app.relaunch();
     app.quit();
@@ -1095,7 +1125,7 @@ async function awaitReady() {
         event.preventDefault();
         return;
       }
-      if (workflowHost.runningJobs() > 0) {
+      if (workflowHost.runningJobs() > 0 || schedulerRuns() > 0) {
         event.preventDefault();
         if (confirmAbortJobs()) {
           jobAbortConfirmed = true;
@@ -1124,6 +1154,10 @@ async function awaitReady() {
       (error: unknown) => console.warn("[cli-install] failed", error instanceof Error ? error.message : error),
     );
   workflowNotifications.start();
+  // Catch-up after the app was closed or the Mac slept: tick at start, on resume/unlock and every minute.
+  scheduler?.start();
+  powerMonitor.on("resume", () => void scheduler?.wake());
+  powerMonitor.on("unlock-screen", () => void scheduler?.wake());
   app.on("second-instance", showWindow);
   if (!fixture) {
     const agent = await connectAgent(root, {
@@ -1144,6 +1178,12 @@ async function awaitReady() {
       analysisSelection: new AnalysisSelection(store, analysis, path.join(app.isPackaged ? path.join(process.resourcesPath, "editor-runtime") : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"), "bin/ffmpeg")),
       blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
       blogComments,
+      scheduler: scheduler && {
+        get: (input) => scheduler!.getSchedules(input),
+        set: (input) => scheduler!.setSchedule(input),
+        runNow: (input) => scheduler!.runNow(input),
+        runs: (input) => scheduler!.runs(input),
+      },
       preview: async (project, time, kind) => {
         const artifact = await editorService.previewArtifact(
           project,
