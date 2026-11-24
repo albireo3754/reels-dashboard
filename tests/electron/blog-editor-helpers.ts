@@ -22,7 +22,8 @@ export async function openBlogEditor(
   await main.getByRole("tab", { name: "프로젝트", exact: true }).click();
   await (card ?? main).getByRole("button", { name: "프로젝트 열기", exact: true }).click();
   const iframe = editorIframe(main, projectId);
-  await expect(iframe).toBeVisible();
+  // Each project starts its own editor server; a cold CI runner can take longer than the default 10 s.
+  await expect(iframe).toBeVisible({ timeout: 30_000 });
   const frame = await (await iframe.elementHandle())!.contentFrame();
   if (!frame) throw new Error("embedded editor frame missing");
   await expect(frame.locator("#ce-save-status")).toContainText("✓ 저장 완료", { timeout: 15000 });

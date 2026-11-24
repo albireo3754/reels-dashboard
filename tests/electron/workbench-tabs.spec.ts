@@ -195,7 +195,7 @@ test.describe("one development app", () => {
     await expect(
       page.getByRole("heading", { name: "작업의 흐름을 한눈에", exact: true }),
     ).toBeVisible();
-    await pressWorkbenchKey(app, "4");
+    await pressWorkbenchKey(app, "5");
     await expect(heading).toBeVisible();
     await page.screenshot({
       path: info.outputPath("workbench-drawer-folded.png"),
@@ -416,7 +416,8 @@ test.describe("one development app", () => {
     // Drawer closed: ⌘1-9 hints sit on the sidebar screens; ⌘W hides the window.
     let hints = await hintTargets(page);
     expect(hints.goToTab1).toBe("대시보드");
-    expect(hints.goToTab4).toBe("영상 편집");
+    // 대시보드 · 캘린더 · Instagram 인사이트 · 촬영 보관함 · 영상 편집
+    expect(hints.goToTab5).toBe("영상 편집");
     expect(hints.closeTab).toBeUndefined();
     expect(hints.inspectUi).toBe("화면 검사");
     expect(hints.toggleDrawer).toBe("터미널");
@@ -452,9 +453,9 @@ test.describe("one development app", () => {
       page.locator('[aria-label="터미널"][data-drawer-state]'),
     ).toHaveAttribute("data-drawer-state", "folded");
     hints = await hintTargets(page);
-    expect(hints.goToTab4).toBe("영상 편집");
+    expect(hints.goToTab5).toBe("영상 편집");
     expect(hints.closeTab).toBeUndefined();
-    await pressWorkbenchKey(app, "4");
+    await pressWorkbenchKey(app, "5");
     await expect(
       page.getByRole("button", { name: "영상 편집", exact: true }),
     ).toHaveAttribute("aria-current", "page");
