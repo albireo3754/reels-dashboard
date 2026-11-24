@@ -30,5 +30,5 @@ test('blog request becomes the agent initial prompt with the existing scope and 
   assert.match(command!, /src\/features\/blog-workspace\/ui\/BlogWorkspace.tsx/);
   assert.match(command!, /외부 게시·배포·push, 개인 자료 변경은 이 요청에 포함되지 않습니다/);
   assert.ok(command!.includes("'\\''폭'\\''"));
-  assert.match(command!, /workspace-write/);
+  assert.match(command!, /'--approve-for-me'/);
 });

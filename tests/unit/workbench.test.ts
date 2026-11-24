@@ -86,7 +86,7 @@ test("agent launch quotes untrusted task text as one argument and retains approv
   ]);
   assert.match(
     terminalCommand({ kind: "codex", phase: "implement" })!,
-    /'--sandbox' 'workspace-write'/,
+    /^exec 'codex' '--approve-for-me'/,
   );
   assert.throws(() => terminalCommand({ kind: "codex", task: "hello\x1b[5~" }));
   assert.throws(() => terminalCommand({ kind: "invalid" } as never));
@@ -138,7 +138,7 @@ test("host advertises Codex and Claude Code with Codex as the default and reject
   // Claude Code launches with an explicit permission mode and does not bypass unless asked.
   const claude = (input: Parameters<typeof terminalCommand>[0]) =>
     terminalCommand(input)!;
-  assert.equal(claude({ kind: "claude" }), "exec 'claude' '--permission-mode' 'manual'");
+  assert.equal(claude({ kind: "claude" }), "exec 'claude' '--permission-mode' 'auto'");
   assert.equal(
     claude({ kind: "claude", phase: "design" }),
     "exec 'claude' '--permission-mode' 'plan'",
@@ -148,14 +148,14 @@ test("host advertises Codex and Claude Code with Codex as the default and reject
     "exec 'claude' '--permission-mode' 'plan'",
   );
   for (const phase of ["implement", "fix"] as const)
-    assert.match(claude({ kind: "claude", phase }), /'--permission-mode' 'manual'$/);
+    assert.match(claude({ kind: "claude", phase }), /'--permission-mode' 'auto'$/);
   assert.doesNotMatch(
     claude({ kind: "claude", phase: "implement", task: "x" }),
     /bypass|dangerously/i,
   );
   assert.match(
     claude({ kind: "claude", phase: "implement", task: "고쳐줘" }),
-    /'--permission-mode' 'manual' '.*고쳐줘.*'$/s,
+    /'--permission-mode' 'auto' '.*고쳐줘.*'$/s,
   );
   // A caller cannot start a kind the host does not know through the bridge.
   assert.throws(() => terminalCommand({ kind: "gemini" } as never));

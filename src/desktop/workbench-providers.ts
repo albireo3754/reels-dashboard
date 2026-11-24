@@ -24,24 +24,21 @@ const providers: Record<AgentProvider, ProviderAdapter> = {
     args: (phase, permission) =>
       bypasses(phase, permission)
         ? ["codex", "--dangerously-bypass-approvals-and-sandbox"]
-        : [
-            "codex",
-            "--sandbox",
-            readOnly(phase) ? "read-only" : "workspace-write",
-            "--ask-for-approval",
-            "on-request",
-          ],
+        : readOnly(phase)
+          ? ["codex", "--sandbox", "read-only", "--ask-for-approval", "on-request"]
+          : // Auto review: workspace-write sandbox, approval requests go to Codex's reviewer.
+            ["codex", "--approve-for-me"],
   },
   claude: {
     id: "claude",
     label: "Claude Code",
     enabled: true,
-    // "manual" is a valid choice of the installed CLI and keeps a user-level bypass
-    // default out; bypass happens only when this start request asks for it.
+    // An explicit mode keeps a user-level bypass default out: write phases start in auto
+    // mode, read-only phases in plan; bypass happens only when this start request asks for it.
     args: (phase, permission) =>
       bypasses(phase, permission)
         ? ["claude", "--dangerously-skip-permissions"]
-        : ["claude", "--permission-mode", readOnly(phase) ? "plan" : "manual"],
+        : ["claude", "--permission-mode", readOnly(phase) ? "plan" : "auto"],
   },
 };
 
