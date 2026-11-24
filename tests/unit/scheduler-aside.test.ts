@@ -26,7 +26,7 @@ async function setup(t: test.TestContext, mode: string, options: { records?: boo
     list: async ({ postUrl }: { postUrl?: string }) => ({
       comments:
         options.records !== false && postUrl === recordedUrl
-          ? [{ postUrl, postedAt: today, note: `[${today} 루프] 수락함 / 답방 댓글 / 공감 확인` } as BlogComment]
+          ? [{ postUrl, postedAt: today, note: `[${today} 루프] 수락함 / 답방 댓글 / 공감 확인`, status: "posted", updatedAt: new Date().toISOString() } as BlogComment]
           : [],
     }),
   };
@@ -41,6 +41,7 @@ async function setup(t: test.TestContext, mode: string, options: { records?: boo
     killGraceMs: 300,
     sessionPollMs: 30,
     sessionPollMaxMs: 3000,
+    streamGraceMs: 200,
   });
   const calls = async () =>
     (await readFile(path.join(fake, "calls.jsonl"), "utf8").catch(() => ""))
@@ -49,7 +50,18 @@ async function setup(t: test.TestContext, mode: string, options: { records?: boo
       .filter(Boolean)
       .map((line) => JSON.parse(line) as string[]);
   const stopped = async () => (await readFile(path.join(fake, "stopped.txt"), "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
-  return { root, runner, calls, stopped, logs };
+  const sessionRows = async () => (await readFile(path.join(fake, "sessions.txt"), "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
+  /** The helper's pid, once it has its SIGTERM handler in place. */
+  const childPid = async () => {
+    const until = Date.now() + 5000;
+    for (;;) {
+      const text = await readFile(path.join(fake, "child.pid"), "utf8").catch(() => "");
+      if (text) return Number(text);
+      if (Date.now() > until) throw new Error("helper did not start");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+  return { root, runner, calls, stopped, logs, sessionRows, childPid };
 }
 
 function runRow(runId = "r_test_1"): RunRow {
@@ -82,10 +94,19 @@ function runRow(runId = "r_test_1"): RunRow {
 
 async function runOnce(runner: AsideRunner, schedule = exampleSchedule()) {
   const sessions: string[] = [];
-  const handle = await runner.start({ schedule, run: runRow(), onSession: (id) => sessions.push(id), log: () => {} });
+  const logs: string[] = [];
+  const handle = await runner.start({ schedule, run: runRow(), onSession: (id) => sessions.push(id), log: (message) => logs.push(message) });
   const outcome = await handle.done;
-  return { outcome, sessions };
+  return { outcome, sessions, logs };
 }
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 test("ok: report matches the app records; global options precede exec", async (t) => {
   const { runner, calls, root } = await setup(t, "ok");
@@ -225,4 +246,68 @@ test("quitting the app stops the child, calls aside session stop and records int
   const db = new SchedulerDb(root);
   t.after(() => db.close());
   assert.deepEqual([db.get(runId)?.status, db.get(runId)?.reason], ["interrupted", "app-quit"]);
+});
+
+test("another Aside session that appears first is never taken as this run's session", async (t) => {
+  const { runner, sessionRows } = await setup(t, "foreign-session");
+  const { outcome, sessions } = await runOnce(runner);
+  assert.equal(outcome.status, "ok");
+  assert.equal(sessions.length, 1);
+  const rows = await sessionRows();
+  assert.equal(rows.length, 2);
+  assert.match(rows.find((row) => row.startsWith(sessions[0]))!, /\[예약 r_test_1\]/);
+});
+
+test("a timeout never stops a session that is not this run's", async (t) => {
+  const { scheduler, clock, stopped, sessionRows } = await withScheduler(t, "hang-foreign");
+  const { runId } = await scheduler.runNow({ id: "example-loop" });
+  await scheduler.tick();
+  await waitFor(() => !!scheduler.db.get(runId)?.pid);
+  await new Promise((resolve) => setTimeout(resolve, 400)); // let discovery poll the foreign row
+  assert.equal((await sessionRows()).length, 1);
+  clock.now = new Date(clock.now.getTime() + 46 * 60_000);
+  await scheduler.tick();
+  await scheduler.idle();
+  const row = scheduler.db.get(runId)!;
+  assert.deepEqual([row.status, row.reason, row.session_id], ["failed", "timeout", null]);
+  assert.deepEqual(await stopped(), []);
+});
+
+test("stopping kills a helper of the aside group that ignores SIGTERM after aside itself exited", async (t) => {
+  const { scheduler, clock, childPid } = await withScheduler(t, "child-ignores-term");
+  const { runId } = await scheduler.runNow({ id: "example-loop" });
+  await scheduler.tick();
+  await waitFor(() => !!scheduler.db.get(runId)?.session_id);
+  const helper = await childPid();
+  t.after(() => void (isAlive(helper) && process.kill(helper, "SIGKILL")));
+  assert.ok(isAlive(helper));
+  clock.now = new Date(clock.now.getTime() + 46 * 60_000);
+  await scheduler.tick();
+  await scheduler.idle();
+  assert.deepEqual([scheduler.db.get(runId)?.status, scheduler.db.get(runId)?.reason], ["failed", "timeout"]);
+  await waitFor(() => !isAlive(helper), 2000);
+});
+
+test("a run ends when aside exits even if a helper keeps its output pipe open", async (t) => {
+  const { runner, childPid } = await setup(t, "exit-leaves-child");
+  const started = Date.now();
+  const { outcome, logs } = await runOnce(runner);
+  const helper = await childPid();
+  t.after(() => void (isAlive(helper) && process.kill(helper, "SIGKILL")));
+  assert.equal(outcome.status, "ok");
+  assert.ok(Date.now() - started < 5000, "did not wait for the helper");
+  assert.ok(logs.some((message) => /still running/.test(message)));
+});
+
+test("stdout.log is redacted, and a log write error does not escape the run", async (t) => {
+  const secret = await setup(t, "secret");
+  await runOnce(secret.runner);
+  const log = await readFile(path.join(secret.root, "scheduler", "runs", "r_test_1", "stdout.log"), "utf8");
+  assert.doesNotMatch(log, /example-token-123/);
+  assert.match(log, /Authorization: \[redacted\]/);
+  const broken = await setup(t, "ok");
+  await mkdir(path.join(broken.root, "scheduler", "runs", "r_test_1", "stdout.log"), { recursive: true });
+  const { outcome, logs } = await runOnce(broken.runner);
+  assert.equal(outcome.status, "ok");
+  assert.ok(logs.some((message) => /stdout\.log write failed/.test(message)));
 });

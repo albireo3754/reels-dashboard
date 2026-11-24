@@ -2,8 +2,9 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants, createWriteStream } from "node:fs";
 import { access, chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ExecutionLogs } from "../shared/lib/execution-logs";
+import { redactLog, type ExecutionLogs } from "../shared/lib/execution-logs";
 import { loggedSpawn } from "../shared/lib/logged-process";
 import type { BlogComment, BlogCommentListInput } from "../shared/blog-comments";
 import {
@@ -15,7 +16,7 @@ import {
   hostProfileConnected,
   judgeAsideRun,
   lastJsonBlock,
-  parseSessionIds,
+  parseSessionRows,
   renderHandoff,
   type RecordFact,
   type Schedule,
@@ -52,11 +53,14 @@ export interface AsideRunnerOptions {
   sessionPollMs?: number;
   sessionPollMaxMs?: number;
   commandTimeoutMs?: number;
+  /** After the aside process exits, how long to wait for its output pipes to close. */
+  streamGraceMs?: number;
 }
 
 /**
  * Runs one scheduled aside session: `aside --permission full-access [--profile] [-m] exec "<prompt>"`
- * with a per-run handoff file, finds its session id by diffing `aside session list`, and judges
+ * with a per-run handoff file, finds its session id by diffing `aside session list` (only a new row
+ * that carries this run's id), and judges
  * the result against the app's comment records. Exit code 0 alone is never success.
  */
 export class AsideRunner implements ActionRunner {
@@ -84,7 +88,7 @@ export class AsideRunner implements ActionRunner {
   }
 
   private async sessions() {
-    return parseSessionIds(await this.command(["session", "list"]));
+    return parseSessionRows(await this.command(["session", "list"]));
   }
 
   async stopSession(sessionId: string) {
@@ -119,39 +123,61 @@ export class AsideRunner implements ActionRunner {
       { mode: 0o600 },
     );
     await chmod(handoff, 0o600);
-    const args = asideExecArgs(schedule.action, asidePrompt(schedule.action.skill, handoff));
+    const args = asideExecArgs(schedule.action, asidePrompt(schedule.action.skill, handoff, run.run_id));
     const before = await this.sessions().catch(() => undefined);
     const spawnOptions = { detached: true, stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"], env: this.options.env };
     const child: ChildProcess = this.options.logs
       ? loggedSpawn(this.options.logs, { source: "scheduler", label: `예약 실행 · ${schedule.name}`, jobId: run.run_id }, this.options.asideBin, args, spawnOptions)
       : spawn(this.options.asideBin, args, spawnOptions);
+    // The log keeps the first 5 MB, redacted like the execution log. A write error (disk full)
+    // only stops the file; it never reaches the main process as an unhandled 'error'.
     const logFile = createWriteStream(path.join(dir, "stdout.log"), { mode: 0o600 });
+    const logClosed = new Promise<void>((resolve) => logFile.once("close", () => resolve()));
+    let logFailed = false;
+    logFile.on("error", (error) => {
+      if (!logFailed) context.log(`stdout.log write failed: ${error.message}`);
+      logFailed = true;
+    });
     let written = 0;
     let output = "";
-    const consume = (chunk: Buffer) => {
-      if (written < OUTPUT_LIMIT) {
-        const part = chunk.subarray(0, OUTPUT_LIMIT - written);
-        logFile.write(part);
-        written += part.length;
-      }
-      output = (output + chunk.toString("utf8")).slice(-OUTPUT_LIMIT);
+    const consumer = () => {
+      const decoder = new StringDecoder("utf8");
+      return (chunk: Buffer) => {
+        const text = decoder.write(chunk);
+        if (!logFailed && written < OUTPUT_LIMIT && text) {
+          const part = redactLog(text).slice(0, OUTPUT_LIMIT - written);
+          logFile.write(part);
+          written += Buffer.byteLength(part);
+        }
+        output = (output + text).slice(-OUTPUT_LIMIT);
+      };
     };
-    child.stdout?.on("data", consume);
-    child.stderr?.on("data", consume);
+    child.stdout?.on("data", consumer());
+    child.stderr?.on("data", consumer());
+    // The run ends when the aside process exits. A helper that inherited its stdout may keep the
+    // pipes open, so 'close' is awaited only briefly and the pipes are then let go.
     let exited = false;
     const exit = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      const closed = new Promise<void>((done) => child.once("close", () => done()));
       child.once("error", () => {
         if (!child.pid) {
           exited = true;
           resolve({ code: null, signal: null });
         }
       });
-      child.once("close", (code, signal) => {
-        exited = true;
-        resolve({ code, signal });
+      child.once("exit", (code, signal) => {
+        void Promise.race([closed, delay(this.options.streamGraceMs ?? 2000)]).then(() => {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          exited = true;
+          resolve({ code, signal });
+        });
       });
     });
 
+    // A new row is this run's session only when its title carries the run id (the prompt starts
+    // with it). Another session that appears meanwhile (an Aside hourly job, a chat) is never
+    // taken: its id would later receive `aside session stop`.
     let sessionId: string | undefined;
     const discovery = (async () => {
       if (!before) return context.log("aside session list unavailable before start; session id not recorded");
@@ -160,20 +186,24 @@ export class AsideRunner implements ActionRunner {
       for (let first = true; ; first = false) {
         if (!first) await Promise.race([delay(step), exit]);
         const after = await this.sessions().catch(() => undefined);
-        const fresh = after ? [...after].filter((id) => !before.has(id)) : [];
-        if (fresh.length === 1) {
-          sessionId = fresh[0];
+        const fresh = after ? [...after].filter(([id]) => !before.has(id)) : [];
+        const mine = fresh.filter(([, row]) => row.includes(run.run_id));
+        if (mine.length === 1) {
+          sessionId = mine[0][0];
           context.onSession(sessionId);
           return;
         }
-        if (fresh.length > 1) return context.log(`${fresh.length} new aside sessions; session id not recorded`);
-        if (exited || Date.now() >= until) return;
+        if (mine.length > 1) return context.log(`${mine.length} new aside sessions carry this run id; session id not recorded`);
+        if (exited || Date.now() >= until)
+          return context.log(`no new aside session carried this run id (${fresh.length} other new); session id not recorded`);
       }
     })();
 
     const done = exit.then(async ({ code, signal }): Promise<ActionOutcome> => {
       await discovery.catch(() => {});
-      await new Promise<void>((resolve) => logFile.end(resolve));
+      if (!logFile.destroyed) logFile.end();
+      await logClosed;
+      if (child.pid && groupAlive(child.pid)) context.log("aside exited; processes of its group are still running");
       const endDay = dayIn(this.now(), schedule.trigger.timezone);
       const records = await this.recordFacts(output);
       const maxVisit = schedule.action.params.maxVisit;
@@ -183,6 +213,7 @@ export class AsideRunner implements ActionRunner {
         stdout: output,
         runId: run.run_id,
         days: [...new Set([startDay, endDay])],
+        startedAt: startedAt.toISOString(),
         maxRecords: typeof maxVisit === "number" ? maxVisit : undefined,
         records,
       });
@@ -201,7 +232,8 @@ export class AsideRunner implements ActionRunner {
       pid: child.pid,
       done,
       stop: async () => {
-        if (!exited && child.pid) await terminate(child.pid, () => exited, this.options.killGraceMs ?? 10_000);
+        // The whole process group: a helper that ignores SIGTERM is killed even after aside itself exited.
+        if (child.pid && (!exited || groupAlive(child.pid))) await terminate(child.pid, () => exited, this.options.killGraceMs ?? 10_000);
         await exit;
         await discovery.catch(() => {});
         if (sessionId) await this.stopSession(sessionId);
@@ -224,9 +256,10 @@ export class AsideRunner implements ActionRunner {
     for (const record of parsed.data.records) {
       const url = canonicalPostUrl(record.postUrl);
       if (!url || facts.has(url)) continue;
-      const found = await this.options.comments.list({ postUrl: url, limit: 1 }).catch(() => undefined);
-      const comment = found?.comments[0];
-      if (comment) facts.set(url, { postedAt: comment.postedAt, note: comment.note });
+      const found = await this.options.comments.list({ postUrl: url, limit: 20 }).catch(() => undefined);
+      // The record this run wrote is the one updated last.
+      const comment = found?.comments.reduce<BlogComment | undefined>((best, c) => (!best || c.updatedAt > best.updatedAt ? c : best), undefined);
+      if (comment) facts.set(url, { postedAt: comment.postedAt, note: comment.note, status: comment.status, updatedAt: comment.updatedAt });
     }
     return facts;
   }
@@ -235,6 +268,15 @@ export class AsideRunner implements ActionRunner {
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+/** True while any process of the group led by `pid` is left (the leader itself may be gone). */
+const groupAlive = (pid: number) => {
+  try {
+    process.kill(-pid, 0);
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
@@ -251,8 +293,12 @@ const signalGroup = (pid: number, signal: NodeJS.Signals) => {
     }
   }
 };
-/** SIGTERM to the process group, SIGKILL after the grace period. */
-async function terminate(pid: number, gone: () => boolean, graceMs: number) {
+/**
+ * SIGTERM to the process group, SIGKILL after the grace period. Done only when the leader is
+ * gone and so is every process of its group: a member that outlived the leader is killed too.
+ */
+async function terminate(pid: number, leaderGone: () => boolean, graceMs: number) {
+  const gone = () => leaderGone() && !groupAlive(pid);
   signalGroup(pid, "SIGTERM");
   const until = Date.now() + graceMs;
   while (!gone() && Date.now() < until) await delay(Math.min(100, graceMs));

@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ScheduleFileStore, SchedulerDb } from "../../src/desktop/scheduler-store";
+import { runDir, ScheduleFileStore, SchedulerDb } from "../../src/desktop/scheduler-store";
 import { definitionHash } from "../../src/features/scheduler";
 
 const trigger = { type: "cron" as const, expr: "10 18 * * *", timezone: "Asia/Seoul" };
@@ -156,4 +157,87 @@ test("retention keeps 200 rows per schedule and drops old missed/skipped rows", 
   assert.equal((db.db.prepare("SELECT COUNT(*) AS n FROM runs").get() as { n: number }).n, 200);
   assert.equal(rows[0].run_id, "r_259");
   assert.equal(db.db.prepare("SELECT 1 FROM runs WHERE status = 'missed'").get(), undefined);
+});
+
+test("retention never drops a started run the daily limit still counts (a frequent cron with many skips)", async (t) => {
+  const dir = await root(t);
+  const db = new SchedulerDb(dir);
+  t.after(() => db.close());
+  const now = at("2026-11-25T09:00:00Z"); // 18:00 KST
+  const options = { ...claimOptions(now), maxRunsPerDay: 1 };
+  const first = db.insertManual("example-loop", at("2026-11-25T00:00:00Z"), at("2026-11-25T00:10:00Z"));
+  assert.equal(db.claim(first, { ...options, now: at("2026-11-25T00:00:00Z") }).kind, "claimed");
+  db.finish(first, { status: "ok" }, at("2026-11-25T00:05:00Z"));
+  // Every minute since: skipped/daily-limit rows, more than the 200 kept per schedule.
+  const insert = db.db.prepare(
+    "INSERT INTO runs(run_id, schedule_id, occurrence_key, trigger, scheduled_at, deadline_at, status, reason, created_at) VALUES(?, 'example-loop', ?, 'cron', ?, ?, 'skipped', 'daily-limit', ?)",
+  );
+  for (let i = 1; i <= 300; i++) {
+    const when = new Date(Date.parse("2026-11-25T00:00:00Z") + i * 60_000).toISOString();
+    insert.run(`r_skip_${i}`, `cron:${when}`, when, when, when);
+  }
+  assert.equal(db.startedToday("example-loop", now, "Asia/Seoul"), 1);
+  db.prune(now);
+  assert.equal(db.get(first)?.status, "ok", "the started run is kept");
+  assert.equal(db.startedToday("example-loop", now, "Asia/Seoul"), 1);
+  const next = planOnce(db, "cron:2026-11-25T09:00:00.000Z", now)!;
+  assert.deepEqual(db.claim(next, options), { kind: "skipped", reason: "daily-limit" });
+});
+
+test("prune removes the run folders of the rows it deletes", async (t) => {
+  const dir = await root(t);
+  const db = new SchedulerDb(dir);
+  t.after(() => db.close());
+  const insert = db.db.prepare(
+    "INSERT INTO runs(run_id, schedule_id, occurrence_key, trigger, scheduled_at, deadline_at, status, created_at, started_at) VALUES(?, 'example-loop', ?, 'cron', ?, ?, 'ok', ?, ?)",
+  );
+  const base = Date.parse("2026-01-01T00:00:00Z");
+  for (let i = 0; i < 205; i++) {
+    const when = new Date(base + i * 86_400_000).toISOString();
+    insert.run(`r_${i}`, `cron:${when}`, when, when, when, when);
+    await mkdir(runDir(dir, `r_${i}`), { recursive: true });
+    await writeFile(path.join(runDir(dir, `r_${i}`), "stdout.log"), "log");
+  }
+  const deleted = db.prune(at("2026-11-25T00:00:00Z"));
+  assert.equal(deleted.length, 5);
+  assert.deepEqual((await readdir(path.join(dir, "scheduler", "runs"))).length, 200);
+  assert.equal(await stat(runDir(dir, "r_0")).then(() => true, () => false), false);
+  assert.equal(await stat(runDir(dir, "r_204")).then(() => true, () => false), true);
+});
+
+test("a claim after the deadline (a slow preflight) closes the run instead of starting it", async (t) => {
+  const dir = await root(t);
+  const db = new SchedulerDb(dir);
+  t.after(() => db.close());
+  const late = at("2026-11-25T14:10:05Z"); // 5 s past the 23:10 KST deadline
+  const run = planOnce(db, "cron:2026-11-25T09:10:00.000Z", at("2026-11-25T14:09:50Z"))!;
+  assert.deepEqual(db.claim(run, claimOptions(late)), { kind: "expired" });
+  assert.deepEqual([db.get(run)?.status, db.get(run)?.reason, db.get(run)?.started_at], ["missed", "deadline", null]);
+  const manual = db.insertManual("example-loop", at("2026-11-25T14:00:00Z"), at("2026-11-25T14:10:00Z"));
+  db.preflightFailed(manual, "host-disconnected", at("2026-11-25T14:01:00Z"));
+  assert.deepEqual(db.claim(manual, claimOptions(late)), { kind: "expired" });
+  assert.deepEqual([db.get(manual)?.status, db.get(manual)?.reason], ["blocked", "host-disconnected"]);
+});
+
+test("separate OS processes racing on one database: each occurrence is created once and claimed once", async (t) => {
+  const dir = await root(t);
+  new SchedulerDb(dir).close(); // migrate once before the race
+  const worker = path.resolve("tests/fixtures/scheduler-claim-worker.ts");
+  const startAt = Date.now() + 1500;
+  const count = 25;
+  const run = () =>
+    new Promise<{ created: string[]; claimed: string[]; errors: string[] }>((resolve, reject) =>
+      execFile(process.execPath, ["--import", "tsx", worker, dir, String(startAt), String(count)], { timeout: 60_000 }, (error, stdout, stderr) =>
+        error ? reject(new Error(`${error.message}\n${stderr}`)) : resolve(JSON.parse(stdout)),
+      ),
+    );
+  const results = await Promise.all([run(), run(), run(), run()]);
+  assert.deepEqual(results.flatMap((r) => r.errors), []);
+  assert.equal(results.flatMap((r) => r.created).length, count);
+  const claimed = results.flatMap((r) => r.claimed);
+  assert.equal(claimed.length, count);
+  assert.equal(new Set(claimed).size, count);
+  const db = new SchedulerDb(dir);
+  t.after(() => db.close());
+  assert.equal((db.db.prepare("SELECT COUNT(*) AS n FROM runs WHERE status = 'ok'").get() as { n: number }).n, count);
 });

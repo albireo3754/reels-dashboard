@@ -90,8 +90,20 @@ const prompt = args[exec + 1];
 const handoff = /인계 문서 (\\S+)/.exec(prompt)[1];
 const runId = /- runId: (\\S+)/.exec(fs.readFileSync(handoff, "utf8"))[1];
 const id = () => "Sess" + Math.random().toString(36).slice(2, 12).padEnd(10, "x");
-const row = (sid) => sid + "  running  persistent  example  2026-11-25T09:10:00.000Z\\n";
-fs.appendFileSync(sessions, row(id()) + (mode === "two-sessions" ? row(id()) : ""));
+// Like Aside, the row title is the start of the prompt.
+const row = (sid, title = prompt.slice(0, 50)) => sid + "  running  persistent  " + title + "  2026-11-25T09:10:00.000Z\\n";
+const foreign = () => fs.appendFileSync(sessions, row(id(), "다른 작업"));
+if (mode === "foreign-session" || mode === "hang-foreign") foreign();
+if (mode !== "hang-foreign") {
+  const mine = () => fs.appendFileSync(sessions, row(id()) + (mode === "two-sessions" ? row(id()) : ""));
+  if (mode === "foreign-session") setTimeout(mine, 150);
+  else mine();
+}
+// A helper in aside's process group; it writes child.pid once its SIGTERM handler is in place.
+const grandchild = (stdio) => {
+  const script = 'process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => {}, 20000)';
+  require("node:child_process").spawn(process.execPath, ["-e", script, path.join(dir, "child.pid")], { stdio });
+};
 const report = (extra) => "\`\`\`json\\n" + JSON.stringify(Object.assign({
   runId, accountVerified: true, accepted: 1, visited: 1, commented: 1, liked: 1,
   records: [{ postUrl: "https://blog.naver.com/example-blog/223000000001", action: "create", status: "posted" }],
@@ -102,10 +114,16 @@ switch (mode) {
   case "ok": case "two-sessions": case "disconnected": out(report({})); break;
   case "unknown-option": process.stderr.write("error: unknown option '--permission'\\n"); out(report({})); break;
   case "no-json": out("완료했어요."); break;
+  case "secret": out("Authorization: Bearer example-token-123\\n" + report({})); break;
   case "run-id-mismatch": out(report({ runId: "r_other" })); break;
   case "missing-record": out(report({ records: [{ postUrl: "https://m.blog.naver.com/example-blog/223000000999" }] })); break;
   case "captcha": out(report({ accepted: 0, visited: 0, commented: 0, liked: 0, records: [], accountVerified: false, blocked: { code: "captcha", detail: "보안 확인" } })); break;
-  case "hang": setInterval(() => {}, 1000); break;
+  case "hang": case "hang-foreign": setInterval(() => {}, 1000); break;
+  case "foreign-session": setTimeout(() => out(report({})), 400); break;
+  // aside dies on SIGTERM; a helper in its group ignores it and holds no pipe.
+  case "child-ignores-term": grandchild("ignore"); setInterval(() => {}, 1000); break;
+  // aside reports and exits 0; a helper that inherited stdout keeps the pipe open.
+  case "exit-leaves-child": grandchild("inherit"); out(report({})); break;
   case "hang-ignore-term": process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); break;
   default: console.log("unknown fake mode"); process.exit(3);
 }

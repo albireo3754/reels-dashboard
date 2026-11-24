@@ -30,6 +30,10 @@ export type VerdictStatus = "ok" | "partial" | "failed";
 export interface RecordFact {
   postedAt?: string;
   note?: string;
+  /** Comment status in the app store; a draft was never posted. */
+  status?: string;
+  /** Last write to the record (ISO). It must fall inside this run. */
+  updatedAt?: string;
 }
 export interface VerdictInput {
   exitCode: number | null;
@@ -40,6 +44,8 @@ export interface VerdictInput {
   days: string[];
   /** Upper bound of records for one run (params.maxVisit), when known. */
   maxRecords?: number;
+  /** When the run started (ISO): a record must have been written at or after it. */
+  startedAt: string;
   /** App comment records by canonical post URL, read after the process ended. */
   records: ReadonlyMap<string, RecordFact>;
 }
@@ -89,12 +95,25 @@ export function judgeAsideRun(input: VerdictInput): Verdict {
   const processed = result.accepted + result.visited + result.commented + result.liked;
   if (result.blocked && processed === 0) return fail(`blocked:${result.blocked.code}`, { result, pause });
   if (result.accountVerified !== true) return fail("account-unverified", { result, pause });
+  const startedAt = Date.parse(input.startedAt);
+  // One app record confirms one post: the same post reported twice is counted once.
+  const seen = new Set<string>();
+  let duplicate = false;
   let matched = 0;
   for (const record of result.records) {
     const url = canonicalPostUrl(record.postUrl);
+    if (url && seen.has(url)) {
+      duplicate = true;
+      continue;
+    }
+    if (url) seen.add(url);
     const fact = url ? input.records.get(url) : undefined;
     if (
       fact &&
+      fact.status !== undefined &&
+      fact.status !== "draft" &&
+      fact.updatedAt !== undefined &&
+      Date.parse(fact.updatedAt) >= startedAt &&
       fact.postedAt &&
       input.days.includes(fact.postedAt) &&
       input.days.some((day) => fact.note?.includes(`[${day} 루프]`))
@@ -104,6 +123,7 @@ export function judgeAsideRun(input: VerdictInput): Verdict {
   const partial = (reason: string): Verdict => ({ status: "partial", reason, result, pause, matched });
   if (result.blocked) return partial(`blocked:${result.blocked.code}`);
   if (input.maxRecords !== undefined && result.records.length > input.maxRecords) return partial("over-limit");
+  if (duplicate) return partial("duplicate-record");
   if (matched !== result.records.length) return partial("record-mismatch");
   if (result.commented !== matched) return partial("count-mismatch");
   return { status: "ok", result, matched };

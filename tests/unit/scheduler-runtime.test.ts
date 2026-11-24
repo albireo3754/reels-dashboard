@@ -1,6 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Scheduler, schedulerEnabled } from "../../src/desktop/scheduler";
@@ -340,4 +340,206 @@ test("the repository example is a valid set_schedule input with public values on
   const input = setScheduleInput.parse(JSON.parse(raw));
   assert.equal(input.trigger?.expr, "10 18 * * *");
   assert.equal(input.action?.params?.expectedBlogId, "example-blog");
+});
+
+/** A runner whose preflight waits until the test opens the gate. */
+class GatedRunner extends FakeRunner {
+  private open!: () => void;
+  private gate = new Promise<void>((resolve) => (this.open = resolve));
+  private enter!: () => void;
+  entered = new Promise<void>((resolve) => (this.enter = resolve));
+  release() {
+    this.open();
+  }
+  override async preflight() {
+    this.enter();
+    await this.gate;
+    return super.preflight();
+  }
+}
+
+test("quitting while the preflight runs starts nothing and leaves the occurrence pending", async (t) => {
+  const { make, set, root } = await setup(t);
+  const runner = new GatedRunner(ok);
+  const scheduler = make(runner);
+  set("2026-11-25T09:10:30Z");
+  const run = scheduler.db.insertManual("example-loop", new Date("2026-11-25T09:10:30Z"), new Date("2026-11-25T09:20:30Z"));
+  const ticking = scheduler.tick();
+  await runner.entered;
+  const disposing = scheduler.dispose();
+  runner.release();
+  await Promise.all([ticking, disposing]);
+  assert.equal(runner.starts.length, 0, "no aside process after the quit began");
+  const db = new SchedulerDb(root);
+  t.after(() => db.close());
+  assert.deepEqual([db.get(run)?.status, db.get(run)?.started_at], ["pending", null]);
+});
+
+test("pausing while the preflight runs closes the occurrence instead of starting it", async (t) => {
+  const { make, set } = await setup(t);
+  const runner = new GatedRunner(ok);
+  const scheduler = make(runner);
+  await scheduler.tick();
+  set("2026-11-25T09:10:20Z");
+  const ticking = scheduler.tick();
+  await runner.entered;
+  await scheduler.setSchedule({ id: "example-loop", enabled: false });
+  runner.release();
+  await ticking;
+  await scheduler.idle();
+  assert.equal(runner.starts.length, 0);
+  assert.deepEqual(scheduler.db.list({ limit: 5 }).map((r) => [r.trigger, r.status, r.reason]), [["cron", "skipped", "disabled"]]);
+});
+
+test("a catch-up after midnight belongs to its own day and does not use up the next day's run", async (t) => {
+  const { make, set } = await setup(t, exampleSchedule({ trigger: { type: "cron", expr: "0 22 * * *", timezone: "Asia/Seoul" } }));
+  const runner = new FakeRunner(ok);
+  const scheduler = make(runner);
+  set("2026-11-25T12:00:00Z"); // 21:00 KST
+  await scheduler.tick();
+  set("2026-11-25T16:00:00Z"); // 01:00 KST the next day: the 22:00 run catches up
+  await scheduler.tick();
+  await scheduler.idle();
+  set("2026-11-26T13:00:30Z"); // 22:00 KST that day
+  await scheduler.tick();
+  await scheduler.idle();
+  assert.deepEqual(
+    scheduler.db.list({ limit: 5 }).map((r) => [r.scheduled_at, r.trigger, r.status]),
+    [
+      ["2026-11-26T13:00:00.000Z", "cron", "ok"],
+      ["2026-11-25T13:00:00.000Z", "catchup", "ok"],
+    ],
+  );
+});
+
+test("paused when the app closed, turned on before the first tick: the paused time is not caught up", async (t) => {
+  const { make, set, root } = await setup(t);
+  const first = make(new FakeRunner(ok));
+  set("2026-11-25T08:00:00Z"); // 17:00 KST
+  await first.tick();
+  await first.setSchedule({ id: "example-loop", enabled: false });
+  await first.tick();
+  await first.dispose();
+  // Turned back on by hand while the app is closed (updatedAt left as it was).
+  const files = new ScheduleFileStore(root);
+  const [paused] = await files.read();
+  await files.update(() => ({ schedules: [{ ...paused, enabled: true }], result: undefined }));
+  set("2026-11-25T10:00:00Z"); // 19:00 KST
+  const runner = new FakeRunner(ok);
+  const second = make(runner, 1002);
+  await second.tick();
+  await second.idle();
+  assert.equal(runner.starts.length, 0, "hand edit");
+  // Or turned on with set_schedule right after the app opened, before its first tick.
+  await second.setSchedule({ id: "example-loop", enabled: false });
+  await second.tick();
+  await second.dispose();
+  set("2026-11-26T10:00:00Z"); // the next day, 19:00 KST
+  const third = make(runner, 1003);
+  await third.setSchedule({ id: "example-loop", enabled: true });
+  await third.tick();
+  await third.idle();
+  assert.equal(runner.starts.length, 0, "set_schedule");
+  assert.deepEqual(third.db.list({ limit: 5 }), []);
+});
+
+test("turned on by hand before the time while closed: the run still catches up", async (t) => {
+  const { make, set, root } = await setup(t);
+  const first = make(new FakeRunner(ok));
+  set("2026-11-25T08:00:00Z"); // 17:00 KST
+  await first.setSchedule({ id: "example-loop", enabled: false });
+  await first.tick();
+  await first.dispose();
+  const files = new ScheduleFileStore(root);
+  const [paused] = await files.read();
+  await files.update(() => ({ schedules: [{ ...paused, enabled: true, updatedAt: "2026-11-25T08:30:00.000Z" }], result: undefined }));
+  set("2026-11-25T10:00:00Z"); // 19:00 KST
+  const runner = new FakeRunner(ok);
+  const second = make(runner, 1002);
+  await second.tick();
+  await second.idle();
+  assert.deepEqual(second.db.list({ limit: 5 }).map((r) => [r.trigger, r.status]), [["catchup", "ok"]]);
+});
+
+test("an unreadable schedules.json at start leaves pending runs pending until it is fixed", async (t) => {
+  const { make, set, root } = await setup(t);
+  const runner = new FakeRunner(ok);
+  set("2026-11-25T09:30:00Z");
+  const db = new SchedulerDb(root);
+  t.after(() => db.close());
+  const run = db.insertManual("example-loop", new Date("2026-11-25T09:30:00Z"), new Date("2026-11-25T09:40:00Z"));
+  const files = new ScheduleFileStore(root);
+  const good = await readFile(files.path, "utf8");
+  await writeFile(files.path, "{ broken");
+  const scheduler = make(runner);
+  await scheduler.tick();
+  assert.deepEqual([db.get(run)?.status, runner.starts.length], ["pending", 0]);
+  await writeFile(files.path, good);
+  set("2026-11-25T09:31:00Z");
+  await scheduler.tick();
+  await scheduler.idle();
+  assert.deepEqual([db.get(run)?.status, runner.starts.length], ["ok", 1]);
+});
+
+test("a newer occurrence supersedes an older one still pending", async (t) => {
+  const hourly = exampleSchedule({ trigger: { type: "cron", expr: "0 * * * *", timezone: "Asia/Seoul" }, limits: { timeoutMinutes: 45, maxRunsPerDay: 24 } });
+  const { make, set } = await setup(t, hourly);
+  const runner = new FakeRunner(ok);
+  const scheduler = make(runner);
+  set("2026-11-25T08:30:00Z");
+  await scheduler.tick();
+  runner.preflightFailure = "host-disconnected";
+  set("2026-11-25T09:00:30Z"); // 18:00 KST, the host is not connected
+  await scheduler.tick();
+  runner.preflightFailure = undefined;
+  set("2026-11-25T10:30:00Z"); // asleep until 19:30 KST
+  await scheduler.wake();
+  await scheduler.idle();
+  assert.deepEqual(
+    scheduler.db.list({ limit: 5 }).map((r) => [r.scheduled_at, r.status, r.reason]),
+    [
+      ["2026-11-25T10:00:00.000Z", "ok", null],
+      ["2026-11-25T09:00:00.000Z", "missed", "superseded"],
+    ],
+  );
+});
+
+test("lastRun is the last finished run even while a newer one is running", async (t) => {
+  const { make, set } = await setup(t, exampleSchedule({ limits: { timeoutMinutes: 45, maxRunsPerDay: 2 } }));
+  const runner = new FakeRunner();
+  const scheduler = make(runner);
+  await scheduler.tick();
+  await scheduler.runNow({ id: "example-loop" });
+  await scheduler.tick();
+  runner.handles[0].finish(ok());
+  await scheduler.idle();
+  set("2026-11-25T09:10:20Z");
+  await scheduler.tick();
+  assert.equal(scheduler.running(), 1);
+  const { schedules } = (await scheduler.getSchedules({})) as { schedules: { lastRun: { status: string; trigger: string } | null; activeRuns: unknown[] }[] };
+  assert.deepEqual([schedules[0].lastRun?.trigger, schedules[0].lastRun?.status, schedules[0].activeRuns.length], ["manual", "ok", 1]);
+  runner.handles[1].finish(ok());
+  await scheduler.idle();
+});
+
+test("a run that another instance's finish unblocks is never claimed and then dropped", async (t) => {
+  const { make, set } = await setup(t, exampleSchedule({ limits: { timeoutMinutes: 45, maxRunsPerDay: 3 } }));
+  const runner = new FakeRunner(ok);
+  const scheduler = make(runner);
+  set("2026-11-25T09:30:00Z");
+  const run = scheduler.db.insertManual("example-loop", new Date("2026-11-25T09:30:00Z"), new Date("2026-11-25T09:40:00Z"));
+  // The first look sees another instance's run; it has finished by the next look.
+  const real = scheduler.db.runningFor.bind(scheduler.db);
+  let calls = 0;
+  scheduler.db.runningFor = (id: string) => (calls++ === 0 ? ({ run_id: "r_other" } as ReturnType<typeof real>) : real(id));
+  await scheduler.tick();
+  await scheduler.idle();
+  set("2026-11-25T09:31:00Z");
+  await scheduler.tick();
+  await scheduler.idle();
+  const row = scheduler.db.get(run)!;
+  assert.ok(
+    (row.status === "skipped" && runner.starts.length === 0) || (row.status === "ok" && runner.starts.length === 1),
+    `${row.status}/${row.reason} with ${runner.starts.length} starts`,
+  );
 });

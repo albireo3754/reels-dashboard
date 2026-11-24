@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { chmod, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -82,12 +82,23 @@ CREATE INDEX IF NOT EXISTS runs_by_time ON runs(schedule_id, scheduled_at);
 const RESULT_LIMIT = 16_000;
 const KEEP_PER_SCHEDULE = 200;
 const DROP_QUIET_AFTER_MS = 30 * 24 * 60 * 60_000;
+/** Rows the daily limit may still count (an occurrence day plus the longest catch-up) are never pruned. */
+const COUNTED_MS = 50 * 60 * 60_000;
+const HOUR = 60 * 60_000;
 
 export type ClaimResult =
   | { kind: "claimed" }
   | { kind: "gone" }
   | { kind: "locked" }
+  | { kind: "expired" }
   | { kind: "skipped"; reason: "already-running" | "daily-limit" };
+export interface ClaimOptions {
+  now: Date;
+  timezone: string;
+  maxRunsPerDay: number;
+  hostPid: number;
+  hostPidStarted?: string;
+}
 
 /**
  * `<userData>/scheduler/scheduler.sqlite`: occurrences, runs and the catch-up cursor.
@@ -97,7 +108,7 @@ export type ClaimResult =
  */
 export class SchedulerDb {
   readonly db: DatabaseSync;
-  constructor(root: string) {
+  constructor(private root: string) {
     const dir = schedulerDir(root);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     chmodSync(dir, 0o700);
@@ -164,6 +175,13 @@ export class SchedulerDb {
         const runId = newRunId();
         const change = insert.run(runId, scheduleId, result.run.key, result.run.trigger, result.run.at.toISOString(), result.run.deadline.toISOString(), "pending", "aside", null, stamp, null);
         if (change.changes) created = runId;
+        // Only the latest occurrence may run: an older one still pending (its preflight kept failing) gives way.
+        this.db
+          .prepare(
+            `UPDATE runs SET status = 'missed', reason = 'superseded', finished_at = ?
+             WHERE schedule_id = ? AND status = 'pending' AND trigger != 'manual' AND scheduled_at < ?`,
+          )
+          .run(stamp, scheduleId, result.run.at.toISOString());
       }
       this.db
         .prepare(
@@ -197,45 +215,46 @@ export class SchedulerDb {
     return this.db.prepare("SELECT * FROM runs WHERE schedule_id = ? AND status = 'running'").get(scheduleId) as RunRow | undefined;
   }
 
-  /** Runs that started on `now`'s calendar day in `timezone` (manual runs included). */
-  startedToday(scheduleId: string, now: Date, timezone: string) {
-    const since = new Date(now.getTime() - 50 * 60 * 60_000).toISOString();
+  /**
+   * Started runs (manual included) whose occurrence falls on `at`'s calendar day in `timezone`.
+   * The day is the scheduled one, not the start: a catch-up after midnight still belongs to the
+   * day it was due, so it never uses up the next day's run.
+   */
+  startedOn(scheduleId: string, at: Date, timezone: string) {
     const rows = this.db
       .prepare(
-        `SELECT started_at FROM runs WHERE schedule_id = ? AND started_at IS NOT NULL AND started_at >= ?
+        `SELECT scheduled_at FROM runs WHERE schedule_id = ? AND started_at IS NOT NULL AND scheduled_at >= ? AND scheduled_at <= ?
          AND status IN (${startedStatuses.map(() => "?").join(", ")})`,
       )
-      .all(scheduleId, since, ...startedStatuses) as { started_at: string }[];
-    const today = dayIn(now, timezone);
-    return rows.filter((row) => dayIn(new Date(row.started_at), timezone) === today).length;
+      .all(scheduleId, new Date(at.getTime() - 30 * HOUR).toISOString(), new Date(at.getTime() + 30 * HOUR).toISOString(), ...startedStatuses) as {
+      scheduled_at: string;
+    }[];
+    const day = dayIn(at, timezone);
+    return rows.filter((row) => dayIn(new Date(row.scheduled_at), timezone) === day).length;
+  }
+  /** Started runs of today's occurrences (see startedOn). */
+  startedToday(scheduleId: string, now: Date, timezone: string) {
+    return this.startedOn(scheduleId, now, timezone);
   }
 
   /**
    * pending → running, atomically with the daily count and both locks. Another instance
    * running the same claim at the same moment waits on BEGIN IMMEDIATE and then sees this one.
    */
-  claim(
-    runId: string,
-    options: { now: Date; timezone: string; maxRunsPerDay: number; hostPid: number; hostPidStarted?: string },
-  ): ClaimResult {
+  claim(runId: string, options: ClaimOptions): ClaimResult {
     try {
       return this.transaction((): ClaimResult => {
         const row = this.get(runId);
         if (!row || row.status !== "pending") return { kind: "gone" };
-        const stamp = options.now.toISOString();
-        const skip = (reason: "already-running" | "daily-limit"): ClaimResult => {
-          this.db.prepare("UPDATE runs SET status = 'skipped', reason = ?, finished_at = ? WHERE run_id = ?").run(reason, stamp, runId);
-          return { kind: "skipped", reason };
-        };
-        if (this.runningFor(row.schedule_id)) return skip("already-running");
-        if (this.startedToday(row.schedule_id, options.now, options.timezone) >= options.maxRunsPerDay) return skip("daily-limit");
+        const decided = this.closeIfBlocked(row, options);
+        if (decided) return decided;
         if (row.lock_key && this.db.prepare("SELECT 1 FROM runs WHERE lock_key = ? AND status = 'running'").get(row.lock_key))
           return { kind: "locked" };
         this.db
           .prepare(
             `UPDATE runs SET status = 'running', started_at = ?, host_pid = ?, host_pid_started = ?, reason = NULL WHERE run_id = ? AND status = 'pending'`,
           )
-          .run(stamp, options.hostPid, options.hostPidStarted ?? null, runId);
+          .run(options.now.toISOString(), options.hostPid, options.hostPidStarted ?? null, runId);
         return { kind: "claimed" };
       });
     } catch (error) {
@@ -243,6 +262,41 @@ export class SchedulerDb {
       if (/UNIQUE constraint failed/.test(String(error))) return { kind: "locked" };
       throw error;
     }
+  }
+
+  /**
+   * Closes a pending run that cannot start (past its deadline, another run of the schedule running,
+   * the day's limit used up) and says why; undefined when it may start. Runs inside a transaction.
+   */
+  private closeIfBlocked(row: RunRow, options: ClaimOptions): ClaimResult | undefined {
+    const stamp = options.now.toISOString();
+    const close = (status: RunStatus, reason: string) =>
+      this.db.prepare("UPDATE runs SET status = ?, reason = ?, finished_at = ? WHERE run_id = ?").run(status, reason, stamp, row.run_id);
+    if (Date.parse(row.deadline_at) <= options.now.getTime()) {
+      if (row.preflight_failed_at) close("blocked", row.reason ?? "preflight");
+      else close("missed", "deadline");
+      return { kind: "expired" };
+    }
+    for (const reason of ["already-running", "daily-limit"] as const) {
+      const blocked =
+        reason === "already-running"
+          ? !!this.runningFor(row.schedule_id)
+          : this.startedOn(row.schedule_id, new Date(row.scheduled_at), options.timezone) >= options.maxRunsPerDay;
+      if (blocked) {
+        close("skipped", reason);
+        return { kind: "skipped", reason };
+      }
+    }
+    return undefined;
+  }
+
+  /** The skip half of claim: closes the run when it cannot start, and otherwise leaves it pending. */
+  skipIfBlocked(runId: string, options: ClaimOptions): ClaimResult | undefined {
+    return this.transaction(() => {
+      const row = this.get(runId);
+      if (!row || row.status !== "pending") return { kind: "gone" } as const;
+      return this.closeIfBlocked(row, options);
+    });
   }
 
   /** Returns true the first time a pending run's preflight fails (to notify once). */
@@ -288,11 +342,12 @@ export class SchedulerDb {
     );
   }
 
-  list(options: { scheduleId?: string; status?: RunStatus; limit: number }) {
+  list(options: { scheduleId?: string; status?: RunStatus; finished?: boolean; limit: number }) {
     const where: string[] = [];
     const args: string[] = [];
     if (options.scheduleId) where.push("schedule_id = ?"), args.push(options.scheduleId);
     if (options.status) where.push("status = ?"), args.push(options.status);
+    if (options.finished) where.push("status NOT IN ('pending', 'running')");
     return this.db
       .prepare(
         `SELECT * FROM runs ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY COALESCE(started_at, scheduled_at) DESC, created_at DESC LIMIT ?`,
@@ -300,19 +355,30 @@ export class SchedulerDb {
       .all(...args, options.limit) as unknown as RunRow[];
   }
 
-  /** Keep the newest 200 rows per schedule; missed/skipped rows go after 30 days. */
+  /**
+   * Keep the newest 200 rows per schedule; missed/skipped rows go after 30 days. A started run the
+   * daily limit may still count is always kept. The run folders of deleted rows go with them.
+   */
   prune(now: Date) {
-    this.transaction(() => {
-      this.db
-        .prepare("DELETE FROM runs WHERE status IN ('missed', 'skipped') AND scheduled_at < ?")
-        .run(new Date(now.getTime() - DROP_QUIET_AFTER_MS).toISOString());
-      this.db.exec(`
-        DELETE FROM runs WHERE status NOT IN ('pending', 'running') AND run_id IN (
-          SELECT run_id FROM (
-            SELECT run_id, ROW_NUMBER() OVER (PARTITION BY schedule_id ORDER BY scheduled_at DESC, created_at DESC) AS n FROM runs
-          ) WHERE n > ${KEEP_PER_SCHEDULE}
-        )`);
+    const deleted = this.transaction(() => {
+      const quiet = this.db
+        .prepare("DELETE FROM runs WHERE status IN ('missed', 'skipped') AND scheduled_at < ? RETURNING run_id")
+        .all(new Date(now.getTime() - DROP_QUIET_AFTER_MS).toISOString()) as { run_id: string }[];
+      const old = this.db
+        .prepare(
+          `DELETE FROM runs WHERE status NOT IN ('pending', 'running')
+           AND NOT (started_at IS NOT NULL AND scheduled_at >= ?)
+           AND run_id IN (
+             SELECT run_id FROM (
+               SELECT run_id, ROW_NUMBER() OVER (PARTITION BY schedule_id ORDER BY scheduled_at DESC, created_at DESC) AS n FROM runs
+             ) WHERE n > ${KEEP_PER_SCHEDULE}
+           ) RETURNING run_id`,
+        )
+        .all(new Date(now.getTime() - COUNTED_MS).toISOString()) as { run_id: string }[];
+      return [...quiet, ...old].map((row) => row.run_id);
     });
+    for (const runId of deleted) rmSync(runDir(this.root, runId), { recursive: true, force: true });
+    return deleted;
   }
 }
 

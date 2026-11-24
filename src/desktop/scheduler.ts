@@ -75,6 +75,8 @@ const statusLabels: Partial<Record<RunStatus, string>> = {
   interrupted: "중단",
 };
 
+const PAUSED = "paused:";
+
 interface ActiveRun {
   scheduleId: string;
   timeoutMs: number;
@@ -188,24 +190,26 @@ export class Scheduler {
     }
   }
 
+  /** undefined when schedules.json cannot be read and there is no earlier good copy. */
   private async schedules() {
     try {
       return await this.file.read();
     } catch (error) {
       this.log(error instanceof Error ? error.message : String(error));
-      return [];
+      return undefined;
     }
   }
 
   private async tickOnce() {
     const now = this.now();
     const schedules = await this.schedules();
-    const byId = new Map(schedules.map((s) => [s.id, s]));
+    const byId = new Map((schedules ?? []).map((s) => [s.id, s]));
     await this.reclaim();
     this.checkTimeouts(now);
-    for (const schedule of schedules) this.planSchedule(schedule, now);
+    for (const schedule of schedules ?? []) this.planSchedule(schedule, now);
     this.expire(now, byId);
-    await this.dispatch(byId);
+    // Unreadable definitions are not an empty list: pending runs wait for the file to be fixed.
+    if (schedules) await this.dispatch(byId);
     const today = dayIn(now, "UTC");
     if (this.prunedDay !== today) {
       this.prunedDay = today;
@@ -216,9 +220,17 @@ export class Scheduler {
   private planSchedule(schedule: Schedule, now: Date) {
     this.db.plan(
       schedule.id,
-      (cursor) => {
-        // A paused schedule keeps its cursor at now: resuming never replays the paused days.
-        if (!schedule.enabled) return { cursor: { lastCheckedAt: now, definitionHash: definitionHash(schedule.trigger) }, missed: [] };
+      (stored) => {
+        // A paused schedule keeps its cursor at now, marked paused: resuming never replays the paused
+        // days, even when the app was closed while paused and the schedule was turned on before the
+        // next tick. Counting restarts when it was turned on (updatedAt), or now if that is unknown.
+        if (!schedule.enabled) return { cursor: { lastCheckedAt: now, definitionHash: PAUSED + definitionHash(schedule.trigger) }, missed: [] };
+        let cursor = stored;
+        if (cursor?.definitionHash.startsWith(PAUSED)) {
+          const resumed = Date.parse(schedule.updatedAt);
+          const from = resumed > cursor.lastCheckedAt.getTime() && resumed <= now.getTime() ? new Date(resumed) : now;
+          cursor = { lastCheckedAt: from, definitionHash: cursor.definitionHash.slice(PAUSED.length) };
+        }
         const due = dueOccurrences(schedule, cursor, now);
         return {
           cursor: due.cursor,
@@ -240,42 +252,48 @@ export class Scheduler {
     }
   }
 
+  /** Closes a pending run the current definitions do not allow; true when it was closed. */
+  private closeUnwanted(row: RunRow, schedule: Schedule | undefined, now: Date) {
+    if (!schedule) return this.db.closePending(row.run_id, "skipped", "schedule-missing", now), true;
+    if (!schedule.enabled && row.trigger !== "manual") return this.db.closePending(row.run_id, "skipped", "disabled", now), true;
+    return false;
+  }
+
+  private claimOptions(schedule: Schedule, now: Date) {
+    return {
+      now,
+      timezone: schedule.trigger.timezone,
+      maxRunsPerDay: schedule.limits.maxRunsPerDay,
+      hostPid: this.hostPid,
+      hostPidStarted: this.hostPidStarted,
+    };
+  }
+
   private async dispatch(byId: Map<string, Schedule>) {
     for (const row of this.db.byStatus("pending")) {
       if (this.disposed) return;
       const now = this.now();
       const schedule = byId.get(row.schedule_id);
-      if (!schedule) {
-        this.db.closePending(row.run_id, "skipped", "schedule-missing", now);
-        continue;
-      }
-      if (!schedule.enabled && row.trigger !== "manual") {
-        this.db.closePending(row.run_id, "skipped", "disabled", now);
-        continue;
-      }
+      if (this.closeUnwanted(row, schedule, now) || !schedule) continue;
       const retryMs = this.options.preflightRetryMs ?? 10 * 60_000;
       if (row.preflight_failed_at && now.getTime() - Date.parse(row.preflight_failed_at) < retryMs) continue;
-      const claimOptions = {
-        now,
-        timezone: schedule.trigger.timezone,
-        maxRunsPerDay: schedule.limits.maxRunsPerDay,
-        hostPid: this.hostPid,
-        hostPidStarted: this.hostPidStarted,
-      };
-      // Decided without a preflight: the claim records the skip atomically.
-      if (this.db.runningFor(row.schedule_id) || this.db.startedToday(row.schedule_id, now, schedule.trigger.timezone) >= schedule.limits.maxRunsPerDay) {
-        this.db.claim(row.run_id, claimOptions);
-        continue;
-      }
+      // Decided without a preflight, in one transaction; a run that may start stays pending.
+      if (this.db.skipIfBlocked(row.run_id, this.claimOptions(schedule, now))) continue;
       if (row.lock_key && this.db.byStatus("running").some((r) => r.lock_key === row.lock_key)) continue;
       const failure = await this.options.runner.preflight(schedule).catch((error) => `preflight-error:${String(error).slice(0, 80)}`);
+      // The preflight can take seconds: a quit or a pause that came meanwhile wins over this run.
+      if (this.disposed) return;
+      const latest = await this.schedules();
+      if (!latest) continue;
+      const current = latest.find((s) => s.id === row.schedule_id);
+      if (this.closeUnwanted(row, current, this.now()) || !current) continue;
       if (failure) {
         if (this.db.preflightFailed(row.run_id, failure, now))
-          this.notify({ title: `예약 대기: ${schedule.name}`, body: `실행 전 확인 실패(${failure}). 마감 전까지 10분마다 다시 확인해요.` });
+          this.notify({ title: `예약 대기: ${current.name}`, body: `실행 전 확인 실패(${failure}). 마감 전까지 10분마다 다시 확인해요.` });
         continue;
       }
-      const claim = this.db.claim(row.run_id, { ...claimOptions, now: this.now() });
-      if (claim.kind === "claimed") this.launch(row.run_id, schedule);
+      const claim = this.db.claim(row.run_id, this.claimOptions(current, this.now()));
+      if (claim.kind === "claimed") this.launch(row.run_id, current);
     }
   }
 
@@ -385,7 +403,7 @@ export class Scheduler {
       now: now.toISOString(),
       schedules: schedules.map((schedule) => {
         const cursor = this.db.cursor(schedule.id);
-        const [last] = this.db.list({ scheduleId: schedule.id, limit: 1 }).filter((r) => r.status !== "pending" && r.status !== "running");
+        const [last] = this.db.list({ scheduleId: schedule.id, finished: true, limit: 1 });
         const active = [...this.db.byStatus("pending"), ...this.db.byStatus("running")].filter((r) => r.schedule_id === schedule.id);
         return {
           ...schedule,

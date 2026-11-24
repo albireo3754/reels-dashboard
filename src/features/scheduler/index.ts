@@ -35,5 +35,5 @@ export {
 export type { Cursor, DueOccurrences } from "./model/occurrences";
 export { judgeAsideRun, lastJsonBlock, canonicalPostUrl } from "./model/verdict";
 export type { Verdict, VerdictInput, RecordFact } from "./model/verdict";
-export { asidePrompt, asideExecArgs, renderHandoff, parseSessionIds, hostProfileConnected } from "./model/handoff";
+export { asidePrompt, asideExecArgs, renderHandoff, parseSessionIds, parseSessionRows, hostProfileConnected } from "./model/handoff";
 export type { HandoffInput } from "./model/handoff";

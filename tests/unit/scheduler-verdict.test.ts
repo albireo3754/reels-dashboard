@@ -16,9 +16,18 @@ const report = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 const fenced = (value: unknown) => "작업 로그\n```json\n" + JSON.stringify(value) + "\n```\n";
-const good = new Map<string, RecordFact>([[url, { postedAt: day, note: `[${day} 루프] 수락함 / 답방 댓글 / 공감 확인` }]]);
+const startedAt = "2026-11-25T09:10:30.000Z";
+const written = "2026-11-25T09:20:00.000Z";
+const fact = (extra: Partial<RecordFact> = {}): RecordFact => ({
+  postedAt: day,
+  note: `[${day} 루프] 수락함 / 답방 댓글 / 공감 확인`,
+  status: "posted",
+  updatedAt: written,
+  ...extra,
+});
+const good = new Map<string, RecordFact>([[url, fact()]]);
 const judge = (input: Partial<VerdictInput>) =>
-  judgeAsideRun({ exitCode: 0, signal: null, stdout: fenced(report()), runId: "r_test", days: [day], records: good, maxRecords: 5, ...input });
+  judgeAsideRun({ exitCode: 0, signal: null, stdout: fenced(report()), runId: "r_test", days: [day], startedAt, records: good, maxRecords: 5, ...input });
 
 test("a valid report whose records match the app store is ok", () => {
   const verdict = judge({});
@@ -67,17 +76,37 @@ test("blocked: partial after some work, failed with none; account-level codes pa
 
 test("records must exist with today's postedAt and the loop note; counts must agree", () => {
   assert.equal(judge({ records: new Map() }).reason, "record-mismatch");
-  assert.equal(judge({ records: new Map([[url, { postedAt: "2026-11-24", note: `[${day} 루프]` }]]) }).reason, "record-mismatch");
-  assert.equal(judge({ records: new Map([[url, { postedAt: day, note: "수동 기록" }]]) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, fact({ postedAt: "2026-11-24" })]]) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, fact({ note: "수동 기록" })]]) }).reason, "record-mismatch");
   assert.equal(judge({ stdout: fenced(report({ commented: 2 })) }).reason, "count-mismatch");
   const many = Array.from({ length: 6 }, (_, i) => ({ postUrl: `https://m.blog.naver.com/example-blog/22300000000${i}` }));
   assert.equal(judge({ stdout: fenced(report({ records: many, commented: 6 })) }).reason, "over-limit");
-  assert.equal(judge({ records: new Map([[url, { postedAt: day, note: "x" }]]), stdout: fenced(report({ records: [{ postUrl: "not a url" }] })) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, fact({ note: "x" })]]), stdout: fenced(report({ records: [{ postUrl: "not a url" }] })) }).reason, "record-mismatch");
+});
+
+test("one app record confirms one post: the same post reported twice is partial", () => {
+  const twice = [
+    { postUrl: "https://blog.naver.com/example-blog/223000000001" },
+    { postUrl: "https://m.blog.naver.com/example-blog/223000000001/" },
+  ];
+  const verdict = judge({ stdout: fenced(report({ records: twice, commented: 2 })) });
+  assert.deepEqual([verdict.status, verdict.reason, verdict.matched], ["partial", "duplicate-record", 1]);
+  assert.equal(judge({ stdout: fenced(report({ records: twice, commented: 1 })) }).status, "partial");
+});
+
+test("a draft record, or one not written during this run, does not confirm a comment", () => {
+  assert.equal(judge({ records: new Map([[url, fact({ status: "draft" })]]) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, fact({ status: undefined })]]) }).reason, "record-mismatch");
+  // Left by an earlier run the same day (maxRunsPerDay > 1): written before this run started.
+  assert.equal(judge({ records: new Map([[url, fact({ updatedAt: "2026-11-25T01:00:00.000Z" })]]) }).reason, "record-mismatch");
+  assert.equal(judge({ records: new Map([[url, fact({ updatedAt: undefined })]]) }).reason, "record-mismatch");
+  for (const status of ["posted", "reciprocated", "no_reply", "neighbor"])
+    assert.equal(judge({ records: new Map([[url, fact({ status })]]) }).status, "ok", status);
 });
 
 test("a run that crossed midnight passes with either the start or the end day", () => {
   const next = "2026-11-26";
-  const facts = new Map([[url, { postedAt: next, note: `[${next} 루프] 답방 댓글` }]]);
+  const facts = new Map([[url, fact({ postedAt: next, note: `[${next} 루프] 답방 댓글` })]]);
   assert.equal(judge({ days: [day, next], records: facts }).status, "ok");
   assert.equal(judge({ days: [day], records: facts }).reason, "record-mismatch");
 });
