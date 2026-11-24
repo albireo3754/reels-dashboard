@@ -1,10 +1,11 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Config } from "./config.js";
 import { ConfigError, NeedsHumanError, TranscribeError, UsageError } from "./errors.js";
 import { requireFfmpeg, run, which } from "./media.js";
+import { stripFence } from "./providers.js";
 import type { StateStore } from "./state.js";
 import type { SpeakerRole, Transcript, TranscriptSegment } from "./types.js";
 
@@ -310,12 +311,108 @@ export function mockTranscript(): Transcript {
   };
 }
 
-function runCli(binary: string, args: string[]): Promise<void> {
+const TRANSCRIBE_TIMEOUT_MS = 7_200_000;
+const KILL_GRACE_MS = 2_000;
+
+export interface CliRunOptions {
+  timeoutMs?: number;
+  /** SIGTERM 뒤 SIGKILL 까지 기다리는 유예. */
+  killGraceMs?: number;
+}
+
+const PARENT_EXIT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+const liveGroups = new Set<number>();
+
+function killGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    /* 이미 끝났거나 그룹이 없습니다(ESRCH). */
+  }
+}
+
+/** 새 세션으로 띄운 자식은 터미널 전경 그룹이 아니라 Ctrl-C 를 받지 못합니다. 그래서 부모가 끝날 때 같이 정리합니다. */
+const onParentExit: NodeJS.SignalsListener = (signal) => {
+  for (const pid of liveGroups) killGroup(pid, signal);
+  liveGroups.clear();
+  for (const name of PARENT_EXIT_SIGNALS) process.removeListener(name, onParentExit);
+  // 리스너를 붙이면 Node 가 스스로는 죽지 않으므로 기본 종료로 돌려 놓습니다.
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+};
+
+function trackGroup(pid: number | undefined): boolean {
+  if (pid === undefined || process.platform === "win32") return false;
+  if (liveGroups.size === 0) for (const name of PARENT_EXIT_SIGNALS) process.on(name, onParentExit);
+  liveGroups.add(pid);
+  return true;
+}
+
+function untrackGroup(pid: number | undefined): void {
+  if (pid === undefined || !liveGroups.delete(pid)) return;
+  if (liveGroups.size === 0) for (const name of PARENT_EXIT_SIGNALS) process.removeListener(name, onParentExit);
+}
+
+/**
+ * whisperx·whisper CLI를 프로세스 그룹으로 실행합니다. 타임아웃에 직계 자식만 끊던
+ * `execFile` 은 남은 손자 프로세스가 오디오 파일을 쥔 채 계속 돌고, SIGTERM 을 무시하는
+ * CLI 에서는 close 이벤트도 오지 않아 파이프라인 전체가 멈췄습니다.
+ */
+export function runTranscriber(binary: string, args: string[], options: CliRunOptions = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? TRANSCRIBE_TIMEOUT_MS;
+  const killGraceMs = options.killGraceMs ?? KILL_GRACE_MS;
+  const timeoutLabel = timeoutMs >= 60_000 ? `${Math.round(timeoutMs / 60_000)}분` : `${timeoutMs}ms`;
+
   return new Promise((resolve, reject) => {
-    execFile(binary, args, { timeout: 7_200_000, maxBuffer: 64 * 1024 * 1024 }, (error, _stdout, stderr) => {
-      if (error) reject(new TranscribeError(`${binary} 실패: ${error.message}\n${stderr ?? ""}`.trim()));
-      else resolve();
+    const child = spawn(binary, args, {
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "ignore", "pipe"],
     });
+    const grouped = trackGroup(child.pid);
+    let stderr = "";
+    let timedOut = false;
+    let settled = false;
+    let escalate: ReturnType<typeof setTimeout> | undefined;
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutError = () =>
+      new TranscribeError(`${path.basename(binary)} 시간 초과(${timeoutLabel}) — 프로세스 그룹을 종료했습니다.`, {
+        hint: "녹음이 길면 TRANSCRIBE_BACKEND=gemini 로 나눠 처리하세요.",
+      });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (escalate) clearTimeout(escalate);
+      if (giveUp) clearTimeout(giveUp);
+      if (grouped) untrackGroup(child.pid);
+      if (error) reject(error);
+      else resolve();
+    };
+    const signalGroup = (signal: NodeJS.Signals) => {
+      if (grouped && child.pid !== undefined) killGroup(child.pid, signal);
+      else child.kill(signal);
+    };
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-8_000);
+    });
+    child.on("error", (error) => finish(new TranscribeError(`${binary} 실행 실패: ${error.message}`)));
+    child.on("close", (code, signal) => {
+      if (timedOut) return finish(timeoutError());
+      if (code === 0) return finish();
+      finish(new TranscribeError(`${binary} 실패(${signal ?? `exit ${code}`}): ${stderr.trim()}`));
+    });
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      signalGroup("SIGTERM");
+      escalate = setTimeout(() => {
+        signalGroup("SIGKILL");
+        // 그룹을 벗어난 손자가 파이프를 쥐면 close 이벤트가 오지 않습니다.
+        giveUp = setTimeout(() => finish(timeoutError()), 1_000);
+      }, killGraceMs);
+    }, timeoutMs);
   });
 }
 
@@ -323,7 +420,7 @@ export async function transcribeWithWhisperx(wav: string, outDir: string, config
   const binary = which("whisperx");
   if (!binary) throw new TranscribeError("whisperx를 찾을 수 없습니다.", { hint: "pip install -U whisperx" });
   mkdirSync(outDir, { recursive: true });
-  await runCli(binary, [
+  await runTranscriber(binary, [
     wav,
     "--model",
     config.transcribeModel,
@@ -374,7 +471,7 @@ export async function transcribeWithWhisper(wav: string, outDir: string, config:
   const binary = which("whisper");
   if (!binary) throw new TranscribeError("whisper CLI를 찾을 수 없습니다.", { hint: "pip install openai-whisper" });
   mkdirSync(outDir, { recursive: true });
-  await runCli(binary, [
+  await runTranscriber(binary, [
     wav,
     "--model",
     config.transcribeModel,
@@ -440,7 +537,7 @@ export async function transcribeWithGemini(
     generationConfig: { temperature: 0, response_mime_type: "application/json" },
   };
   const text = await callGemini(config, payload, config.geminiAudioModel);
-  const parsed = JSON.parse(text.replace(/^```json/, "").replace(/```$/, "").trim()) as {
+  const parsed = JSON.parse(stripFence(text)) as {
     language?: string;
     segments?: Array<{ start?: number; end?: number; speaker?: string; text?: string }>;
   };
