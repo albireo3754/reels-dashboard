@@ -76,6 +76,8 @@ const statusLabels: Partial<Record<RunStatus, string>> = {
 };
 
 const PAUSED = "paused:";
+const FINISH_ATTEMPTS = 5;
+const FINISH_RETRY_MS = 1000;
 
 interface ActiveRun {
   scheduleId: string;
@@ -325,10 +327,17 @@ export class Scheduler {
       }
       if (run.stopReason)
         outcome = { ...outcome, status: run.stopReason === "timeout" ? "failed" : "interrupted", reason: run.stopReason === "timeout" ? "timeout" : "app-quit" };
-      try {
-        this.db.finish(runId, outcome, this.now());
-      } catch (error) {
-        this.log(`${runId}: finish failed: ${String(error)}`);
+      // A run left 'running' would hold the schedule and the aside lock, so a busy database
+      // (another process writing past busy_timeout) gets a few more tries.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          this.db.finish(runId, outcome, this.now());
+          break;
+        } catch (error) {
+          this.log(`${runId}: finish failed (attempt ${attempt}): ${String(error)}`);
+          if (attempt >= FINISH_ATTEMPTS) break;
+          await new Promise((resolve) => setTimeout(resolve, FINISH_RETRY_MS));
+        }
       }
       if (outcome.pause) await this.pause(schedule, outcome.pause);
       if (outcome.status !== "ok") this.notifyRun(schedule, outcome.status, outcome.reason, outcome.counts);

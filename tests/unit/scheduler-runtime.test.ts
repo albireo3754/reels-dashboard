@@ -543,3 +543,20 @@ test("a run that another instance's finish unblocks is never claimed and then dr
     `${row.status}/${row.reason} with ${runner.starts.length} starts`,
   );
 });
+
+test("a busy database at finish is retried, so the run does not stay running", async (t) => {
+  const { make, set } = await setup(t);
+  const scheduler = make(new FakeRunner(ok));
+  await scheduler.tick();
+  const real = scheduler.db.finish.bind(scheduler.db);
+  let calls = 0;
+  scheduler.db.finish = (...args: Parameters<typeof real>) => {
+    if (calls++ === 0) throw new Error("database is locked");
+    return real(...args);
+  };
+  set("2026-11-25T09:10:20Z");
+  await scheduler.tick();
+  await scheduler.idle();
+  assert.equal(calls, 2);
+  assert.deepEqual(scheduler.db.list({ limit: 10 }).map((r) => r.status), ["ok"]);
+});
