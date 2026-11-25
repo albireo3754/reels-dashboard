@@ -73,7 +73,10 @@ test("packaged board previews actual images, plays/seek videos, browses folders 
   try {
     const page = await app.firstWindow();
     await expect(
-      page.getByRole("heading", { name: "합성 촬영 콘텐츠", exact: true }),
+      // The today pick may name the same project; the board card is the one under test.
+      page
+        .getByRole("region", { name: "진행 중인 작업" })
+        .getByRole("heading", { name: "합성 촬영 콘텐츠", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("img", { name: "표지 이미지 썸네일" }).first(),

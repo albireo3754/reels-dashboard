@@ -1,7 +1,16 @@
-import { writeSync } from "node:fs";
+import { realpathSync, writeSync } from "node:fs";
 import { errorMessage } from "../../shared/lib/errors";
 import { exitCodes } from "./outcome";
 import { run } from "./run";
+
+function resolvedScript(script: string | undefined) {
+  if (!script) return script;
+  try {
+    return realpathSync(script);
+  } catch {
+    return script;
+  }
+}
 
 const pause = new Int32Array(new SharedArrayBuffer(4));
 
@@ -48,7 +57,9 @@ const code = await run(process.argv.slice(2), {
   env: process.env,
   // Read on demand: the working folder may be gone, and most commands never need it.
   cwd: () => process.cwd(),
-  script: process.argv[1],
+  // Resolved once: a live install may repoint a `current` symlink while this run (and the executor it
+  // spawns) is still going; both must keep using the release this run started from.
+  script: resolvedScript(process.argv[1]),
 });
 // Exit outright: an interrupted run can still hold a stdin read or a file copy open.
 await flushed(process.stderr);

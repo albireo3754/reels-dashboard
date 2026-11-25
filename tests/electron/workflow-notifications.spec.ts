@@ -37,8 +37,12 @@ test("background QA has no notification polling or badge and an open event selec
     await expect(
       page.getByRole("button", { name: "워크플로", exact: true }),
     ).toBeVisible();
+    // Screens may read the run list once when they load (weekly goals do); background QA
+    // must not poll it. Let the first reads settle, then no new read may arrive.
+    await page.waitForTimeout(1500);
+    const settled = reads;
     await page.waitForTimeout(3200);
-    expect(reads).toBe(0);
+    expect(reads).toBe(settled);
     expect(await electron.evaluate(({ app }) => app.getBadgeCount())).toBe(0);
     expect(
       await page.evaluate(() => typeof window.reels?.workflow?.onOpen),

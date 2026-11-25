@@ -49,7 +49,8 @@ test("board video converts to a silent looping GIF through the UI and the real M
   const transport = mcpTransport(profile);
   try {
     const page = await app.firstWindow();
-    await expect(page.getByRole("heading", { name: "합성 블로그 동작 영상", exact: true })).toBeVisible();
+    // The today pick may name the same project; the board card is the one under test.
+    await expect(page.getByRole("region", { name: "진행 중인 작업" }).getByRole("heading", { name: "합성 블로그 동작 영상", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "건배 영상 미리보기", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByLabel("건배 영상 재생")).toBeVisible({ timeout: 30_000 });
