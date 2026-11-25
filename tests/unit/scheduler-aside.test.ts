@@ -267,6 +267,15 @@ test("a retitled session is found from the exec output; echoed file text is not 
   assert.equal((outcome.result as { sessionId: string }).sessionId, announced);
 });
 
+test("a session line split across two writes is taken whole, never truncated", async (t) => {
+  const { runner, root } = await setup(t, "split-session");
+  const { outcome, sessions } = await runOnce(runner);
+  const announced = (await readFile(path.join(root, "fake", "announced.txt"), "utf8")).trim();
+  assert.deepEqual([outcome.status, outcome.reason], ["ok", undefined]);
+  assert.deepEqual(sessions, [announced]);
+  assert.equal((outcome.result as { sessionId: string }).sessionId, announced);
+});
+
 test("a timeout never stops a session that is not this run's", async (t) => {
   const { scheduler, clock, stopped, sessionRows } = await withScheduler(t, "hang-foreign");
   const { runId } = await scheduler.runNow({ id: "example-loop" });

@@ -163,9 +163,12 @@ export class AsideRunner implements ActionRunner {
           written += Buffer.byteLength(part);
         }
         output = (output + text).slice(-OUTPUT_LIMIT);
+        // Only complete lines count: a read can end inside the id, and an id cut short would be
+        // recorded (and later sent to `aside session stop`) as if it were this run's session.
         if (!sessionId && head.length < SESSION_LINE_WINDOW) {
           head = (head + text).slice(0, SESSION_LINE_WINDOW);
-          const id = createdSessionId(head);
+          const complete = head.slice(0, head.lastIndexOf("\n") + 1);
+          const id = complete ? createdSessionId(complete) : undefined;
           if (id) announce(id, "exec output");
         }
       };
