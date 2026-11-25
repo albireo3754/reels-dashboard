@@ -118,6 +118,8 @@ function newSession() {
 test.afterEach(async () => {
   for (const child of externalClients.splice(0)) killGroup(child);
   const failures: string[] = [];
+  // Without herdr (CI runners) no session could have been created, and listing them would fail.
+  if (!herdrInstalled) sessions.splice(0);
   for (const name of sessions.splice(0)) {
     // Only the isolated session this test created; never "default".
     try {

@@ -424,6 +424,17 @@ pre-existing Swift AppCommandRouterTests baseline hash mismatch; that file is
 unchanged from HEAD. No installed app restart/replacement, real iCloud mutation,
 packaging or Naver upload was performed.
 
+## Built-in schedules — 2026-11-25
+
+The desktop app owns a small scheduler (cron trigger, aside action). Tools, all handled by the running app:
+
+- `reels_get_schedules {id?}`: definitions with `nextRunAt`, catch-up cursor, `startedToday`, `lastRun`, `activeRuns` and `fileError` for an invalid hand edit of `schedules.json`.
+- `reels_set_schedule {id, name?, enabled?, trigger?, misfire?, limits?, action?}`: create or change one schedule. A new id needs `action.skill`; defaults are `10 18 * * *` Asia/Seoul, catch-up 300 min, timeout 45 min, 1 run per day. `enabled:false` pauses (no delete tool), `enabled:true` resumes and clears `pausedReason`. A changed trigger restarts catch-up at now. The aside executable is not an input.
+- `reels_run_schedule_now {id}`: queue one manual run and tick now; returns `runId`. `ALREADY_RUNNING` while one runs, `DAILY_LIMIT` when the day's runs are used (manual runs count).
+- `reels_get_schedule_runs {id?, status?, limit?}`: run history with trigger, status, reason, Aside session id, exit code, result summary and run folder.
+
+Only the latest missed time runs, within the catch-up window; exit code 0 alone is never success. See [built-in scheduler](scheduler.md).
+
 ## Silent looping GIF — 2026-11-12
 
 `reels_convert_gif {sourcePath, outputPath, start?, end?, crop?, width?, fps?, dither?, maxBytes?, overwrite?}`
