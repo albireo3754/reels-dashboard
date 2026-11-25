@@ -12,6 +12,7 @@ import {
   asidePrompt,
   asideResultSchema,
   canonicalPostUrl,
+  createdSessionId,
   dayIn,
   hostProfileConnected,
   judgeAsideRun,
@@ -25,6 +26,8 @@ import { runDir, type RunRow } from "./scheduler-store";
 import type { ActionHandle, ActionOutcome, ActionRunner } from "./scheduler";
 
 const OUTPUT_LIMIT = 5 * 1024 * 1024;
+/** How much of the start of the exec output is searched for the "created new session" line. */
+const SESSION_LINE_WINDOW = 16 * 1024;
 
 /** The aside CLI path: `~/.local/bin/aside`, or REELS_ASIDE_BIN for tests and QA. Never read from settings. */
 export function resolveAsideBin(env: NodeJS.ProcessEnv, home: string) {
@@ -140,6 +143,16 @@ export class AsideRunner implements ActionRunner {
     });
     let written = 0;
     let output = "";
+    // `aside exec` prints "created new session: <id>" before any model output. It comes from this
+    // run's own process, so it names this run's session even when other sessions start meanwhile.
+    let sessionId: string | undefined;
+    let head = "";
+    const announce = (id: string, source: string) => {
+      if (sessionId) return;
+      sessionId = id;
+      context.onSession(id);
+      context.log(`aside session ${id} (${source})`);
+    };
     const consumer = () => {
       const decoder = new StringDecoder("utf8");
       return (chunk: Buffer) => {
@@ -150,6 +163,11 @@ export class AsideRunner implements ActionRunner {
           written += Buffer.byteLength(part);
         }
         output = (output + text).slice(-OUTPUT_LIMIT);
+        if (!sessionId && head.length < SESSION_LINE_WINDOW) {
+          head = (head + text).slice(0, SESSION_LINE_WINDOW);
+          const id = createdSessionId(head);
+          if (id) announce(id, "exec output");
+        }
       };
     };
     child.stdout?.on("data", consumer());
@@ -175,22 +193,23 @@ export class AsideRunner implements ActionRunner {
       });
     });
 
-    // A new row is this run's session only when its title carries the run id (the prompt starts
-    // with it). Another session that appears meanwhile (an Aside hourly job, a chat) is never
-    // taken: its id would later receive `aside session stop`.
-    let sessionId: string | undefined;
+    // Fallback when the exec output has no session line: a new row is this run's session only when
+    // its title carries the run id. Aside usually retitles sessions, so this rarely matches; another
+    // session that appears meanwhile (an Aside hourly job, a chat) is never taken, since its id
+    // would later receive `aside session stop`.
     const discovery = (async () => {
       if (!before) return context.log("aside session list unavailable before start; session id not recorded");
       const step = this.options.sessionPollMs ?? 5000;
       const until = Date.now() + (this.options.sessionPollMaxMs ?? 60_000);
       for (let first = true; ; first = false) {
         if (!first) await Promise.race([delay(step), exit]);
+        if (sessionId) return;
         const after = await this.sessions().catch(() => undefined);
+        if (sessionId) return;
         const fresh = after ? [...after].filter(([id]) => !before.has(id)) : [];
         const mine = fresh.filter(([, row]) => row.includes(run.run_id));
         if (mine.length === 1) {
-          sessionId = mine[0][0];
-          context.onSession(sessionId);
+          announce(mine[0][0], "session title");
           return;
         }
         if (mine.length > 1) return context.log(`${mine.length} new aside sessions carry this run id; session id not recorded`);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { judgeAsideRun, lastJsonBlock, type RecordFact, type VerdictInput } from "../../src/features/scheduler";
+import { createdSessionId, judgeAsideRun, lastJsonBlock, type RecordFact, type VerdictInput } from "../../src/features/scheduler";
 
 const day = "2026-11-25";
 const url = "https://m.blog.naver.com/example-blog/223000000001";
@@ -33,6 +33,16 @@ test("a valid report whose records match the app store is ok", () => {
   const verdict = judge({});
   assert.equal(verdict.status, "ok");
   assert.equal(verdict.matched, 1);
+});
+
+test("CLI errors count only before the session line: echoed files after it may quote them", () => {
+  const session = "\x1b[2mcreated new session: Sess12345678\x1b[0m\n";
+  const quoted = "read_file > 접근이 거부되면(`Operation not permitted`) 허용을 요청한다.\n";
+  assert.equal(judge({ stdout: "Warning: signed out\n" + session + quoted + fenced(report()) }).status, "ok");
+  assert.equal(judge({ stdout: "error: unknown option '--x'\n" + session + fenced(report()) }).reason, "cli-error");
+  assert.equal(judge({ stdout: quoted + fenced(report()) }).reason, "cli-error", "without a session line the whole output counts");
+  assert.equal(createdSessionId(session + "created new session: Other999999\n"), "Sess12345678");
+  assert.equal(createdSessionId("본문에 created new session: X 라고 적힘"), undefined);
 });
 
 test("exit code 0 is not enough: CLI errors, no JSON, schema and run id fail", () => {

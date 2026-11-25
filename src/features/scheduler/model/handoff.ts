@@ -126,6 +126,16 @@ export function parseSessionRows(output: string) {
 }
 export const parseSessionIds = (output: string) => new Set(parseSessionRows(output).keys());
 
+/**
+ * The session id `aside exec` announces before any model output ("created new session: <id>",
+ * possibly wrapped in ANSI color codes). Only the first announcement counts.
+ */
+export function createdSessionId(output: string) {
+  // eslint-disable-next-line no-control-regex
+  const plain = output.replace(/\x1b\[[0-9;]*m/g, "");
+  return /^\s*created new session:\s*([A-Za-z0-9_]{6,64})\s*$/m.exec(plain)?.[1];
+}
+
 /** True when `aside host profiles` lists a connected browser profile (the given one, when set). */
 export function hostProfileConnected(output: string, profile?: string) {
   return output.split(/\r?\n/).some((line) => {

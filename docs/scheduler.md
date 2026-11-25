@@ -106,7 +106,7 @@ tick 한 번은 회수 → timeout 검사 → 스케줄별 회차 계산 → 마
 - **preflight.** `aside` 실행 파일이 있는지(`aside-missing`), Aside 사용자 스킬 `~/.aside/u/0/skills/user/<skill>/SKILL.md`가 있는지(`skill-missing`), `aside host profiles`에 `connected` 프로필이 있는지(`hostProfile`을 지정했으면 그 프로필, `host-disconnected`)를 본다. 실패하면 `pending`을 유지하고 사유를 적은 뒤 첫 실패 때 알림을 한 번 보낸다. 10분마다 다시 확인하고 마감까지 안 되면 `blocked`다.
 - **실행.** `aside --permission full-access [--profile <id>] [-m <model>] exec "<프롬프트>"`. 전역 옵션은 서브커맨드 앞에 둔다(뒤에 두면 종료 코드 0으로 실패한다). 매번 새 세션이고 `session resume`은 쓰지 않는다. Finder에서 띄운 앱은 PATH가 최소라 `/opt/homebrew/bin:/usr/local/bin:~/.local/bin`을 앞에 붙인다. 프로세스는 detached 그룹으로 띄우고 실행 로그 화면(`source: scheduler`)에 보인다.
 - **프롬프트와 인계 문서.** 저장소에는 일반 템플릿(`src/features/scheduler/model/handoff.ts`)만 있다. 프롬프트에는 스킬 이름과 인계 문서 경로만 들어간다. `params`(예상 블로그 ID, 상한 등)는 `<userData>` 안의 `handoff.md`로만 전달한다. 인계 문서에는 runId, 날짜, 트리거와 지연, 앱 기록 도구 경로(`REELS_USER_DATA`, `reels`), 허용 셸 명령, 결과 JSON 형식이 들어간다.
-- **세션 ID.** 프롬프트는 `[예약 <runId>]`로 시작한다. 실행 직전과 실행 뒤 5초 간격 최대 60초 동안 `aside session list`를 비교해, 새로 생긴 행 중 **제목에 이번 runId가 있는 행**이 정확히 1개일 때만 채택하고 바로 기록한다. 같은 시간대에 생긴 다른 세션(Aside 매시 정각 작업, 사용자 대화)은 채택하지 않는다. 그 ID로 `session stop`이 나가면 남의 작업을 끊기 때문이다. 못 찾으면 비워 두고 실행 기록에 남긴다. 이때 멈춤은 프로세스 그룹 신호에만 기댄다. stdout은 파싱하지 않는다.
+- **세션 ID.** `aside exec`는 모델 출력보다 먼저 `created new session: <id>`를 찍는다(색 코드 포함). 이 실행 프로세스 자신의 출력이므로, 출력 앞 16KB에서 이 줄의 첫 일치를 세션 ID로 채택하고 바로 기록한다. 이 줄이 없을 때만 예비 수단으로 실행 직전과 실행 뒤 5초 간격 최대 60초 동안 `aside session list`를 비교해, 새로 생긴 행 중 **제목에 이번 runId가 있는 행**이 정확히 1개일 때 채택한다. Aside는 세션 제목을 모델이 다시 지으므로(2026-11-25 실측: "blog-neighbor-loop 인계 작업 1회 수행") 예비 수단은 거의 맞지 않는다. 같은 시간대에 생긴 다른 세션(Aside 매시 정각 작업, 사용자 대화)은 어느 쪽으로도 채택하지 않는다. 그 ID로 `session stop`이 나가면 남의 작업을 끊기 때문이다. 못 찾으면 비워 두고 실행 기록에 남긴다. 이때 멈춤은 프로세스 그룹 신호에만 기댄다.
 - **종료 판정.** 실행은 `aside` 프로세스의 `exit`로 끝난다. 출력 파이프는 최대 2초만 더 기다린 뒤 놓는다. 하위 프로세스가 stdout을 물고 남아도 45분 timeout까지 `running`으로 잡혀 있지 않는다. `exit` 뒤에도 그룹에 프로세스가 남아 있으면 실행 로그에 남긴다. 정상 종료 뒤 남은 프로세스는 죽이지 않는다(실제 `aside exec` 프로세스 트리를 확인하지 못했다).
 - **timeout.** tick이 `started_at + timeoutMinutes`를 넘긴 실행을 찾으면 프로세스 그룹에 SIGTERM, 10초 뒤 SIGKILL, 세션 ID가 있으면 `aside session stop <id>` 순서로 멈추고 `failed/timeout`으로 기록한다. 리더가 끝나도 그룹에 SIGTERM을 무시한 프로세스가 남아 있으면 SIGKILL한다(회수의 고아 정리도 같다). 잠든 시간도 실행 시간에 들어간다.
 - **앱 종료.** aside 실행 중에 종료하면 기존 "실행 중인 AI 작업이 있어요" 확인창이 뜬다. 종료를 고르면(또는 업데이트처럼 확인 없이 정리 단계로 가면) 종료 정리의 첫 단계 `scheduler.dispose()`가 timeout과 같은 순서로 멈추고 `interrupted/app-quit`으로 남긴다.
@@ -120,7 +120,7 @@ tick 한 번은 회수 → timeout 검사 → 스케줄별 회차 계산 → 마
 | 순서 | 조건 | 결과 |
 | --- | --- | --- |
 | 1 | signal로 끝났거나 종료 코드가 0이 아님 | `failed/exit` |
-| 2 | 마지막 ```json 블록 **바깥** 출력에 `unknown option`·`Session not found`·`Chrome extension not connected`·`Operation not permitted` | `failed/cli-error` |
+| 2 | Aside CLI 자신의 출력에 `unknown option`·`Session not found`·`Chrome extension not connected`·`Operation not permitted`. `created new session:` 줄이 있으면 그 줄 **앞**만, 없으면 마지막 ```json 블록 바깥 전체를 본다. 세션이 시작된 뒤의 출력에는 모델이 읽은 파일·페이지 내용이 그대로 찍혀 이 문구를 인용할 수 있다(2026-11-25 첫 실행이 스킬 문서의 `Operation not permitted` 안내문 때문에 `cli-error`로 잘못 판정됐다) | `failed/cli-error` |
 | 3 | 마지막 ```json 블록이 없음 / 파싱·핵심 키 검증 실패 | `failed/no-result` / `failed/schema` |
 | 4 | `runId`가 이번 실행과 다름 | `failed/run-id-mismatch` |
 | 5 | `blocked`가 있고 처리 건수(수락+방문+댓글+공감)가 0 | `failed/blocked:<code>` |
@@ -193,3 +193,11 @@ v1은 보정만 한다. 18:10~23:10 사이에 앱이 한 번도 켜져 있지 �
 - `npm test`: 977개 중 958개 통과, 9개 건너뜀, 10개 실패. 실패 10개(`analysis-selection`·`face-mosaic`·`mobile-preview`)는 모두 이 worktree에 빌드된 편집 엔진 런타임이 없어 `native/editor-engine/.build/runtime/bin/ffmpeg`를 찾지 못한 `ENOENT`다. 리뷰 반영 전과 같은 10개이고 스케줄러 변경과 무관하다.
 - `npm run typecheck`, `npm run check:architecture`, `npm run audit:public`: 통과.
 - 실제 Aside 실행, 실제 사용자 프로필 등록, Electron 앱 구동 QA는 이 단계에서 하지 않았다. 첫 실제 실행 전에 확인할 것: `aside exec` 프로세스에 SIGTERM을 보내면 Aside 호스트 세션도 멈추는지, `session list` 행 제목이 프롬프트 앞부분(`[예약 <runId>]`)으로 남아 세션 ID가 잡히는지(모델이 제목을 바꾸면 세션 ID는 비고 그룹 신호로만 멈춘다), 정상 종료 뒤 그룹에 남는 프로세스가 있는지. 첫 실제 실행은 `params`를 낮춘 수동 1회로 하고, 그날 18:10 회차가 `skipped/daily-limit`으로 남는지 실행 기록에서 확인한다.
+
+### 첫 실제 실행 — 2026-11-25
+
+- 설치: develop → main(#28, `41689d4`) 트리와 같은 트리에서 `npm run build` → `electron-builder --mac dir --config.npmRebuild=false --config.directories.output=release/scheduler-20261125`(네이티브 산출물은 기존 설치본과 같은 main 체크아웃 빌드). 기존 앱을 정상 종료하고 새 앱을 `open -g`로 띄웠다. `reels status` `online:true`, `reels get-schedules` 응답 확인. 직전 앱 폴더 `release/blog-publish-20261122-final/`은 되돌리기용으로 남겼다.
+- 등록: `params`를 낮춘(`maxAccept`·`maxVisit` 2) 정의로 `reels set-schedule --input-file` 뒤 `reels run-schedule-now`. Aside는 새 스킬과 인계 문서를 읽고 계정 확인(`accountVerified:true`)과 앱 온라인 확인을 마친 뒤 받은 서로이웃 신청이 0건이라 아무것도 바꾸지 않고 형식에 맞는 결과 JSON을 냈다(1분). Aside 계정은 "signed out" 경고를 냈지만 provider 자격 증명으로 실행됐다.
+- 드러난 문제 두 가지와 수정: (1) 세션 제목이 모델이 지은 제목으로 바뀌어 runId 대조로는 세션 ID를 못 잡았다 → exec 출력의 `created new session:` 줄로 잡는다. (2) 판정이 스킬 문서 echo 속 `Operation not permitted`를 CLI 오류로 봐서 정상 실행이 `failed/cli-error`가 됐다 → 세션 줄 앞만 본다. 둘 다 실측 출력 형태를 흉내 낸 가짜 aside 모드(`retitled`)와 판정 단위 테스트로 고정했다.
+- 수동 실행이 그날 1회를 쓰므로 2026-11-25 18:10 회차는 `skipped/daily-limit`이 정상이다. 그 뒤 `params`를 5/5로 되돌렸다.
+- 아직 확인하지 못한 것: SIGTERM과 `aside session stop`이 실제 브라우저 작업을 멈추는지(이번 실행은 1분 만에 정상 종료).
