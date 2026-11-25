@@ -94,7 +94,7 @@ const id = () => "Sess" + Math.random().toString(36).slice(2, 12).padEnd(10, "x"
 const row = (sid, title = prompt.slice(0, 50)) => sid + "  running  persistent  " + title + "  2026-11-25T09:10:00.000Z\\n";
 const foreign = () => fs.appendFileSync(sessions, row(id(), "다른 작업"));
 if (mode === "foreign-session" || mode === "hang-foreign") foreign();
-if (mode !== "hang-foreign") {
+if (mode !== "hang-foreign" && mode !== "retitled") {
   const mine = () => fs.appendFileSync(sessions, row(id()) + (mode === "two-sessions" ? row(id()) : ""));
   if (mode === "foreign-session") setTimeout(mine, 150);
   else mine();
@@ -120,6 +120,16 @@ switch (mode) {
   case "captcha": out(report({ accepted: 0, visited: 0, commented: 0, liked: 0, records: [], accountVerified: false, blocked: { code: "captcha", detail: "보안 확인" } })); break;
   case "hang": case "hang-foreign": setInterval(() => {}, 1000); break;
   case "foreign-session": setTimeout(() => out(report({})), 400); break;
+  // Like real Aside (2026-11-25): the model retitles the session, another session starts meanwhile,
+  // the CLI announces the id in color, and the output echoes a file that quotes a CLI error phrase.
+  case "retitled": {
+    const sid = id();
+    fs.appendFileSync(sessions, row(id(), "다른 작업") + row(sid, "blog-neighbor-loop 인계 작업 1회 수행"));
+    fs.writeFileSync(path.join(dir, "announced.txt"), sid);
+    process.stdout.write("\\x1b[33mWarning:\\x1b[0m Aside needs sign-in again for this account.\\n\\x1b[2mcreated new session: " + sid + "\\x1b[0m\\n");
+    out("read_file > 폴더 접근이 거부되면(\`Operation not permitted\`) 접근 허용을 요청한다.\\n" + report({}));
+    break;
+  }
   // aside dies on SIGTERM; a helper in its group ignores it and holds no pipe.
   case "child-ignores-term": grandchild("ignore"); setInterval(() => {}, 1000); break;
   // aside reports and exits 0; a helper that inherited stdout keeps the pipe open.

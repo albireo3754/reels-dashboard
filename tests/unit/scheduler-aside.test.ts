@@ -258,6 +258,15 @@ test("another Aside session that appears first is never taken as this run's sess
   assert.match(rows.find((row) => row.startsWith(sessions[0]))!, /\[예약 r_test_1\]/);
 });
 
+test("a retitled session is found from the exec output; echoed file text is not a CLI error", async (t) => {
+  const { runner, root } = await setup(t, "retitled");
+  const { outcome, sessions } = await runOnce(runner);
+  const announced = (await readFile(path.join(root, "fake", "announced.txt"), "utf8")).trim();
+  assert.deepEqual([outcome.status, outcome.reason], ["ok", undefined]);
+  assert.deepEqual(sessions, [announced]);
+  assert.equal((outcome.result as { sessionId: string }).sessionId, announced);
+});
+
 test("a timeout never stops a session that is not this run's", async (t) => {
   const { scheduler, clock, stopped, sessionRows } = await withScheduler(t, "hang-foreign");
   const { runId } = await scheduler.runNow({ id: "example-loop" });

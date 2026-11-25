@@ -3,8 +3,9 @@ import { asideResultSchema, pausingBlockedCodes, type AsideResult } from "./sche
 
 /**
  * Aside CLI failure messages. Several of them come with exit code 0, so the exit code alone
- * never makes a run successful. Only checked outside the final JSON block, so a note that
- * quotes one of them does not fail the run.
+ * never makes a run successful. Only checked in the CLI's own text: before the "created new
+ * session" line when there is one (after it the output echoes files and pages the model read,
+ * which may quote these phrases), and never inside the final JSON block.
  */
 export const asideCliErrors = [
   /unknown option/i,
@@ -12,6 +13,14 @@ export const asideCliErrors = [
   /Chrome extension not connected/i,
   /Operation not permitted/i,
 ] as const;
+
+/** The part of the exec output written by the Aside CLI itself, before the session started. */
+export function asideCliText(outside: string) {
+  // eslint-disable-next-line no-control-regex
+  const plain = outside.replace(/\x1b\[[0-9;]*m/g, "");
+  const session = /^\s*created new session:/m.exec(plain);
+  return session ? plain.slice(0, session.index) : plain;
+}
 
 /** The last ```json fenced block and the text around it. */
 export function lastJsonBlock(stdout: string): { json?: string; outside: string } {
@@ -77,7 +86,8 @@ export function judgeAsideRun(input: VerdictInput): Verdict {
   const fail = (reason: string, extra: Partial<Verdict> = {}): Verdict => ({ status: "failed", reason, matched: 0, ...extra });
   if (input.signal || input.exitCode !== 0) return fail("exit");
   const { json, outside } = lastJsonBlock(input.stdout);
-  if (asideCliErrors.some((pattern) => pattern.test(outside))) return fail("cli-error");
+  const cliText = asideCliText(outside);
+  if (asideCliErrors.some((pattern) => pattern.test(cliText))) return fail("cli-error");
   if (json === undefined) return fail("no-result");
   let parsed: unknown;
   try {
