@@ -161,6 +161,8 @@ const listReads: Partial<Record<ToolName, string>> = {
   reels_create_blog_comment: "reels list-blog-comments",
   reels_update_blog_comment: "reels list-blog-comments",
   reels_remove_blog_comment: "reels list-blog-comments",
+  reels_set_schedule: "reels get-schedules",
+  reels_run_schedule_now: "reels get-schedule-runs",
 };
 
 /** The read that shows what a write touched, filled in from the input it sent. */

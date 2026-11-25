@@ -20,6 +20,7 @@ export const toolGroups = {
   planning: "Calendar and Linear snapshots, weekly goals, posting queue (blog and video).",
   edits: "Edits app automation through Dashboard main and its native AX helper.",
   insights: "Private Instagram account insights and topic labels.",
+  scheduler: "Built-in schedules: list, set, run now and run history.",
 } as const;
 export type ToolGroup = keyof typeof toolGroups;
 export const toolGroupIds = Object.keys(toolGroups) as ToolGroup[];
@@ -110,4 +111,9 @@ export const toolGroupOf = {
   reels_get_planning: "planning",
   reels_sync_planning: "planning",
   reels_get_weekly_goals: "planning",
+
+  reels_get_schedules: "scheduler",
+  reels_set_schedule: "scheduler",
+  reels_run_schedule_now: "scheduler",
+  reels_get_schedule_runs: "scheduler",
 } as const satisfies Record<ToolName, ToolGroup>;

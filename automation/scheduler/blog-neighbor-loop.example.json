@@ -1,0 +1,20 @@
+{
+  "id": "blog-neighbor-loop",
+  "name": "서로이웃 루프",
+  "enabled": true,
+  "trigger": { "type": "cron", "expr": "10 18 * * *", "timezone": "Asia/Seoul" },
+  "misfire": { "catchUpWithinMinutes": 300 },
+  "limits": { "timeoutMinutes": 45, "maxRunsPerDay": 1 },
+  "action": {
+    "skill": "blog-neighbor-loop",
+    "params": {
+      "expectedBlogId": "example-blog",
+      "maxInspect": 15,
+      "maxAccept": 5,
+      "maxVisit": 5,
+      "waitSecondsMin": 180,
+      "waitSecondsMax": 300,
+      "budgetMinutes": 40
+    }
+  }
+}
