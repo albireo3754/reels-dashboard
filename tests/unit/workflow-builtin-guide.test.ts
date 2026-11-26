@@ -702,3 +702,90 @@ test("a built-in blog prepare with an unreadable scene preview is rejected befor
     await f.runtime.close();
   }
 });
+
+// Blog v3: long draft → recall form → union merge ↔ prune → layout.
+test("the built-in blog-v3 run goes long draft → recall → merge and loops prune back to merge", async () => {
+  const f = await fixture();
+  try {
+    const snapshot = builtinDefinition("blog-v3");
+    assert.deepEqual(
+      snapshot.definition.steps.map((s) => [s.id, s.kind]),
+      [
+        ["prepare", "task"],
+        ["long_draft", "task"],
+        ["recall", "input"],
+        ["merge", "task"],
+        ["prune", "review"],
+        ["layout", "task"],
+        ["visual_review", "review"],
+      ],
+    );
+    for (const step of snapshot.definition.steps.filter((s) => s.kind === "review"))
+      assert.ok(step.outputs.every((o) => o.includes("{attempt}")), step.id);
+    const submit = (run: WorkflowRun, outcome: "done" | "pass" | "revise") =>
+      f.runtime.submit({
+        runId: run.runId,
+        taskId: run.task!.taskId,
+        outcome,
+        summary: "synthetic",
+        evidence: run.task!.step!.outputs,
+      });
+    let run: WorkflowRun = await f.runtime.create({
+      ...f.input,
+      builtinDefinition: "blog-v3",
+      skipCompleted: false,
+    });
+    assert.equal(run.definition!.file, "builtin:blog-v3");
+    assert.equal(run.stepId, "prepare");
+    // Prepare asks nothing: the only output is the scene list.
+    assert.deepEqual(run.task!.step!.outputs, ["evidence/media-scenes.json"]);
+    await f.put("media/s1.png", "png-1");
+    await f.put("media/s2.png", "png-2");
+    await f.put("evidence/media-scenes.json", twoScenes);
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "long_draft");
+    await mkdir(path.join(f.workspace, "drafts"));
+    await f.put("drafts/long.markup.md", "long draft [추정]");
+    // The long draft also has to decide every scene.
+    await f.put("evidence/story-media-plan.json", planFor(["s1"]));
+    await f.put("recall-form.json", {
+      ...syntheticForm,
+      questions: [
+        { id: "sec-1", section: "S1", prompt: "Remember", help: "long draft", required: false, images: [{ path: "media/s1.png", caption: "s1" }] },
+      ],
+    });
+    await assert.rejects(submit(run, "done"), /MEDIA_PLAN_COVERAGE/);
+    await f.put("evidence/story-media-plan.json", planFor(["s1", "s2"]));
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "recall");
+    run = await f.runtime.saveExperience({
+      runId: run.runId,
+      taskId: run.task!.taskId,
+      expectedRevision: run.experience!.revision,
+      answers: [{ questionId: "sec-1", status: "answered", text: "what I remember" }],
+      submit: true,
+    });
+    run = await f.runtime.get({ runId: run.runId });
+    assert.equal(run.stepId, "merge");
+    await f.put("article.markup.md", "merged");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("reviews/merge-log.md", "merge log");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    // Each prune pass writes a fresh report ({attempt} is the run's record sequence).
+    const firstPrune = run.task!.step!.outputs[0];
+    assert.match(firstPrune, /^reviews\/prune-\d+\.md$/);
+    await f.put(firstPrune, "cut these branches");
+    run = await submit(run, "revise");
+    assert.equal(run.stepId, "merge");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    const secondPrune = run.task!.step!.outputs[0];
+    assert.notEqual(secondPrune, firstPrune);
+    await f.put(secondPrune, "only the trunk is left");
+    run = await submit(run, "pass");
+    assert.equal(run.stepId, "layout");
+  } finally {
+    await f.runtime.close();
+  }
+});

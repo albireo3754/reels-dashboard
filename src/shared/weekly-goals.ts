@@ -73,7 +73,7 @@ export function finishedBlogRuns(list: unknown): Set<string> {
   if (!Array.isArray(runs)) return new Set();
   return new Set(runs.flatMap(run => {
     const r = run as { builtinDefinition?: unknown; projectId?: unknown; status?: unknown };
-    return r?.builtinDefinition === "blog" && r.status === "ready" && typeof r.projectId === "string" && r.projectId ? [r.projectId] : [];
+    return (r?.builtinDefinition === "blog" || r?.builtinDefinition === "blog-v3") && r.status === "ready" && typeof r.projectId === "string" && r.projectId ? [r.projectId] : [];
   }));
 }
 
