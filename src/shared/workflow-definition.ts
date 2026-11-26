@@ -42,11 +42,12 @@ export const definitionPath = z.union([relativeFile, sharedDefinitionFile]);
  * kinds, outputs) and public instructions live in the source; local guides add
  * private documents, instructions and skills per step.
  */
-export const builtinDefinitionNames = ["blog"] as const;
+export const builtinDefinitionNames = ["blog", "blog-v3"] as const;
 export const builtinDefinitionName = z.enum(builtinDefinitionNames);
 export type BuiltinDefinitionName = z.infer<typeof builtinDefinitionName>;
 export const builtinDefinitionLabels: Record<BuiltinDefinitionName, string> = {
   blog: "블로그 · 촬영분에서 미리보기까지",
+  "blog-v3": "블로그 v3 · 긴 초안 → 기억 되살리기 → 유니온 머지·가지치기",
 };
 /** Exactly one of `definitionFile` and `builtinDefinition`; checked when read. */
 export const definitionLocationInput = z.strictObject({

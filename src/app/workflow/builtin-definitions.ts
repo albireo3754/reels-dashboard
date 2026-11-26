@@ -130,6 +130,131 @@ steps:
     on: {pass: $complete, revise: layout}
 `;
 
+/**
+ * Blog v3: write long first, then let the writer remember, then cut.
+ * A long draft uses nearly every scene with little review; the writer reads it section by
+ * section with the photos and writes down what they remember; a union merge keeps both
+ * the draft and the recall, and a prune review loops back to the merge until only the
+ * branches that carry the post remain.
+ */
+const blogV3 = `# Built-in blog v3 definition (Reels Dashboard): long draft → recall → union merge ↔ prune.
+# Paths are relative to the article workspace. Media rules: docs/photo-first-drafting.md.
+version: 1
+id: blog-v3
+title: 블로그 v3 · 긴 초안 → 기억 되살리기 → 유니온 머지·가지치기
+entry: prepare
+maxTransitions: 40
+steps:
+  - id: prepare
+    title: 촬영분 분석·장면 목록
+    kind: task
+    instruction: >-
+      brief.md와 작업 폴더의 자료 목록, 최신 사용자 정정을 읽는다.
+      촬영분은 방문 단위로 묶어 가져오는 것이 기본이다. 콘텐츠 카드에 이 방문의 Photos 원본이 아직 없으면
+      촬영 날짜를 색인(reels_photos_index)하고 방문 그룹을 고른 뒤 reels_import_photos_bundle로 그룹의 사진·영상·Live Photo 전체를 카드에 원본 복사로 가져온다.
+      Photos 원본은 복사만 하고 바꾸지 않는다. inspect 미리보기나 영상만 가져오기로 대신하지 않는다.
+      촬영분 전체를 Dashboard 분석(reels_start_analysis)으로 확인하고 실제 미리보기를 함께 본다.
+      고른 컷만이 아니라 촬영분 전체 장면을 evidence/media-scenes.json에 올린다
+      (형식과 preview 경로 규칙은 Reels Dashboard docs/photo-first-drafting.md의 Preparation).
+      v3는 여기서 경험을 묻지 않는다. 사용자 기억은 긴 초안을 읽는 recall 단계에서 받는다.
+    tools:
+      - {server: reels_dashboard, name: reels_get_content, purpose: 콘텐츠 카드와 연결 자료 확인}
+      - {server: reels_dashboard, name: reels_photos_index, purpose: 촬영 날짜 색인}
+      - {server: reels_dashboard, name: reels_photos_group, purpose: 방문 그룹의 사진·영상 확인}
+      - {server: reels_dashboard, name: reels_import_photos_bundle, purpose: 방문 그룹 사진·영상·Live Photo 원본을 카드에 묶어 복사}
+      - {server: reels_dashboard, name: reels_start_analysis, purpose: 촬영분 장면·OCR·얼굴 분석}
+    inputs: [brief.md]
+    outputs: [evidence/media-scenes.json]
+    completion: [방문 Photos 묶음(사진·영상)이 카드에 원본 복사로 연결됨, 촬영분 전체가 장면 목록에 있음]
+    on: {done: long_draft}
+  - id: long_draft
+    title: 긴 초안 (리뷰 최소)
+    kind: task
+    instruction: >-
+      media-scenes.json, 확인된 사실 자료, 작업 폴더에 이미 있는 사용자 진술을 읽고 사진 구성을 먼저 정한 뒤 길게 쓴다.
+      목표는 완성도가 아니라 재료를 빠짐없이 펼쳐 놓는 것이다. 다듬기·압축·문안 리뷰는 하지 않는다.
+      사진·영상은 거의 다 쓴다. omit은 완전히 같은 컷 중복과 가릴 수 없는 얼굴뿐이고, 동작 영상은 무음 GIF(reels_convert_gif)로 만든다.
+      모든 장면을 evidence/story-media-plan.json에 use/omit/hold로 결정한다(형식은 docs/photo-first-drafting.md의 Draft composition).
+      원고는 drafts/long.markup.md에 쓰고 사진 흐름을 따라 장면 단위 섹션(소제목)으로 나눈다.
+      섹션마다 사진에서 보이는 것, 확인된 사실, 그 장면에서 있었을 법한 경험의 갈래를 함께 펼친다.
+      사용자 진술이나 사진·기록으로 확인되지 않은 경험·맛·감상 문장은 문장 끝에 [추정]을 붙여 갈래로 남긴다. 지어낸 것을 사실처럼 쓰지 않는다.
+      같은 섹션에서 서로 다른 갈래(예 첫인상 A/B)가 가능하면 둘 다 쓴다. 고르는 것은 사용자의 기억과 머지 단계가 한다.
+      그다음 recall-form.json을 만든다: 섹션 하나가 질문 하나다(최대 30개, 많으면 이웃 섹션을 묶는다).
+      질문 section은 소제목, help에는 그 섹션의 초안 문장을 그대로(2000자 이내) 넣고, images에는 그 섹션에 넣은 사진·GIF 첫 프레임을 최대 4장(JPEG/PNG/WebP, 4MB 이하) 붙인다.
+      prompt는 "이 장면에서 기억나는 것, 틀린 것, 빼도 되는 것을 떠오르는 대로 적어 주세요" 형태로 열어 두고 답을 유도하지 않는다. 모든 질문은 required false다.
+      마지막 질문은 섹션에 없던 기억·전체 인상을 받는 자유 질문 하나로 둔다. facts에는 확인된 사실만 출처와 함께 넣는다.
+    tools:
+      - {server: reels_dashboard, name: reels_convert_gif, purpose: 동작 영상 무음 GIF}
+    inputs: [evidence/media-scenes.json]
+    outputs: [drafts/long.markup.md, evidence/story-media-plan.json, recall-form.json]
+    completion: [모든 장면 결정, 장면 단위 섹션으로 나뉜 긴 초안, 확인 안 된 경험 문장에 추정 표시, 섹션별 초안 문장·사진이 붙은 recall 질문]
+    on: {done: recall}
+  - id: recall
+    title: 읽으며 기억 되살리기
+    kind: input
+    instruction: >-
+      섹션마다 사진과 초안 문장을 보며 그때를 떠올린다. 기억나는 것·틀린 것·빼도 되는 것을 떠오르는 대로 적는다.
+      정리된 문장이 아니어도 되고, 기억나지 않음과 제외도 유효한 답이다.
+    formFile: recall-form.json
+    completion: [사용자가 섹션별 기억을 공통 폼에 적고 제출]
+    on: {done: merge}
+  - id: merge
+    title: 유니온 머지
+    kind: task
+    instruction: >-
+      drafts/long.markup.md와 제출된 recall 답변 원문(작업 폴더의 experience-answers-*.json 중 최신)을 섹션 단위로 합쳐 article.markup.md를 쓴다.
+      합치는 규칙: (1) 사용자 답에 있는 기억은 빠짐없이 들어간다. 사용자 말투와 고유 표현은 살린다.
+      (2) 사용자 답이 초안과 다르면 사용자 답이 이긴다. (3) 사용자가 "빼"·"아님"이라고 한 문장과 사진은 뺀다.
+      (4) 사용자가 확인한 [추정] 갈래는 표시를 떼고 사용자 말로 바꾸고, 답이 없는 [추정] 갈래는 지운다. 공개 원고에 [추정]이 남지 않는다.
+      (5) 사진·기록으로 확인된 사실 문장과 사진은 유지한다. 새 감상을 지어내지 않는다.
+      prune 리뷰에서 돌아온 경우에는 최신 reviews/prune-*.md의 가지치기 목록을 반영하되 사용자 답에서 온 문장은 사용자가 뺀 것이 아니면 남긴다.
+      사진을 빼거나 옮기면 evidence/story-media-plan.json을 갱신하고, 사진 흐름과 섹션 구성은 story-layout.md에 쓴다.
+      섹션마다 무엇을 사용자 답에서 가져왔고 무엇을 지웠는지 reviews/merge-log.md에 적는다. blog-markup check(docs/blog-markup-source.md)를 통과시킨다.
+    inputs: [drafts/long.markup.md, evidence/media-scenes.json]
+    outputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
+    completion: [사용자 답의 기억이 모두 반영됨, 사용자가 뺀 문장·사진이 빠짐, 추정 표시 없음, 섹션별 머지 기록, blog-markup check 통과]
+    on: {done: prune}
+  - id: prune
+    title: 잔가지 쳐내기
+    kind: review
+    instruction: >-
+      article.markup.md를 처음부터 끝까지 읽고 글의 줄기(이 가게·장소를 왜 가는지, 사용자가 기억한 장면)에 붙지 않는 잔가지를 찾는다.
+      잔가지: 같은 말을 되풀이하는 문장, 사진을 가리키기만 하는 문장, 사진 속 글자·상표를 옮겨 적은 줄, 사용자 답에도 기록에도 없는 감상,
+      줄기와 상관없는 곁가지 설명, 너무 잘게 나뉜 섹션. 사용자 답에서 온 문장은 잔가지로 치지 않고, 꼭 필요하면 위치 이동만 제안한다.
+      함께 확인할 최소 항목: 남은 [추정] 표시, 맛집 글의 메뉴·가격 근거, 식별 가능한 얼굴·영수증 개인정보 컷의 가림 계획(story-media-plan.json handling),
+      사진·묶음마다 앞뒤 문장 또는 블록과의 짝.
+      대상 파일은 고치지 않는다. 쳐낼 문장·사진을 위치와 이유와 함께 reviews/prune-{attempt}.md에 쓰고,
+      잘라낼 것이 남았으면 revise(merge가 반영), 줄기만 남았으면 pass로 판정한다.
+    inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
+    outputs: ['reviews/prune-{attempt}.md']
+    completion: [잔가지 목록(위치·이유) 또는 통과 근거, 사용자 답 문장 보존 확인, 최소 항목(추정 표시·메뉴 가격·가림 계획·사진 짝) 판정]
+    on: {pass: layout, revise: merge}
+  - id: layout
+    title: 화면 구성
+    kind: task
+    instruction: >-
+      story-media-plan.json의 채택·순서·묶음을 이어받아(docs/photo-first-drafting.md의 Review and layout)
+      원본에서 공개용 파생본(위치 메타데이터 제거·얼굴 가림·크롭)을 만들고
+      blog-markup render로 publishing/smarteditor-draft-layout.html을 갱신한다. PC·모바일 화면을 실제로 확인해 보고서에 남긴다.
+    inputs: [article.markup.md, evidence/story-media-plan.json]
+    outputs: [publishing/smarteditor-draft-layout.html, reviews/layout-review.md]
+    completion: [실제 화면 확인과 근거 기록]
+    on: {done: visual_review}
+  - id: visual_review
+    title: 최종 화면 검토
+    kind: review
+    instruction: >-
+      미리보기를 PC·모바일 폭으로 열어 사진·서식·얼굴 처리를 검사한다. 렌더 성공을 화면 통과로 대신하지 않는다.
+      미리보기는 캐시를 비우고 다시 읽어 바뀐 사진이 실제로 보이는지 확인한다.
+      가림 계획이 있는 컷은 공개용 사본을 확대해 얼굴 가림과 영수증 개인정보 잘림을 실제로 확인한다.
+      대상 파일은 고치지 않는다. 외부 게시·발행은 하지 않는다.
+    inputs: [publishing/smarteditor-draft-layout.html]
+    outputs: ['reviews/visual-review-{attempt}.md']
+    completion: [실제 화면 확인, 가림 계획 컷의 실제 가림 확인, 통과 또는 수정 근거 기록]
+    on: {pass: $complete, revise: layout}
+`;
+
 export const builtinDefinitions: Record<BuiltinDefinitionName, string> = {
   blog,
+  "blog-v3": blogV3,
 };
