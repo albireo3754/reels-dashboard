@@ -789,3 +789,79 @@ test("the built-in blog-v3 run goes long draft → recall → merge and loops pr
     await f.runtime.close();
   }
 });
+
+// Blog v3: the prune and visual review loops share one run-wide revision budget.
+test("a blog-v3 run stops when the shared revision budget is spent and a new run gets a fresh one", async () => {
+  const f = await fixture();
+  try {
+    const submit = (run: WorkflowRun, outcome: "done" | "pass" | "revise") =>
+      f.runtime.submit({
+        runId: run.runId,
+        taskId: run.task!.taskId,
+        outcome,
+        summary: "synthetic",
+        evidence: run.task!.step!.outputs,
+      });
+    await f.put("media/s1.png", "png-1");
+    await f.put("media/s2.png", "png-2");
+    await f.put("evidence/media-scenes.json", twoScenes);
+    let run: WorkflowRun = await f.runtime.create({
+      ...f.input,
+      builtinDefinition: "blog-v3",
+      maxRevisions: 2,
+      skipCompleted: false,
+    });
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "long_draft");
+    await mkdir(path.join(f.workspace, "drafts"));
+    await f.put("drafts/long.markup.md", "long draft [추정]");
+    await f.put("evidence/story-media-plan.json", planFor(["s1", "s2"]));
+    await f.put("recall-form.json", {
+      ...syntheticForm,
+      questions: [
+        { id: "sec-1", section: "S1", prompt: "Remember", help: "long draft", required: false, images: [{ path: "media/s1.png", caption: "s1" }] },
+      ],
+    });
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "recall");
+    run = await f.runtime.saveExperience({
+      runId: run.runId,
+      taskId: run.task!.taskId,
+      expectedRevision: run.experience!.revision,
+      answers: [{ questionId: "sec-1", status: "answered", text: "what I remember" }],
+      submit: true,
+    });
+    run = await f.runtime.get({ runId: run.runId });
+    assert.equal(run.stepId, "merge");
+    await f.put("article.markup.md", "merged");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("reviews/merge-log.md", "merge log");
+    // Two prune reverses use the whole budget; the third stops the run.
+    for (const round of [1, 2]) {
+      run = await submit(run, "done");
+      assert.equal(run.stepId, "prune");
+      await f.put(run.task!.step!.outputs[0], `cut these branches ${round}`);
+      run = await submit(run, "revise");
+      assert.equal(run.stepId, "merge");
+      assert.equal(run.revisions, round);
+      assert.equal(run.status, "waiting");
+    }
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    await f.put(run.task!.step!.outputs[0], "cut these branches 3");
+    run = await submit(run, "revise");
+    assert.equal(run.status, "blocked");
+    assert.equal(run.revisions, 3);
+    assert.match(run.blockedReason ?? "", /수정 루프 한도/);
+    // A new run in the same workspace starts at prune (earlier outputs validate) with a fresh budget.
+    const next: WorkflowRun = await f.runtime.create({ ...f.input, builtinDefinition: "blog-v3", maxRevisions: 5 });
+    assert.equal(next.stepId, "prune");
+    assert.equal(next.revisions, 0);
+    assert.deepEqual(
+      next.history.map((record) => [record.stepId, record.outcome]),
+      [["prepare", "skipped"], ["long_draft", "skipped"], ["recall", "skipped"], ["merge", "skipped"]],
+    );
+  } finally {
+    await f.runtime.close();
+  }
+});

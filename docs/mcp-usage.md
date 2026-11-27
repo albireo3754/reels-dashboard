@@ -445,6 +445,9 @@ rotation applied, HDR/HLG tone-mapped to SDR on VideoToolbox (CPU fallback). It 
 Over 20 MB it warns (Naver's limit is unverified); `maxBytes` lowers fps, then width. The source is
 never changed, an existing output needs `overwrite: true`, and the GIF is not registered to a project.
 The board media viewer has the same action as **무음 GIF 만들기**. See [GIF conversion](gif-convert.md).
+`crop {x, y, width, height}` (0-1 fractions of the displayed, rotated frame; drop the top 15% =
+`{"x":0,"y":0.15,"width":1,"height":0.85}`) keeps part of the frame on the VideoToolbox route; width,
+fps and `maxBytes` apply to the cropped area and the result returns `crop` with source `pixels` (or `null`).
 
 ## GPU slow motion — 2026-11-27
 
@@ -454,6 +457,3 @@ In-between frames come from Apple Vision optical flow warped and blended in Meta
 stays smooth. Defaults: speed 0.5, source fps rounded; up to 60 s of source and 600 s of result. SDR is H.264,
 HDR stays HDR as HEVC Main10; audio is removed; the source is never changed and the copy is not registered to
 a project. The board media viewer has the same action as **부드러운 슬로우 만들기**. See [GPU slow motion](slowmo.md).
-`crop {x, y, width, height}` (0-1 fractions of the displayed, rotated frame; drop the top 15% =
-`{"x":0,"y":0.15,"width":1,"height":0.85}`) keeps part of the frame on the VideoToolbox route; width,
-fps and `maxBytes` apply to the cropped area and the result returns `crop` with source `pixels` (or `null`).
