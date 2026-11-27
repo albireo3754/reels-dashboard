@@ -126,6 +126,15 @@
 - [ ] 의도적으로 하지 않음: `npm run workflow`를 `reels workflow`로 감싸기(HTTP 경로이고 CLI는 비공개 소켓만 쓴다는 문서 계약, 번들 위험), `serve`·`blog:editor`(장시간 서버), `reels editor ...` 같은 그룹 하위 명령, doctor의 앱 버전(앱이 CLI에 버전을 알리지 않음), help의 `writeOutcome` 통일(기존 `help <unknown>` 출력이 바뀜).
 - 제한: 실행 중 앱·실제 `~/.local/bin/reels`·셸 설정 파일은 건드리지 않음. 패키징·push 안 함.
 
+## GPU 슬로우 모션(프레임 보간) — 2026-11-27
+
+- [x] 네이티브 `reels-slowmo`(Vision 광학 흐름 + Metal 와프·블렌드, 하드웨어 인코딩만). SDR→H.264, HDR(HLG/PQ)→HEVC Main10 유지, 회전 유지, 소리 제거. [문서](docs/slowmo.md).
+- [x] MCP/CLI `reels_start_slowmo`·`reels_get_slowmo_job`·`reels_cancel_slowmo`(그룹 `render`), 보드 미디어 보기 **부드러운 슬로우 만들기**(속도·구간·저장 위치).
+- [x] 검증: typecheck·check:architecture·audit:public, 새 단위 7개(실제 GPU 경로 포함), Electron `slowmo`(UI + 실제 MCP)·`gif-convert` 통과. 실제 아이폰 1080p 30fps 4초→8초 약 11초. 기존 Notes 단위 3개 실패는 develop에서도 같음.
+- [ ] `build:editor` 전체 재빌드와 패키지 앱에서의 확인(이번에는 기존 런타임에 `reels-slowmo`만 더해 개발 모드로 검증).
+- [ ] 보간 결과의 깨짐(빠른 가로 이동·교차·컷) 자동 감지. 지금은 사용자가 재생해서 확인한다.
+- [ ] macOS 15.4+에서 VideoToolbox `VTFrameRateConversion`(Apple ML 보간) 경로 비교.
+
 ## 무음 반복 GIF 변환 — 2026-11-12
 
 - [x] 영상 → 소리 없는 무한 반복 GIF. 기본은 전체 길이·폭 480·15fps, `start`/`end` 구간(최대 60초), 회전 반영, HDR/HLG→SDR, 메타데이터(위치 포함) 제거. 번들 ffmpeg만 사용(새 의존성 없음): VideoToolbox 디코드·회전·톤매핑·축소 + 샘플 프레임 팔레트 + bayer 디더링, GPU 실패 시 CPU 경로. [문서](docs/gif-convert.md).

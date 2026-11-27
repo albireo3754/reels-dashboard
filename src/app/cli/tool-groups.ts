@@ -8,7 +8,7 @@ import type { ToolName } from "../../features/agent-tools";
  */
 export const toolGroups = {
   editor: "Editing projects in the app: state, read, open, import and patch.",
-  render: "Preview frames, renders and the cover signature they use.",
+  render: "Preview frames, renders, slow-motion copies and the cover signature they use.",
   content:
     "Production dashboard entries, linked edits and publication records.",
   photos: "Read-only Photos search, index and inspect; import copies a video.",
@@ -44,6 +44,9 @@ export const toolGroupOf = {
   reels_start_render: "render",
   reels_get_render_job: "render",
   reels_cancel_render: "render",
+  reels_start_slowmo: "render",
+  reels_get_slowmo_job: "render",
+  reels_cancel_slowmo: "render",
   reels_get_cover_preferences: "render",
   reels_set_cover_preferences: "render",
 
