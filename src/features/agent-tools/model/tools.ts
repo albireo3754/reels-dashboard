@@ -3,6 +3,7 @@ import { selectionQuery, selectionExecute, selectionUpdate } from "../../../shar
 import { editsTools } from "../../../shared/edits";
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import { gifConvertInput } from "../../../shared/gif-convert";
+import { slowmoJobInput, slowmoStartInput } from "../../../shared/slowmo";
 import { planningUpdateSchema } from "../../../shared/planning";
 import { instagramTopicsInput } from "../../../shared/instagram-insights";
 import {inputFormTools} from "../../../shared/input-form-tools";
@@ -82,6 +83,18 @@ export const toolDefinitions = {
   reels_convert_gif: {
     description: "Convert a video file into a silent, endlessly looping GIF for blog motion clips. Default: whole length, width 480, 15 fps, bayer dither; start/end select a range (max 60 s). crop {x,y,width,height} keeps part of the displayed (rotated) frame as 0-1 fractions, e.g. drop the top 15% = {x:0, y:0.15, width:1, height:0.85}; width/fps/maxBytes apply to the cropped area and cropping stays on the VideoToolbox route. Removes audio and all metadata (including location), applies display rotation and tone-maps HDR/HLG to SDR. VideoToolbox (GPU) decode/rotate/tone-map/scale with CPU fallback; palette and GIF encoding on CPU. Returns outputPath, bytes, width, height, fps, frames, duration, elapsedMs, accel, crop (with source pixels) and warnings. Over 20 MB warns (Naver limit unverified); maxBytes lowers fps then width automatically. Source is never changed; existing outputs need overwrite. Not registered to any project.",
     input: gifConvertInput, readOnly: false,
+  },
+  reels_start_slowmo: {
+    description: "Make a smooth slow-motion copy of a video file: GPU optical-flow frame interpolation (Apple Vision flow + Metal warp/blend) draws the in-between frames so a 30 fps clip slowed to 0.5x stays smooth instead of repeating frames. Default speed 0.5, output fps = source rate rounded (at most 60); start/end pick the source range (max 60 s of source, 600 s of result). Hardware encoding only: SDR -> H.264, HDR (HLG/PQ) stays HDR as HEVC Main10 (Dolby Vision metadata is not kept). Display rotation is kept; audio is removed. Returns a job ID at once; poll reels_get_slowmo_job until succeeded/failed/cancelled (result has outputPath, bytes, frames, interpolatedFrames, elapsedMs, warnings). Fast motion across the frame, objects crossing each other and scene cuts can show warping; check the result. Source is never changed; existing outputs need overwrite. Not registered to any project.",
+    input: slowmoStartInput, readOnly: false,
+  },
+  reels_get_slowmo_job: {
+    description: "Read a slow-motion job: state, percent, result or error. A running job is not completion. Jobs are kept in memory until the app quits.",
+    input: slowmoJobInput, readOnly: true,
+  },
+  reels_cancel_slowmo: {
+    description: "Cancel a slow-motion job and wait for the native process to stop. The partial output is removed; the source is untouched.",
+    input: slowmoJobInput, readOnly: false,
   },
   reels_set_project_outbound: {
     description: "Bind one persistent iCloud outbound directory to a project using get_content's revision. Repeated deliveries reuse this directory. Existing linked files can be adopted; unrelated files are not managed. A different directory is rejected once bound.",

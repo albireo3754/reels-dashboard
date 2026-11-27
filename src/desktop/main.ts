@@ -64,6 +64,7 @@ import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
 import { GifConverter } from "../features/gif-convert";
+import { SlowmoService } from "../features/slowmo";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService, type BundleAsset, type MaterializedMedia } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
@@ -340,6 +341,15 @@ async function awaitReady() {
     try { return await gifConverter.convert(input); }
     finally { activeOperations--; }
   };
+  const slowmo = new SlowmoService(
+    path.join(
+      app.isPackaged
+        ? path.join(process.resourcesPath, "editor-runtime")
+        : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+      "bin/reels-slowmo",
+    ),
+    logs,
+  );
   const createClipBundle = async (input: unknown) => {
     agentSession.assertWritable();
     activeOperations++;
@@ -512,7 +522,7 @@ async function awaitReady() {
       : dialog.showMessageBoxSync(options);
   };
   const workBusy = () =>
-    activeOperations > 0 || shutdown.busy || editorService.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
+    activeOperations > 0 || shutdown.busy || editorService.busy || slowmo.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
   const confirmAbortJobs = () =>
     messageBox({
       type: "warning",
@@ -1008,6 +1018,28 @@ async function awaitReady() {
     // The save panel already confirmed replacing an existing file.
     return convertGif({ sourcePath: checked.path, outputPath, overwrite: true });
   });
+  handle("contentMedia:slowmo", async (id: string, file: string, options: unknown) => {
+    if (fixture) throw new Error("UNSUPPORTED: 데모 화면에서는 슬로우 영상을 만들 수 없어요.");
+    const checked = await contentLibrary.resolveMedia(id, file);
+    if (!checked.info.isFile()) throw new Error("SLOWMO_SOURCE: 영상 파일을 선택해주세요.");
+    const settings = (options && typeof options === "object" ? options : {}) as { speed?: unknown; start?: unknown; end?: unknown };
+    const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+    const speed = number(settings.speed) ?? 0.5;
+    const parsed = path.parse(checked.path);
+    const chosen = await dialog.showSaveDialog(window, {
+      title: "슬로우 영상 저장",
+      defaultPath: path.join(parsed.dir, `${parsed.name}-slow${Math.round(speed * 100)}.mov`),
+      filters: [{ name: "동영상", extensions: ["mov", "mp4"] }],
+    });
+    if (chosen.canceled || !chosen.filePath) return null;
+    const outputPath = /\.(mov|mp4)$/i.test(chosen.filePath) ? chosen.filePath : `${chosen.filePath}.mov`;
+    // The save panel already confirmed replacing an existing file.
+    const job = await slowmo.start({
+      sourcePath: checked.path, outputPath, overwrite: true, speed,
+      start: number(settings.start), end: number(settings.end),
+    });
+    return slowmo.wait(job.id);
+  });
   handle("revealResource", async (id: unknown, resource: unknown) => {
     if (typeof id !== "string" || typeof resource !== "string")
       throw new Error("Invalid resource request");
@@ -1167,6 +1199,7 @@ async function awaitReady() {
       instagramInsights: { get: input => instagramInsights.get(input), refresh: refreshInstagramInsights, setTopics: input => instagramInsights.setTopics(input) },
       clipUpload: { create: createClipBundle },
       gif: { convert: convertGif },
+      slowmo,
       icloud: icloudDelivery,
       editor: editorService,
       session: agentSession,

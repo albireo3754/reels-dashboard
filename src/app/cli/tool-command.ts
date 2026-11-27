@@ -47,6 +47,7 @@ export const cliOptions = {
   reels_photos_search: { sample: { text: "cafe" } },
   reels_sync_planning: { sample: { weeklyTargets: `'{"blog":2,"naver-clip":3,"instagram":2,"youtube":1}'` } },
   reels_set_instagram_topics: { sample: { topics: `'{"123":"Example topic"}'` } },
+  reels_start_slowmo: { sample: { outputPath: "/abs/slow.mov", speed: "0.5" } },
   reels_convert_gif: { sample: { outputPath: "/abs/clip.gif", crop: `'{"x":0,"y":0.15,"width":1,"height":0.85}'` } },
 } satisfies Partial<Record<ToolName, ToolCliOption>>;
 export const toolCliOption = (name: ToolName): ToolCliOption =>

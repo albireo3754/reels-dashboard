@@ -51,6 +51,15 @@ export interface ContentMediaBridge {
     projectId: string,
     file: string,
   ): Promise<import("./gif-convert").GifConvertResult | null>;
+  /**
+   * Desktop only: asks where to save, then makes a GPU-interpolated slow-motion copy
+   * and resolves when the job ends. null when the save panel is cancelled.
+   */
+  slowmo?(
+    projectId: string,
+    file: string,
+    options: { speed: number; start?: number; end?: number },
+  ): Promise<import("./slowmo").SlowmoJob | null>;
 }
 export interface ContentMediaOpenOptions {
   copy?: boolean;
