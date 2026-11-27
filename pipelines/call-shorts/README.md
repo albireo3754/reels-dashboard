@@ -6,9 +6,14 @@
 
 ```
 inbox 감시 → (해시 멱등성) → ffmpeg 정규화 → 전사·화자분리
-  → 기획(Claude) → 대본 JSON(GPT) → 손그림 컷 이미지(Gemini/GPT Image)
+  → 기획(claude CLI 또는 Claude API) → 대본 JSON(codex CLI 또는 GPT API) → 손그림 컷 이미지(Gemini/GPT Image)
   → ffmpeg 렌더(자막·모션·덕킹) → publish/{meta.json, checklist.md}
 ```
+
+텍스트 단계(기획·대본)는 **설치된 `claude` / `codex` CLI 세션을 기본**으로 씁니다.
+로그인된 세션이 있으면 `ANTHROPIC_API_KEY`·텍스트용 `OPENAI_API_KEY` 없이 돌고 종량 과금도 없습니다(`LLM_BACKEND=cli|auto`).
+REST API 로 돌리려면 `LLM_BACKEND=api` 로 두고 키를 넣습니다.
+이미지 생성은 다릅니다 — CLI 로는 PNG 를 만들 수 없어 `GEMINI_API_KEY` 또는 `OPENAI_API_KEY` 가 필요합니다.
 
 업로드는 **자동화하지 않습니다**. 파이프라인의 끝은 `알림 → 1분 검수 → 수동 업로드`입니다.
 
@@ -29,8 +34,8 @@ brew install ffmpeg
 # 3) 설치 + launchd 등록 (iCloud 폴더·.env 생성, 07:30 자동 실행)
 bash pipelines/call-shorts/scripts/setup-mac.sh
 
-# 4) API 키 채우기
-open pipelines/call-shorts/.env     # ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
+# 4) API 키·백엔드 설정 (텍스트는 CLI 세션이면 키 없이도 됩니다)
+open pipelines/call-shorts/.env     # LLM_BACKEND / (API 로 돌릴 때) ANTHROPIC_API_KEY·OPENAI_API_KEY / GEMINI_API_KEY
 
 # 5) 키 없이 전 과정 시험 (mock 전사·mock 이미지 + 실제 ffmpeg 렌더)
 npm run call-shorts -- dry-run --render
@@ -39,7 +44,7 @@ npm run call-shorts -- dry-run --render
 npm run call-shorts -- run-once
 ```
 
-`doctor`가 ffmpeg·키·폴더·DB를 한 번에 점검합니다.
+`doctor`가 ffmpeg·텍스트 백엔드(claude/codex CLI 또는 API 키)·이미지 키·폴더·DB를 한 번에 점검합니다.
 
 ```bash
 npm run call-shorts -- doctor
@@ -115,10 +120,18 @@ whisperx norm.wav --model large-v3 --language ko \
 - `transcript/transcript.edited.md`를 만들면 기획·대본·검증기가 모두 그 편집본을 같은 원본으로 씁니다
   (원본 `diarized.json` 은 그대로 두고 발화만 편집본으로 바꿔 읽습니다 — 사람 검수 지점).
 
-### 4-3. 기획·대본 (`src/scriptwriter.ts`)
+### 4-3. 기획·대본 (`src/scriptwriter.ts`, `src/cli-sessions.ts`)
 
+- **텍스트 백엔드** (`LLM_BACKEND`, 기본 `auto`)
+  - `cli`: 설치된 `claude`/`codex` CLI 세션을 단발 실행(`claude -p --output-format json`, `codex exec --json`)하고 JSON/텍스트를 파싱합니다. API 키가 없어도 되고, 종량 과금이 없습니다.
+  - `api`: 기존 REST 경로(`callAnthropic` / `callOpenAI`). 키가 필요합니다.
+  - `auto`: PATH 에 CLI 가 있으면 CLI, 없으면 API 키. 둘 다 없으면 어느 쪽을 설치/입력할지 알려 주고 멈춥니다.
+  - CLI 에는 `ANTHROPIC_API_KEY`·`OPENAI_API_KEY`·`CODEX_API_KEY`·`CLAUDE_CODE_*` 를 넘기지 않습니다(부모 키로 과금되는 일 방지). `CODEX_HOME`·`CLAUDE_CONFIG_DIR`(로그인 위치)과 PATH 만 넘깁니다.
+  - 프롬프트는 argv 가 아니라 **stdin** 으로 넣습니다 — 통화 전사문이 프로세스 목록에 남지 않습니다.
+  - `CLAUDE_CLI_MODEL`/`CODEX_CLI_MODEL` 을 넣지 않으면 CLI 로그인 세션의 기본 모델을 씁니다.
+  - `LLM_CLI_TIMEOUT_SEC`(기본 300초)를 넘기면 CLI 를 **프로세스 그룹째** 끝냅니다 — `codex` 가 띄운 손자 프로세스까지 SIGTERM, 2초 유예 뒤 SIGKILL. 출력이 8MB 를 넘으면 같은 방식으로 끊고 `ProviderError` 로 알립니다.
 - Claude: 감정선·코믹 포인트, **서로 다른 심리축의 훅 5개**(충격/공감/의문/숫자/배신), 회수 타임스탬프.
-- GPT: `plan/episode.json`으로 강제 변환 (JSON schema strict).
+- GPT/codex: `plan/episode.json`으로 강제 변환 (codex 는 `--output-schema`, API 는 JSON schema strict).
 - 검증기(`src/episode.ts`)가 다음을 확인하고, 실패하면 **1회만** 재생성합니다.
   - cuts 5~8개, 자막 중복 금지(컷마다 새 정보 1개)
   - 자막 한 줄 14자 이내·최대 2줄, 컷 길이 ≥ 글자수 ÷ 9자/초
@@ -129,6 +142,7 @@ whisperx norm.wav --model large-v3 --language ko \
 
 ### 4-4. 이미지 (`src/illustrator.ts`)
 
+- **텍스트 CLI 로는 이미지를 만들 수 없습니다.** 여기서만 `GEMINI_API_KEY`(기본) 또는 `OPENAI_API_KEY`(IMAGE_PROVIDER=openai)가 필요합니다. 키 없이 흐름만 볼 때는 `IMAGE_PROVIDER=mock` 또는 `dry-run`.
 - 캐릭터 시트를 먼저 만들고 **사람이 한 세트를 고정**합니다
   (`assets/characters/char_sheet_{girl,boy,style}.png`). 이후 모든 컷이 그 시트를 참조합니다.
 - 프롬프트에 참조 이미지를 역할로 지목합니다: *the girl / the boy / line style*.
@@ -172,13 +186,15 @@ YouTube·Instagram·TikTok 모두 라벨 의무 밖입니다(비사실적 애니
 | 항목 | 시간 | 비용 |
 |---|---|---|
 | 전사·화자분리(10분 통화) | 2~4분 | 0원(로컬) |
-| 기획·대본(Claude+GPT) | 40초 | ~$0.05 |
+| 기획·대본(claude + codex CLI 세션) | 40~90초 | 0원(구독 세션) |
+| 기획·대본(API, `LLM_BACKEND=api`) | 40초 | ~$0.05 |
 | 캐릭터 시트(최초 1회) | 3분 | $0.5~0.7 |
 | 컷 이미지 8장 | 2~4분 | $0.27~$1.07 |
 | 렌더 | 1~2분 | 0원 |
 | **합계(2회차부터)** | **~9분** | **~$0.4** |
 
 `DAILY_BUDGET_USD`/`MAX_IMAGE_USD`/`MAX_EPISODE_USD`를 넘으면 **멈추고** 알립니다.
+CLI 세션 호출은 `$0` 로 기록되어 이 상한을 소모하지 않고, `status` 의 호출 수에만 집계됩니다.
 
 ## 7. 자동 실행 (launchd)
 
@@ -225,6 +241,10 @@ node pipelines/call-shorts/scripts/install-launchd.mjs --uninstall              
 | 증상 | 원인 | 처방 |
 |---|---|---|
 | `ffmpeg를 찾을 수 없습니다` | 미설치 | `brew install ffmpeg` |
+| `claude CLI 를 찾지 못했습니다` | CLI 미설치/및 PATH 밖 | `claude` 설치·로그인, 또는 `CLAUDE_CLI_BIN` 지정. API 로 돌리려면 `LLM_BACKEND=api` |
+| `codex CLI 종료 코드 …` | codex 미로그인·사용량 | `codex exec` 로 한 번 실행해 로그인 확인, 필요하면 `CODEX_CLI_BIN` |
+| `claude CLI 가 300초 안에 끝나지 않았습니다` | 모델 응답 지연·사용량 대기 | CLI 프로세스 그룹을 정리하고 멈춥니다. `LLM_CLI_TIMEOUT_SEC` 를 늘리거나 전사문을 줄이세요 |
+| `CLI 로는 PNG 를 만들 수 없습니다` | 이미지 키 없음 | `GEMINI_API_KEY`(또는 `OPENAI_API_KEY` + `IMAGE_PROVIDER=openai`), 시험은 `IMAGE_PROVIDER=mock` |
 | 컷마다 얼굴이 다름 | 참조 시트 미지정 | `assets/characters/`에 시트 3장 고정 |
 | 자막이 늦거나 겹침 | 문장 단위로 자름 | whisperx 단어 타임스탬프 + 12~14자 분절 |
 | 같은 통화를 두 번 처리 | 멱등성 없음 | 해시 skip (`state/pipeline-state.json`) |
@@ -248,7 +268,10 @@ FFMPEG_BIN="$(brew --prefix ffmpeg-full)/bin/ffmpeg" npm run test:call-shorts
 실제 렌더 검사는 검은 배경에 자막이 찍힌 프레임과 MP4의 해상도·오디오·길이, 표지를 확인합니다. 로컬 기본 FFmpeg에 `ass` 필터가 없으면 이 검사만 사유와 함께 건너뜁니다. CI 또는 `FFMPEG_BIN`을 지정한 실행에서는 필터가 없으면 실패합니다.
 
 테스트가 확인하는 것: 해시 멱등성, `.icloud` 필터, 크기 안정화, episode.json 검증 규칙,
-화자별 ASS 색·안전 영역, 렌더 명령 조립, dry-run 전 과정, 마스킹, 예산 가드.
+화자별 ASS 색·안전 영역, 렌더 명령 조립, dry-run 전 과정, 마스킹, 예산 가드,
+claude/codex CLI 어댑터(JSON 파싱·종료 코드·EPIPE 처리·env 스크럽·임시 파일 정리), `LLM_BACKEND` 라우팅,
+키 없이 CLI 세션으로 기획·대본 완주, CLI 호출의 예산 0 기록, CLI 실행 파일 탐색(디렉터리 제외·PATH 폴백),
+타임아웃 시 손자 프로세스까지 정리·SIGTERM 무시 CLI 의 SIGKILL 에스컬레이션·8MB 출력 상한.
 
 ## 이미 동기화된 녹음: API 전사·검수만
 

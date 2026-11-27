@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { maskedConfig, ensureDirs, loadConfig, type Config } from "./config.js";
+import { probeCliBinary, TEXT_ROLE_LABELS, textRouteStatus } from "./cli-sessions.js";
 import { ConfigError, NeedsHumanError, PipelineError } from "./errors.js";
 import { ffmpegVersion, resolveFfmpeg, resolveFfprobe, which } from "./media.js";
 import { Pipeline } from "./runner.js";
@@ -46,7 +47,25 @@ export function applyDryRunEnv(
   return env;
 }
 
-function doctor(config: Config): number {
+const IMAGE_ROW_LABEL = "이미지 (illustrator)";
+
+function imageRow(config: Config): [string, string, string] {
+  const provider = config.imageProvider;
+  if (provider === "mock") return ["OK", IMAGE_ROW_LABEL, "mock (PNG 대신 손그림 mock, 무료)"];
+  const key = provider === "gemini" ? config.geminiApiKey : config.openaiApiKey;
+  if (key) {
+    const model = provider === "gemini" ? config.imageModel : config.imageModelFallback;
+    return ["OK", IMAGE_ROW_LABEL, `${provider} · ${model}`];
+  }
+  return [
+    "WARN",
+    IMAGE_ROW_LABEL,
+    `${provider.toUpperCase()}_API_KEY 없음 — 텍스트 CLI 로는 PNG 를 만들 수 없습니다 (IMAGE_PROVIDER=mock 으로 시험)`,
+  ];
+}
+
+/** doctor 의 점검 표. `deps.env` 는 CLI 탐색에 쓰는 환경입니다(테스트 주입). */
+export function doctorRows(config: Config, deps: { env?: NodeJS.ProcessEnv } = {}): Array<[string, string, string]> {
   const rows: Array<[string, string, string]> = [];
   rows.push(["OK", "node", process.version]);
 
@@ -57,12 +76,42 @@ function doctor(config: Config): number {
   rows.push([which("whisperx") ? "OK" : "WARN", "whisperx", which("whisperx") ?? "없음 — mock/gemini/whisper 사용"]);
   rows.push([which("whisper") ? "OK" : "WARN", "whisper", which("whisper") ?? "없음"]);
 
-  const keys: Array<[string, string | null]> = [
-    ["anthropic key", config.anthropicApiKey],
-    ["openai key", config.openaiApiKey],
-    ["gemini key", config.geminiApiKey],
-  ];
-  for (const [label, value] of keys) rows.push([value ? "OK" : "WARN", label, value ? "설정됨" : "없음 (.env)"]);
+  rows.push(["OK", "LLM_BACKEND", `${config.llmBackend} (텍스트 기획·대본)`]);
+  const routes = { planner: textRouteStatus(config, "planner", deps), formatter: textRouteStatus(config, "formatter", deps) };
+  for (const role of ["planner", "formatter"] as const) {
+    const status = routes[role];
+    if (status.route?.backend !== "cli") {
+      rows.push([status.route ? "OK" : "FAIL", TEXT_ROLE_LABELS[role], status.detail]);
+      continue;
+    }
+    const binary = status.route.binary ?? "";
+    const probe = probeCliBinary(binary, deps.env);
+    rows.push([
+      probe.ok ? "OK" : "FAIL",
+      TEXT_ROLE_LABELS[role],
+      probe.ok
+        ? `cli · 실행 확인: ${binary}${probe.version ? ` — ${probe.version.slice(0, 60)}` : ""}`
+        : `cli · 실행 파일은 있으나 실행 실패: ${binary} — ${probe.reason}`,
+    ]);
+  }
+
+  const cliNote = (cli: boolean) => (cli ? "필요 없음 (CLI 세션 사용)" : "없음 (.env)");
+  rows.push([
+    config.anthropicApiKey || routes.planner.route?.backend === "cli" ? "OK" : "WARN",
+    "anthropic key",
+    config.anthropicApiKey ? "설정됨" : cliNote(routes.planner.route?.backend === "cli"),
+  ]);
+  rows.push([
+    config.openaiApiKey || routes.formatter.route?.backend === "cli" ? "OK" : "WARN",
+    "openai key",
+    config.openaiApiKey ? "설정됨" : cliNote(routes.formatter.route?.backend === "cli"),
+  ]);
+  rows.push([
+    config.geminiApiKey ? "OK" : "WARN",
+    "gemini key",
+    config.geminiApiKey ? "설정됨" : config.imageProvider === "gemini" || config.transcribeBackend === "gemini" ? "없음 (.env) — 아래 이미지/전사 안내 참고" : "없음 (필요 없음)",
+  ]);
+  rows.push(imageRow(config));
 
   try {
     const created = ensureDirs(config);
@@ -77,7 +126,10 @@ function doctor(config: Config): number {
 
   const pending = discoverAudioFiles(config.inboxDir, config.allowedExtensions);
   rows.push(["OK", "inbox 파일", `${pending.length}개 처리 대기`]);
+  return rows;
+}
 
+export function doctorReport(config: Config, rows: Array<[string, string, string]>): number {
   const width = Math.max(...rows.map(([, label]) => label.length)) + 1;
   console.log(`call-shorts-pipeline (TS) — ${maskedConfig(config)}`);
   for (const [level, label, detail] of rows) console.log(`  [${level.padEnd(4)}] ${label.padEnd(width)} ${detail}`);
@@ -86,8 +138,17 @@ function doctor(config: Config): number {
     console.log(`\n${failures.length}개 문제를 고친 뒤 다시 실행하세요.`);
     return 2;
   }
+  const imageWarned = rows.some(([level, label]) => level === "WARN" && label === IMAGE_ROW_LABEL);
+  if (imageWarned) {
+    console.log("\n텍스트 기획·대본은 준비됐습니다. 이미지 단계는 GEMINI_API_KEY 또는 OPENAI_API_KEY 를 넣거나 IMAGE_PROVIDER=mock 으로 시험하세요.");
+    return 0;
+  }
   console.log("\n준비됐습니다. `npm run call-shorts -- dry-run --render`로 한 편을 끝까지 시험해 보세요.");
   return 0;
+}
+
+function doctor(config: Config): number {
+  return doctorReport(config, doctorRows(config));
 }
 
 function status(config: Config, asJson: boolean): number {

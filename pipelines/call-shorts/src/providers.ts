@@ -1,8 +1,20 @@
 // 라이브 API 호출은 키가 없어 이 저장소에서 검증되지 않았습니다. 요청 형식은 2026-11 공식 문서 기준입니다.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  CODEX_ENV,
+  cliBinaryFor,
+  cliEnvironment,
+  roleTools,
+  runCliProcess,
+  textRoute,
+  type CliResult,
+  type CliRunner,
+  type TextRole,
+} from "./cli-sessions.js";
 import type { Config } from "./config.js";
 import { ConfigError, ProviderError } from "./errors.js";
 import { renderDoodleCut } from "./doodle.js";
@@ -75,6 +87,8 @@ export interface TextRequest {
 export interface TextClient {
   name: string;
   complete(request: TextRequest): Promise<string>;
+  /** false 면 API 종량 과금이 없는 로컬 CLI 세션입니다(예산 상한을 소모하지 않음). */
+  billable?: boolean;
   /** mock/테스트에서 프롬프트를 검사할 수 있게 호출 기록을 남깁니다. */
   calls?: TextRequest[];
 }
@@ -161,6 +175,182 @@ export async function callGemini(config: Config, payload: unknown, model: string
     for (const part of candidate.content?.parts ?? []) text += String(part.text ?? "");
   }
   return stripFence(text);
+}
+
+export interface CliClientDeps {
+  env?: NodeJS.ProcessEnv;
+  runner?: CliRunner;
+  /** 바이너리를 직접 지정합니다(테스트·CLAUDE_CLI_BIN 대체). */
+  binary?: string | null;
+}
+
+const CLI_STDIN_INSTRUCTION = "stdin 으로 받은 지시를 그대로 수행한다. 도구를 쓰지 않고 요청된 출력(JSON 또는 마크다운)만 낸다.";
+
+function cliPrompt(request: TextRequest): string {
+  const sections: string[] = [];
+  if (request.system) sections.push(`[시스템]\n${request.system}`);
+  sections.push(`[지시]\n${request.prompt}`);
+  if (request.schema) {
+    sections.push(
+      `[출력 JSON 스키마]\n${JSON.stringify(request.schema, null, 2)}\n위 스키마를 만족하는 JSON 객체 하나만 출력한다. 설명·코드펜스는 쓰지 않는다.`,
+    );
+  }
+  return sections.join("\n\n");
+}
+
+function cliFailure(tool: string, result: CliResult, timeoutSec: number) {
+  if (result.timedOut) {
+    return new ProviderError(`${tool} CLI 가 ${timeoutSec}초 안에 끝나지 않았습니다.`, {
+      hint: "LLM_CLI_TIMEOUT_SEC 를 늘리거나 전사문을 줄이세요.",
+    });
+  }
+  const detail = (result.stderr.trim() || result.error || "출력 없음").slice(0, 600);
+  return new ProviderError(`${tool} CLI 종료 코드 ${result.code ?? "없음"}: ${detail}`, {
+    hint: `${tool} CLI 에 로그인돼 있는지 확인하세요.`,
+  });
+}
+
+function requireBinary(config: Config, role: TextRole, deps: CliClientDeps): string {
+  const binary = deps.binary ?? cliBinaryFor(config, role, deps.env ?? process.env);
+  if (binary) return binary;
+  const tools = roleTools(role);
+  throw new ConfigError(`${tools.cli} CLI 를 찾지 못했습니다.`, {
+    hint: `${tools.cli} 를 설치·로그인하거나 ${tools.cliBinName} 에 경로를 지정하세요. LLM_BACKEND=api 로 REST API 를 쓰는 방법도 있습니다.`,
+  });
+}
+
+/**
+ * `claude -p` 단발 실행. 응답은 `--output-format json` 의 `{result}` 문자열이고,
+ * 실패는 종료 코드나 `is_error` 로 보고됩니다(2026-11 레포 autopilot 경로와 같은 형식).
+ */
+export class ClaudeCliClient implements TextClient {
+  readonly name = "claude-cli";
+  readonly billable = false;
+
+  constructor(
+    private readonly config: Config,
+    private readonly deps: CliClientDeps = {},
+  ) {}
+
+  async complete(request: TextRequest): Promise<string> {
+    const binary = requireBinary(this.config, "planner", this.deps);
+    const args = ["-p", "--output-format", "json", "--strict-mcp-config"];
+    if (this.config.claudeCliModel) args.push("--model", this.config.claudeCliModel);
+    const result = await (this.deps.runner ?? runCliProcess)({
+      file: binary,
+      args,
+      stdin: cliPrompt(request),
+      env: cliEnvironment(this.deps.env ?? process.env),
+      cwd: this.config.projectsDir,
+      timeoutMs: this.config.llmCliTimeoutSec * 1000,
+    });
+    if (result.code !== 0 || result.timedOut) throw cliFailure("claude", result, this.config.llmCliTimeoutSec);
+
+    let payload: { result?: unknown; is_error?: unknown; subtype?: unknown };
+    try {
+      payload = JSON.parse(result.stdout.trim()) as typeof payload;
+    } catch {
+      throw new ProviderError(`claude CLI 출력이 JSON 이 아닙니다: ${result.stdout.trim().slice(0, 300)}`);
+    }
+    if (payload.is_error === true || (typeof payload.subtype === "string" && payload.subtype !== "success")) {
+      throw new ProviderError(`claude CLI 가 실패를 보고했습니다: ${String(payload.result ?? payload.subtype ?? "").slice(0, 300)}`);
+    }
+    if (typeof payload.result !== "string" || !payload.result.trim()) {
+      throw new ProviderError("claude CLI 응답에 result 문자열이 없습니다.");
+    }
+    return stripFence(payload.result);
+  }
+}
+
+function lastAgentMessage(stdout: string): string {
+  let text = "";
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    let event: { type?: unknown; item?: { type?: unknown; text?: unknown } };
+    try {
+      event = JSON.parse(line) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.item?.type === "agent_message" && typeof event.item.text === "string") text = event.item.text;
+  }
+  return text;
+}
+
+/**
+ * `codex exec` 단발 실행. 스키마가 있으면 `--output-schema` 로 강제하고 `-o` 파일을 읽습니다.
+ * 프롬프트 본문은 stdin 으로 넣고 argv 에는 고정 지시만 둡니다(codex 는 stdin 을 프롬프트 뒤에 붙입니다).
+ */
+export class CodexCliClient implements TextClient {
+  readonly name = "codex-cli";
+  readonly billable = false;
+
+  constructor(
+    private readonly config: Config,
+    private readonly deps: CliClientDeps = {},
+  ) {}
+
+  async complete(request: TextRequest): Promise<string> {
+    const binary = requireBinary(this.config, "formatter", this.deps);
+    const workdir = mkdtempSync(path.join(tmpdir(), "call-shorts-codex-"));
+    const resultFile = path.join(workdir, "result.txt");
+    try {
+      const args = [
+        "--no-daemon",
+        "exec",
+        CLI_STDIN_INSTRUCTION,
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--json",
+        "-o",
+        resultFile,
+      ];
+      if (this.config.codexCliModel) args.push("--model", this.config.codexCliModel);
+      if (request.schema) {
+        const schemaFile = path.join(workdir, "schema.json");
+        writeFileSync(schemaFile, JSON.stringify(request.schema), { mode: 0o600 });
+        args.push("--output-schema", schemaFile);
+      }
+      const result = await (this.deps.runner ?? runCliProcess)({
+        file: binary,
+        args,
+        stdin: cliPrompt(request),
+        env: { ...cliEnvironment(this.deps.env ?? process.env), ...CODEX_ENV },
+        cwd: workdir,
+        timeoutMs: this.config.llmCliTimeoutSec * 1000,
+      });
+      if (result.code !== 0 || result.timedOut) throw cliFailure("codex", result, this.config.llmCliTimeoutSec);
+
+      const written = existsSync(resultFile) ? readFileSync(resultFile, "utf8") : "";
+      const text = written.trim() ? written : lastAgentMessage(result.stdout);
+      if (!text.trim()) {
+        throw new ProviderError("codex CLI 응답에서 결과를 찾지 못했습니다.", {
+          hint: "`codex exec` 로그인·사용량을 확인하세요.",
+        });
+      }
+      return stripFence(text);
+    } finally {
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  }
+}
+
+/**
+ * 이 단계에 쓸 텍스트 호출기를 정합니다. LLM_BACKEND=api 면 기존 REST 경로,
+ * cli/auto 면 설치된 CLI 세션을 씁니다.
+ */
+export function createTextClient(config: Config, role: TextRole, deps: CliClientDeps = {}): TextClient {
+  const route = textRoute(config, role, { env: deps.env });
+  if (route.backend === "cli") {
+    return role === "planner" ? new ClaudeCliClient(config, deps) : new CodexCliClient(config, deps);
+  }
+  return role === "planner"
+    ? { name: "anthropic", billable: true, complete: (request) => callAnthropic(config, request) }
+    : { name: "openai", billable: true, complete: (request) => callOpenAI(config, request) };
 }
 
 export interface ImageRequest {
@@ -269,12 +459,18 @@ export function createImageModel(config: Config): ImageModel {
   if (config.dryRun || config.imageProvider === "mock") return mockImage;
   if (config.imageProvider === "gemini") {
     if (!config.geminiApiKey) {
-      throw new ConfigError("GEMINI_API_KEY가 필요합니다 (.env).", { hint: "IMAGE_PROVIDER=mock 또는 dry-run으로 시험하세요." });
+      throw new ConfigError("이미지 생성에는 GEMINI_API_KEY 가 필요합니다 (.env).", {
+        hint: "텍스트 단계와 다릅니다 — claude/codex CLI 로는 PNG 를 만들 수 없습니다. IMAGE_PROVIDER=mock 또는 dry-run 으로 시험하세요.",
+      });
     }
     return createGeminiImage(config);
   }
   if (config.imageProvider === "openai") {
-    if (!config.openaiApiKey) throw new ConfigError("OPENAI_API_KEY가 필요합니다 (.env).");
+    if (!config.openaiApiKey) {
+      throw new ConfigError("이미지 생성에는 OPENAI_API_KEY 가 필요합니다 (.env).", {
+        hint: "텍스트 단계와 다릅니다 — claude/codex CLI 로는 PNG 를 만들 수 없습니다. IMAGE_PROVIDER=mock 또는 dry-run 으로 시험하세요.",
+      });
+    }
     return createOpenAIImage(config);
   }
   throw new ConfigError(`알 수 없는 이미지 제공자: ${config.imageProvider}`);
