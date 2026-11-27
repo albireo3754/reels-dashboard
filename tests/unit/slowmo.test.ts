@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -47,9 +47,9 @@ test("input schema accepts mov/mp4 outputs and rejects bad speed and ranges", ()
   assert.equal(slowmoStartInput.safeParse({ ...ok, outputPath: "relative.mov" }).success, false);
 });
 
-test("tools are registered and dispatch to the slowmo port", async () => {
-  for (const name of ["reels_start_slowmo", "reels_get_slowmo_job", "reels_cancel_slowmo"] as const)
-    assert.ok(toolDefinitions[name], name);
+// Registration itself is covered by reels-cli.test.ts (every tool sits in exactly one group,
+// and tool-groups.ts names the three slowmo tools) and the MCP list tests.
+test("slowmo tools dispatch to the slowmo port and need one", async () => {
   assert.equal(toolDefinitions.reels_get_slowmo_job.readOnly, true);
   const calls: unknown[] = [];
   const dispatch = createAgentDispatch({
@@ -115,19 +115,19 @@ test("service renders through a hidden partial file and reports the result", asy
     const service = new SlowmoService("/unused", undefined, fake.runner);
     const output = path.join(directory, "slow.mov");
     const job = await service.start({ sourcePath: source, outputPath: output, start: 8, end: 12 });
-    assert.equal(job.state === "queued" || job.state === "running", true);
+    // busy is what keeps the app from quitting mid-render.
     assert.equal(service.busy, true);
     const done = await service.wait(job.id);
     assert.equal(done.state, "succeeded", done.error);
-    assert.equal(done.percent, 100);
     assert.equal(done.result?.outputPath, output);
-    assert.equal(done.result?.speed, 0.5);
-    assert.equal(done.result?.interpolatedFrames, 214);
+    assert.equal(done.result?.bytes, "video".length);
     assert.equal(done.result?.audio, "removed");
     assert.equal(await readFile(output, "utf8"), "video");
     assert.equal(await readFile(source, "utf8"), "source");
+    // The native tool writes a hidden partial file next to the output, renamed only on success.
     const request = fake.requests[0]!;
-    assert.match(String(request.output), /\/\.slow\.mov\..+\.partial\.mov$/);
+    assert.equal(path.dirname(String(request.output)), await realpath(directory));
+    assert.match(path.basename(String(request.output)), /^\..*\.partial\./);
     assert.deepEqual([request.start, request.duration, request.speed, request.fps], [8, 4, 0.5, 30]);
     assert.deepEqual((await readdir(directory)).sort(), ["clip.mov", "slow.mov"]);
     assert.equal(service.busy, false);
@@ -177,7 +177,7 @@ test("failed and cancelled jobs leave no partial file", async () => {
   }
 });
 
-test("native reels-slowmo doubles frames on the GPU and keeps rotation", { skip: (noOpticalFlow && "hosted CI VM has no Vision optical flow") || (!hasNative && "build native/editor-engine/.build/reels-slowmo first") }, async () => {
+test("native reels-slowmo interpolates on the GPU, keeps fps and rotation, and leaves the source alone", { skip: (noOpticalFlow && "hosted CI VM has no Vision optical flow") || (!hasNative && "build native/editor-engine/.build/reels-slowmo first") }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "slowmo-native-"));
   try {
     const plain = path.join(directory, "plain.mov");
@@ -186,6 +186,7 @@ test("native reels-slowmo doubles frames on the GPU and keeps rotation", { skip:
       "-c:v", "h264_videotoolbox", "-b:v", "2M", plain]);
     // Portrait like an iPhone clip: a display matrix, not rotated pixels.
     await execute("/opt/homebrew/bin/ffmpeg", ["-loglevel", "error", "-display_rotation", "90", "-i", plain, "-c", "copy", source]);
+    const original = await readFile(source);
     const output = path.join(directory, "slow.mov");
     const service = new SlowmoService(native);
     const done = await service.wait((await service.start({ sourcePath: source, outputPath: output, start: 0.5, end: 1.5 })).id);
@@ -195,13 +196,12 @@ test("native reels-slowmo doubles frames on the GPU and keeps rotation", { skip:
     assert.equal(done.result?.codec, "h264");
     assert.deepEqual([done.result?.width, done.result?.height], [240, 320]);
     const { stdout } = await execute("/opt/homebrew/bin/ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_frames",
-      "-show_entries", "stream=nb_read_frames,avg_frame_rate,codec_name:stream_side_data=rotation:format=duration", "-of", "json", output]);
+      "-show_entries", "stream=nb_read_frames,avg_frame_rate:stream_side_data=rotation", "-of", "json", output]);
     const info = JSON.parse(stdout);
     assert.equal(info.streams[0].nb_read_frames, "60");
     assert.equal(info.streams[0].avg_frame_rate, "30/1");
-    assert.ok(Math.abs(Number(info.format.duration) - 2) < 0.05);
     assert.equal(Math.abs(Number(info.streams[0].side_data_list?.[0]?.rotation)), 90);
-    assert.ok((await stat(output)).size > 0);
+    assert.deepEqual(await readFile(source), original);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

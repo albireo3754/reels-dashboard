@@ -2,6 +2,7 @@ import {
   SLOWMO_DEFAULT_SPEED,
   SLOWMO_MAX_OUTPUT_SECONDS,
   SLOWMO_MAX_SOURCE_SECONDS,
+  type SlowmoStartInput,
 } from "../../../shared/slowmo";
 
 export interface Probe {
@@ -25,7 +26,7 @@ export interface Plan {
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Pure validation of the requested range, speed and frame rate against the probed source. */
-export function plan(probe: Probe, input: { start?: number; end?: number; speed?: number; fps?: number }): Plan {
+export function plan(probe: Probe, input: Pick<SlowmoStartInput, "start" | "end" | "speed" | "fps">): Plan {
   if (!(probe.duration > 0)) throw new Error("SLOWMO_SOURCE: 영상 길이를 확인하지 못했어요.");
   const start = input.start ?? 0;
   if (start >= probe.duration)

@@ -64,6 +64,7 @@ import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
 import { GifConverter } from "../features/gif-convert";
+import { SLOWMO_DEFAULT_SPEED } from "../shared/slowmo";
 import { SlowmoService } from "../features/slowmo";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService, type BundleAsset, type MaterializedMedia } from "../features/reel-editing";
@@ -1023,8 +1024,8 @@ async function awaitReady() {
     const checked = await contentLibrary.resolveMedia(id, file);
     if (!checked.info.isFile()) throw new Error("SLOWMO_SOURCE: 영상 파일을 선택해주세요.");
     const settings = (options && typeof options === "object" ? options : {}) as { speed?: unknown; start?: unknown; end?: unknown };
-    const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
-    const speed = number(settings.speed) ?? 0.5;
+    const finiteNumber = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+    const speed = finiteNumber(settings.speed) ?? SLOWMO_DEFAULT_SPEED;
     const parsed = path.parse(checked.path);
     const chosen = await dialog.showSaveDialog(window, {
       title: "슬로우 영상 저장",
@@ -1036,7 +1037,7 @@ async function awaitReady() {
     // The save panel already confirmed replacing an existing file.
     const job = await slowmo.start({
       sourcePath: checked.path, outputPath, overwrite: true, speed,
-      start: number(settings.start), end: number(settings.end),
+      start: finiteNumber(settings.start), end: finiteNumber(settings.end),
     });
     return slowmo.wait(job.id);
   });

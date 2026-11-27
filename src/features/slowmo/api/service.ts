@@ -9,11 +9,10 @@ import {
   slowmoStartInput,
   type SlowmoBridge,
   type SlowmoJob,
-  type SlowmoResult,
 } from "../../../shared/slowmo";
 import type { ExecutionLogs } from "../../../shared/lib/execution-logs";
 import { loggedSpawn } from "../../../shared/lib/logged-process";
-import { plan, type Probe } from "../model/plan";
+import { plan, type Plan, type Probe } from "../model/plan";
 
 type Command = "probe" | "render";
 export interface RunHandle {
@@ -25,6 +24,10 @@ export type Runner = (command: Command, argument: string, onProgress: (percent: 
 
 const VIDEO_EXTENSIONS = new Set([".mov", ".mp4", ".m4v"]);
 const KEEP_FINISHED_JOBS = 20;
+
+function isActive(job: SlowmoJob): boolean {
+  return job.state === "queued" || job.state === "running";
+}
 
 /**
  * Slow-motion copies made by `reels-slowmo` (Vision optical flow + Metal on the GPU).
@@ -44,7 +47,7 @@ export class SlowmoService implements SlowmoBridge {
   }
 
   get busy() {
-    return [...this.jobs.values()].some((job) => job.state === "queued" || job.state === "running");
+    return [...this.jobs.values()].some(isActive);
   }
 
   get(jobId: string): SlowmoJob {
@@ -72,8 +75,7 @@ export class SlowmoService implements SlowmoBridge {
   /** Resolves with the job once it reaches a terminal state. */
   wait(jobId: string): Promise<SlowmoJob> {
     const job = this.jobs.get(jobId);
-    if (!job) return Promise.resolve(this.get(jobId));
-    if (!["queued", "running"].includes(job.state)) return Promise.resolve(this.get(jobId));
+    if (!job || !isActive(job)) return Promise.resolve(this.get(jobId));
     return new Promise((resolve) => {
       const list = this.waiters.get(jobId) ?? [];
       list.push(() => resolve(this.get(jobId)));
@@ -98,7 +100,7 @@ export class SlowmoService implements SlowmoBridge {
     const existing = await stat(target).catch(() => undefined);
     if (existing && (!input.overwrite || !existing.isFile()))
       throw new Error("SLOWMO_OUTPUT_EXISTS: 같은 이름의 파일이 있어요. overwrite를 켜거나 다른 경로를 지정해주세요.");
-    if ([...this.jobs.values()].some((job) => (job.state === "queued" || job.state === "running") && job.outputPath === output))
+    if ([...this.jobs.values()].some((job) => isActive(job) && job.outputPath === output))
       throw new Error("SLOWMO_OUTPUT: 같은 경로로 만드는 작업이 이미 진행 중이에요.");
     // Validate the range before queueing so mistakes come back immediately.
     const probe = await this.probe(source);
@@ -114,7 +116,7 @@ export class SlowmoService implements SlowmoBridge {
     };
     this.jobs.set(job.id, job);
     this.prune();
-    const next = this.queue.then(() => this.execute(job, source, target, probe, settings));
+    const next = this.queue.then(() => this.execute(job, target, probe, settings));
     this.queue = next.catch(() => undefined);
     return this.get(job.id);
   }
@@ -133,10 +135,9 @@ export class SlowmoService implements SlowmoBridge {
 
   private async execute(
     job: SlowmoJob,
-    source: string,
     target: string,
     probe: Probe,
-    settings: ReturnType<typeof plan>,
+    settings: Plan,
   ) {
     if (job.state !== "queued") return;
     job.state = "running";
@@ -146,7 +147,7 @@ export class SlowmoService implements SlowmoBridge {
     try {
       const request = path.join(work, "request.json");
       await writeFile(request, JSON.stringify({
-        source,
+        source: job.sourcePath,
         output: temporary,
         start: settings.start,
         duration: settings.end - settings.start,
@@ -161,7 +162,7 @@ export class SlowmoService implements SlowmoBridge {
       if (this.cancelled.has(job.id)) throw new Cancelled();
       await rename(temporary, target);
       const bytes = (await stat(target)).size;
-      const result: SlowmoResult = {
+      job.result = {
         outputPath: job.outputPath,
         bytes,
         width: Number(native.width),
@@ -181,7 +182,6 @@ export class SlowmoService implements SlowmoBridge {
         audio: "removed",
         warnings: settings.warnings,
       };
-      job.result = result;
       this.finish(job, "succeeded");
     } catch (error) {
       if (error instanceof Cancelled || this.cancelled.has(job.id)) this.finish(job, "cancelled");
@@ -191,8 +191,7 @@ export class SlowmoService implements SlowmoBridge {
       this.cancelled.delete(job.id);
       await rm(temporary, { force: true });
       await rm(work, { recursive: true, force: true });
-      for (const wake of this.waiters.get(job.id) ?? []) wake();
-      this.waiters.delete(job.id);
+      this.wakeWaiters(job.id);
     }
   }
 
@@ -201,7 +200,15 @@ export class SlowmoService implements SlowmoBridge {
     if (state === "succeeded") job.percent = 100;
     if (error) job.error = error;
     job.finishedAt = new Date().toISOString();
-    if (state === "cancelled") for (const wake of this.waiters.get(job.id) ?? []) wake();
+    // A cancelled queued job can have waiters even though it never enters the render loop.
+    if (state === "cancelled") this.wakeWaiters(job.id);
+  }
+
+  private wakeWaiters(jobId: string) {
+    const waiters = this.waiters.get(jobId);
+    if (!waiters) return;
+    this.waiters.delete(jobId);
+    for (const wake of waiters) wake();
   }
 
   private prune() {
