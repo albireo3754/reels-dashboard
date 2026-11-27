@@ -10,6 +10,7 @@ import type {
   ContentMediaItem,
   ContentMediaPage,
 } from "../../../shared/content-media";
+import type { SlowmoResult } from "../../../shared/slowmo";
 import { resourceLabels } from "../../../shared/content-media";
 import {
   openingVideoStatus,
@@ -650,6 +651,7 @@ function GifMaker({
     </div>
   );
 }
+
 const SLOWMO_SPEEDS = [0.5, 0.25, 0.75] as const;
 /** GPU slow motion: in-between frames are drawn from optical flow so the slowed clip stays smooth. */
 function SlowmoMaker({
@@ -667,7 +669,7 @@ function SlowmoMaker({
   const [state, setState] = useState<
     | { kind: "idle" }
     | { kind: "busy" }
-    | { kind: "done"; job: import("../../../shared/slowmo").SlowmoJob }
+    | { kind: "done"; result?: SlowmoResult }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const seconds = (text: string) => (text.trim() === "" ? undefined : Number(text));
@@ -681,13 +683,13 @@ function SlowmoMaker({
     try {
       const job = await bridge.contentMedia!.slowmo!(projectId, file, { speed, start: from, end: to });
       if (!job) setState({ kind: "idle" });
-      else if (job.state === "succeeded") setState({ kind: "done", job });
+      else if (job.state === "succeeded") setState({ kind: "done", result: job.result });
       else setState({ kind: "error", message: job.state === "cancelled" ? "취소됐어요." : job.error ?? "슬로우 영상을 만들지 못했어요." });
     } catch (e) {
       setState({ kind: "error", message: errorText(e) });
     }
   };
-  const result = state.kind === "done" ? state.job.result : undefined;
+  const result = state.kind === "done" ? state.result : undefined;
   return (
     <div className="board-gif board-slowmo">
       <div className="board-slowmo-options">
