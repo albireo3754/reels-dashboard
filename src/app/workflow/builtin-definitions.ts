@@ -162,6 +162,7 @@ steps:
       - {server: reels_dashboard, name: reels_photos_index, purpose: 촬영 날짜 색인}
       - {server: reels_dashboard, name: reels_photos_group, purpose: 방문 그룹의 사진·영상 확인}
       - {server: reels_dashboard, name: reels_import_photos_bundle, purpose: 방문 그룹 사진·영상·Live Photo 원본을 카드에 묶어 복사}
+      - {server: reels_dashboard, name: reels_photos_search, purpose: 촬영 시각·위치로 빠진 원본 찾기}
       - {server: reels_dashboard, name: reels_start_analysis, purpose: 촬영분 장면·OCR·얼굴 분석}
     inputs: [brief.md]
     outputs: [evidence/media-scenes.json]
@@ -173,61 +174,71 @@ steps:
     instruction: >-
       media-scenes.json, 확인된 사실 자료, 작업 폴더에 이미 있는 사용자 진술을 읽고 사진 구성을 먼저 정한 뒤 길게 쓴다.
       목표는 완성도가 아니라 재료를 빠짐없이 펼쳐 놓는 것이다. 다듬기·압축·문안 리뷰는 하지 않는다.
-      사진·영상은 거의 다 쓴다. omit은 완전히 같은 컷 중복과 가릴 수 없는 얼굴뿐이고, 동작 영상은 무음 GIF(reels_convert_gif)로 만든다.
+      사진·영상은 거의 다 쓴다. omit은 완전히 같은 컷 중복, 가릴 수 없는 얼굴, 사실 오단정뿐이고, 동작 영상은 무음 GIF(reels_convert_gif, 원본 전체 길이)로 만든다.
+      소리 자체가 경험인 장면은 무음 GIF와 함께 소리 있는 짧은 영상 후보도 두고, 사람 목소리가 들어갔는지 오디오를 도구로 먼저 확인해 시각과 함께 기록한다.
+      맛집 글은 촬영분에서 메뉴판·영수증 컷을 찾아보고, 확인한 메뉴·가격 근거를 작업 폴더에 남긴다.
       모든 장면을 evidence/story-media-plan.json에 use/omit/hold로 결정한다(형식은 docs/photo-first-drafting.md의 Draft composition).
       원고는 drafts/long.markup.md에 쓰고 사진 흐름을 따라 장면 단위 섹션(소제목)으로 나눈다.
       섹션마다 사진에서 보이는 것, 확인된 사실, 그 장면에서 있었을 법한 경험의 갈래를 함께 펼친다.
-      사용자 진술이나 사진·기록으로 확인되지 않은 경험·맛·감상 문장은 문장 끝에 [추정]을 붙여 갈래로 남긴다. 지어낸 것을 사실처럼 쓰지 않는다.
+      사용자 진술이나 사진·기록으로 확인되지 않은 경험·맛·감상·추론은 줄(문장)마다 끝에 [추정]을 붙여 갈래로 남긴다. 여러 줄 문단에서 첫 줄에만 붙이지 않는다. 지어낸 것을 사실처럼 쓰지 않는다.
       같은 섹션에서 서로 다른 갈래(예 첫인상 A/B)가 가능하면 둘 다 쓴다. 고르는 것은 사용자의 기억과 머지 단계가 한다.
       그다음 recall-form.json을 만든다: 섹션 하나가 질문 하나다(최대 30개, 많으면 이웃 섹션을 묶는다).
-      질문 section은 소제목, help에는 그 섹션의 초안 문장을 그대로(2000자 이내) 넣고, images에는 그 섹션에 넣은 사진·GIF 첫 프레임을 최대 4장(JPEG/PNG/WebP, 4MB 이하) 붙인다.
-      prompt는 "이 장면에서 기억나는 것, 틀린 것, 빼도 되는 것을 떠오르는 대로 적어 주세요" 형태로 열어 두고 답을 유도하지 않는다. 모든 질문은 required false다.
-      마지막 질문은 섹션에 없던 기억·전체 인상을 받는 자유 질문 하나로 둔다. facts에는 확인된 사실만 출처와 함께 넣는다.
+      질문 section에는 섹션 번호와 소제목, help에는 그 섹션의 초안 문장을 그대로(2000자 이내, 첫 섹션에는 제목 후보도) 넣고,
+      images에는 그 섹션의 사진·GIF 첫 프레임과 판단이 필요한 hold 장면 사진을 최대 4장(JPEG/PNG/WebP, 4MB 이하, 배치 역할을 적은 caption) 붙인다.
+      prompt는 그때 떠오르는 경험과 이 섹션의 글 상태(맞는 것·틀린 것·뺄 것·합치거나 바꾸고 싶은 구성)를 떠오르는 대로 적게 열어 두고 답을 유도하지 않는다. 모든 질문은 required false다.
+      마지막 질문은 섹션에 없던 기억과 글 전체의 상태(쳐낼 잔가지, 합칠 섹션, 사진 배치, 제목·말투·흐름)를 나열받는 자유 질문 하나로 둔다. facts에는 확인된 사실만 출처와 함께 넣는다.
+      blog-markup check(docs/blog-markup-source.md)로 drafts/long.markup.md를 검사한다.
     tools:
       - {server: reels_dashboard, name: reels_convert_gif, purpose: 동작 영상 무음 GIF}
     inputs: [evidence/media-scenes.json]
     outputs: [drafts/long.markup.md, evidence/story-media-plan.json, recall-form.json]
-    completion: [모든 장면 결정, 장면 단위 섹션으로 나뉜 긴 초안, 확인 안 된 경험 문장에 추정 표시, 섹션별 초안 문장·사진이 붙은 recall 질문]
+    completion: [모든 장면 결정, 장면 단위 섹션으로 나뉜 긴 초안, 확인 안 된 경험 줄마다 추정 표시, 섹션별 초안 문장·사진·글 상태 안내가 붙은 recall 질문, blog-markup check 통과]
     on: {done: recall}
   - id: recall
-    title: 읽으며 기억 되살리기
+    title: 읽으며 기억 되살리기·글 상태 나열
     kind: input
     instruction: >-
-      섹션마다 사진과 초안 문장을 보며 그때를 떠올린다. 기억나는 것·틀린 것·빼도 되는 것을 떠오르는 대로 적는다.
+      섹션마다 사진과 초안 문장을 보며 그때를 떠올리고 글 상태를 점검한다.
+      기억나는 것·틀린 것·빼도 되는 것뿐 아니라 합치고 싶은 섹션, 사진 배치, 제목·말투처럼 글 상태에 대한 메모도 떠오르는 대로 쭉 적는다.
       정리된 문장이 아니어도 되고, 기억나지 않음과 제외도 유효한 답이다.
     formFile: recall-form.json
-    completion: [사용자가 섹션별 기억을 공통 폼에 적고 제출]
+    completion: [사용자가 섹션별 기억과 글 상태를 공통 폼에 적고 제출]
     on: {done: merge}
   - id: merge
     title: 유니온 머지
     kind: task
     instruction: >-
-      drafts/long.markup.md와 제출된 recall 답변 원문(작업 폴더의 experience-answers-*.json 중 최신)을 섹션 단위로 합쳐 article.markup.md를 쓴다.
-      합치는 규칙: (1) 사용자 답에 있는 기억은 빠짐없이 들어간다. 사용자 말투와 고유 표현은 살린다.
+      첫 실행에서는 drafts/long.markup.md와 제출된 recall 답변 원문(작업 폴더의 experience-answers-*.json 중 최신)을 섹션 단위로 합쳐 article.markup.md를 쓴다.
+      prune에서 revise로 돌아온 경우에는 긴 초안에서 다시 합치지 않고, 현재 article.markup.md를 정본으로 삼아 최신 reviews/prune-*.md의 목록을 반영한다.
+      합치는 규칙: (1) 사용자 답의 기억과 글 상태 지시(합칠 섹션, 순서, 사진 배치, 제목 선택, 말투 메모)는 빠짐없이 반영한다. 사용자 말투와 고유 표현은 살린다.
       (2) 사용자 답이 초안과 다르면 사용자 답이 이긴다. (3) 사용자가 "빼"·"아님"이라고 한 문장과 사진은 뺀다.
       (4) 사용자가 확인한 [추정] 갈래는 표시를 떼고 사용자 말로 바꾸고, 답이 없는 [추정] 갈래는 지운다. 공개 원고에 [추정]이 남지 않는다.
       (5) 사진·기록으로 확인된 사실 문장과 사진은 유지한다. 새 감상을 지어내지 않는다.
-      prune 리뷰에서 돌아온 경우에는 최신 reviews/prune-*.md의 가지치기 목록을 반영하되 사용자 답에서 온 문장은 사용자가 뺀 것이 아니면 남긴다.
-      사진을 빼거나 옮기면 evidence/story-media-plan.json을 갱신하고, 사진 흐름과 섹션 구성은 story-layout.md에 쓴다.
-      섹션마다 무엇을 사용자 답에서 가져왔고 무엇을 지웠는지 reviews/merge-log.md에 적는다. blog-markup check(docs/blog-markup-source.md)를 통과시킨다.
+      (6) 답 없는 갈래를 지운 뒤 한두 줄만 남은 이웃 섹션은 첫 머지에서부터 같은 흐름의 묶음으로 합친다. 서로 다른 정보를 주는 사진은 버리지 않고 같은 묶음의 콜라주로 옮기며, 묶음의 이야기 문장 하나가 묶음 전체의 짝이 된다.
+      사진을 빼거나 옮기거나 묶음을 바꾸면 evidence/story-media-plan.json을 갱신하고, 사진 흐름과 섹션 구성은 story-layout.md에 쓴다.
+      섹션마다 사용자 답에서 가져온 것과 합치거나 지운 것을(prune에서 돌아왔으면 반영한 항목과 보류한 항목·사유를) reviews/merge-log.md에 적는다. blog-markup check(docs/blog-markup-source.md)를 통과시킨다.
     inputs: [drafts/long.markup.md, evidence/media-scenes.json]
     outputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
-    completion: [사용자 답의 기억이 모두 반영됨, 사용자가 뺀 문장·사진이 빠짐, 추정 표시 없음, 섹션별 머지 기록, blog-markup check 통과]
+    completion: [사용자 답의 기억과 글 상태 지시가 모두 반영됨, 사용자가 뺀 문장·사진이 빠짐, 추정 표시 없음, 파편 섹션 통합과 섹션별 머지 기록, blog-markup check 통과]
     on: {done: prune}
   - id: prune
     title: 잔가지 쳐내기
     kind: review
     instruction: >-
-      article.markup.md를 처음부터 끝까지 읽고 글의 줄기(이 가게·장소를 왜 가는지, 사용자가 기억한 장면)에 붙지 않는 잔가지를 찾는다.
-      잔가지: 같은 말을 되풀이하는 문장, 사진을 가리키기만 하는 문장, 사진 속 글자·상표를 옮겨 적은 줄, 사용자 답에도 기록에도 없는 감상,
-      줄기와 상관없는 곁가지 설명, 너무 잘게 나뉜 섹션. 사용자 답에서 온 문장은 잔가지로 치지 않고, 꼭 필요하면 위치 이동만 제안한다.
-      함께 확인할 최소 항목: 남은 [추정] 표시, 맛집 글의 메뉴·가격 근거, 식별 가능한 얼굴·영수증 개인정보 컷의 가림 계획(story-media-plan.json handling),
-      사진·묶음마다 앞뒤 문장 또는 블록과의 짝.
-      대상 파일은 고치지 않는다. 쳐낼 문장·사진을 위치와 이유와 함께 reviews/prune-{attempt}.md에 쓰고,
-      잘라낼 것이 남았으면 revise(merge가 반영), 줄기만 남았으면 pass로 판정한다.
+      article.markup.md를 처음부터 끝까지 읽고, media-scenes.json의 미리보기와 원고에 들어간 실제 사진·GIF 파일을 직접 열어 본다.
+      텍스트·계획 파일만 읽고 통과를 주장하지 않으며, 열어 본 이미지 파일 목록을 보고서에 적는다.
+      글의 줄기(이 가게·장소를 왜 가는지, 사용자가 기억한 경험과 확인된 핵심 장면)에 붙지 않는 잔가지를 찾는다.
+      문장 잔가지: 같은 말을 되풀이하는 문장, 사진을 가리키기만 하는 문장, 사진·영수증 속 글자·상표·수량을 옮겨 적은 줄, 사용자 답에도 기록에도 없는 감상, 줄기와 상관없는 곁가지 설명.
+      구조 잔가지: 너무 잘게 나뉜 섹션은 사진을 버리지 말고 이웃 섹션과 합치거나 같은 장면 묶음으로 옮기도록 제안한다.
+      사진을 omit으로 쳐내는 것은 사용자가 빼라고 한 컷, 같은 장면 중복, 가릴 수 없는 얼굴, 사실 오단정뿐이다.
+      사용자 답에서 온 문장은 잔가지로 치지 않고, 꼭 필요하면 위치 이동만 제안한다. merge-log.md에 보류 사유가 기록된 항목은 같은 사유로 다시 지적하지 않는다.
+      최소 항목: (1) 남은 [추정] 0건, (2) story-media-plan.json과 원고의 사진 순서·묶음 일치, (3) 사진·묶음마다 앞뒤 문장 또는 블록과의 짝(짝이 없으면 새 문장 대신 자리 이동·묶음 편입 제안),
+      (4) 맛집 글의 메뉴·가격 근거와 메뉴 박스 일치, (5) 식별 가능한 얼굴·영수증 개인정보·휴대폰 화면 컷의 가림 계획(story-media-plan.json handling).
+      대상 파일은 고치지 않는다. 쳐내거나 합칠 문장·섹션·사진을 위치와 이유와 함께 reviews/prune-{attempt}.md에 쓴다.
+      최소 항목에 미충족이 있거나 쳐낼 잔가지·합칠 파편 섹션이 남았으면 revise(merge가 반영), 최소 항목을 모두 충족하고 새로 쳐낼 잔가지가 없으면 pass다.
     inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
     outputs: ['reviews/prune-{attempt}.md']
-    completion: [잔가지 목록(위치·이유) 또는 통과 근거, 사용자 답 문장 보존 확인, 최소 항목(추정 표시·메뉴 가격·가림 계획·사진 짝) 판정]
+    completion: [실제 열어 본 이미지 파일 목록, 잔가지·섹션 통합 목록(위치·이유) 또는 통과 근거, 사용자 답 문장 보존 확인, 최소 다섯 항목(추정 0건·계획 일치·사진 짝·메뉴 가격·가림 계획) 판정]
     on: {pass: layout, revise: merge}
   - id: layout
     title: 화면 구성
