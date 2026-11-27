@@ -30,6 +30,12 @@ command('/usr/bin/xcrun', ['swiftc', '-O', '-parse-as-library', '-target', 'arm6
   path.join(engine, 'hardware_render.swift'), '-o', hardwareRenderer], { stdio: 'inherit' });
 copyFileSync(hardwareRenderer, path.join(runtime, 'bin/reels-hardware-render'));
 command('/usr/bin/codesign', ['--force', '--sign', '-', path.join(runtime, 'bin/reels-hardware-render')], { stdio: 'inherit' });
+// GPU slow motion: Vision optical flow + Metal frame interpolation, hardware encoding only.
+const slowmo = path.join(build, 'reels-slowmo');
+command('/usr/bin/xcrun', ['swiftc', '-O', '-parse-as-library', '-target', 'arm64-apple-macos15.0',
+  path.join(engine, 'slowmo_render.swift'), '-o', slowmo], { stdio: 'inherit' });
+copyFileSync(slowmo, path.join(runtime, 'bin/reels-slowmo'));
+command('/usr/bin/codesign', ['--force', '--sign', '-', path.join(runtime, 'bin/reels-slowmo')], { stdio: 'inherit' });
 
 const installedFFmpeg = realpathSync(process.env.FFMPEG_BIN || text('/usr/bin/which', ['ffmpeg']));
 const installedFFprobe = realpathSync(process.env.FFPROBE_BIN || text('/usr/bin/which', ['ffprobe']));

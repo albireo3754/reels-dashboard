@@ -441,3 +441,17 @@
   margin-top: var(--space-1);
   color: var(--color-warning-text);
 }
+.board-slowmo-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.board-slowmo-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+}
+.board-slowmo-options input {
+  width: 5.5em;
+}
