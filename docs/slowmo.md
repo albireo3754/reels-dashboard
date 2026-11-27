@@ -46,4 +46,5 @@ macOS 15.4 이상의 VideoToolbox `VTFrameRateConversion`(Apple ML 보간)은 �
 - 합성 HLG 10bit 1280×720 30fps를 0.25배 60fps로 만들면 HEVC Main10·`arib-std-b67`·BT.2020이 유지된다. 원본과 시각이 같은 출력 프레임은 해당 원본 프레임과 PSNR 37dB로, 한 프레임 앞 원본과는 20dB로 나와 시각 정렬도 맞았다.
 - Electron background QA `tests/electron/slowmo.spec.ts`: 합성 세로 영상으로 보드 버튼(속도·구간·저장 위치 → 60프레임 30fps 결과)과 실제 MCP `reels_start_slowmo`→`reels_get_slowmo_job`(0.25배, 120프레임 중 80개 넘게 보간, 같은 출력 재요청은 `SLOWMO_OUTPUT_EXISTS`, 원본 바이트 불변)을 확인했다.
 - 전체 검증: typecheck, check:architecture, audit:public 통과. `npm test` 995개 중 986 통과·6 건너뜀·3 실패이고, 실패 3개(Notes 녹음 선택·전사)는 develop 원본에서도 같은 조건으로 실패한다.
+- GitHub 호스트 macOS 러너(가상 머신)에서는 Vision 광학 흐름이 `memFullErr`(-108)로 실패한다. 그래서 실제 GPU 경로를 쓰는 단위 테스트 1개와 Electron spec은 `GITHUB_ACTIONS`에서 건너뛰고 실제 Mac에서 확인한다. CI는 `build:editor`의 `reels-slowmo` 빌드·서명과 나머지 단위 테스트를 확인한다.
 - 단위 테스트 `tests/unit/slowmo.test.ts`: 계획·스키마·도구 등록·서비스(가짜 실행기로 partial→rename, 거절, 실패·취소)와, 빌드된 `.build/reels-slowmo`가 있으면 합성 영상으로 실제 GPU 경로를 돌린다.

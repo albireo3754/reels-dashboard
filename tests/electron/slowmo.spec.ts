@@ -16,6 +16,8 @@ const frames = async (file: string) => {
 };
 
 test("board video becomes a GPU slow-motion copy through the UI and the real MCP job tools", async ({}, info) => {
+  // Hosted macOS runners are VMs without the GPU/Neural Engine Vision optical flow needs.
+  test.skip(process.env.GITHUB_ACTIONS === "true", "hosted CI VM has no Vision optical flow");
   test.setTimeout(180_000);
   const profile = await realpath(await makeProfile());
   const footage = path.join(profile, "촬영본");

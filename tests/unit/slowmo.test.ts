@@ -14,6 +14,9 @@ import { AgentSession } from "../../src/entities/agent-session";
 const execute = promisify(execFile);
 const native = path.resolve(process.env.SLOWMO_BIN ?? "native/editor-engine/.build/reels-slowmo");
 const hasNative = existsSync(native) && existsSync("/opt/homebrew/bin/ffmpeg");
+// Hosted macOS runners are VMs without the GPU/Neural Engine Vision optical flow needs
+// (it fails with memFullErr there). The real GPU path is checked on a Mac.
+const noOpticalFlow = process.env.GITHUB_ACTIONS === "true";
 
 const probe = { width: 1080, height: 1920, duration: 24.5, fps: 29.998, hdr: false, hasAudio: true };
 
@@ -174,7 +177,7 @@ test("failed and cancelled jobs leave no partial file", async () => {
   }
 });
 
-test("native reels-slowmo doubles frames on the GPU and keeps rotation", { skip: !hasNative && "build native/editor-engine/.build/reels-slowmo first" }, async () => {
+test("native reels-slowmo doubles frames on the GPU and keeps rotation", { skip: (noOpticalFlow && "hosted CI VM has no Vision optical flow") || (!hasNative && "build native/editor-engine/.build/reels-slowmo first") }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "slowmo-native-"));
   try {
     const plain = path.join(directory, "plain.mov");
