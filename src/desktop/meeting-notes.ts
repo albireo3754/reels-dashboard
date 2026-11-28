@@ -117,9 +117,9 @@ export class MeetingNotes {
     await this.guard.settle(provider, id, actualUsd).catch(() => false);
   }
   credits() { return this.guard.credits(); }
-  private async json(url: string, init: RequestInit): Promise<any> {
+  private async json(url: string, init: RequestInit, timeoutMs = 90_000): Promise<any> {
     const response = await this.request(url, {
-      ...init, method: "POST", redirect: "error", signal: AbortSignal.timeout(90_000),
+      ...init, method: "POST", redirect: "error", signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error("제공자가 요청을 거절했어요.");
     return response.json();
@@ -139,9 +139,10 @@ export class MeetingNotes {
       body.set("response_format", "json");
       body.set("file", new Blob([audio.bytes], { type: "audio/mp4" }), "meeting.m4a");
       if (hint) body.set("prompt", Array.from(hint).slice(0, 180).join(""));
+      // Episode sources run 10-20 minutes; transcription latency grows with length.
       const result = await this.json("https://api.openai.com/v1/audio/transcriptions", {
         headers: { Authorization: `Bearer ${lease.key}` }, body,
-      });
+      }, Math.min(900_000, 90_000 + Math.ceil(audio.seconds) * 400));
       if (typeof result.text !== "string" || !result.text.trim()) throw new Error();
       const billedSeconds = result.usage?.type === "duration" &&
         typeof result.usage.seconds === "number" && Number.isFinite(result.usage.seconds) && result.usage.seconds > 0

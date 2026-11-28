@@ -6,6 +6,10 @@ export function isYoutubeEpisode(project: Project) {
 }
 
 export const isEpisodeVideo = (file: string) => /\.(mov|mp4|m4v)$/i.test(file);
+export type EpisodeApiTranscript =
+  | { status: "added" | "reused"; directory: string }
+  | { status: "skipped"; reason: string };
+export interface EpisodeTranscriptionResult { directory: string; reused: boolean; api: EpisodeApiTranscript }
 export interface EpisodeTranscriptionBridge {
-  run(projectId: string, linkedSource?: string): Promise<{ directory: string; reused: boolean } | null>;
+  run(projectId: string, linkedSource?: string): Promise<EpisodeTranscriptionResult | null>;
 }
