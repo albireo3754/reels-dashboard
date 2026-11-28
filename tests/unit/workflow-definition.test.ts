@@ -180,6 +180,38 @@ test("invalid YAML topology, duplicate keys, aliases, unknown fields and escaped
   }
 });
 
+test("a revision may run ahead through an unsubmitted form but never back to a submitted one", () => {
+  const memory = {
+    id: "memory",
+    title: "Your experience",
+    kind: "input",
+    instruction: "Answer based on your actual memory",
+    formFile: "experience-form.json",
+    completion: ["User submits explicit responses"],
+  };
+  // write → check (revise → write) → memory → complete: the form comes after the review,
+  // so revising the draft cannot revisit a submitted form.
+  const ahead = definition();
+  ahead.steps[1].on = { pass: "memory", revise: "write" } as any;
+  (ahead.steps as any[]).push({ ...memory, on: { done: "$complete" } });
+  assert.equal(workflowDefinitionSchema.safeParse(ahead).success, true);
+  // memory → write → check (revise → write): the form comes first, but the revision
+  // only reaches write and check, so it never returns to the form.
+  const behind = definition();
+  (behind as any).entry = "memory";
+  (behind.steps as any[]).unshift({ ...memory, on: { done: "write" } });
+  const parsed = workflowDefinitionSchema.safeParse(behind);
+  assert.equal(parsed.success, true);
+  // write → memory → check (revise → write): the review follows the submitted form and
+  // its revision would reach the form again, so it is rejected.
+  const back = definition();
+  back.steps[0].on = { done: "memory" } as any;
+  (back.steps as any[]).splice(1, 0, { ...memory, on: { done: "check" } });
+  const rejected = workflowDefinitionSchema.safeParse(back);
+  assert.equal(rejected.success, false);
+  assert.match(JSON.stringify(rejected.error!.issues), /cannot revisit a submitted input form/);
+});
+
 test("DSL input step uses the real shared form; normal submit cannot invent answers", async () => {
   const f = await fixture();
   const runtime = await WorkflowRuntime.open(path.join(f.root, "db"));

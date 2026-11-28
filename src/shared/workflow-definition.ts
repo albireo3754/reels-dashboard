@@ -47,7 +47,7 @@ export const builtinDefinitionName = z.enum(builtinDefinitionNames);
 export type BuiltinDefinitionName = z.infer<typeof builtinDefinitionName>;
 export const builtinDefinitionLabels: Record<BuiltinDefinitionName, string> = {
   blog: "블로그 · 촬영분에서 미리보기까지",
-  "blog-v3": "블로그 v3 · 긴 초안 → 기억 되살리기 → 유니온 머지·가지치기",
+  "blog-v3": "블로그 v3 · 긴 초안 전 공정 → 기억 되살리기 → 머지·가지치기 → 마무리 공정",
 };
 /** Exactly one of `definitionFile` and `builtinDefinition`; checked when read. */
 export const definitionLocationInput = z.strictObject({
@@ -144,10 +144,15 @@ export const workflowDefinitionSchema = z
       for (const [outcome, target] of Object.entries(step.on)) {
         if (outcome !== "revise" && reachable(target, false).has(step.id))
           fail("Cycles require a review revise edge");
+        // A revision may pass through an input step only when that form cannot have been
+        // submitted before this review, i.e. the review is not reachable from it. Reviews
+        // ahead of the form (blog-v3 image/text review before recall) may loop back.
         if (
           outcome === "revise" &&
-          [...reachable(target, true)].some((key) =>
-            definition.steps.some((s) => s.id === key && s.kind === "input"),
+          [...reachable(target, true)].some(
+            (key) =>
+              definition.steps.some((s) => s.id === key && s.kind === "input") &&
+              reachable(key, true).has(step.id),
           )
         )
           fail("Revision paths cannot revisit a submitted input form");
