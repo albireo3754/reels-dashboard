@@ -12,7 +12,7 @@
 
 - **main 폴더 `~/side/reels-dashboard`는 항상 `main`에 둔다.** 실행 앱(`release/mac-arm64/Reels Dashboard.app`), 브리지·autopilot LaunchAgent(`scripts/mobile-briefing/bridge.mjs`, `dist-cli/reels.mjs`), vault `.mcp.json`이 모두 이 폴더를 가리킨다. 이 폴더에서 브랜치를 바꾸거나 개발 커밋을 만들지 않는다.
 - **개발·임시 빌드는 worktree에서 한다.** `git worktree add ~/side/worktrees/reels-dashboard-<작업> -b <브랜치> origin/develop`로 따서 작업하고 develop으로 PR한다. 확인용 앱 빌드도 그 worktree에서 한다.
-- **LaunchAgent 경로를 옮기지 않는다.** `~/side/reels-live`·`releases/<sha>`·`current` 심링크 구조와 `scripts/live-install.mjs`는 쓰지 않는다(2026-11-28 사용자: "런치에이전트를 왜 옮기는데 … 항상 메인빌드 해서 쓰는거 기준으로만"). plist 경로 전환을 제안·실행하지 않는다.
+- **LaunchAgent 경로를 옮기지 않는다.** `~/side/reels-live`·`releases/<sha>`·`current` 심링크 구조는 쓰지 않는다(이를 만들던 `scripts/live-install.mjs`는 2026-11-28 삭제)(2026-11-28 사용자: "런치에이전트를 왜 옮기는데 … 항상 메인빌드 해서 쓰는거 기준으로만"). plist 경로 전환을 제안·실행하지 않는다.
 
 ## 라이브 반영 (로컬 Mac 세션)
 
