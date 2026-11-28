@@ -72,10 +72,10 @@ if canonical:
         for n in created:
             if own(n): (work/n).unlink()
         canonical = False
-print(json.dumps({"directory":str(work if canonical else target), "reused":reused}))
+print(json.dumps({"directory":str(work if canonical else target), "reused":reused, "cache":str(target)}))
 `;
 
-export async function transcribeEpisode(source: string, directory: string): Promise<{directory: string; reused: boolean}> {
+export async function transcribeEpisode(source: string, directory: string): Promise<{directory: string; reused: boolean; cache: string}> {
   if (await realpath(source) !== source || !(await stat(source)).isFile()) throw new Error("원본 영상을 다시 연결해 주세요.");
   if (await realpath(path.dirname(directory)) !== path.dirname(directory)) throw new Error("작업 폴더의 실제 위치를 선택해 주세요.");
   const { python, model } = await localRuntime();

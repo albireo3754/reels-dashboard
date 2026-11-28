@@ -13,7 +13,12 @@ export function EpisodeTranscription({ project, bridge }: { project: Project; br
     setMessage("");
     try {
       const result = await bridge.run(project.id, selected || undefined);
-      if (result) setMessage(`${result.reused ? "기존 전사를 연결했어요" : "전사를 마쳤어요"}. 대본과 단어 시각은 연결 자료에서 열 수 있어요.\n${result.directory}`);
+      if (result) {
+        const { api: state } = result;
+        const api = state.status === "skipped" ? `OpenAI 전사는 건너뛰었어요: ${state.reason}`
+          : state.status === "added" ? "OpenAI 전사 문장을 단어 시각에 맞춰 붙였어요." : "기존 OpenAI 전사도 연결했어요.";
+        setMessage(`${result.reused ? "기존 전사를 연결했어요" : "전사를 마쳤어요"}. 대본과 단어 시각은 연결 자료에서 열 수 있어요.\n${api}\n${result.directory}`);
+      }
     } catch (e) {
       setMessage((e instanceof Error ? e.message : "전사를 완료하지 못했어요.").replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
     } finally { setWorking(false); }

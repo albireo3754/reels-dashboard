@@ -57,6 +57,7 @@ import { callShortsSource } from "./call-shorts";
 import { MeetingNotes, meetingContext } from "./meeting-notes";
 import { callNotesPrefixSchema, recentNotesRecordings, withImportedCallNotes } from "./notes-recordings";
 import { transcribeEpisode, episodeFiles, episodeWorkDir } from "./episode-transcription";
+import { attachApiTranscript, apiFiles } from "./episode-api-transcript";
 import { isYoutubeEpisode, isEpisodeVideo } from "../shared/episode-transcription";
 import { transcribeLocalCallRecordings } from "./call-shorts-local-stt";
 import { Workbench, PREVIEW_URL } from "./workbench";
@@ -663,6 +664,7 @@ async function awaitReady() {
         throw new Error("Untrusted IPC sender");
       return fn(...args);
     });
+  const meeting = new MeetingNotes(new MeetingCreditGuard(root));
   if (!fixture && process.platform === "darwin") {
     let transcribingEpisode = false;
     handle("episodeTranscription:run", async (id: string, linkedSource?: string) => {
@@ -693,6 +695,10 @@ async function awaitReady() {
           directory = await realpath(picked.filePaths[0]);
         }
         const result = await transcribeEpisode(source, directory);
+        // Same OpenAI credit guard as meeting notes. Whisper word times stay the timing source.
+        const api = await attachApiTranscript({ source, cache: result.cache,
+          work: result.directory === directory ? directory : undefined,
+          hint: "후라이윤 유튜브 토크. " + project.title, transcribe: (file, context) => meeting.transcribe(file, context) });
         const dashboard = await store.update(current => {
           const card = current.projects.find(p => p.id === id);
           if (!card) throw new Error("전사 중 회차 카드가 삭제됐어요. 결과는 작업 폴더에 저장했어요.");
@@ -700,13 +706,15 @@ async function awaitReady() {
           const file = path.basename(source);
           const outputs = episodeFiles.map(name => ({ role: "document" as const,
             label: file + " · " + name, path: path.join(result.directory, name) }));
+          if (api.status !== "skipped") outputs.push(...apiFiles.map(name => ({ role: "document" as const,
+            label: file + " · " + name, path: path.join(api.directory, name) })));
           for (const item of [{ role: "footage" as const, label: file, path: source }, ...outputs]) {
             if (!resources.some(r => r.path === item.path && r.role === item.role)) resources.push(item);
           }
           return current;
         });
         emit("dashboard:changed", dashboard);
-        return result;
+        return { directory: result.directory, reused: result.reused, api };
       } finally { transcribingEpisode = false; activeOperations--; }
     });
     const notesRoot = path.join(os.homedir(), "Library/Group Containers/group.com.apple.notes");
@@ -765,7 +773,6 @@ async function awaitReady() {
     handle("editsFinalShare:cancel", (token: unknown) => share.cancel(textArgument(token)));
     app.once("will-quit", () => session.invalidate());
   }
-  const meeting = new MeetingNotes(new MeetingCreditGuard(root));
   if (!fixture) {
     const shorts = callShortsSource(
       app.isPackaged ? path.join(os.homedir(), "side/reels-dashboard") : app.getAppPath(),

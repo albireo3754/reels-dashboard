@@ -150,3 +150,5 @@
 Mac 앱에서 유튜브 본편 카드의 **원본 전사**를 누른다. 연결된 촬영 영상이 있으면 먼저 선택할 수 있고, 새 파일을 선택하면 성공 시 같은 카드의 촬영본으로 연결한다. 캐시된 MLX Whisper 모델로 한국어를 전사해 전체 세그먼트와 단어 시각이 있는 `transcript.json`, 원본 상대 초 단위의 `word/start/end/p` 배열인 `words.json`, 사람이 읽을 시간대별 대본 `transcript.md`를 카드의 로컬 자료로 연결한다.
 
 `EP번호/source/`에 있는 영상은 같은 회차의 `work/`에 결과를 둔다. 다른 구조에서는 Mac 폴더 선택창에서 작업 폴더를 지정한다. 기존 결과가 있으면 새 원본의 결과는 `work/원본전사/` 아래에서 구분한다. 같은 원본 버전과 작업 폴더로 다시 실행하면 저장된 결과를 사용한다.
+
+Whisper 전사 뒤에는 회의록과 같은 OpenAI 크레딧 보호(`docs/meeting-notes.md`)를 거쳐 `gpt-transcribe`로 같은 원본을 한 번 더 전사한다. 이 모델은 단어 시각을 돌려주지 않으므로(`verbose_json` 미지원), API 문장을 글자 단위 띠 정렬로 Whisper 단어 시각에 맞춰 붙인다. 결과는 `transcript.api.json`(API 원문, 토큰별 `word/start/end/match`. `match`는 Whisper 글자와 같은 비율이고 0이면 앞뒤 사이로 보간한 시각)과 문장별 시간대 대본 `transcript.api.md`이며 같은 카드에 연결한다. 컷 경계는 계속 `words.json`을 쓰고, API 결과는 고유명사·자막 문구를 고칠 때 대조한다. 크레딧이 꺼져 있거나(`REELS_MEETING_API_ENABLED`, `exclusiveSpend`) 요청이 실패하면 Whisper 결과만 연결하고 카드에 이유를 보여 준다. 같은 원본 버전에 API 결과가 있으면 다시 호출하지 않으며, 작업 폴더의 기존 파일은 덮어쓰지 않는다.
