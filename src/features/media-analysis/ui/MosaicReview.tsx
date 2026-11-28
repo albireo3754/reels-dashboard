@@ -92,7 +92,10 @@ export function MosaicReview({
             }
           }}
         >
-          <img src={image} alt="분석 이미지" draggable={false} />
+          <img src={image} alt="분석 이미지" draggable={false} onError={() => {
+            setImage("");
+            setError("분석 이미지를 읽지 못했어요.");
+          }} />
           {regions.map((r, i) => (
             // 위치·크기는 영역마다 다른 데이터라 inline으로 둔다. 색·두께는 CSS.
             <button

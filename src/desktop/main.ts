@@ -1,6 +1,10 @@
+import { blogPublishWebhook } from "./blog-publish-webhook";
+import { blogBookingChecker } from "./scheduled-blog-publications";
 import { AnalysisSelection } from "./analysis-selection";
 import { EditsAutomation } from "../features/edits-automation";
 import { EditsNativeClient } from "./edits-native";
+import { EditsFinalShare } from "./edits-final-share";
+import { EditsShareSession } from "./edits-share-session";
 import { watch as watchFiles } from "node:fs";
 import { CoverPreferencesStore } from "../shared/lib/cover-preferences";
 import { PlanningStore } from "../shared/lib/planning-store";
@@ -33,10 +37,12 @@ import {
   shell,
   protocol,
   nativeImage,
-  Notification,
   powerMonitor,
+  Notification,
 } from "electron";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   mkdir,
   mkdtemp,
@@ -46,7 +52,12 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import { syncSnapshot } from "./sync";
+import { MeetingCreditGuard } from "./meeting-credit";
+import { callShortsSource } from "./call-shorts";
+import { MeetingNotes, meetingContext } from "./meeting-notes";
 import { callNotesPrefixSchema, recentNotesRecordings, withImportedCallNotes } from "./notes-recordings";
+import { transcribeEpisode, episodeFiles, episodeWorkDir } from "./episode-transcription";
+import { isYoutubeEpisode, isEpisodeVideo } from "../shared/episode-transcription";
 import { transcribeLocalCallRecordings } from "./call-shorts-local-stt";
 import { Workbench, PREVIEW_URL } from "./workbench";
 import { TerminalSettingStore, resolveTerminalSetting } from "./terminal-setting";
@@ -433,20 +444,30 @@ async function awaitReady() {
     changed: (project) => emit("agent:project-changed", project),
     renderStarted: (job) => emit("agent:render-started", job),
   });
+  const runPreview = promisify(execFile);
+  const mediaRuntime = app.isPackaged
+    ? path.join(process.resourcesPath, "editor-runtime")
+    : path.join(app.getAppPath(), "native/editor-engine/.build/runtime");
   const boardMedia = new BoardMedia(
     contentLibrary,
     path.join(root, "board-media"),
-    app.isPackaged
-      ? path.join(process.resourcesPath, "editor-runtime")
-      : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+    mediaRuntime,
     logs,
-    async (file, width) =>
-      (
-        await nativeImage.createThumbnailFromPath(file, {
-          width,
-          height: width,
-        })
-      ).toDataURL(),
+    async (file, maxSize) => {
+      const scale = `scale='min(${maxSize},iw)':'min(${maxSize},ih)':force_original_aspect_ratio=decrease:reset_sar=1`;
+      const { stdout } = await runPreview(
+        path.join(mediaRuntime, "bin/ffmpeg"),
+        [
+          "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe",
+          "-threads", "1", "-i", file, "-map", "0:V:0",
+          "-filter_threads", "1", "-vf", scale, "-frames:v", "1",
+          "-pix_fmt", "rgba", "-c:v", "png", "-threads", "1", "-f", "image2pipe", "pipe:1",
+        ],
+        { encoding: "buffer", timeout: 15_000, maxBuffer: 16 * 1024 ** 2 },
+      );
+      if (!stdout.length) throw new Error("미리보기 이미지를 읽을 수 없어요.");
+      return `data:image/png;base64,${stdout.toString("base64")}`;
+    },
   );
   const editor: EditorBridge = fixture ? demo.editor : editorService;
   const cardNews = new CardNewsService({
@@ -514,6 +535,7 @@ async function awaitReady() {
   let queue: Promise<unknown> = Promise.resolve();
   let activeOperations = 0;
   const shutdown = new ShutdownSequence();
+  let stopBlogSync: (() => void) | undefined;
   // The dashboard window may already be destroyed (only editor windows left, or
   // none at all), so dialogs fall back to no parent instead of a dead window.
   const messageBox = (options: Electron.MessageBoxSyncOptions) => {
@@ -600,6 +622,7 @@ async function awaitReady() {
       })
     )
       return;
+    stopBlogSync?.();
     workflowNotifications.dispose();
     for (const toast of workflowToasts) toast.close();
     workflowToasts.clear();
@@ -641,6 +664,51 @@ async function awaitReady() {
       return fn(...args);
     });
   if (!fixture && process.platform === "darwin") {
+    let transcribingEpisode = false;
+    handle("episodeTranscription:run", async (id: string, linkedSource?: string) => {
+      agentSession.assertWritable();
+      if (transcribingEpisode) throw new Error("다른 회차 원본을 전사 중이에요.");
+      transcribingEpisode = true;
+      activeOperations++;
+      try {
+        const project = (await store.load()).projects.find(p => p.id === id);
+        if (!project || !isYoutubeEpisode(project)) throw new Error("유튜브 회차 카드를 선택해 주세요.");
+        let source: string;
+        if (linkedSource !== undefined) {
+          const checked = await contentLibrary.resolveMedia(id, linkedSource);
+          if (checked.role !== "footage" || !checked.info.isFile()) throw new Error("연결된 촬영 원본을 선택해 주세요.");
+          source = checked.path;
+        } else {
+          const picked = await dialog.showOpenDialog(window, { title: "회차에 연결하고 전사할 촬영 원본",
+            properties: ["openFile"], filters: [{ name: "촬영 영상", extensions: ["mov", "mp4", "m4v"] }] });
+          if (picked.canceled || !picked.filePaths[0]) return null;
+          source = await realpath(picked.filePaths[0]);
+        }
+        if (!isEpisodeVideo(source)) throw new Error("MOV, MP4 또는 M4V 촬영 원본을 선택해 주세요.");
+        let directory = episodeWorkDir(source);
+        if (!directory) {
+          const picked = await dialog.showOpenDialog(window, { title: "이 회차의 전사 결과를 저장할 작업 폴더",
+            defaultPath: path.dirname(source), properties: ["openDirectory", "createDirectory"] });
+          if (picked.canceled || !picked.filePaths[0]) return null;
+          directory = await realpath(picked.filePaths[0]);
+        }
+        const result = await transcribeEpisode(source, directory);
+        const dashboard = await store.update(current => {
+          const card = current.projects.find(p => p.id === id);
+          if (!card) throw new Error("전사 중 회차 카드가 삭제됐어요. 결과는 작업 폴더에 저장했어요.");
+          const resources = card.resources ??= [];
+          const file = path.basename(source);
+          const outputs = episodeFiles.map(name => ({ role: "document" as const,
+            label: file + " · " + name, path: path.join(result.directory, name) }));
+          for (const item of [{ role: "footage" as const, label: file, path: source }, ...outputs]) {
+            if (!resources.some(r => r.path === item.path && r.role === item.role)) resources.push(item);
+          }
+          return current;
+        });
+        emit("dashboard:changed", dashboard);
+        return result;
+      } finally { transcribingEpisode = false; activeOperations--; }
+    });
     const notesRoot = path.join(os.homedir(), "Library/Group Containers/group.com.apple.notes");
     const notesOutput = path.join(root, "call-shorts-notes");
     let runningNotes = false;
@@ -659,6 +727,68 @@ async function awaitReady() {
       if (found !== expected || await shell.openPath(found))
         throw new Error("로컬 전사 폴더를 열 수 없어요.");
     });
+    const session = new EditsShareSession(powerMonitor);
+    const share = new EditsFinalShare(root, editsNative,
+      async (id) => (await store.load()).projects.find((project) => project.id === id), session);
+    const textArgument = (value: unknown) => {
+      if (typeof value !== "string" || !value || value.length > 256) throw new Error("Invalid Edits Share argument");
+      return value;
+    };
+    handle("editsFinalShare:connectionStatus", () => shutdown.track(async (): Promise<import("../shared/edits-final-share").EditsConnectionStatus> => {
+      try {
+        const status = await editsNative.invoke("status", {});
+        if (!status || [status.trusted, status.screenCaptureAllowed, status.installed, status.running]
+          .some((value) => typeof value !== "boolean")) return { state: "unavailable" };
+        return { state: "checked", accessibility: status.trusted, screenRecording: status.screenCaptureAllowed,
+          installed: status.installed, running: status.running,
+          screen: session.blocked || status.screenLocked === true ? "locked"
+            : status.screenLocked === false ? "unlocked" : "unknown" };
+      } catch {
+        return { state: "unavailable" };
+      }
+    }));
+    handle("editsFinalShare:openPermissionSettings", (pane: unknown) => {
+      const anchor = pane === "accessibility" ? "Privacy_Accessibility"
+        : pane === "screen-recording" ? "Privacy_ScreenCapture" : null;
+      if (!anchor) throw new Error("Invalid Edits permission pane");
+      if (session.blocked) throw new Error("Unlock the Mac before opening System Settings");
+      return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`);
+    });
+    handle("editsFinalShare:preview", (id: unknown) =>
+      shutdown.track(() => share.preview(textArgument(id))));
+    handle("editsFinalShare:applyCaption", (id: unknown, token: unknown, caption: unknown) =>
+      shutdown.track(() => share.applyCaption(textArgument(id), textArgument(token), caption)));
+    handle("editsFinalShare:confirm", (id: unknown, token: unknown) =>
+      shutdown.track(() => share.confirm(textArgument(id), textArgument(token))));
+    handle("editsFinalShare:recheck", (id: unknown) =>
+      shutdown.track(() => share.recheck(textArgument(id))));
+    handle("editsFinalShare:cancel", (token: unknown) => share.cancel(textArgument(token)));
+    app.once("will-quit", () => session.invalidate());
+  }
+  const meeting = new MeetingNotes(new MeetingCreditGuard(root));
+  if (!fixture) {
+    const shorts = callShortsSource(
+      app.isPackaged ? path.join(os.homedir(), "side/reels-dashboard") : app.getAppPath(),
+      root,
+      path.join(app.isPackaged ? path.join(process.resourcesPath, "editor-runtime") : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"), "bin/ffprobe"),
+      !backgroundQA && process.env.REELS_NOTES_AUTOMATION_DISABLED !== "1" && process.platform === "darwin",
+    );
+    app.once("will-quit", shorts.stop);
+    handle("callShorts:status", shorts.status);
+    handle("meetingNotes:credits", () => meeting.credits());
+    handle("meetingNotes:transcribe", async (raw: unknown) => {
+      const context = meetingContext.parse(raw);
+      const host = liveWindow(window);
+      if (!host) return null;
+      const result = await dialog.showOpenDialog(host, {
+        title: "OpenAI로 전사할 음성·영상",
+        properties: ["openFile"],
+        filters: [{ name: "음성·영상", extensions: ["wav", "m4a", "mp3", "mp4", "mov", "m4v", "webm", "ogg", "flac"] }],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      return meeting.transcribe(result.filePaths[0], context);
+    });
+    handle("meetingNotes:summarize", (input: unknown) => meeting.summarize(input));
   }
   handle("executionLogs:list", () => logs.list());
   handle("workflow:request", (action, input) => requestWorkflow(workflowAction.parse(action), input));
@@ -1187,6 +1317,53 @@ async function awaitReady() {
       (error: unknown) => console.warn("[cli-install] failed", error instanceof Error ? error.message : error),
     );
   workflowNotifications.start();
+  if (!fixture && !backgroundQA) {
+    let timer: NodeJS.Timeout | undefined;
+    let checking = false;
+    let catchUp = true;
+    const webhook = blogPublishWebhook(store);
+    const tick = blogBookingChecker(
+      store,
+      input => shutdown.track(() => {
+        agentSession.assertWritable();
+        return contentLibrary.setPublication(input);
+      }),
+      { published: webhook.enqueue },
+    );
+    const checkBookings = async () => {
+      if (checking || shutdown.started) return;
+      checking = true;
+      clearTimeout(timer);
+      const everything = catchUp;
+      catchUp = false;
+      let wakeAt = Infinity;
+      try {
+        wakeAt = await tick(Date.now(), everything);
+      } catch (error) {
+        console.warn("[blog-publications]", error instanceof Error ? error.message : error);
+      }
+      try {
+        await webhook.flush(Date.now(), everything);
+      } catch (error) {
+        console.warn("[blog-webhook]", error instanceof Error ? error.message : error);
+      } finally {
+        checking = false;
+        // At most a minute apart, so cards changed by any session are picked up.
+        if (!shutdown.started)
+          timer = setTimeout(checkBookings, Math.min(60_000, Math.max(1_000, wakeAt - Date.now())));
+      }
+    };
+    const resumeBookings = () => {
+      catchUp = true;
+      void checkBookings();
+    };
+    powerMonitor.on("resume", resumeBookings);
+    stopBlogSync = () => {
+      clearTimeout(timer);
+      powerMonitor.off("resume", resumeBookings);
+    };
+    void checkBookings();
+  }
   // Catch-up after the app was closed or the Mac slept: tick at start, on resume/unlock and every minute.
   scheduler?.start();
   powerMonitor.on("resume", () => void scheduler?.wake());
@@ -1210,7 +1387,13 @@ async function awaitReady() {
       forms: { request: requestWorkflow },
       analysis,
       analysisSelection: new AnalysisSelection(store, analysis, path.join(app.isPackaged ? path.join(process.resourcesPath, "editor-runtime") : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"), "bin/ffmpeg")),
-      blog: { extract: extractBlog, results: () => blogResults.list(), link: (directory) => blogResults.register(directory), unlink: (id) => blogResults.remove(id) },
+      blog: {
+        publish: (input) => shutdown.track(() => canonicalEditor.publishSaved(input)),
+        extract: extractBlog,
+        results: () => blogResults.list(),
+        link: (directory) => blogResults.register(directory),
+        unlink: (id) => blogResults.remove(id),
+      },
       blogComments,
       scheduler: scheduler && {
         get: (input) => scheduler!.getSchedules(input),

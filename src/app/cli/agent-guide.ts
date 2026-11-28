@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 /**
- * The text of skills/reels-cli/SKILL.md. scripts/build-desktop.mjs replaces this
+ * The text of skills/reels-cli/SKILL.md. scripts/build-cli.mjs replaces this
  * name with the file's contents when it builds dist-cli/reels.mjs, so the bundle
  * needs no repository; from source it is undefined and the file is read instead.
  */

@@ -84,6 +84,12 @@ select.card-news-saved {
   height: 100%;
   object-fit: contain;
 }
+.card-news-screen .preview-image-placeholder {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
 .card-news-screen video {
   position: absolute;
   inset: 0;

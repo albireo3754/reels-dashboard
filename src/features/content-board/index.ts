@@ -1,4 +1,4 @@
-export { ContentMediaCard, StageProgress } from "./ui/ContentMediaCard";
+export { ContentMediaCard, MediaExplorer, StageProgress } from "./ui/ContentMediaCard";
 export { BoardToolbar } from "./ui/BoardToolbar";
 export {
   defaultBoardQuery,

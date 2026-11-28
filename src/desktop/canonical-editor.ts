@@ -4,6 +4,8 @@ import {startCanonicalEditor} from "../app/blog-editor/server";
 import type {EditorConfig} from "../app/blog-editor/store";
 import type {CanonicalEditorTab} from "../shared/blog";
 import {readBlogProjects,scanBlogProjects} from "./blog-projects";
+import {createBlogPublisher} from "./blog-publisher";
+import type {BlogPublishCliInput,BlogPublishLaunch,BlogPublishRequest} from "../shared/blog-publication";
 
 /** The one external page an embedded editor may open (the sticker help link). */
 export const CANONICAL_EDITOR_HELP_URL="https://help.naver.com/service/5593/contents/15529?lang=ko";
@@ -38,11 +40,21 @@ const originOf=(url:string|undefined)=>{
 export class DesktopCanonicalEditor{
   private editors=new Map<string,ProjectEditor>();
   private releases=new Map<string,ReturnType<typeof setTimeout>>();
+  private publish:ReturnType<typeof createBlogPublisher>;
   /** `background`: proceed without dialogs (background QA; see main.ts for the stubbed-dialog QA switch). */
-  constructor(private root:string,private webRoot:string,private background:boolean){}
+  constructor(private root:string,private webRoot:string,private background:boolean){
+    this.publish=createBlogPublisher(root);
+  }
   async projects(){return (await readBlogProjects(this.root)).map(({config:_config,...row})=>row);}
   /** Content cards that point at a manuscript but cannot be listed, with the reason. */
   async issues(){return (await scanBlogProjects(this.root)).issues;}
+  publishSaved({projectId,mode,scheduledAt}:BlogPublishCliInput){
+    if(mode==="scheduled"){
+      if(!scheduledAt)throw new Error("예약 발행에는 날짜와 시간이 필요해요.");
+      return this.publish(projectId,{mode,scheduledAt});
+    }
+    return this.publish(projectId,{mode});
+  }
   /**
    * Starts (or reuses) the project's server and returns what the renderer puts in its tab.
    * A changed connection is refused while the project has an embedded frame in `contents`;
@@ -58,7 +70,10 @@ export class DesktopCanonicalEditor{
       await this.drop(projectId,editor);
       editor=undefined;
     }
-    if(!editor){editor=new ProjectEditor(project.config,this.webRoot);this.editors.set(projectId,editor);}
+    if(!editor){
+      editor=new ProjectEditor(project.config,this.webRoot,request=>this.publish(projectId,request,{canon:project.config.canon,revision:request.revision}));
+      this.editors.set(projectId,editor);
+    }
     return {projectId,title:project.title,url:await editor.open()};
   }
   /**
@@ -138,7 +153,11 @@ class ProjectEditor{
   private handle?:Awaited<ReturnType<typeof startCanonicalEditor>>;
   private opening?:Promise<string>;
   readonly connection:string;
-  constructor(private config:EditorConfig,private webRoot:string){this.connection=JSON.stringify(config);}
+  constructor(
+    private config:EditorConfig,
+    private webRoot:string,
+    private publish:(request:BlogPublishRequest)=>Promise<BlogPublishLaunch>,
+  ){this.connection=JSON.stringify(config);}
   get origin(){return this.handle?.url;}
   /** Starting: a release must not close the server under it. */
   get busy(){return !!this.opening;}
@@ -149,7 +168,7 @@ class ProjectEditor{
   }
   private async openOnce(){
     if(!this.handle){
-      this.handle=await startCanonicalEditor({...this.config,port:0},this.webRoot,captureMarkupReview,text=>clipboard.writeText(text),{desktopFrame:true});
+      this.handle=await startCanonicalEditor({...this.config,port:0},this.webRoot,captureMarkupReview,text=>clipboard.writeText(text),{desktopFrame:true,publish:this.publish});
     }
     return this.handle.url+"/?blogEditor=1";
   }

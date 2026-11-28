@@ -19,7 +19,13 @@ import EditsAXMac
             id = Wire.requestID(in: input)
             let request = try Wire.Request(data: input)
             let result = try await HostedRequest.execute(request, observe: { MacParentHost.observe() }) { authorized in
-                try await Engine(backend: MacBackend()).execute(authorized)
+                let backend = MacBackend()
+                switch authorized.operation {
+                case "final-share-preview", "final-share-caption", "final-share-confirm", "final-share-recheck":
+                    return try await FinalShare(backend: backend).execute(authorized, observation: MacStatus.finalShareObservation)
+                default:
+                    return try await Engine(backend: backend).execute(authorized)
+                }
             }
             response = Wire.response(id: request.id, result: result)
         } catch let error as AXFailure {

@@ -12,7 +12,7 @@ public struct MacElement: Hashable {
     public func hash(into hasher: inout Hasher) { hasher.combine(CFHash(ax)) }
 }
 
-@MainActor public final class MacBackend: AccessibilityBackend {
+@MainActor public final class MacBackend: FinalShareBackend {
     public typealias Element = MacElement
     private let system = AXUIElementCreateSystemWide()
 
@@ -223,22 +223,80 @@ public struct MacElement: Hashable {
         for event in events { event.postToPid(pid); Thread.sleep(forTimeInterval: 0.01) }
     }
 
+    public func finalShareOnConsole() -> Bool { MacStatus.finalShareOnConsole() }
+
+    public func finalShareWindow(pid: Int32) throws -> MacElement? {
+        let app = MacElement(ax: AXUIElementCreateApplication(pid))
+        guard let window = try element(copy(app, kAXFocusedWindowAttribute)), finalShareOwns(pid: pid, element: window) else { return nil }
+        return window
+    }
+
+    public func finalShareOwns(pid: Int32, element: MacElement) -> Bool {
+        var owner: pid_t = 0
+        return AXUIElementGetPid(element.ax, &owner) == .success && owner == pid
+    }
+
+    public func finalShareWindowIdentity(pid: Int32, window: MacElement) throws -> (id: UInt32, launch: Date) {
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              app.bundleURL?.path == EditsApp.path, app.bundleIdentifier == EditsApp.bundleId,
+              let launch = app.launchDate, window == (try finalShareWindow(pid: pid)),
+              let bounds = try frame(window), bounds.valid,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            throw AXFailure("FINAL_SHARE_WINDOW", "The exact Edits window is not visible")
+        }
+        let matches = windows.compactMap { entry -> UInt32? in
+            guard (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+                  (entry[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let raw = entry[kCGWindowBounds as String] as? [String: Double],
+                  let rect = CGRect(dictionaryRepresentation: raw as CFDictionary),
+                  matchesFrame(rect, bounds) else { return nil }
+            return (entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value
+        }
+        guard matches.count == 1, let id = matches.first, id != 0 else {
+            throw AXFailure("FINAL_SHARE_WINDOW", "The visible Edits window is missing or ambiguous")
+        }
+        return (id, launch)
+    }
+
+    public func finalShareScreenshot(pid: Int32, window: MacElement) async throws -> Screenshot {
+        try await capture(pid: pid, window: window)
+    }
+
+    public func finalShareLink(_ element: MacElement) throws -> String? {
+        let value = try copy(element, kAXURLAttribute)
+        return (value as? URL)?.absoluteString ?? (value as? String)
+    }
+
     public func screenshot(pid: Int32) async throws -> Screenshot {
         guard CGPreflightScreenCaptureAccess() else {
             throw AXFailure("SCREEN_CAPTURE_PERMISSION_REQUIRED", "Screen capture permission is required")
         }
         let app = MacElement(ax: AXUIElementCreateApplication(pid))
         let focusedWindow = try element(copy(app, kAXFocusedWindowAttribute))
-        let mainWindow = try focusedWindow ?? element(copy(app, kAXMainWindowAttribute))
-        guard let focusedWindow = mainWindow,
-              let axFrame = try frame(focusedWindow) else { throw AXFailure("AX_TARGET_NOT_FOUND", "Exact Edits window is unavailable") }
+        guard let window = try focusedWindow ?? element(copy(app, kAXMainWindowAttribute)) else {
+            throw AXFailure("AX_TARGET_NOT_FOUND", "Exact Edits window is unavailable")
+        }
+        return try await capture(pid: pid, window: window)
+    }
+
+    private func matchesFrame(_ rect: CGRect, _ expected: Rect) -> Bool {
+        abs(rect.minX - expected.x) < 2 && abs(rect.minY - expected.y) < 2 &&
+        abs(rect.width - expected.width) < 2 && abs(rect.height - expected.height) < 2
+    }
+
+    private func capture(pid: Int32, window: MacElement) async throws -> Screenshot {
+        guard CGPreflightScreenCaptureAccess() else {
+            throw AXFailure("SCREEN_CAPTURE_PERMISSION_REQUIRED", "Screen capture permission is required")
+        }
+        guard let axFrame = try frame(window) else {
+            throw AXFailure("AX_TARGET_NOT_FOUND", "Exact Edits window is unavailable")
+        }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
             let windows = content.windows.filter { window in
                 window.owningApplication?.processID == pid && window.owningApplication?.bundleIdentifier == EditsApp.bundleId &&
                 window.windowLayer == 0 && window.isOnScreen &&
-                abs(window.frame.minX - axFrame.x) < 2 && abs(window.frame.minY - axFrame.y) < 2 &&
-                abs(window.frame.width - axFrame.width) < 2 && abs(window.frame.height - axFrame.height) < 2
+                matchesFrame(window.frame, axFrame)
             }
             guard windows.count == 1, let window = windows.first else {
                 throw AXFailure("AX_TARGET_NOT_FOUND", "Edits window is missing or ambiguous in screen capture")

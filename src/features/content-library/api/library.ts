@@ -173,7 +173,10 @@ export class ContentLibrary {
   }
 
   async get(projectId: string) {
-    const dashboard = await this.store.load();
+    return this.describe(projectId, await this.store.load());
+  }
+
+  private async describe(projectId: string, dashboard: Dashboard) {
     const project = dashboard.projects.find((p) => p.id === projectId);
     if (!project)
       throw new Error("CONTENT_NOT_FOUND: 등록한 콘텐츠를 찾지 못했어요.");
@@ -296,7 +299,7 @@ export class ContentLibrary {
       return current;
     }, input.expectedUpdatedAt);
     this.changed(dashboard);
-    return this.get(input.projectId);
+    return this.describe(input.projectId, dashboard);
   }
 
   async setSourceBoard(value: SetSourceBoardInput) {

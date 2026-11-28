@@ -228,7 +228,7 @@ test("tools list and schemas match the shared definitions and the real MCP serve
       const { tools } = await client.listTools();
       assert.deepEqual(
         tools.map((tool) => tool.name).sort(),
-        [...toolNames].sort(),
+        toolNames.filter((name) => !("cliOnly" in toolDefinitions[name])).sort(),
       );
       for (const tool of tools) {
         const detail = await cli(root, ["tools", tool.name]);
@@ -1764,14 +1764,29 @@ test("a folder resource is refused as a folder, and the files inside it copy", a
   }
 });
 
-function spawnCli(
+// Exercise the shipped entry point in fresh processes, building current source once per suite.
+let cliBundle: Promise<string> | undefined;
+let cliBuildDir: string | undefined;
+test.after(async () => {
+  if (cliBuildDir) await rm(cliBuildDir, { recursive: true, force: true });
+});
+async function testCliBundle() {
+  cliBuildDir = await temporaryRoot("reels-cli-build-");
+  const file = path.join(cliBuildDir, "reels.mjs");
+  // @ts-expect-error Shared with the plain Node desktop build.
+  const { buildCli } = await import("../../scripts/build-cli.mjs");
+  await buildCli(file);
+  return file;
+}
+
+async function spawnCli(
   root: string,
   args: string[],
   { holdStdin = false }: { holdStdin?: boolean } = {},
 ) {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "src/app/cli/main.ts", ...args],
+    [await (cliBundle ??= testCliBundle()), ...args],
     {
       cwd: process.cwd(),
       env: { ...process.env, REELS_USER_DATA: root },
@@ -1793,25 +1808,30 @@ function spawnCli(
   return { child, done, stderr: () => stderr };
 }
 
+async function runCliProcess(root: string, args: string[]) {
+  const running = await spawnCli(root, args);
+  return running.done;
+}
+
 test("the real process reports exit codes and keeps large output whole", async () => {
   await offlineRoot(async (root) => {
-    const status = await spawnCli(root, ["status"]).done;
+    const status = await runCliProcess(root, ["status"]);
     assert.equal(status.code, 0);
     assert.equal(JSON.parse(status.stdout).data.app.online, false);
-    const offline = await spawnCli(root, ["get-app-state"]).done;
+    const offline = await runCliProcess(root, ["get-app-state"]);
     assert.equal(offline.code, 3);
     assert.equal(JSON.parse(offline.stdout).error.code, "APP_OFFLINE");
-    const usage = await spawnCli(root, []).done;
+    const usage = await runCliProcess(root, []);
     assert.equal(usage.code, 2);
   });
   const text = "가".repeat(1024 * 1024);
   await withApp(
     async () => ({ text }),
     async (root) => {
-      const large = await spawnCli(root, ["get-app-state"]).done;
+      const large = await runCliProcess(root, ["get-app-state"]);
       assert.equal(large.code, 0);
       assert.equal(JSON.parse(large.stdout).data.text, text);
-      const closed = spawnCli(root, ["get-app-state"]);
+      const closed = await spawnCli(root, ["get-app-state"]);
       closed.child.stdout.destroy();
       const result = await closed.done;
       assert.doesNotMatch(result.stderr, /EPIPE|at /);
@@ -1826,7 +1846,7 @@ for (const [signal, code] of [
 ] as const)
   test(`${signal} stops waiting and leaves the render running`, async () => {
     await withApp(renderApp([job("running")]), async (root, calls) => {
-      const running = spawnCli(root, [...renderArgs, "--wait"]);
+      const running = await spawnCli(root, [...renderArgs, "--wait"]);
       while (!running.stderr().includes("waiting"))
         await new Promise((resolve) => setTimeout(resolve, 20));
       running.child.kill(signal);
@@ -1857,7 +1877,7 @@ for (const [signal, code] of [
 ] as const) {
   test(`${signal} during a write leaves one document saying the outcome is unknown`, async () => {
     await withApp(hang, async (root, calls) => {
-      const running = spawnCli(root, updateArgs);
+      const running = await spawnCli(root, updateArgs);
       await untilCalled(calls);
       running.child.kill(signal);
       const result = await running.done;
@@ -1876,7 +1896,7 @@ for (const [signal, code] of [
 
   test(`${signal} during a read is safe to repeat`, async () => {
     await withApp(hang, async (root, calls) => {
-      const running = spawnCli(root, [
+      const running = await spawnCli(root, [
         "get-project",
         "--project-id",
         projectId,
@@ -1895,7 +1915,7 @@ for (const [signal, code] of [
 
 test("a signal before the first answer of start-render --wait is not reported as started", async () => {
   await withApp(hang, async (root, calls) => {
-    const running = spawnCli(root, [...renderArgs, "--wait"]);
+    const running = await spawnCli(root, [...renderArgs, "--wait"]);
     await untilCalled(calls);
     running.child.kill("SIGTERM");
     const result = await running.done;
@@ -1966,7 +1986,7 @@ test("--wait-timeout stays inside what a timer can hold", async () => {
     assert.equal(calls.length, 0);
   });
   await withApp(renderApp([job("running")]), async (root) => {
-    const running = spawnCli(root, [
+    const running = await spawnCli(root, [
       "get-render-job",
       "--job-id",
       jobId,

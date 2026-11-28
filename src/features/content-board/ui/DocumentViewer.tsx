@@ -215,7 +215,22 @@ function BlogShadow({ html, label }: { html: string; label: string }) {
   useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
-    (el.shadowRoot ?? el.attachShadow({ mode: "open" })).innerHTML = html;
+    const shadow = el.shadowRoot ?? el.attachShadow({ mode: "open" });
+    const replaceMissingPhoto = (img: HTMLImageElement) => {
+      const placeholder = document.createElement("span");
+      placeholder.className = "photo-placeholder";
+      placeholder.textContent = img.alt ? `${img.alt} · 사진을 볼 수 없어요` : "사진을 볼 수 없어요";
+      img.replaceWith(placeholder);
+    };
+    const onError = (event: Event) => {
+      if (event.target instanceof HTMLImageElement) replaceMissingPhoto(event.target);
+    };
+    shadow.addEventListener("error", onError, true);
+    shadow.innerHTML = html;
+    for (const img of shadow.querySelectorAll("img")) {
+      if (!img.getAttribute("src") || (img.complete && !img.naturalWidth)) replaceMissingPhoto(img);
+    }
+    return () => shadow.removeEventListener("error", onError, true);
   }, [html]);
   return (
     <div
@@ -241,9 +256,10 @@ header h1{margin:0 0 28px;padding-bottom:20px;border-bottom:1px solid #eee;font-
 article p{margin:0;min-height:1.8em}
 article figure{margin:30px 0}
 article img{display:block;max-width:100%;height:auto;margin:0 auto;background:#f2f2f2}
-article img:not([src]),article img[src=""]{width:100%;aspect-ratio:4/3}
 article .photo-grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-article .photo-grid4 img{width:100%;height:100%;object-fit:cover}
+article .photo-grid4>div{aspect-ratio:4/3;min-width:0}
+article .photo-placeholder{display:grid;place-items:center;padding:12px;aspect-ratio:4/3;background:#f2f2f2;color:#666;text-align:center;font-size:13px}
+article :is(.photo-grid4,.photo-collage-rows) :is(img,.photo-placeholder){width:100%;height:100%;aspect-ratio:auto;object-fit:contain}
 article .price-box,article .visit-card,article .native-card{margin:24px 0;padding:16px 18px;border:1px solid #e5e5e5;border-radius:4px;background:#fafafa;text-align:left}
 article .card-label{margin-bottom:6px;font-weight:700}
 article .source,article .tags{font-size:13px;color:#888}

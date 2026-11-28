@@ -65,7 +65,7 @@ test("initialize and tools/list work over HTTP for both endpoints", async () => 
       const { tools } = await reels.listTools();
       assert.deepEqual(
         tools.map((tool) => tool.name).sort(),
-        Object.keys(toolDefinitions).sort(),
+        Object.entries(toolDefinitions).filter(([, tool]) => !("cliOnly" in tool)).map(([name]) => name).sort(),
       );
       assert.ok(!tools.some((tool) => /delete|shell|move_apply/.test(tool.name)));
     } finally {

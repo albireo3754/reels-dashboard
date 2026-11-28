@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CloseIcon } from "../../../shared/ui/primitives";
+import { PreviewImage } from "../../../shared/ui/PreviewImage";
 import { errorMessage } from "../../../shared/lib/errors";
 import { stickerKey, type StickerAnchor } from "../../../shared/blog-stickers";
 import { PHOTO_ALT_LIMIT, defaultAlt, evidenceImageUrl, evidenceThumbnailUrl, searchEvidence, type EvidenceImage, type EvidenceLibrary, type PhotoInsert } from "../../../shared/blog-evidence";
@@ -66,7 +67,7 @@ export function PhotoPicker({ revision, placements, anchors, target, disabled, o
       </div>
       {picked ? <div className="ce-photo-detail">
         <button className="small ce-photo-back" onClick={() => setPicked(undefined)}>← 목록으로</button>
-        <img src={evidenceImageUrl(picked.id)} alt={picked.description} />
+        <PreviewImage src={evidenceImageUrl(picked.id)} alt={picked.description} />
         <p className="ce-photo-meta">{picked.captureId} · {when(picked)} · <code>{picked.id}</code></p>
         {picked.faceCount > 0 && <p className="ce-photo-note" role="status">얼굴 후보 {picked.faceCount}곳이 있어요. 인물이 보이면 자르거나 모자이크해서 써 주세요.</p>}
         <p>{picked.description}</p>
@@ -82,8 +83,8 @@ export function PhotoPicker({ revision, placements, anchors, target, disabled, o
       </div> : <>
         <ul className="ce-photo-grid" aria-label="분석된 사진">
           {found.slice(0, limit).map(item => <li key={item.id}><button aria-label={`${item.captureId} ${when(item)} 사진 보기`} title={item.description} onClick={() => pick(item)}>
-            <img src={evidenceThumbnailUrl(item.id)} alt="" loading="lazy" decoding="async" />
-            <span>{when(item)}</span>
+            <PreviewImage src={evidenceThumbnailUrl(item.id)} alt="" compact loading="lazy" decoding="async" />
+            <span className="ce-photo-time">{when(item)}</span>
             {used.has(item.id) && <em>본문 사용</em>}
             {item.faceCount > 0 && <i>얼굴 후보</i>}
           </button></li>)}
@@ -94,7 +95,7 @@ export function PhotoPicker({ revision, placements, anchors, target, disabled, o
     </>}
     {!!placements.length && <div className="ce-photo-pending">
       <h3>저장 전 사진 {placements.length}장</h3>
-      <ol>{placements.map((p, i) => <li key={p.id}><img src={evidenceThumbnailUrl(p.imageId)} alt="" /><span>{label(p)}</span>
+      <ol>{placements.map((p, i) => <li key={p.id}><PreviewImage src={evidenceThumbnailUrl(p.imageId)} alt="" compact /><span className="ce-photo-placement">{label(p)}</span>
         <button className="small" aria-label={`사진 ${i + 1} 위치 보기`} onClick={() => onReveal(p.id)}>위치 보기</button>
         <button className="small" aria-label={`사진 ${i + 1} 빼기`} disabled={disabled} onClick={() => onChange(placements.filter(x => x.id !== p.id))}>빼기</button>
       </li>)}</ol>

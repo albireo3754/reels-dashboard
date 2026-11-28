@@ -22,7 +22,7 @@
     "build:native": "node scripts/build-native.mjs && npm run build:edits-native",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/unit/*.test.ts",
+    "test": "sh scripts/test-unit.sh",
     "test:call-shorts": "node --import tsx --test pipelines/call-shorts/tests/*.test.ts",
     "call-shorts": "node --import tsx pipelines/call-shorts/src/cli.ts",
     "test:web": "playwright test --config playwright.web.config.ts",
@@ -41,7 +41,7 @@
     "test:mcp": "REELS_EDITOR_QA=1 playwright test --config playwright.electron.config.ts tests/electron/mcp.spec.ts",
     "workflow": "node --import tsx src/app/workflow/main.ts",
     "start:server": "node --import tsx src/app/workflow/main.ts serve",
-    "test:workflow": "node --import tsx --test tests/unit/workflow*.test.ts",
+    "test:workflow": "sh scripts/test-unit.sh tests/unit/workflow*.test.ts",
     "test:workflow-ui": "npm run build:web && playwright test --config playwright.workflow.config.ts",
     "blog:editor": "node --import tsx src/app/blog-editor/main.ts",
     "forms": "node --import tsx src/app/workflow/forms-cli.ts",
@@ -60,9 +60,11 @@
     "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
     "@opentelemetry/resources": "2.12.0",
     "@opentelemetry/sdk-trace": "2.12.0",
+    "@xmldom/xmldom": "0.8.15",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "croner": "11.0.1",
+    "node-html-parser": "7.0.1",
     "node-pty": "^1.1.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -144,7 +146,10 @@
       "icon": "resources/branding/app.icns",
       "category": "public.app-category.photography",
       "identity": null,
-      "minimumSystemVersion": "15.0"
+      "minimumSystemVersion": "15.0",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "메모의 통화 녹음 폴더에서 새 녹음을 가져와 쇼츠 제작에 사용합니다."
+      }
     },
     "asar": true,
     "asarUnpack": [

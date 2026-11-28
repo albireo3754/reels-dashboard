@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "../../../shared/contracts";
 import type { Planning, PlanningBridge } from "../../../shared/planning";
 import { addDays } from "../../../shared/planning";
-import { finishedBlogRuns, goalChannels, goalChannelLabels, goalPhaseLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalPhase, type WeeklyTargets } from "../../../shared/weekly-goals";
+import { finishedBlogRuns, goalChannels, goalChannelLabels, goalPhaseLabels, weeklyGoalsView, type ChannelQueue, type ChannelWeek, type GoalChannel, type GoalPhase, type WeeklyTargets } from "../../../shared/weekly-goals";
 import { errorMessage } from "../../../shared/lib/errors";
 import { workflowCall } from "../../../shared/workflow-client";
 import { Badge, Button, Notice, Section, SectionHeader } from "../../../shared/ui/primitives";
@@ -32,7 +32,7 @@ const PhaseBadge = ({ phase }: { phase: GoalPhase }) => <Badge tone={phaseTone[p
  * Read-only on channels: it suggests what to book; booking itself happens on the channel and is then
  * recorded on the project. Without a planning bridge (shared view) it renders nothing.
  */
-export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanningSaved }: { api?: PlanningBridge; projects: Project[]; revision: string; onOpenProject?: (projectId: string) => void; onPlanningSaved?: () => void }) {
+export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanningSaved }: { api?: PlanningBridge; projects: Project[]; revision: string; onOpenProject?: (projectId: string, channel: GoalChannel) => void; onPlanningSaved?: () => void }) {
   const [planning, setPlanning] = useState<Planning | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -61,7 +61,7 @@ export function WeeklyGoals({ api, projects, revision, onOpenProject, onPlanning
       />
       {error && <Notice tone="warning">주간 목표를 읽지 못했어요 · {error}</Notice>}
       {view && planning && editing && <TargetEditor api={api} planning={planning} targets={view.targets} onSaved={next => { setPlanning(next); setEditing(false); onPlanningSaved?.(); }} />}
-      {week && <div className="weekly-goal-grid">{week.channels.map(c => <ChannelTile key={c.channel} week={c} onOpenProject={onOpenProject} />)}</div>}
+      {week && <div className="weekly-goal-grid">{week.channels.map(c => <ChannelTile key={c.channel} week={c} onOpenProject={onOpenProject && (id => onOpenProject(id, c.channel))} />)}</div>}
       {view && <BookingQueue channels={view.queue.channels} until={view.queue.until} onOpenProject={onOpenProject} />}
     </Section>
   );
@@ -142,7 +142,7 @@ function QueueRow({ q, onOpenProject }: { q: ChannelQueue; onOpenProject?: (proj
   );
 }
 
-function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQueue[]; until: string; onOpenProject?: (projectId: string) => void }) {
+function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQueue[]; until: string; onOpenProject?: (projectId: string, channel: GoalChannel) => void }) {
   return (
     <section className="booking-queue" aria-label="게시 대기열">
       <h4>게시 대기열 <span>오늘부터 2주 · {dayLabel(addDays(until, -1))}까지 · 검토 끝난 것만</span>
@@ -150,7 +150,7 @@ function BookingQueue({ channels, until, onOpenProject }: { channels: ChannelQue
           <p className="booking-help">블로그 글과 영상을 채널마다 주간 목표의 2배(2주치)까지만 예약해 둬요. 검토가 끝난 것(채널 임시저장·완성본·재업 후보)만 작업 순서대로 빈 날에 제안하고, 14일 뒤로는 제안하지 않아요. 블로그는 blog run을 마친 글(visual_review 통과)과 임시저장한 글을 제안해요. 아직 만드는 글은 ‘제작 중’ 줄에 제목으로 보여요. 검토 대기는 따로 모아 두고 검토를 마치면 제안에 올라와요. 앱은 채널에 직접 예약·게시하지 않아요. 블로그는 발행 예약, 영상은 공개 예약을 한 뒤 프로젝트 게시 상태를 ‘공개 예약’으로 기록하면 ‘예약됨’으로 바뀌어요. 위 타일의 ‘이번 주 예약’은 이번 주 안의 예약(지난 시각 포함), 여기 숫자는 지금 이후 예약이에요.</p>
         </Popover>
       </h4>
-      <div className="booking-rows">{channels.map(q => <QueueRow key={q.channel} q={q} onOpenProject={onOpenProject} />)}</div>
+      <div className="booking-rows">{channels.map(q => <QueueRow key={q.channel} q={q} onOpenProject={onOpenProject && (id => onOpenProject(id, q.channel))} />)}</div>
     </section>
   );
 }

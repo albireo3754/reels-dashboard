@@ -1,12 +1,12 @@
 
 export type Tab =
+  | "shorts"
   | "dashboard"
   | "calendar"
   | "insights"
   | "library"
   | "editor"
   | "cards"
-  | "shorts"
   | "workflow"
   | "logs"
   | "blog"
@@ -21,6 +21,7 @@ type Page = {
 
 /** Navigation label and page heading copy for each workspace screen. */
 export const pages: Record<Tab, Page> = {
+  shorts: { label: "쇼츠", title: "통화 녹음 쇼츠", description: "메모에서 가져온 통화 녹음과 영상 제작 현황을 확인해요." },
   insights: { label: "Instagram 인사이트", title: "게시물 반응과 업로드 시각", description: "계정 통계를 비공개로 수집하고 게시물별 성과와 요일·시간대를 비교해요." },
   calendar: { label: "캘린더", title: "이번 주와 다음 주 게시 일정", description: "Google Calendar 일정과 Linear 할 일로 주간 목표를 확인해요." },
   dashboard: {
@@ -45,7 +46,6 @@ export const pages: Record<Tab, Page> = {
     title: "읽는 속도에 맞춰 이야기를 전해요",
     description: "사진·문구·음악을 구성하고 카드뉴스 릴스를 MP4로 내보내요.",
   },
-  shorts: { label: "쇼츠", title: "통화 녹음 전사", description: "이 Mac에 동기화된 녹음을 확인하고 로컬에서 전사해요." },
   blog: {
     label: "블로그",
     title: "원고와 사진을 함께 살펴봐요",

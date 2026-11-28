@@ -9,6 +9,7 @@ import {importSpec} from '../model/import-spec';
 import {blogTerminalContext} from '../model/terminal-context';
 import {BlogTerminal} from './BlogTerminal';
 import {Button,CloseIcon,Notice,Spacer,Toolbar} from '../../../shared/ui/primitives';
+import {PreviewImage} from '../../../shared/ui/PreviewImage';
 import {DocumentIcon} from './icons';
 
 function Rich({text,spans=[]}:{text:string;spans?:BlogSpan[]}) {
@@ -38,8 +39,8 @@ function PreviewBlocks({blocks,api,projectId}:{blocks:BlogBlock[];api:ContentMed
 }
 function Photo({api,projectId,path,alt}:{api:ContentMediaBridge;projectId:string;path:string;alt:string}) {
   const [url,setUrl]=useState(''); const [error,setError]=useState(false);
-  useEffect(()=>{let live=true;setUrl('');setError(false);api.open(projectId,path).then(v=>{if(live && v.kind==='image')setUrl(v.url);}).catch(()=>{if(live)setError(true);});return()=>{live=false;};},[api,projectId,path]);
-  return error?<p>연결된 사진을 읽지 못했어요.</p>:url?<img src={url} alt={alt}/>:<p>사진 불러오는 중…</p>;
+  useEffect(()=>{let live=true;setUrl('');setError(false);api.open(projectId,path).then(v=>{if(live){if(v.kind==='image'&&v.url)setUrl(v.url);else setError(true);}}).catch(()=>{if(live)setError(true);});return()=>{live=false;};},[api,projectId,path]);
+  return error||url?<PreviewImage src={url} alt={alt}/>:<p>사진 불러오는 중…</p>;
 }
 /**
  * Project editors live in this tab as iframes, one per opened project, each on its own

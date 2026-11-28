@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {readBlogProjects,scanBlogProjects} from "../src/desktop/blog-projects";
-import {prepareExternalReview,importExternalReview,reviewStatus,type Selection} from "../src/app/blog-editor/external-review";
+import {activeReviewRequests,prepareExternalReview,importExternalReview,reviewStatus,type Selection} from "../src/app/blog-editor/external-review";
 
 /**
  * Bundle review loop for external executors (Claude Code workflow, Codex subagents).
@@ -12,6 +12,7 @@ import {prepareExternalReview,importExternalReview,reviewStatus,type Selection} 
 const usage=`Usage:
   blog-review.ts projects
   blog-review.ts status <project-id>
+  blog-review.ts active-requests <project-id>
   blog-review.ts prepare <project-id> <new-packet-dir> [--changed | --all | --bundles B1,B2]
   blog-review.ts import <project-id> <packet.json> <result.json> --provider <name> [--run <id>]
 Env: REELS_DASHBOARD_USER_DATA (default: ~/Library/Application Support/Reels Dashboard)`;
@@ -31,6 +32,7 @@ async function main(){
     const {projects,issues}=await scanBlogProjects(userData);
     out={projects:projects.map(p=>({id:p.id,title:p.title,canon:p.config.canon,layout:p.config.layout,review:p.config.review??null,mediaEvidence:p.config.mediaEvidence??null})),issues};
   }
+  else if(command==="active-requests")out=await activeReviewRequests(await project(args[0]));
   else if(command==="status")out=await reviewStatus(await project(args[0]));
   else if(command==="prepare"){
     const [id,dir,...rest]=args;if(!dir)throw new Error(usage);

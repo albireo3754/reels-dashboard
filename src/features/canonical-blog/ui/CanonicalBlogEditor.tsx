@@ -1,5 +1,6 @@
 import { StickerPlanner } from "./StickerPlanner";
 import { PhotoPicker } from "./PhotoPicker";
+import { PreviewImage } from "../../../shared/ui/PreviewImage";
 import { evidenceImageUrl, type PhotoInsert } from "../../../shared/blog-evidence";
 import { movedGap, stickerHtml, stickerKey, type StickerPlacement } from "../../../shared/blog-stickers";
 import {applyFinding,findingApplicability,findingTarget,replaceInlineText} from "../../../shared/review-applicability";
@@ -8,6 +9,8 @@ import {BlogChat,type ChatAttachment} from "./BlogChat";
 import {CHAT_LIMITS,type BlogChatRewrite} from "../../../shared/blog-chat";
 import { FormattingToolbar, type SelectionFormat } from "./FormattingToolbar";
 import { CanonicalSdkReview } from "./CanonicalSdkReview";
+import { BlogPublishDialog } from "./BlogPublishDialog";
+import type { BlogPublishChoice, BlogPublishLaunch } from "../../../shared/blog-publication";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {planInlineProposals,proposalSignature,type InlineProposal} from "../../../shared/inline-review";
 import {safeRuns} from "../../../shared/blog-markup-edit";
@@ -87,6 +90,8 @@ export function CanonicalBlogEditor() {
   // Undo order across bundle and paragraph removals ("삭제 취소" restores the latest).
   const [removals, setRemovals] = useState<{ kind: "bundle" | "paragraph"; id: string }[]>([]);
   const [invalid, setInvalid] = useState<Record<string, string>>({});
+  const invalidRef = useRef(invalid);
+  invalidRef.current = invalid;
   const [typography, setTypography] = useState<
     Record<string, { fontFamily: string; fontSize: number }>
   >({});
@@ -95,6 +100,8 @@ export function CanonicalBlogEditor() {
   const [height, setHeight] = useState(2000);
   const [width, setWidth] = useState(430);
   const [busy, setBusy] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const publishButton = useRef<HTMLButtonElement>(null);
   const [saveState,setSaveState]=useState<"idle"|"saving"|"failed">("idle");
   const [saveRetry,setSaveRetry]=useState<{error:string;retryInMs:number}>();
   // Small, non-blocking: both sides changed a paragraph, or part of a save had to wait.
@@ -525,10 +532,26 @@ export function CanonicalBlogEditor() {
     return()=>{document.removeEventListener("visibilitychange",hide);window.removeEventListener("pagehide",leave);};
   },[live]);
   /** Saves everything now, undoable changes included. */
-  async function flushNow(reason:"manual"|"review"):Promise<CanonicalDocument|undefined>{
+  async function flushNow(reason:"auto"|"manual"|"review"):Promise<CanonicalDocument|undefined>{
     saveReasonRef.current=reason;
     const ok=await autosave.current?.flush(true);
     return ok?docRef.current:undefined;
+  }
+  async function publish(choice: BlogPublishChoice): Promise<BlogPublishLaunch> {
+    if (!titleRef.current.trim()) throw new Error("글 제목을 입력해주세요.");
+    if (Object.keys(invalidRef.current).length) throw new Error("저장할 수 없는 문단을 고친 뒤 다시 요청해주세요.");
+    setBusy(true);
+    try {
+      const requestedTitle = titleRef.current.trim();
+      const saved = await flushNow("auto");
+      if (!saved || waitingSplitRef.current || snapshot(true) || Object.keys(invalidRef.current).length) {
+        throw new Error("정본에 아직 저장되지 않은 변경이 있어요. 저장을 확인하고 다시 요청해주세요.");
+      }
+      if (saved.title !== requestedTitle) throw new Error("글 제목이 바뀌었어요. 최신 제목을 확인하고 다시 요청해주세요.");
+      return await api("publish", { ...choice, revision: saved.revision });
+    } finally {
+      setBusy(false);
+    }
   }
   async function save(reason:"manual"|"review"="manual"): Promise<CanonicalDocument | undefined> {
     if (!doc) return;
@@ -1213,6 +1236,7 @@ export function CanonicalBlogEditor() {
         <button className="primary" aria-label="이 묶음 검토" aria-keyshortcuts="Meta+Enter Control+Enter" title={(dirty?"변경 내용을 먼저 저장한 뒤 검토합니다":"저장된 내용으로 검토합니다")+" (⌘/Ctrl+Enter)"} disabled={busy} onClick={() => void request("selected")}>
           {dirty?"저장 후 이 묶음 검토":"이 묶음 검토"}
         </button>
+        {doc.publishWithHerdr && <button ref={publishButton} disabled={busy} onClick={() => setPublishOpen(true)}>발행하기</button>}
         <Menu label="더 보기" menuLabel="편집 메뉴" items={menuItems} />
         <Popover label="단축키 도움말" className="ce-help">
           <dl>
@@ -1232,6 +1256,10 @@ export function CanonicalBlogEditor() {
           <p className="ui-meta ce-help-path" title={doc.path}>연결된 정본 · {doc.path}</p>
         </Popover>
       </header>
+      {publishOpen && <BlogPublishDialog title={title} onPublish={publish} onClose={() => {
+        setPublishOpen(false);
+        requestAnimationFrame(() => publishButton.current?.focus());
+      }} />}
       {syncNote && <p className="ce-sync-note" role="status"><span>{syncNote}</span> <button className="small" aria-label="알림 닫기" onClick={()=>setSyncNote("")}>닫기</button></p>}
       {markup && photoOpen && <PhotoPicker revision={doc.revision} placements={photos} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changePhotos} onReveal={id=>send({type:"reveal-photo",id})} onClose={()=>setPhotoOpen(false)}/>}
       {markup && stickerOpen && <div id="ce-sticker-planner"><StickerPlanner nativeClipboard={doc.nativeClipboard} placements={stickers} anchors={doc.stickerAnchors??[]} target={stickerTarget} disabled={busy} onTarget={setStickerTarget} onChange={changeStickers} onReveal={id=>send({type:"reveal-sticker",id})} onClose={()=>setStickerOpen(false)}/></div>}
@@ -1338,7 +1366,7 @@ export function CanonicalBlogEditor() {
                 {markup&&<section className="ce-visual-review" aria-label="강조·화면 검수">
                   <strong>{!review.visual||review.visual.status==="unverified"?"화면 미검증":dirty||!review.visualFresh?"화면 재확인 필요":review.visual.status==="pass"?"화면 확인 통과":"강조·화면 수정 필요"}</strong>
                   <p>{!review.visual?"이전 결과에는 실제 화면 검증 근거가 없습니다.":review.visual.status==="unverified"?"실제 화면을 확인하지 않은 서식 제안입니다. 화면 검수를 완료해야 합니다.":dirty||!review.visualFresh?"검토 이후 원고가 바뀌었습니다. 아래 화면은 검토 당시 기록입니다.":review.visual.observation}</p>
-                  {!!review.screenshots?.length&&<details><summary>검토한 화면 보기</summary>{review.screenshots.map(e=><figure key={e.index}><figcaption>{e.width}px</figcaption><img alt={e.width+"px 검토 당시 묶음 화면"} src={"/api/blog/review-image?request="+encodeURIComponent(review.requestId??"")+"&index="+e.index}/></figure>)}</details>}
+                  {!!review.screenshots?.length&&<details><summary>검토한 화면 보기</summary>{review.screenshots.map(e=><figure key={e.index}><figcaption>{e.width}px</figcaption><PreviewImage alt={e.width+"px 검토 당시 묶음 화면"} src={"/api/blog/review-image?request="+encodeURIComponent(review.requestId??"")+"&index="+e.index}/></figure>)}</details>}
                   {review.emphasisDecisions?.map((d,i)=><details key={i}>
                     <summary>{d.phrase} · {d.role}</summary>
                     <p>선택: {d.methods.map(m=>({weight:"굵기",color:"색",background:"배경",size:"크기",marker:"표식",none:"강조 없음"})[m]).join(" · ")} · {({keep:"유지",change:"변경 제안",remove:"제거 제안",unconfirmed:"미확인"})[d.action]}</p>

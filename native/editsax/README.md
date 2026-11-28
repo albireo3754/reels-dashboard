@@ -26,7 +26,9 @@ This recognizes **normal supported hosts**. It does not establish the TCC respon
 
 ## Protocol v2
 
-The envelope uses `protocol: 1`, a bounded string `id`, `operation` and object `args`. Supported operations are `status`, `tree`, `find`, `press`, `set-value`, `menu`, `key`, `drag` and `screenshot`. Native `menu` takes an array such as `["File", "Import Media"]`.
+The envelope uses `protocol: 1`, a bounded string `id`, `operation` and object `args`. The general engine supports `status`, `tree`, `find`, `press`, `set-value`, `menu`, `key`, `drag` and `screenshot`. Native `menu` takes an array such as `["File", "Import Media"]`.
+
+The trusted Dashboard main also calls the dedicated `final-share-preview`, `final-share-confirm` and `final-share-recheck` operations. They use a live session observation from that main process and a specific Edits window. Only confirm can press the final Share button. Recheck reads the previously recorded window for success evidence. See the [Desktop Instagram final share workflow](../../docs/edits-automation.md#desktop-instagram-final-share).
 
 - Requests are limited to 1 MiB and encoded responses to 16 MiB. Diagnostics never include request values.
 - `status` calls `AXIsProcessTrusted()` and `CGPreflightScreenCaptureAccess()` without request/prompt APIs. Missing permission or a stopped app is a successful status result. Only the exact `/Applications/Edits.app` and `com.burbn.basel.mac` process matches; duplicate exact processes are rejected.

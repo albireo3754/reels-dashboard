@@ -46,6 +46,8 @@ The launcher carries the line `# reels-dashboard-managed-cli`. The app writes `~
 
 A tool can be named as `reels_get_project`, `get_project` (the form the guidance text uses) or `get-project`, in every place that takes a tool name.
 
+`reels publish-blog --project-id <ID> --mode now` starts a Herdr task for the project's saved blog manuscript. For a booking, pass `--mode scheduled --scheduled-at <YYYY-MM-DDTHH:MM:SS+09:00>`. The command returns the Herdr terminal and space. Check that task for the verified outcome. See [blog publishing](blog-workspace.md#정본-편집기에서-발행-요청).
+
 ### Text for people
 
 `--plain` belongs to `reels help` and `reels tools` only; it is not a global option, so a tool flag such as `reels photos-search --text` keeps its meaning, and `--plain` on any other command is a usage error (exit 2). The exceptions are `--help` and `--version`, which are read before anything else: `reels --help --plain`, `reels --version --plain` and `reels status --help --plain` ignore `--plain` and print their JSON with exit 0. For help as text use `reels help --plain [<command>]`. Agents should keep reading the JSON forms.

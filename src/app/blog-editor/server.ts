@@ -13,6 +13,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { parseRange } from "../../shared/lib/http-range";
+import { blogPublishRequest, type BlogPublishLaunch, type BlogPublishRequest } from "../../shared/blog-publication";
 import path from "node:path";
 import { CanonicalStore, type EditorConfig } from "./store";
 import { frameScript } from "./frame-script";
@@ -21,12 +22,22 @@ export async function startCanonicalEditor(
   webRoot = path.resolve("dist"),
   capture?: (url:string,bundleIds:string[],directory:string,revision:string)=>Promise<VisualEvidence[]>,
   nativeClipboard?: (text:string)=>void | Promise<void>,
-  deps: {suggest?: SuggestCall; chat?: ChatCall; desktopFrame?: boolean} = {},
+  deps: {
+    suggest?: SuggestCall;
+    chat?: ChatCall;
+    desktopFrame?: boolean;
+    publish?: (request: BlogPublishRequest) => Promise<BlogPublishLaunch>;
+  } = {},
 ) {
   // desktopFrame: the desktop app embeds this page in an iframe of its file:// renderer.
   // Electron 45 accepted only `'self' file:` for that parent (`file://`, an exact file URL and `*` were refused).
   const frameAncestors = deps.desktopFrame ? "'self' file:" : "'self'";
   const store = config.format === "markup" ? new MarkupStore(config,capture?((ids,dir,rev)=>capture("http://127.0.0.1:"+(server.address() as {port:number}).port+"/api/blog/frame",ids,dir,rev)):undefined) : new CanonicalStore(config);
+  const publish = store instanceof MarkupStore ? deps.publish : undefined;
+  const capabilities = {
+    ...(nativeClipboard ? { nativeClipboard: true } : {}),
+    ...(publish ? { publishWithHerdr: true } : {}),
+  };
   await store.load();
   const annotations = config.format === "markup" ? new AnnotationStore(config.canon) : undefined;
   const worker = config.format === "markup" ? new MarkupReviewWorker(config) : undefined;
@@ -77,7 +88,20 @@ export async function startCanonicalEditor(
         }
         if (u.pathname === "/api/blog/save") {
           const result=await store.save(v);
-          return json(200, {...result,document:{...result.document,...(nativeClipboard?{nativeClipboard:true}:{})}});
+          return json(200, {...result,document:{...result.document,...capabilities}});
+        }
+        if (u.pathname === "/api/blog/publish" && publish) {
+          const request = blogPublishRequest.safeParse(v);
+          if (!request.success) return json(400, { error: "발행 요청 형식이 올바르지 않아요." });
+          if (request.data.mode === "scheduled" && Date.parse(request.data.scheduledAt) <= Date.now()) {
+            return json(400, { error: "예약 발행은 한국 시간 기준으로 앞으로의 시각을 선택해주세요." });
+          }
+          const current = await store.load();
+          if (current.revision !== request.data.revision) {
+            return json(409, { error: "저장된 원고가 바뀌었어요. 최신 원고를 확인하고 다시 요청해주세요." });
+          }
+          if (!current.title.trim()) return json(400, { error: "글 제목을 입력해주세요." });
+          return json(200, await publish(request.data));
         }
         if (u.pathname === "/api/blog/suggest") {
           // Synchronous, read-only; abort the engine call when the editor cancels.
@@ -116,7 +140,7 @@ export async function startCanonicalEditor(
       if (u.pathname === "/api/blog/evidence" && store instanceof MarkupStore)
         return json(200, await store.evidenceLibrary());
       if (u.pathname === "/api/blog/document")
-        return json(200, {...await (store instanceof MarkupStore?store.load(true):store.load()),...(nativeClipboard?{nativeClipboard:true}:{})});
+        return json(200, {...await (store instanceof MarkupStore?store.load(true):store.load()),...capabilities});
       if (u.pathname === "/api/blog/frame") {
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",

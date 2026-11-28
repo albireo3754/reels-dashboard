@@ -1,7 +1,7 @@
 import Foundation
 @testable import EditsAXCore
 
-@MainActor final class FakeBackend: AccessibilityBackend {
+@MainActor final class FakeBackend: FinalShareBackend {
     typealias Element = Int
     var appStatus = AppStatus(trusted: true, installed: true, pid: 42, version: "synthetic",
                               helperPid: 43, parentPid: 44, screenCaptureAllowed: true)
@@ -9,10 +9,17 @@ import Foundation
     var values: [Int: JSON] = [:]
     var edges: [Int: [Int]] = [:]
     var focus: Int?
+    var shareWindow: Int? = 2
+    var shareWindowID: UInt32 = 99
+    var shareOnConsole = true
+    var foreignShareElements = Set<Int>()
+    var shareImage = "before"
+    var captureHook: (() -> Void)?
     var calls: [String] = []
     var valueReads: [Int] = []
     var metadataReads: [Int: Int] = [:]
     var readHook: ((Int, Int) -> Void)?
+    var valueReadHook: ((Int) -> Void)?
     var performHook: ((Int, String) -> Void)?
     var performFailure: DispatchFailure?
     var setFailure: DispatchFailure?
@@ -55,6 +62,7 @@ import Foundation
     }
     func value(_ element: Int) throws -> JSON {
         valueReads.append(element)
+        valueReadHook?(element)
         if let failure = valueFailures[element] { throw failure }
         return values[element] ?? .null
     }
@@ -98,6 +106,18 @@ import Foundation
         calls.append("screenshot:\(pid)")
         return Screenshot(image: "data:image/png;base64,synthetic", width: 100, height: 80, windowId: 99)
     }
+    func finalShareWindow(pid: Int32) throws -> Int? { shareWindow }
+    func finalShareOwns(pid: Int32, element: Int) -> Bool { !foreignShareElements.contains(element) }
+    func finalShareWindowIdentity(pid: Int32, window: Int) throws -> (id: UInt32, launch: Date) {
+        (shareWindowID, Date(timeIntervalSinceReferenceDate: 23))
+    }
+    func finalShareScreenshot(pid: Int32, window: Int) async throws -> Screenshot {
+        captureHook?()
+        return Screenshot(image: "data:image/png;base64," + shareImage, width: 100, height: 80, windowId: shareWindowID)
+    }
+    func finalShareOnConsole() -> Bool { shareOnConsole }
+    func finalShareLink(_ element: Int) throws -> String? { nil }
+
     func target(_ element: Int) throws -> JSON {
         let capture = try TreeReader(backend: self, budget: RequestBudget()).capture(pid: 42)
         guard let record = capture.records.first(where: { $0.element == element }) else { throw AXFailure.invalid("Test target missing") }
