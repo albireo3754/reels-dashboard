@@ -1,0 +1,13 @@
+.shorts-references { margin-block: var(--space-4); color: var(--color-text); }
+.shorts-references h2 { font-size: var(--text-lg); }
+.shorts-reference-cover { object-fit: cover; border-radius: var(--radius-xs); }
+.shorts-reference-feature { display: flex; align-items: center; gap: var(--space-4); border-left: 3px solid var(--color-primary); background: var(--color-primary-soft); padding: var(--space-4); border-radius: var(--radius-sm); }
+.shorts-reference-feature h3 { margin-block: var(--space-1); font-size: var(--text-lg); }
+.shorts-reference-feature p { margin: var(--space-2) 0 0; line-height: var(--leading-normal); }
+.shorts-reference-meta { font-size: var(--text-sm); color: var(--color-text-muted); }
+.shorts-references a { color: var(--color-primary-text); text-underline-offset: .18em; overflow-wrap: anywhere; }
+.shorts-references summary { padding-block: var(--space-3); cursor: pointer; font-weight: var(--weight-semibold); }
+.shorts-reference-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: var(--space-4); }
+.shorts-reference-groups h3 { margin: 0; font-size: var(--text-md); }
+.shorts-reference-groups ul { list-style: none; padding: 0; margin: 0; }
+.shorts-reference-groups li { padding-block: var(--space-2); border-bottom: 1px solid var(--color-border); }

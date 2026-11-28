@@ -50,6 +50,7 @@ test("search, inspect, place at a clicked gap, keep through a failed save, save 
 
     await panel.getByLabel("사진 검색").fill("noodle menu");
     await expect(panel.getByRole("list",{name:"분석된 사진"}).locator("li")).toHaveCount(1);
+    await expect(panel.getByRole("list",{name:"분석된 사진"}).locator("img")).toHaveCSS("object-fit","contain");
     await panel.getByRole("button",{name:"B.MOV 2.5초 사진 보기"}).click();
     await expect(panel.getByText("얼굴 후보 1곳")).toBeVisible();
     await expect(panel.getByLabel("사진 설명")).toHaveValue("Red noodle bowl.");
@@ -109,7 +110,11 @@ test("an unconnected project explains the setup and stays unchanged",async({page
   try{
     const config=await markupFixture(root);const before=await readFile(config.canon,"utf8");
     server=await startCanonicalEditor(config);
+    await page.route("**/api/blog/asset?kind=photo&name=photo.png",r=>r.fulfill({status:404}));
     await page.goto(server.url+"/?blogEditor=1");
+    const frame=page.frameLocator('iframe[title="정본 본문 편집"]');
+    await expect(frame.getByText("Example photo · 사진을 볼 수 없어요")).toBeVisible();
+    await expect(frame.locator('img[alt="Example photo"]')).toBeHidden();
     await chooseEditorMenu(page,"사진 넣기 (0)");
     await expect(page.getByRole("region",{name:"사진 고르기"})).toContainText("mediaEvidence");
     await expect(page.getByRole("button",{name:"정본 저장",exact:true})).toBeDisabled();

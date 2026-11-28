@@ -75,7 +75,7 @@ test("a base survives a restart: from the page's text, from .history, and withou
  assert.ok(lost.document.warnings?.some(w=>w.includes("저장 기준")));
  assert.match(await readFile(config.canon,"utf8"),/Still lands/);
 }));
-test("BUSY is waited out, surfaces only while the lock stays, and a crashed lock is taken over",()=>withStore(async(store,config)=>{
+test("BUSY is waited out, surfaces only while the lock stays, and a crashed lock is taken over",(t)=>withStore(async(store,config)=>{
  const d=await store.load(),lock=config.canon+".lock";
  await writeFile(lock,"");
  const waited=store.save({revision:d.revision,edits:[{id:"P2",source:"After the lock"}]});
@@ -84,7 +84,15 @@ test("BUSY is waited out, surfaces only while the lock stays, and a crashed lock
  assert.match(await readFile(config.canon,"utf8"),/After the lock/);
  const now=await store.load();
  await writeFile(lock,"");
- await assert.rejects(store.save({revision:now.revision,edits:[{id:"P2",source:"Blocked"}]}),/BUSY/);
+ // The released-lock case above exercises a real delay. Keep the file locked here
+ // and run each retry on the next event-loop turn until the retry budget is exhausted.
+ const retryTimer=t.mock.method(globalThis,"setTimeout",(resume:()=>void)=>setImmediate(resume));
+ try {
+  await assert.rejects(store.save({revision:now.revision,edits:[{id:"P2",source:"Blocked"}]}),/BUSY/);
+  assert.ok(retryTimer.mock.callCount()>0);
+ } finally {
+  retryTimer.mock.restore();
+ }
  const old=new Date(Date.now()-10*60_000);await utimes(lock,old,old);
  await store.save({revision:now.revision,edits:[{id:"P2",source:"Took over"}]});
  assert.match(await readFile(config.canon,"utf8"),/Took over/);
@@ -177,13 +185,15 @@ test("autosave waits for quiet, keeps one save in flight and lets the latest sta
  release();await tick(40);assert.deepEqual(calls,[2,4]);
  release();await tick(5);saver.stop();
 });
-test("autosave retries with growing waits, stays explicit through retries, and flush resolves with the outcome",async()=>{
+test("autosave retries with growing waits, stays explicit through retries, and flush resolves with the outcome",async(t)=>{
+ t.mock.timers.enable({apis:["setTimeout"]});
  const states:AutosaveState[]=[],forced:boolean[]=[];let fail=true;
  const saver=createAutosave({delay:5,maxBackoff:1500,save:async force=>{forced.push(force);if(fail)throw new Error("BUSY");},onState:s=>states.push(s)});
  try{
   assert.equal(await saver.flush(true),false);
   const failed=states.at(-1)!;assert.equal(failed.phase,"failed");assert.equal(failed.error,"BUSY");assert.equal(failed.retryInMs,1000);
-  fail=false;await tick(1100);
+  fail=false;t.mock.timers.tick(999);assert.deepEqual(forced,[true]);
+  t.mock.timers.tick(1);await new Promise<void>(resolve=>setImmediate(resolve));
   assert.deepEqual(forced,[true,true]);assert.equal(states.at(-1)!.phase,"idle");assert.equal(states.at(-1)!.failures,0);
   assert.equal(await saver.flush(),true);
   assert.deepEqual(forced,[true,true,false]);

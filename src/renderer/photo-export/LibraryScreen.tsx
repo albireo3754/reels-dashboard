@@ -3,6 +3,7 @@ import { PhotoFinder } from "./PhotoFinder";
 import type { ReactNode } from "react";
 import type { Asset, DashboardBridge, Status } from "../../shared/contracts";
 import { Section, SectionHeader } from "../../shared/ui/primitives";
+import { PreviewImage } from "../../shared/ui/PreviewImage";
 import { Empty, Icon } from "../ui";
 import { readableTime, type Choice } from "./shared";
 import type { PhotoExportActions, PhotoExportState } from "./usePhotoExport";
@@ -232,7 +233,7 @@ export function LibraryScreen({
                       <div className="evidence-grid">
                         {inspection.packet.samples.map((sample) => (
                           <figure key={sample.id}>
-                            <img
+                            <PreviewImage
                               src={images[sample.assetID]}
                               alt={`${detail.assets.find((a) => a.id === sample.assetID)?.publicFilename || sample.assetID} 미리보기`}
                             />

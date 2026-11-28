@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {mkdir,readFile,writeFile} from "node:fs/promises";
+import {mkdir,readdir,readFile,writeFile} from "node:fs/promises";
 import path from "node:path";
 import {z} from "zod";
 import {MarkupStore} from "./markup-store";
@@ -109,6 +109,26 @@ export async function importExternalReview(config:EditorConfig,packetFile:string
   }catch(e){record.status="failed";record.error=e instanceof Error?e.message:String(e);throw e;}
   finally{record.updatedAt=new Date().toISOString();if(receipt)await atomic(receipt,record);}
   return {requestId:input.id,status:record.status as string,reviews:result.reviews.map(r=>({bundleId:r.bundleId,verdict:r.verdict,findings:r.findings.length}))};
+}
+
+/** Look only in the queue configured for this markup manuscript. */
+export async function activeReviewRequests(config: EditorConfig) {
+  const directory = config.requests;
+  if (!directory) throw new Error("검토 요청 폴더가 설정되지 않았어요.");
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    names = [];
+  }
+  const active: string[] = [];
+  for (const name of names) {
+    if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
+    const request = JSON.parse(await readFile(path.join(directory, name), "utf8"));
+    if (request.status === "running" || request.status === "pending") active.push(name);
+  }
+  return { directory, active };
 }
 
 /** Loop state per bundle: what the editor shows, plus whether the current text still needs a review round. */

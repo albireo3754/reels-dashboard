@@ -43,9 +43,11 @@ export class EditsNativeClient implements EditsNativePort {
             ),
           );
         },
-        operation === "screenshot"
-          ? Math.max(30_000, this.timeoutMs)
-          : this.timeoutMs,
+        operation === "final-share-confirm"
+          ? Math.max(60_000, this.timeoutMs)
+          : operation === "screenshot"
+            ? Math.max(30_000, this.timeoutMs)
+            : this.timeoutMs,
       );
       child.on("error", (error) =>
         finish(new Error(`EDITS_HELPER_UNAVAILABLE: ${error.message}`)),

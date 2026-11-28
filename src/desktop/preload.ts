@@ -14,16 +14,36 @@ const subscribe = (name: string, callback: (value: any) => void) => {
   };
 };
 const workbench = createWorkbenchBridge(ipcRenderer);
-const bridge: DashboardBridge = {
-  ...(!process.argv.includes("--reels-demo") && process.platform === "darwin" ? {
-    episodeTranscription: {
-      run: (id: string, source?: string) => invoke("episodeTranscription:run", id, source),
-    },
-    callShorts: {
+const pipeline = { status: () => invoke("callShorts:status") };
+const callShorts: NonNullable<DashboardBridge["callShorts"]> = process.platform === "darwin"
+  ? {
+      ...pipeline,
       preview: (prefix: string) => invoke("callShorts:previewNotes", prefix),
-      transcribe: (input: Parameters<NonNullable<DashboardBridge["callShorts"]>["transcribe"]>[0]) =>
-        invoke("callShorts:transcribeNotes", input),
+      transcribe: (input: { prefix: string; ids: string[] }) => invoke("callShorts:transcribeNotes", input),
       reveal: () => invoke("callShorts:revealNotesOutput"),
+    }
+  : pipeline;
+const bridge: DashboardBridge = {
+  ...(!process.argv.includes("--reels-demo") ? {
+    ...(process.platform === "darwin" ? { editsFinalShare: {
+      connectionStatus: () => invoke("editsFinalShare:connectionStatus"),
+      openPermissionSettings: (pane: "accessibility" | "screen-recording") =>
+        invoke("editsFinalShare:openPermissionSettings", pane),
+      preview: (id: string) => invoke("editsFinalShare:preview", id),
+      applyCaption: (id: string, token: string, caption: string) => invoke("editsFinalShare:applyCaption", id, token, caption),
+      confirm: (id: string, token: string) => invoke("editsFinalShare:confirm", id, token),
+      recheck: (id: string) => invoke("editsFinalShare:recheck", id),
+      cancel: (token: string) => invoke("editsFinalShare:cancel", token),
+    } } : {}),
+    ...(process.platform === "darwin" ? { episodeTranscription: {
+      run: (id: string, source?: string) => invoke("episodeTranscription:run", id, source),
+    } } : {}),
+    callShorts,
+    meetingNotes: {
+      credits: () => invoke("meetingNotes:credits"),
+      transcribe: (context: string) => invoke("meetingNotes:transcribe", context),
+      summarize: (input: Parameters<NonNullable<DashboardBridge["meetingNotes"]>["summarize"]>[0]) =>
+        invoke("meetingNotes:summarize", input),
     },
   } : {}),
   instagramInsights: {

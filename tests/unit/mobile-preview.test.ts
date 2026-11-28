@@ -35,7 +35,7 @@ async function fixture(t: TestContext) {
 }
 
 function encode(file: string, filters = 'testsrc2=s=192x108:r=12:d=0.3', options: string[] = []) {
-  execFileSync(ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', filters, ...options, '-c:v', 'libx264', file]);
+  execFileSync(ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', filters, ...options, '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', file]);
 }
 
 function probe(file: string) {
@@ -202,11 +202,12 @@ test('mobile preview coalesces one conversion, rejects a changed SDK revision mi
 });
 
 test('mobile preview deadline, cancellation and process exit reap the FFmpeg group and remove incomplete files', async t => {
+  const source = await fixture(t);
+  const input = join(source.dir, 'fixture.mp4');
+  encode(input);
   for (const mode of ['deadline', 'cancel', 'exit', 'parent-exit']) {
     await t.test(mode, async t => {
       const f = await fixture(t);
-      const input = join(f.dir, 'fixture.mp4');
-      encode(input);
       const job = await f.register(input);
       const fake = await controlledEncoder(f.dir);
       if (mode === 'parent-exit') {

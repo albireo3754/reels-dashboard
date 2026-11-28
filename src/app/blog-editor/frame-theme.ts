@@ -66,6 +66,8 @@ export const EDITOR_FRAME_CSS = [
   `.editor-bundle.active{box-shadow:inset 2px 0 ${ui.borderStrong}}`,
   `.editor-bundle.picked{outline:2px solid ${ui.primary};outline-offset:6px;border-radius:2px}`,
   ".editor-bundle[hidden]{display:none}",
+  "article img[hidden]{display:none!important}",
+  `.ce-missing-photo{display:grid;place-content:center;min-height:72px;padding:12px;background:${ui.surfaceMuted};color:${ui.muted};text-align:center;font:13px/1.4 ${ui.font}}`,
   `[data-pending-photo]{position:relative;outline:1px dashed ${ui.primary};outline-offset:4px}`,
   `[data-pending-photo]::after{content:"저장 전 사진";position:absolute;top:8px;left:8px;padding:1px 6px;border-radius:4px;background:${ui.surface};color:${ui.primary};box-shadow:0 0 0 1px ${ui.border};font:11px/1.5 ${ui.font}}`,
 ].join("");

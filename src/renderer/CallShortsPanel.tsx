@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { callNotesPrefix, type CallNoteRecording, type CallNotesTranscription, type CallShortsBridge } from "../shared/call-shorts";
+import { callNotesPrefix, type CallNoteRecording, type CallNotesTranscription, type RecentCallNotesBridge } from "../shared/call-shorts";
 import "./call-shorts-notes.css";
 
 const displayDate = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" });
 
-export function CallShortsPanel({ bridge }: { bridge: CallShortsBridge }) {
+export function CallShortsPanel({ bridge }: { bridge: RecentCallNotesBridge }) {
   const [prefix, setPrefix] = useState(callNotesPrefix);
   const [items, setItems] = useState<CallNoteRecording[] | undefined>();
   const [results, setResults] = useState<CallNotesTranscription[]>([]);

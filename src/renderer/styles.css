@@ -583,13 +583,15 @@ dialog.clip-upload-dialog {
   min-width: 0;
   margin: 0;
 }
-.evidence-grid img {
-  display: block;
+.evidence-grid :is(img, .preview-image-placeholder) {
   width: 100%;
   aspect-ratio: 4/3;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: var(--radius-sm);
   background: var(--color-surface-sunken);
+}
+.evidence-grid img {
+  display: block;
 }
 .evidence-grid figcaption {
   padding: var(--space-1) 0 0;
@@ -1006,6 +1008,15 @@ dialog.clip-upload-dialog {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.pipeline-panel {
+  margin-block: .65rem;
+  padding: .65rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pipeline-panel summary { cursor: pointer; }
+.pipeline-panel p { margin-block: .5rem; overflow-wrap: anywhere; }
 
 .episode-transcription { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .episode-transcription select { min-width: 0; max-width: 100%; }

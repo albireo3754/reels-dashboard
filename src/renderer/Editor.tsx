@@ -1,4 +1,5 @@
 import { errorMessage } from "../shared/lib/errors";
+import { PreviewImage } from "../shared/ui/PreviewImage";
 import {
   useEffect,
   useRef,
@@ -47,6 +48,7 @@ type EditorProps = {
   agent?: AgentUiBridge;
   mode: DashboardBridge["mode"];
   incoming: EditorProject | null;
+  requestedEdit?: { id: string };
   active: boolean;
   onRenderingChange: (running: boolean) => void;
   onDashboardChange: () => void;
@@ -69,6 +71,7 @@ export function Editor({
   agent,
   mode,
   incoming,
+  requestedEdit,
   active,
   onRenderingChange,
   onDashboardChange,
@@ -101,6 +104,7 @@ export function Editor({
   const projectRef = useRef(project);
   const dirtyRef = useRef(dirty);
   const incomingRef = useRef("");
+  const lastRequestedEdit = useRef<typeof requestedEdit>(undefined);
   const busyRef = useRef(false);
   projectRef.current = project;
   dirtyRef.current = dirty;
@@ -345,6 +349,11 @@ export function Editor({
     run("편집 기록 열기", async () => {
       await adopt(await bridge.load(id));
     });
+  useEffect(() => {
+    if (!requestedEdit || lastRequestedEdit.current === requestedEdit || busyRef.current || rendering || !active) return;
+    lastRequestedEdit.current = requestedEdit;
+    if (projectRef.current?.id !== requestedEdit.id) void load(requestedEdit.id);
+  }, [requestedEdit, busy, rendering, active]);
   const save = () =>
     run("편집 설정 저장", async () => {
       if (!project) return;
@@ -758,7 +767,7 @@ export function Editor({
               <figure className="editor-frame">
                 <div className="editor-frame-media">
                   {previewReady && preview ? (
-                    <img
+                    <PreviewImage
                       src={preview.url}
                       alt={`${preview.kind === "cover" ? "표지" : "영상"} ${preview.time.toFixed(2)}초 합성 미리보기`}
                     />

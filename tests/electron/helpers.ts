@@ -80,6 +80,7 @@ export async function launchApp(
   env.REELS_BACKGROUND_QA =
     process.env.REELS_ELECTRON_HEADED === "1" ? "0" : "1";
   env.REELS_USER_DATA = profile;
+  env.REELS_NOTES_AUTOMATION_DISABLED = "1";
   // Never let QA take the user's real MCP port (4319).
   if (!mcpPorts.has(profile)) mcpPorts.set(profile, await freePort());
   env.REELS_MCP_PORT = String(mcpPorts.get(profile));

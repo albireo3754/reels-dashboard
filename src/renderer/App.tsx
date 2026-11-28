@@ -24,6 +24,7 @@ import type {
 } from "../shared/contracts";
 import { emptyDashboard } from "../shared/contracts";
 import type { EditorProject } from "../shared/editor";
+import type { EditRef } from "../shared/production-project";
 import { errorMessage } from "../shared/lib/errors";
 import { localDate } from "../shared/lib/format";
 import { ExecutionLogsPanel } from "../shared/ui/ExecutionLogs";
@@ -32,6 +33,7 @@ import { BlogWorkspace } from "../features/blog-workspace";
 import { CardNews } from "../features/card-news";
 import {
   BoardToolbar,
+  MediaExplorer,
   defaultBoardQuery,
   parseBoardQuery,
   selectBoardProjects,
@@ -52,9 +54,11 @@ import {
   useWorkspaceNavigation,
 } from "../features/workspace-shell";
 import { Editor } from "./Editor";
-import { CallShortsPanel } from "./CallShortsPanel";
 import { MobileBriefing } from "./MobileBriefing";
 import { pages, permissionLabels, type Tab } from "./pages";
+import { CallShortsPipelinePanel } from "./CallShortsPipelinePanel";
+import { CallShortsPanel } from "./CallShortsPanel";
+import { MeetingNotesPanel, SidebarCredits, useMeetingCredits } from "./MeetingNotesPanel";
 import { ProjectCard } from "./ProjectCard";
 import { publicationsSchema } from "../shared/publications";
 import { ProjectDialog } from "./ProjectDialog";
@@ -87,6 +91,9 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
     null,
   );
   const [editorRendering, setEditorRendering] = useState(false);
+  const [requestedEdit, setRequestedEdit] = useState<EditRef>();
+  const [reelWorkId, setReelWorkId] = useState<string>();
+  const reelWorkOpener = useRef<HTMLElement | null>(null);
   useEffect(
     () =>
       bridge.agent?.onProjectOpened((project) => {
@@ -99,6 +106,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dashboard, setDashboard] = useState<Dashboard>(emptyDashboard);
+  const reelWork = dashboard.projects.find(p => p.id === reelWorkId);
   const [planningRevision, setPlanningRevision] = useState(0);
   const [boardQuery, setBoardQuery] = useState<BoardQuery>(() => {
     try {
@@ -323,17 +331,18 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
       )}
     </div>
   );
+  const meetingCredits = useMeetingCredits(bridge.mode === "desktop" ? bridge.meetingNotes : undefined);
   const navigationTabs: Tab[] = [
     "dashboard",
     ...(!readOnly ? (["calendar", "insights"] as const) : []),
     "library",
     "editor",
     "cards",
-    ...(bridge.mode === "desktop" && bridge.callShorts ? (["shorts"] as const) : []),
     "blog",
     "workflow",
     "transfers",
     ...(bridge.executionLogs ? (["logs"] as const) : []),
+    ...(bridge.mode === "desktop" && bridge.callShorts ? (["shorts"] as const) : []),
   ];
   const navigationItems = navigationTabs.map(
     (key): [Tab, string] => [key, pages[key].label],
@@ -411,6 +420,7 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             {workflowHost ? "로컬 워크플로" : "공유된 현황 · 읽기 전용"}
           </p>
         )}
+        {bridge.mode === "desktop" && bridge.meetingNotes && <SidebarCredits credits={meetingCredits.credits} />}
       </aside>
       <main className={`main ${tab === "dashboard" ? "dashboard-home" : ""}`}>
         {bridge.mode === "demo" && (
@@ -487,7 +497,12 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
           )}
         </div>
         {tab === "shorts" && bridge.mode === "desktop" && bridge.callShorts &&
-          <CallShortsPanel bridge={bridge.callShorts} />}
+          <>
+            <CallShortsPipelinePanel bridge={bridge.callShorts} />
+            {bridge.callShorts.preview && <CallShortsPanel bridge={bridge.callShorts} />}
+          </>}
+        {tab === "dashboard" && !readOnly && bridge.mode === "desktop" && bridge.meetingNotes &&
+          <MeetingNotesPanel bridge={bridge.meetingNotes} {...meetingCredits} />}
         {!protocolOK && (
           <div className="alert error" role="alert">
             도우미 프로토콜 {status?.protocolVersion}은 지원하지 않아요. 앱과
@@ -540,9 +555,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             projects={dashboard.projects}
             revision={dashboard.updatedAt}
             onPlanningSaved={() => setPlanningRevision(n => n + 1)}
-            onOpenProject={id => {
+            onOpenProject={(id, channel) => {
               const project = dashboard.projects.find(p => p.id === id);
               if (!project) return;
+              if (channel === "instagram" && bridge.contentMedia) {
+                reelWorkOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                setReelWorkId(id);
+                return;
+              }
               setEditingRevision(dashboard.updatedAt);
               setEditingProject({ ...project });
             }}
@@ -711,13 +731,14 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             agent={bridge.agent}
             mode={bridge.mode}
             incoming={editorProject}
+            requestedEdit={requestedEdit?.kind === "video" ? requestedEdit : undefined}
             active={tab === "editor"}
             onRenderingChange={setEditorRendering}
             onDashboardChange={refreshDashboard}
           />
         </div>
         <div hidden={tab !== "cards"}>
-          <CardNews api={bridge.cardNews} active={tab === "cards"} />
+          <CardNews api={bridge.cardNews} active={tab === "cards"} requestedEdit={requestedEdit?.kind === "card-news" ? requestedEdit : undefined} />
         </div>
         <div hidden={tab !== "blog"}><BlogWorkspace api={bridge.blog} media={bridge.contentMedia} projects={dashboard.projects} active={tab === "blog"}
           onOpenTerminal={bridge.workbench ? () => setDrawerMode("open") : undefined}
@@ -770,6 +791,22 @@ export function App({ bridge }: { bridge: DashboardBridge }) {
             setTerminalProject(null);
             setRequestedTerminal(id);
             setDrawerMode("open");
+          }}
+        />
+      )}
+      {tab === "dashboard" && reelWork && (
+        <MediaExplorer
+          key={reelWork.id}
+          project={reelWork}
+          bridge={bridge}
+          onClose={() => {
+            setReelWorkId(undefined);
+            requestAnimationFrame(() => reelWorkOpener.current?.focus());
+          }}
+          onOpenEdit={edit => {
+            setReelWorkId(undefined);
+            setRequestedEdit({ ...edit });
+            setTab(edit.kind === "video" ? "editor" : "cards");
           }}
         />
       )}

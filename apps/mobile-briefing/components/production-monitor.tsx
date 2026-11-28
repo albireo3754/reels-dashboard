@@ -6,9 +6,7 @@ import {
 import { ChevronDown, Send } from "lucide-react";
 import {
   phaseLabels,
-  thirdWeekGoals,
   type Monitor,
-  type Progress,
 } from "../lib/monitor";
 import { TopicSelection } from "./topic-selection";
 import { PaseoRequestCopy } from "./paseo-request-copy";
@@ -20,14 +18,7 @@ const day = (s: string) =>
     day: "numeric",
     weekday: "short",
   });
-type Goal = Monitor["thisWeek"]["channels"][number];
-type Week = Omit<Monitor["thisWeek"], "channels"> & {
-  channels: (Omit<Goal, "candidates"> & {
-    candidates: (Goal["candidates"][number] & {
-      phase?: keyof typeof phaseLabels;
-    })[];
-  })[];
-};
+type Week = Monitor["thisWeek"];
 type OpenProject = (id: string) => void;
 
 function WeekSummary({ week }: { week: Week }) {
@@ -43,12 +34,12 @@ function WeekGoals({
   week,
   title,
   onOpen,
-  partialCandidates = false,
+  projectIds,
 }: {
   week: Week;
   title: string;
   onOpen: OpenProject;
-  partialCandidates?: boolean;
+  projectIds: ReadonlySet<string>;
 }) {
   return (
     <div className="goal-grid">
@@ -60,17 +51,28 @@ function WeekGoals({
             period={title}
             meterLabel={`${c.label} 목표 진행`}
           >
+            {!!c.posts?.length && (
+              <ul className="goal-candidates" aria-label={c.label + " 게시·예약"}>
+                {c.posts.map(post => (
+                  <li key={post.projectId}>
+                    <time dateTime={post.day}>{day(post.day)}</time>
+                    {projectIds.has(post.projectId)
+                      ? <button onClick={() => onOpen(post.projectId)}>{post.title}</button>
+                      : <strong>{post.title}</strong>}
+                    <span>{post.status === "published" ? "게시" : "예약"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {c.candidates.length > 0 ? (
-              <ul className="goal-candidates">
+              <ul className="goal-candidates" aria-label={c.label + " 채울 후보"}>
                 {c.candidates.map((p) => (
                   <li key={p.projectId}>
                     <button onClick={() => onOpen(p.projectId)}>
                       {p.title}
                     </button>
                     <span>
-                      {p.phase
-                        ? phaseLabels[p.phase]
-                        : p.status === "reuse"
+                      {p.status === "reuse"
                           ? "재업 후보"
                           : p.ready
                             ? "완성본"
@@ -82,9 +84,7 @@ function WeekGoals({
             ) : (
               c.remaining > 0 && (
                 <p className="muted goal-empty">
-                  {partialCandidates
-                    ? "표시할 예약 제안 없음"
-                    : "채울 후보 없음"}
+                  채울 후보 없음
                 </p>
               )
             )}
@@ -99,12 +99,12 @@ function UpcomingWeek({
   week,
   title,
   onOpen,
-  forecast = false,
+  projectIds,
 }: {
   week: Week;
   title: string;
   onOpen: OpenProject;
-  forecast?: boolean;
+  projectIds: ReadonlySet<string>;
 }) {
   return (
     <details className="upcoming-week">
@@ -115,17 +115,11 @@ function UpcomingWeek({
         </span>
         <ChevronDown size={17} aria-hidden="true" />
       </summary>
-      {forecast && (
-        <p className="muted week-forecast">
-          채널별 목표는 2주차 기준이에요. 후보는 날짜가 잡힌 예약 제안만
-          표시돼요.
-        </p>
-      )}
       <WeekGoals
         week={week}
         title={title}
         onOpen={onOpen}
-        partialCandidates={forecast}
+        projectIds={projectIds}
       />
     </details>
   );
@@ -139,7 +133,7 @@ export function ProductionMonitor({
   onInstruct,
 }: {
   monitor: Monitor | null;
-  contents: readonly Progress[];
+  contents: readonly {id: string}[];
   syncedAt?: string | null;
   onOpen: OpenProject;
   onInstruct?: (target: string) => void;
@@ -151,7 +145,8 @@ export function ProductionMonitor({
         오늘 볼 항목이 표시돼요.
       </p>
     );
-  const thirdWeek = thirdWeekGoals(monitor, contents);
+  const thirdWeek = monitor.thirdWeek;
+  const projectIds = new Set(contents.map(content => content.id));
   const a = monitor.autopilot,
     pick = a.today;
   return (
@@ -167,12 +162,14 @@ export function ProductionMonitor({
           <WeekGoals
             week={monitor.thisWeek}
             title="이번 주 목표"
+            projectIds={projectIds}
             onOpen={onOpen}
           />
           <div className="upcoming-weeks">
             <UpcomingWeek
               week={monitor.nextWeek}
               title="2주차 목표"
+              projectIds={projectIds}
               onOpen={onOpen}
             />
             {thirdWeek && (
@@ -180,7 +177,7 @@ export function ProductionMonitor({
                 week={thirdWeek}
                 title="3주차 목표"
                 onOpen={onOpen}
-                forecast
+                projectIds={projectIds}
               />
             )}
           </div>
@@ -222,9 +219,9 @@ export function ProductionMonitor({
                             {p.status === "scheduled" ? "예약" : "제안"}
                             {p.phase ? ` · ${phaseLabels[p.phase]}` : ""}
                           </span>
-                          <button onClick={() => onOpen(p.projectId)}>
-                            {p.title}
-                          </button>
+                          {projectIds.has(p.projectId)
+                            ? <button onClick={() => onOpen(p.projectId)}>{p.title}</button>
+                            : <strong>{p.title}</strong>}
                         </li>
                       ))}
                     </ul>

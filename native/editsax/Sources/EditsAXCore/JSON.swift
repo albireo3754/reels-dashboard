@@ -80,7 +80,7 @@ public enum Wire {
                   o["protocol"] == .number(1),
                   let id = o["id"]?.string, !id.isEmpty, id.utf8.count <= 256,
                   let operation = o["operation"]?.string,
-                  ["status", "tree", "find", "press", "set-value", "menu", "key", "drag", "screenshot"].contains(operation),
+                  ["status", "tree", "find", "press", "set-value", "menu", "key", "drag", "screenshot", "final-share-preview", "final-share-caption", "final-share-confirm", "final-share-recheck"].contains(operation),
                   let args = o["args"]?.object else {
                 throw AXFailure.invalid("Invalid protocol, id, operation or args")
             }

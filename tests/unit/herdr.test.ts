@@ -129,10 +129,7 @@ test("session names and labels accept only the Reels prefix with a known kind, u
   for (const bad of ["../x", "-flag", "a b", "reels qa 1", "reels/qa", "x".repeat(65), "a;b"])
     assert.equal(herdrSessionName(bad), null);
   // The source tag is sha256(realpath) hex, first 12 characters.
-  assert.equal(
-    herdrSourceTag("/src"),
-    execFileSync("/bin/sh", ["-c", "printf %s /src | shasum -a 256"]).toString().slice(0, 12),
-  );
+  assert.equal(herdrSourceTag("/src"), "56c9e1c4b536");
   assert.notEqual(herdrSourceTag("/src"), herdrSourceTag("/src2"));
   const label = herdrLabel("codex", ID, SRC);
   assert.equal(label, `reels-dashboard:codex:${ID}:${SRC}`);

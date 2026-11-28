@@ -14,6 +14,7 @@ import { absolutePathSchema } from "../../../shared/path-schema";
 import { configureOutboundInput, icloudDeliveryInput, icloudStatusInput } from "../../../shared/icloud-delivery";
 import { publishReadinessInput } from "../../../shared/publish-readiness";
 import { blogExtractInput } from "../../../shared/blog-restore";
+import { blogPublishCliInput } from "../../../shared/blog-publication";
 import { blogCommentCreate, blogCommentDelete, blogCommentList, blogCommentUpdate } from "../../../shared/blog-comments";
 import {
   contentInputSchema,
@@ -26,7 +27,7 @@ import { settingsPatchSchema } from "../../../entities/agent-session";
 
 /** Operating rules shared by the MCP server and the `reels` CLI. */
 export const agentGuidance =
-  "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. Photos originals stay untouched by default: Photos tools only read, and imports copy the original into app storage. No social publishing, Photos deletion or move, or arbitrary shell execution is provided. Content prose stays in the content workspace.";
+  "Use get_app_state first, then get_project before editing. Respect unsaved UI changes and updatedAt revisions. Keep place guide, captions and cover independent. Preview the requested frame and inspect the actual image. Render jobs must reach terminal state before claiming completion. Do not retry uncertain writes automatically. Each project has one saved iCloud outbound folder. Delivery updates its managed files and keeps prior versions locally; do not create folders per version. Local copy is not upload completion. Photos originals stay untouched by default: Photos tools only read, and imports copy the original into app storage. Blog publication requests use the desktop editor or the private publish-blog CLI command to open Herdr. Photos deletion, moving originals and arbitrary shell execution are unavailable through these tools. Content prose stays in the content workspace.";
 
 const id = z.string().uuid();
 const revision = z
@@ -126,6 +127,12 @@ export const toolDefinitions = {
     readOnly: false,
   },
 
+  reels_publish_blog: {
+    description: "Start a Herdr task to publish one project's saved manuscript on Naver through Aside. Use only with explicit authorization for the selected project and mode. Set mode now for immediate publication or scheduled with scheduledAt in Korean time (+09:00). An overdue existing booking only triggers verification. The response identifies the Herdr task. Read the task's verified result before claiming publication or booking, and do not retry an uncertain launch.",
+    input: blogPublishCliInput,
+    readOnly: false,
+    cliOnly: true,
+  },
   reels_extract_blog_reference: {
     description:
       "Extract a Naver blog post (SmartEditor ONE) into a local reference folder: DOM block order, nested computed styles, partial text formatting, original text, photo groups/geometry and real anchors. Photos are stored as original CDN URLs only (no files). Validates block/character/image/anchor consistency, cross-checks component counts with the mobile page, writes reference-structures/templates/restore-report and a restore viewer, registers the folder in the Blog tab results, then re-renders it and compares each block height with the original. One extraction at a time; takes ~10-60s. Does not publish, comment or log in.",

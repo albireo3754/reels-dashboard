@@ -2,16 +2,16 @@ import type { Dashboard } from "./contracts";
 import type { Planning } from "./planning";
 import { computeAutopilotView, outcomeLabel, type AutopilotConfig, type AutopilotState, type ProcessProbe } from "./autopilot";
 import { projectState } from "./project-state";
-import { weeklyGoalsView, type QueueSignals } from "./weekly-goals";
+import { weekGoals, weeklyGoalsView, type QueueSignals } from "./weekly-goals";
 import { blockedNotice, statusLine } from "./autopilot-notices";
 import { topicBoard, topicGaps } from "./topic-pitch";
 
 /** Owner-private progress only. No source paths, private notes, reports, executor config or provider credentials. */
-export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: AutopilotState, config: AutopilotConfig, now: Date, probe: ProcessProbe, signals: QueueSignals = {}) {
+export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: AutopilotState, config: AutopilotConfig, now: Date, probe: ProcessProbe, signals: QueueSignals = {}, goals = weeklyGoalsView(planning, dashboard.projects, now, signals)) {
   const view = computeAutopilotView({ projects: dashboard.projects, planning, state, config, now, probe });
-  const goals = weeklyGoalsView(planning, dashboard.projects, now, signals);
   const week = (w: typeof goals.thisWeek) => ({ from: w.from, to: w.to, totals: w.totals, channels: w.channels.map(c => ({
     channel: c.channel, label: c.label, target: c.target, published: c.published, scheduled: c.scheduled, remaining: c.remaining,
+    posts: c.posts.map(({projectId, title, day, status}) => ({projectId, title, day, status})),
     candidates: c.candidates.slice(0, c.remaining).map(({ projectId, title, status, ready }) => ({ projectId, title, status, ready })),
   })) });
   const pick = view.today;
@@ -26,6 +26,10 @@ export function mobileMonitor(dashboard: Dashboard, planning: Planning, state: A
       ...(sourceBoards.length ? { sourceBoards } : {}),
       ...(topics.items.length ? { topics } : {}),
       thisWeek: week(goals.thisWeek), nextWeek: week(goals.nextWeek),
+      thirdWeek: week(weekGoals(planning, dashboard.projects, goals.nextWeek.to, now, signals)),
+      reservations: goals.queue.channels.flatMap(({ channel, booked, beyond }) =>
+        [...booked, ...beyond].map(({ projectId, title, day, at }) => ({ projectId, title, day, at, channel })),
+      ).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
       queue: { until: goals.queue.until, channels: goals.queue.channels.map(c => ({
         channel: c.channel, label: c.label, cap: c.cap, booked: c.booked.length + c.beyond.length,
         open: c.open, full: c.full, inProduction: c.inProduction,

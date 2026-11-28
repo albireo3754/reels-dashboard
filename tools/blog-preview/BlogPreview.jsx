@@ -1,4 +1,5 @@
 import React, {useState} from 'react';
+import {PreviewImage} from '../../src/shared/ui/PreviewImage';
 
 export function RichText({text,spans=[]}) {
   const parts=text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^)]+\)|\n)/g);
@@ -20,7 +21,7 @@ export function SectionHeading({children,enhanced}) {return enhanced?<blockquote
 export function SceneDivider(){return <hr className="scene-divider"/>}
 export function SourceNote({block}) {return <p className="source"><RichText text={block.text}/></p>}
 export function VisitInfoCard({blocks,source,enhanced}) {return <section className={enhanced?'visit-card':'visit-plain'} aria-label="방문 정보">{enhanced&&<div className="card-label">방문 정보</div>}{blocks.map((b,i)=><p className="info" key={i}><RichText text={b.text.replace(' → ','\n→ ')}/></p>)}{source&&<SourceNote block={source}/>}</section>}
-export function PhotoBlock({block}) {return <figure className="photo-block" data-component={/pair|three/.test(block.src)?'PhotoGroup':'PhotoBlock'}><img src={block.src} width={block.width} height={block.height} alt={block.alt}/></figure>}
+export function PhotoBlock({block}) {return <figure className="photo-block" data-component={/pair|three/.test(block.src)?'PhotoGroup':'PhotoBlock'}><PreviewImage src={block.src} width={block.width} height={block.height} alt={block.alt??''}/></figure>}
 export function PhotoGroup({block}) {return <div className="photo-group" data-layout="precomposed"><PhotoBlock block={block}/></div>}
 export function NativeCard({block}) {const map=block.type==='native-map';return <aside className="native-card"><small>{map?'네이버 지도 · 기존 컴포넌트 유지':'From, 블로그씨'}</small><div>{map?block.label:block.label.replace(/^From, 블로그씨 · /,'')}</div>{map?<a href={block.url} target="_blank" rel="noreferrer">장소 확인 ↗</a>:<small className="native-note">원래 질문 카드가 들어갈 자리</small>}</aside>}
 export function TagList({block}) {return <p className="tags">{block.text}</p>}

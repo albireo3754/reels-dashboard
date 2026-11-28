@@ -153,6 +153,18 @@ export async function manuscriptConfig(canon:string):Promise<BlogProjectConfig>{
   };
 }
 
+/** Read only manuscript headers when resolving a card's registered document resources. */
+export async function linkedManuscripts(card:Pick<Project,"resources">,issue:(reason:string)=>void){
+  const documents=[...new Set((card.resources??[]).filter(r=>r.role==="document"&&/\.md$/i.test(r.path)&&path.isAbsolute(r.path)).map(r=>path.resolve(r.path)))];
+  const found=await Promise.all(documents.map(async file=>{
+    try{
+      const metadata=await markupHeader(file);
+      return metadata?[{file:await realpath(file),title:metadata.title}]:[];
+    }catch(e){issue(`${file}: ${errorMessage(e)}`);return [];}
+  }));
+  return [...new Map(found.flat().map(m=>[m.file,m])).values()];
+}
+
 /** Blog projects among the content cards, plus the cards that point at a manuscript but cannot open. */
 export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|"resources"|"stage"|"publications">[]){
   const projects:BlogProject[]=[],issues:BlogProjectIssue[]=[],owners=new Map<string,string>();
@@ -160,12 +172,7 @@ export async function blogProjectsFrom(cards:readonly Pick<Project,"id"|"title"|
     const issue=(reason:string)=>issues.push({id:card.id,title:card.title,reason});
     // One card's unreadable file (permissions, a link loop) is that card's issue, not the list's.
     try{
-      const documents=[...new Set((card.resources??[]).filter(r=>r.role==="document"&&/\.md$/i.test(r.path)&&path.isAbsolute(r.path)).map(r=>path.resolve(r.path)))];
-      const found=await Promise.all(documents.map(async file=>{
-        try{return await markupHeader(file)?[await realpath(file)]:[];}
-        catch(e){issue(`${file}: ${errorMessage(e)}`);return [];}
-      }));
-      const manuscripts=[...new Set(found.flat())];
+      const manuscripts=(await linkedManuscripts(card,issue)).map(m=>m.file);
       if(!manuscripts.length)continue;
       if(manuscripts.length>1){issue("blog-markup 원고가 여러 개 연결돼 있어요: "+manuscripts.join(", "));continue;}
       const [file]=manuscripts;

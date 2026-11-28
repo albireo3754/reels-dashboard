@@ -58,6 +58,7 @@ export interface CanonicalReview {
 }
 export interface CanonicalDocument {
   nativeClipboard?: boolean;
+  publishWithHerdr?: boolean;
   stickers?: StickerPlacement[];
   stickerAnchors?: StickerAnchor[];
   savedAt?: string;

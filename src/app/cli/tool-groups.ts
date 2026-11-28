@@ -97,6 +97,7 @@ export const toolGroupOf = {
   reels_search_analysis: "analysis",
   reels_correct_analysis: "analysis",
 
+  reels_publish_blog: "blog",
   reels_extract_blog_reference: "blog",
   reels_list_blog_references: "blog",
   reels_link_blog_reference: "blog",
