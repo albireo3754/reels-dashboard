@@ -94,7 +94,7 @@ const id = () => "Sess" + Math.random().toString(36).slice(2, 12).padEnd(10, "x"
 const row = (sid, title = prompt.slice(0, 50)) => sid + "  running  persistent  " + title + "  2026-11-25T09:10:00.000Z\\n";
 const foreign = () => fs.appendFileSync(sessions, row(id(), "다른 작업"));
 if (mode === "foreign-session" || mode === "hang-foreign") foreign();
-if (mode !== "hang-foreign" && mode !== "retitled") {
+if (mode !== "hang-foreign" && mode !== "retitled" && mode !== "split-session") {
   const mine = () => fs.appendFileSync(sessions, row(id()) + (mode === "two-sessions" ? row(id()) : ""));
   if (mode === "foreign-session") setTimeout(mine, 150);
   else mine();
@@ -128,6 +128,17 @@ switch (mode) {
     fs.writeFileSync(path.join(dir, "announced.txt"), sid);
     process.stdout.write("\\x1b[33mWarning:\\x1b[0m Aside needs sign-in again for this account.\\n\\x1b[2mcreated new session: " + sid + "\\x1b[0m\\n");
     out("read_file > 폴더 접근이 거부되면(\`Operation not permitted\`) 접근 허용을 요청한다.\\n" + report({}));
+    break;
+  }
+  // The session line reaches the app in two writes, split inside the id (a pipe boundary can do this).
+  case "split-session": {
+    const sid = id();
+    fs.writeFileSync(path.join(dir, "announced.txt"), sid);
+    process.stdout.write("created new session: " + sid.slice(0, -3));
+    setTimeout(() => {
+      process.stdout.write(sid.slice(-3) + "\\n" + report({}) + "\\n");
+      process.exit(0);
+    }, 60);
     break;
   }
   // aside dies on SIGTERM; a helper in its group ignores it and holds no pipe.
