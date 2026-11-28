@@ -5,36 +5,22 @@
 ## 브랜치 두 단계
 
 - **develop**: 기본 브랜치. 모든 개발(로컬·리모트 세션)은 develop에서 브랜치를 따고 develop으로 PR·머지한다. develop 머지는 Mac·사이트에 아무것도 반영하지 않는다.
-- **main = 라이브**: Mac에서 돌아가는 브리지·autopilot이 실행하는 코드다. `develop → main` PR 머지와 설치는 **로컬 Mac 세션만** 한다. 리모트 세션은 main을 대상으로 PR·머지·push하지 않는다. 같은 GitHub 계정을 쓰므로 기술적으로 막히지 않고 지침으로 지킨다.
+- **main = 라이브**: main 폴더(`~/side/reels-dashboard`)에서 앱·브리지·autopilot이 실행하는 코드다. `develop → main` PR 머지와 설치는 **로컬 Mac 세션만** 한다. 리모트 세션은 main을 대상으로 PR·머지·push하지 않는다. 같은 GitHub 계정을 쓰므로 기술적으로 막히지 않고 지침으로 지킨다.
 - main은 force push·삭제가 막혀 있고 `verify`·`mobile-briefing` 검사를 요구한다. 관리자는 우회할 수 있으니 우회하지 않는다.
 
-## 라이브 폴더 구조
+## 폴더 역할 — 2026-11-28 사용자 지시
 
-`~/side/reels-live`(`REELS_LIVE_ROOT`):
-- `repo.git`: origin의 bare 미러.
-- `releases/<sha>/`: 설치한 커밋마다 하나씩 만드는 detached worktree. 그 안에서 빌드하고 이후 편집하지 않는다. 현재·마지막 확인 릴리스와 최근 것까지 3개를 남기고, 하루가 안 됐거나 그 폴더에서 실행 중인 프로세스가 있으면 지우지 않는다.
-- `current` → `releases/<sha>`: LaunchAgent가 실행하는 경로. 설치는 이 심링크를 원자적으로 바꾸고, 확인에 실패하면 직전 릴리스로 되돌린다. 어떤 체크아웃도 reset·clean하지 않는다.
-- `install.json`: `good`(브리지가 확인한 마지막 릴리스)과 설치 기록(직전 30회). 되돌리기 기준은 `current`가 아니라 `good`이다. `install.lock`: 동시 실행 방지.
-
-개발용 체크아웃(`~/side/reels-dashboard`, worktree들)은 라이브와 분리된다. 거기서 일해도 라이브에 영향이 없다.
+- **main 폴더 `~/side/reels-dashboard`는 항상 `main`에 둔다.** 실행 앱(`release/mac-arm64/Reels Dashboard.app`), 브리지·autopilot LaunchAgent(`scripts/mobile-briefing/bridge.mjs`, `dist-cli/reels.mjs`), vault `.mcp.json`이 모두 이 폴더를 가리킨다. 이 폴더에서 브랜치를 바꾸거나 개발 커밋을 만들지 않는다.
+- **개발·임시 빌드는 worktree에서 한다.** `git worktree add ~/side/worktrees/reels-dashboard-<작업> -b <브랜치> origin/develop`로 따서 작업하고 develop으로 PR한다. 확인용 앱 빌드도 그 worktree에서 한다.
+- **LaunchAgent 경로를 옮기지 않는다.** `~/side/reels-live`·`releases/<sha>`·`current` 심링크 구조와 `scripts/live-install.mjs`는 쓰지 않는다(2026-11-28 사용자: "런치에이전트를 왜 옮기는데 … 항상 메인빌드 해서 쓰는거 기준으로만"). plist 경로 전환을 제안·실행하지 않는다.
 
 ## 라이브 반영 (로컬 Mac 세션)
 
 1. `develop → main` PR을 만들고 CI 통과 뒤 merge commit으로 머지한다.
-2. **사이트 입력**(`apps/mobile-briefing`, `packages/briefing`)이 바뀌었으면 사이트를 먼저 배포한다. 머지된 main SHA를 체크아웃한 깨끗한 worktree(예: `~/side/reels-live/releases/<sha>`를 먼저 만들려면 `--dry-run` 뒤 빌드)에서 `docs/mobile-briefing.md`「빌드와 배포」대로 내보내고 배포·확인한다. 새 사이트가 아직 이전 브리지의 스냅샷도 받아들이는지 확인한다.
-3. `node scripts/live-install.mjs --dry-run`으로 계획을 보고 `node scripts/live-install.mjs [--site-deployed=<SHA>]`로 설치한다(어느 체크아웃에서 실행해도 같다). 사이트 입력이 바뀌었으면 배포한 SHA가 목표와 같아야 진행한다.
-   - 하는 일: 잠금 → 미러 fetch → `releases/<sha>` 생성 → `npm ci` → 브리지 단위 검사 → `build:desktop` → `current` 전환 → 브리지 재시작 → 새 프로세스가 목표 SHA로 연결되고, 그 프로세스가 실행 중인 앱에서 새로 만든 스냅샷을 서버가 수락했는지 확인. 앱이 꺼져 있어 캐시 스냅샷만 있으면 실패한다(`--allow-cached`로 허용).
-   - 빌드가 실패하면 전환하지 않는다. 확인이 실패하면 직전 릴리스로 되돌리고 브리지를 다시 확인한다. 결과는 `install.json`의 `result`(`installed`·`build_failed`·`restored`·`needs_manual`)다.
-   - autopilot은 멈추지 않는다. CLI가 시작할 때 자기 경로를 실제 릴리스 폴더로 고정하므로, 이미 돌고 있는 tick과 그 실행기는 시작한 릴리스로 끝까지 돌고 다음 tick부터 새 릴리스를 쓴다.
-4. 출력에 `app inputs CHANGED`가 있으면 앱 재설치까지 해야 라이브 반영이 끝난다. 앱 패키지 위치를 릴리스 폴더로 옮기는 것은 아직 정하지 않았다. 그때까지는 기존 규칙(앱 종료 → `npm run package:mac` → 같은 환경으로 재실행 → MCP 확인)을 main SHA와 같은 깨끗한 체크아웃에서 한다.
-
-## 최초 전환 (1회, 로컬 Mac 세션)
-
-1. `node scripts/live-install.mjs --dry-run` 뒤 `--no-services`로 첫 릴리스를 빌드하고 `current`를 만든다(서비스는 아직 이전 경로를 쓴다).
-2. 두 LaunchAgent plist의 경로를 `~/side/reels-live/current/...`로 바꾼다. 브리지는 `WorkingDirectory`와 `bridge.mjs` 경로, autopilot은 `dist-cli/reels.mjs` 경로다. 브리지 plist `EnvironmentVariables`에 릴리스 폴더 밖의 실행 파일 세 개를 절대 경로로 넣는다(설치 스크립트가 존재·실행 가능 여부를 검사한다).
-   - `REELS_BRIDGE_KEYCHAIN_HELPER`: 기존 Keychain 도우미. 옮기거나 다시 빌드하면 Keychain 접근을 다시 허락해야 할 수 있어 그대로 둔다.
-   - `REELS_PREVIEW_FFMPEG`, `REELS_PREVIEW_FFPROBE`: 저화질 미리보기 런타임(`build:editor` 결과). 릴리스 폴더에는 빌드하지 않는다.
-3. `launchctl bootout` 후 `bootstrap`으로 두 에이전트를 다시 올리고 `node scripts/live-install.mjs`를 실행해 브리지 확인까지 통과하는지 본다. 실패하면 plist를 원래 경로로 되돌린다.
+2. main 폴더에서 `git switch main && git pull --ff-only`. 실패하면(로컬 main이 갈라짐 등) 원인을 확인하고, 로컬에만 있던 커밋이 원격 브랜치에 있는지 본 뒤에만 `git reset --hard origin/main`한다.
+3. **사이트 입력**(`apps/mobile-briefing`, `packages/briefing`, `scripts/mobile-briefing`)이 바뀌었으면 사이트를 먼저 `docs/mobile-briefing.md`「빌드와 배포」대로 배포하고, 새 사이트가 이전 브리지 스냅샷도 받아들이는지 확인한 뒤 브리지를 재시작한다(`launchctl kickstart -k gui/$(id -u)/com.rosy.reels-mobile-bridge`). 사이트보다 브리지를 먼저 올리지 않는다.
+4. main 폴더에서 `npm ci` 뒤 `FFMPEG_BIN`·`FFPROBE_BIN`을 `native/editor-engine/.build/media/bin/ffmpeg|ffprobe`로 주고 `npm run package:mac -- --config.directories.output=release/pending/<이름>`으로 빌드한다.
+5. 앱에 저장 안 된 편집·실행 중 작업이 없는지(`reels_get_app_state`) 확인 → 앱 정상 종료 → 기존 `release/mac-arm64`를 `release/backups/mac-arm64-before-<이름>`으로 옮김 → 새 빌드를 `release/mac-arm64/`에 넣음 → `/usr/bin/open -n --env REELS_DEV_MODE=1 "release/mac-arm64/Reels Dashboard.app"` → 4319 MCP·`npm run workflow -- validate-definition`으로 확인한다.
 
 ## 리모트 세션에 넘길 때
 
