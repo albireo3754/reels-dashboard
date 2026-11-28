@@ -77,6 +77,12 @@ const stepSchema = z.strictObject({
   outputs: z.array(relativeFile).max(100).default([]),
   completion: z.array(z.string().trim().min(1).max(2000)).min(1).max(20),
   formFile: relativeFile.optional(),
+  /**
+   * Review steps only: this step's own revise budget. Its revisions count against this
+   * number instead of the run-wide `maxRevisions`, so a definition with many reviews
+   * does not let early reviews spend the budget of later ones.
+   */
+  maxRevisions: z.number().int().min(1).max(10).optional(),
   on: z.strictObject({
     done: z.string().optional(),
     pass: z.string().optional(),
@@ -108,6 +114,8 @@ export const workflowDefinitionSchema = z
         fail(
           `${step.id}: task/input requires done; review requires pass and revise`,
         );
+      if (step.maxRevisions !== undefined && step.kind !== "review")
+        fail(`${step.id}: only review steps declare maxRevisions`);
       if ((step.kind === "input") !== !!step.formFile)
         fail(`${step.id}: only input steps require formFile`);
       if (step.kind === "input" && step.outputs.length)

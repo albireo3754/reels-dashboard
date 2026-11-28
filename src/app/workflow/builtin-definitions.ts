@@ -21,7 +21,8 @@ const imageReviewChecks = `      media-scenes.json의 미리보기와 원고에 
       (3) 모든 사진·GIF가 앞뒤 문장 또는 블록과 짝을 이루는가(짝 없이 놓인 컷은 revise. 짝을 만들려고 문장을 새로 쓰지 말고 자리 이동·같은 장면 묶음 편입을 먼저 제안한다). 사진을 가리키기만 하거나 사진 속 글자·상표를 옮겨 적은 줄은 짝으로 세지 않고 삭제 대상으로 적는다,
       (4) 맛집 글이면 메뉴판·영수증 컷을 탐색했고 결과(사용·없음)와 메뉴·가격 근거가 기록돼 있는가,
       (5) 식별 가능한 얼굴과 영수증 사업자번호 같은 개인정보가 있는 컷을 모두 식별했고 story-media-plan.json handling에 가림 계획이 있는가.`;
-const textReviewChecks = `      작업 폴더의 작성 기준과 사용자 답변 원문을 대조해 전 문단·전환·사실·주체·말투를 검토한다. 대상은 고치지 않고 보고서만 쓴다.
+const textReviewChecks = `      작업 폴더의 작성 기준과 사용자 답변 원문을 대조해 전 문단·전환·사실·주체·말투를 검토한다. 로컬 가이드가 이 검토 안에서 원고를 고치는 루프를 정하지 않았으면 대상은 고치지 않고 보고서만 쓴다.
+      원고를 고쳤으면 고치기 전 원고로 열린 task는 STALE_INPUT으로 기록되지 않으므로 restart로 새 task를 받아 바뀐 원고를 다시 검토하고, pass는 원고를 더 고치지 않은 회차에서만 기록한다.
       맛집 글은 메뉴·가격 정보도 확인한다: 주문 메뉴와 가격이 근거와 함께 있고 가격·영업 정보의 근거와 기준일이 작업 폴더에 기록됐는가(본문 표기 방식은 로컬 가이드를 따른다),
       메뉴판·영수증 사진이 있으면 메뉴 박스 값과 맞는가, 술·사이드 같은 주문 항목이 해당 사진·문단과 같은 자리에 있는가(사진 옆에 품목을 다시 나열하라는 뜻은 아니다).`;
 const layoutWork = `      story-media-plan.json의 채택·순서·묶음을 이어받아(docs/photo-first-drafting.md의 Review and layout)
@@ -155,6 +156,8 @@ const blogV3 = `# Built-in blog v3 definition (Reels Dashboard): the full blog p
 # with experience and content corrections moved after it.
 # long_draft → image_review → text_review → layout → recall_prep → recall → merge ↔ prune
 # → final_image_review → final_text_review → final_layout → visual_review.
+# Each review has its own revise budget (maxRevisions on the step), so the six reviews
+# do not share the run-wide maxRevisions; prune gets the most because it loops with merge.
 # Paths are relative to the article workspace. Media rules: docs/photo-first-drafting.md.
 version: 1
 id: blog-v3
@@ -171,8 +174,9 @@ steps:
       촬영 날짜를 색인(reels_photos_index)하고 방문 그룹을 고른 뒤 reels_import_photos_bundle로 그룹의 사진·영상·Live Photo 전체를 카드에 원본 복사로 가져온다.
       Photos 원본은 복사만 하고 바꾸지 않는다. inspect 미리보기나 영상만 가져오기로 대신하지 않는다.
       촬영분 전체를 Dashboard 분석(reels_start_analysis)으로 확인하고 실제 미리보기를 함께 본다.
+      이미지를 직접 잘라 정적으로 분석하는 것으로 앱 분석을 대신하지 않는다.
       고른 컷만이 아니라 촬영분 전체 장면을 evidence/media-scenes.json에 올린다
-      (형식과 preview 경로 규칙은 Reels Dashboard docs/photo-first-drafting.md의 Preparation).
+      (장면마다 id·source·preview·observed·contextNotes, 형식과 preview 경로 규칙은 Reels Dashboard docs/photo-first-drafting.md의 Preparation).
       v3는 여기서 경험을 묻지 않는다. 사용자 기억은 다듬어진 긴 초안을 읽는 recall 단계에서 받는다.
     tools:
       - {server: reels_dashboard, name: reels_get_content, purpose: 콘텐츠 카드와 연결 자료 확인}
@@ -226,6 +230,7 @@ ${imageReviewChecks}
     inputs: [article.markup.md, story-layout.md, evidence/media-scenes.json, evidence/story-media-plan.json]
     outputs: ['reviews/image-review-{attempt}.md', 'reviews/image-plan-{attempt}.md']
     completion: [실제 이미지 파일을 열어 본 목록 기록, 다섯 검사 항목별 판정과 근거, 수정 항목 또는 통과 근거 기록]
+    maxRevisions: 3
     on: {pass: text_review, revise: long_draft}
   - id: text_review
     title: 문안·의미 검토
@@ -238,6 +243,7 @@ ${textReviewChecks}
     inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json]
     outputs: ['reviews/text-review-{attempt}.md']
     completion: [사실·주체·말투 검토, 강조 판정, 맛집 글의 메뉴·가격·메뉴판 확인, 추정 줄 보존, 수정 항목 또는 통과 근거 기록]
+    maxRevisions: 3
     on: {pass: layout, revise: long_draft}
   - id: layout
     title: 화면 구성
@@ -259,10 +265,11 @@ ${layoutWork}
       질문 section에는 섹션 번호와 소제목, help에는 그 섹션의 다듬어진 문장을 [추정] 표시와 함께 그대로(2000자 이내, 첫 섹션에는 제목 후보도) 넣고,
       images에는 layout이 만든 그 섹션의 공개용 사진·GIF 첫 프레임과 판단이 필요한 hold 장면 사진을 최대 4장(JPEG/PNG/WebP, 4MB 이하, 배치 역할을 적은 caption) 붙인다.
       prompt는 그때 떠오르는 경험과 이 섹션의 글 상태(맞는 것·틀린 것·뺄 것·더할 것·합치거나 바꾸고 싶은 구성)를 떠오르는 대로 적게 열어 두고 답을 유도하지 않는다. 모든 질문은 required false다.
+      작업 폴더의 사용자 진술과 기록(사진·영수증·분석·조사)이 본문 문장을 바꿀 만큼 어긋나는 항목은 그 섹션의 help 끝에 "기록은 X, 진술은 Y"처럼 둘을 나란히 적어 사용자가 바로잡을 수 있게 한다. 어느 쪽이 맞는지 답을 유도하지 않는다.
       마지막 질문은 섹션에 없던 기억과 글 전체의 상태(쳐낼 잔가지, 합칠 섹션, 사진 배치, 제목·말투·흐름)를 나열받는 자유 질문 하나로 둔다. facts에는 확인된 사실만 출처와 함께 넣는다.
     inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, publishing/smarteditor-draft-layout.html]
     outputs: [drafts/long.markup.md, recall-form.json]
-    completion: [drafts/long.markup.md가 다듬어진 article.markup.md와 같음, 섹션별 다듬어진 문장·공개용 사진·글 상태 안내가 붙은 recall 질문, 마지막 자유 질문]
+    completion: [drafts/long.markup.md가 다듬어진 article.markup.md와 같음, 섹션별 다듬어진 문장·공개용 사진·글 상태 안내가 붙은 recall 질문, 진술과 기록이 어긋나는 항목의 병기, 마지막 자유 질문]
     on: {done: recall}
   - id: recall
     title: 읽으며 기억 되살리기·글 상태 나열
@@ -312,6 +319,7 @@ ${layoutWork}
     inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
     outputs: ['reviews/prune-{attempt}.md']
     completion: [실제 열어 본 이미지 파일 목록, 잔가지·섹션 통합 목록(위치·이유) 또는 통과 근거, 사용자 답 문장 보존 확인, 최소 다섯 항목(추정 0건·계획 일치·사진 짝·메뉴 가격·가림 계획) 판정]
+    maxRevisions: 6
     on: {pass: final_image_review, revise: merge}
   - id: final_image_review
     title: 머지 뒤 이미지 구성 재검토
@@ -325,6 +333,7 @@ ${imageReviewChecks}
     inputs: [article.markup.md, story-layout.md, evidence/media-scenes.json, evidence/story-media-plan.json, reviews/merge-log.md]
     outputs: ['reviews/final-image-review-{attempt}.md', 'reviews/final-image-plan-{attempt}.md']
     completion: [실제 이미지 파일을 열어 본 목록 기록, 바뀐 사진·묶음과 짝을 잃은 사진 확인, 다섯 검사 항목별 판정과 근거, 수정 항목 또는 통과 근거 기록]
+    maxRevisions: 3
     on: {pass: final_text_review, revise: merge}
   - id: final_text_review
     title: 머지 뒤 문안·강조 재검토
@@ -333,12 +342,14 @@ ${imageReviewChecks}
       merge·prune을 거친 원고에 text_review와 같은 기준(사실·주체·말투·전환과 강조)을 다시 적용한다. merge-log.md에 적힌 바뀌거나 새로 들어온 문장을 먼저 보고 전체 흐름을 처음부터 다시 읽는다.
 ${textReviewChecks}
       사용자 답변 원문은 최신 recall 답변(experience-answers-*.json)과 작업 폴더의 사용자 진술이다.
-      사용자가 직접 쓴 구절(recall 답변·채팅 기억 원문, 로컬 가이드가 정한 사용자 확정 표현 목록)은 뜻과 말투를 바꾸라고 지적하지 않고, 오타와 줄 나눔만 고칠 항목으로 적는다.
+      사용자가 직접 쓴 구절(recall 답변·채팅 기억 원문, 로컬 가이드가 정한 사용자 확정 표현 목록)은 뜻과 말투를 바꾸라고 지적하지 않고, 오타만 고칠 항목으로 적는다.
       강조(색·굵게)를 전 문단에서 다시 판정해 빠진 문장과 과한 문장을 위치와 함께 적는다. 남은 [추정]은 필수 지적이다.
-      blog-markup check의 폰 한 줄 길이 fact 줄은 끝 한두 글자가 홀로 떨어질 자리이므로 의미 단위로 나눌 곳을 적는다.
+      화면 폭 때문에 줄을 나누는 일은 이 단계에서 하지 않는다. 실제로 홀로 떨어진 줄 끝은 visual_review가 폭별로 재고 final_layout이 그 줄만 고친다.
+      blog-markup check의 폰 한 줄 길이 fact는 긴 줄 전부에 붙는 참고라서 그것만으로 줄을 나누라고 지적하지 않는다.
     inputs: [article.markup.md, story-layout.md, evidence/story-media-plan.json, reviews/merge-log.md]
     outputs: ['reviews/final-text-review-{attempt}.md']
     completion: [바뀐 문장과 전체 흐름의 사실·주체·말투 검토, 강조 재판정, 사용자 직접 구절의 뜻·말투 보존, 추정 0건, 맛집 글의 메뉴·가격·메뉴판 확인, 수정 항목 또는 통과 근거 기록]
+    maxRevisions: 3
     on: {pass: final_layout, revise: merge}
   - id: final_layout
     title: 마무리 화면 구성
@@ -348,10 +359,12 @@ ${textReviewChecks}
 ${layoutWork}
       새로 쓰거나 옮긴 사진은 story-media-plan.json handling대로 공개용 사본(위치 메타데이터 제거·크롭·얼굴 가림·영수증 개인정보·휴대폰 화면 가림)을 만들고, 원고에서 빠진 사진의 사본이 화면에 남지 않게 한다.
       동작 GIF와 스티커처럼 로컬 가이드가 정한 화면 요소는 확정된 문안 기준으로 다시 맞춘다.
-      visual_review에서 revise로 돌아오면 최신 reviews/visual-review-*.md 항목을 반영한다. 줄 끝 한두 글자가 홀로 떨어지는 줄은 문장을 의미 단위로 나눠 고치고(사용자가 직접 쓴 구절은 줄 나눔만) 다시 렌더한다.
+      visual_review에서 revise로 돌아오면 최신 reviews/visual-review-*.md 항목을 반영한다. 화면 폭에 맞춘 줄 나눔은 이 단계만 고친다:
+      visual_review의 줄 끝 측정(blog-markup line-ends, docs/blog-markup-source.md)이 잡은 줄만 의미 단위로 나누고(사용자가 직접 쓴 구절은 뜻·말투를 그대로 두고 줄 나눔만), 측정이 잡지 않은 긴 줄은 나누지 않는다.
+      다시 렌더한 뒤 같은 측정을 돌려 잡힌 줄이 0건인지 확인하고, 나누면서 문장이 바뀌었으면(줄 나눔 말고 낱말이 바뀌었으면) 그 문장을 보고서에 적어 visual_review가 문체·강조를 다시 보게 한다.
     inputs: [article.markup.md, evidence/story-media-plan.json]
     outputs: [publishing/smarteditor-draft-layout.html, reviews/final-layout-review.md]
-    completion: [바뀐 사진의 공개용 사본과 가림 적용, 화면 요소 재정렬, 실제 화면 확인과 근거 기록]
+    completion: [바뀐 사진의 공개용 사본과 가림 적용, 화면 요소 재정렬, 측정이 잡은 줄 끝만 나눈 기록, 실제 화면 확인과 근거 기록]
     on: {done: visual_review}
   - id: visual_review
     title: 최종 화면 검토
@@ -359,12 +372,14 @@ ${layoutWork}
     instruction: >-
 ${visualReviewChecks}
       본문 줄 끝 한두 글자(요./다. 같은 어미·마침표)가 360~430px 폭에서 홀로 다음 줄로 떨어지면 권장 사항이 아니라 revise 항목이다.
-      blog-markup check의 폰 한 줄 길이 fact 줄과 대조해 위치를 적는다(final_layout이 의미 단위로 나눠 고치고 다시 렌더한다).
+      눈으로 훑는 것으로 대신하지 않고 blog-markup line-ends(docs/blog-markup-source.md)로 미리보기를 360·390·430px에서 렌더해 문단 줄마다 마지막 화면 줄의 글자 수를 재고, 측정 결과(폭·문단·줄·떨어진 글자)를 보고서에 붙인다. 잡힌 줄이 있으면 revise다(final_layout이 그 줄만 고친다).
+      final_layout 보고서에 줄을 나누며 낱말이 바뀐 문장이 적혀 있으면 그 문장의 문체·강조도 text_review 기준으로 본다.
       로컬 가이드가 업로드 전 검사(업로드 폴더 검사 등)를 정했으면 그 검사 통과도 pass 조건이다.
       대상 파일은 고치지 않는다. 외부 게시·발행은 하지 않는다.
     inputs: [publishing/smarteditor-draft-layout.html]
     outputs: ['reviews/visual-review-{attempt}.md']
-    completion: [실제 화면 확인, 가림 계획 컷의 실제 가림 확인, 360~430px에서 홀로 떨어진 줄 끝 글자 0건, 업로드 전 검사 결과, 통과 또는 수정 근거 기록]
+    completion: [실제 화면 확인, 가림 계획 컷의 실제 가림 확인, 360·390·430px 줄 끝 측정 결과 첨부와 잡힌 줄 0건, 업로드 전 검사 결과, 통과 또는 수정 근거 기록]
+    maxRevisions: 4
     on: {pass: $complete, revise: final_layout}
 `;
 

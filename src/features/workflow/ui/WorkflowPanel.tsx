@@ -401,8 +401,16 @@ function ConnectedWorkflowPanel({
                 </ol>
               )}
               <p>
-                수정 {run.revisions}회 / 한도 {run.maxRevisions}회 · 최종 발행은
-                수동입니다.
+                수정 {run.revisions}회 /{" "}
+                {run.definition?.definition.steps.some(
+                  (s) => s.maxRevisions !== undefined,
+                )
+                  ? `검토 단계별 한도(${run.definition.definition.steps
+                      .filter((s) => s.maxRevisions !== undefined)
+                      .map((s) => `${s.id} ${s.maxRevisions}`)
+                      .join(", ")})`
+                  : `한도 ${run.maxRevisions}회`}{" "}
+                · 최종 발행은 수동입니다.
               </p>
               <details>
                 <summary>작업 맥락과 파일</summary>

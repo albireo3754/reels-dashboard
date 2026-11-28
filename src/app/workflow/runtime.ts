@@ -347,10 +347,11 @@ export class WorkflowRuntime {
       let status: WorkflowRun["status"] = "waiting";
       let stepId = run.stepId!;
       const revisions = run.revisions + (result.outcome === "revise" ? 1 : 0);
+      const revisionLimit = this.dslRevisionLimit(run, step, result.outcome);
       if (result.outcome === "cancel") status = "cancelled";
       else if (
         result.outcome === "blocked" ||
-        revisions > run.maxRevisions ||
+        !!revisionLimit ||
         run.history.length >= run.definition!.definition.maxTransitions ||
         (run.history.length + 1 >= run.definition!.definition.maxTransitions &&
           step.on[result.outcome as keyof typeof step.on] !== "$complete")
@@ -376,8 +377,8 @@ export class WorkflowRuntime {
             status === "blocked"
               ? result.outcome === "blocked"
                 ? result.summary
-                : revisions > run.maxRevisions
-                  ? "수정 루프 한도를 초과했어요."
+                : revisionLimit
+                  ? revisionLimit
                   : "정의의 전체 단계 실행 한도에 도달했어요."
               : undefined,
           history: [
@@ -488,6 +489,30 @@ export class WorkflowRuntime {
     tracked: string[],
   ) {
     return planStep(step) ? mediaSceneInputs(run.workspace, tracked) : [];
+  }
+  /**
+   * The blocked reason when this revise goes over its budget, else undefined. A review
+   * step with its own `maxRevisions` counts only its own revisions; other reviews share
+   * the run-wide `maxRevisions`. Only a revise is checked, so a run held at its budget
+   * can be restarted and pass once the findings are fixed.
+   */
+  private dslRevisionLimit(
+    run: WorkflowRun,
+    step: DefinitionStep,
+    outcome: string,
+  ): string | undefined {
+    if (outcome !== "revise") return undefined;
+    const steps = run.definition!.definition.steps;
+    const own = (id?: string) => steps.find((s) => s.id === id)?.maxRevisions;
+    const revised = (match: (id?: string) => boolean) =>
+      run.history.filter((h) => h.outcome === "revise" && match(h.stepId)).length;
+    if (step.maxRevisions !== undefined)
+      return revised((id) => id === step.id) + 1 > step.maxRevisions
+        ? `${step.id} 단계의 수정 루프 한도(${step.maxRevisions}회)를 초과했어요.`
+        : undefined;
+    // Run-wide budget: every revision except those of steps with their own budget.
+    const shared = run.revisions - revised((id) => own(id) !== undefined) + 1;
+    return shared > run.maxRevisions ? "수정 루프 한도를 초과했어요." : undefined;
   }
   private dslStep(run: WorkflowRun): DefinitionStep {
     const step = run.definition?.definition.steps.find(
