@@ -1,15 +1,17 @@
 import {AnnotationStore} from "../src/app/blog-editor/annotations";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { parse, serialize, validate, legend } from "../src/shared/blog-markup";
 import { bundleHashes, merge3, reviewFresh } from "../src/shared/blog-markup-source";
 import { renderHtml, MARKUP_STYLE_CSS } from "../src/shared/blog-markup-render";
 import { convertLayers } from "../src/shared/blog-markup-convert";
 import { relocateLayout, retitleLayout } from "../src/shared/blog-layout";
+import { LINE_END_COLLECTOR, lineEndFragments, type LaidOutLine } from "../src/shared/blog-line-ends";
 const [command,file,...args]=process.argv.slice(2);
 const read=(f:string)=>readFile(f,"utf8");
 async function main(){
-  if(!file)throw new Error("Usage: blog-markup.ts check|view|render|hash|merge|convert-layers <file> [arguments] (render <source.md> <layout.html> [--from <template.html>])");
+  if(!file)throw new Error("Usage: blog-markup.ts check|view|render|hash|merge|convert-layers|line-ends <file> [arguments] (render <source.md> <layout.html> [--from <template.html>]; line-ends <layout.html> [--widths 360,390,430] [--max 2])");
   const source=await read(file);
   if(command==="merge"){
     if(args.length!==2)throw new Error("merge <base> <mine> <current>");
@@ -21,6 +23,29 @@ async function main(){
     const json=async(p:string)=>JSON.parse(await read(resolve(p)));
     const [canonical,grouping,bundles,emphasis]=await Promise.all([read(resolve(spec.source)),json(spec.grouping),json(spec.bundles),json(spec.emphasis)]);
     process.stdout.write(serialize(convertLayers({...spec,source:canonical,layout:grouping.layout,bundles:bundles.bundles,emphasis:emphasis.emphasis})));return;
+  }
+  if(command==="line-ends"){
+    // line-ends <layout.html> [--widths 360,390,430] [--max 2]: lines whose last on-screen row is only 1–2 characters.
+    const opt=(name:string,fallback:string)=>{const at=args.indexOf(name);return at<0?fallback:args[at+1]??"";};
+    const widths=opt("--widths","360,390,430").split(",").map(Number),maxChars=Number(opt("--max","2"));
+    if(!widths.length||widths.some(w=>!Number.isInteger(w)||w<200||w>2000)||!Number.isInteger(maxChars)||maxChars<1)throw new Error("--widths는 쉼표로 나눈 폭(px), --max는 1 이상의 글자 수");
+    const {chromium}=await import("@playwright/test");
+    const browser=await chromium.launch();
+    try{
+      const page=await browser.newPage();
+      await page.goto(pathToFileURL(path.resolve(file)).href,{waitUntil:"load"});
+      const fragments=[];
+      for(const width of widths){
+        await page.setViewportSize({width,height:900});
+        await page.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))");
+        const lines=await page.evaluate(LINE_END_COLLECTOR) as LaidOutLine[];
+        if(!lines.length)throw new Error("article p.paragraph 문단이 없어요: "+file);
+        fragments.push(...lineEndFragments(lines,width,maxChars));
+      }
+      console.log(JSON.stringify({file,widths,maxChars,count:fragments.length,fragments},null,2));
+      if(fragments.length)process.exitCode=1;
+    }finally{await browser.close();}
+    return;
   }
   const doc=parse(source);
   if(command==="check"){const issues=validate(doc);console.log(JSON.stringify(issues,null,2));if(issues.some(i=>i.level==="error"))process.exitCode=1;return;}

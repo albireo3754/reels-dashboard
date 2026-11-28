@@ -572,7 +572,7 @@ export function validate(doc: MarkupDoc, opts: ValidateOptions = {}): MarkupIssu
     if (pids.has(p.id)) issues.push({ level: "error", where, message: "문단 id 중복" });
     pids.add(p.id);
     p.lines.forEach((text, i) => {
-      if (body && [...text.trimEnd()].length > phoneLineChars) issues.push({ level: "fact", where, message: `${i + 1}번째 줄 ${[...text].length}자, 폰 한 줄(${phoneLineChars}자)보다 김 — 어디서 접힐지는 기기마다 다름` });
+      if (body && [...text.trimEnd()].length > phoneLineChars) issues.push({ level: "fact", where, message: `${i + 1}번째 줄 ${[...text].length}자, 폰 한 줄(${phoneLineChars}자)보다 김 — 어디서 접힐지는 기기마다 다름(실제로 끝 글자가 홀로 떨어지는지는 line-ends로 잼)` });
       const ms = p.marks.filter((m) => m.line === i).sort((a, b) => a.start - b.start);
       ms.forEach((m, k) => {
         if (m.start < 0 || m.end > text.length || m.start >= m.end) issues.push({ level: "error", where, message: `강조 ${m.n} 범위가 줄 밖` });
