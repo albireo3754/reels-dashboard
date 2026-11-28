@@ -730,6 +730,11 @@ test("the built-in blog-v3 run reviews and lays out the long draft before recall
     );
     for (const step of snapshot.definition.steps.filter((s) => s.kind === "review"))
       assert.ok(step.outputs.every((o) => o.includes("{attempt}")), step.id);
+    // Six reviews each carry their own revise budget instead of sharing the run-wide one.
+    assert.deepEqual(
+      snapshot.definition.steps.filter((s) => s.kind === "review").map((s) => [s.id, s.maxRevisions]),
+      [["image_review", 3], ["text_review", 3], ["prune", 6], ["final_image_review", 3], ["final_text_review", 3], ["visual_review", 4]],
+    );
     // v3 reuses the blog review and layout contracts word for word.
     const blog = builtinDefinition("blog").definition.steps;
     const v3 = snapshot.definition.steps;
