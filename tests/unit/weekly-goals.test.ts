@@ -241,3 +241,11 @@ test("the view covers this week, next week and the queue from one snapshot", () 
   assert.deepEqual([view.thisWeek.from, view.nextWeek.from, view.queue.horizonDays], ["2026-11-15", "2026-11-22", 14]);
   assert.deepEqual(view.targets, { ...defaultWeeklyTargets, "naver-clip": 3 });
 });
+
+test("a finished blog-v3 run counts as a finished blog like the blog run", () => {
+  const finished = finishedBlogRuns({ runs: [
+    { builtinDefinition: "blog-v3", projectId: "v3-ready", status: "ready" },
+    { builtinDefinition: "blog-v3", projectId: "v3-writing", status: "waiting" },
+  ] });
+  assert.deepEqual([...finished], ["v3-ready"]);
+});

@@ -13,6 +13,7 @@ import type {
 import { mediaKind, resourceLabels } from "../../../shared/content-media";
 import { PreviewImage } from "../../../shared/ui/PreviewImage";
 import type { EditRef } from "../../../shared/production-project";
+import type { SlowmoResult } from "../../../shared/slowmo";
 import {
   openingVideoStatus,
   playbackCopyStatus,
@@ -658,6 +659,9 @@ function MediaPlayer({
       {item.kind === "video" && bridge.mode === "desktop" && bridge.contentMedia?.gif && (
         <GifMaker key={item.path} projectId={projectId} file={item.path} bridge={bridge} />
       )}
+      {item.kind === "video" && bridge.mode === "desktop" && bridge.contentMedia?.slowmo && (
+        <SlowmoMaker key={`slowmo:${item.path}`} projectId={projectId} file={item.path} bridge={bridge} />
+      )}
       {doc?.truncated && (
         <small>문서가 길어 앞부분만 표시했어요. 전체는 ‘위치 열기’로 확인해주세요.</small>
       )}
@@ -704,6 +708,85 @@ function GifMaker({
           {state.result.width}×{state.result.height} · {state.result.fps}fps ·{" "}
           {megabytes(state.result.bytes)} · {(state.result.elapsedMs / 1000).toFixed(1)}초 걸림
           {state.result.warnings.map((w) => (
+            <small key={w}>{w}</small>
+          ))}
+        </p>
+      )}
+      {state.kind === "error" && <p role="alert">{state.message}</p>}
+    </div>
+  );
+}
+
+const SLOWMO_SPEEDS = [0.5, 0.25, 0.75] as const;
+/** GPU slow motion: in-between frames are drawn from optical flow so the slowed clip stays smooth. */
+function SlowmoMaker({
+  projectId,
+  file,
+  bridge,
+}: {
+  projectId: string;
+  file: string;
+  bridge: DashboardBridge;
+}) {
+  const [speed, setSpeed] = useState<number>(SLOWMO_SPEEDS[0]);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "busy" }
+    | { kind: "done"; result?: SlowmoResult }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const seconds = (text: string) => (text.trim() === "" ? undefined : Number(text));
+  const make = async () => {
+    const from = seconds(start), to = seconds(end);
+    if ([from, to].some((v) => v !== undefined && !(Number.isFinite(v) && v >= 0))) {
+      setState({ kind: "error", message: "시작·끝은 0 이상의 초로 적어주세요." });
+      return;
+    }
+    setState({ kind: "busy" });
+    try {
+      const job = await bridge.contentMedia!.slowmo!(projectId, file, { speed, start: from, end: to });
+      if (!job) setState({ kind: "idle" });
+      else if (job.state === "succeeded") setState({ kind: "done", result: job.result });
+      else setState({ kind: "error", message: job.state === "cancelled" ? "취소됐어요." : job.error ?? "슬로우 영상을 만들지 못했어요." });
+    } catch (e) {
+      setState({ kind: "error", message: errorText(e) });
+    }
+  };
+  const result = state.kind === "done" ? state.result : undefined;
+  return (
+    <div className="board-gif board-slowmo">
+      <div className="board-slowmo-options">
+        <label>
+          속도
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} disabled={state.kind === "busy"}>
+            {SLOWMO_SPEEDS.map((v) => (
+              <option key={v} value={v}>{v}배</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          시작(초)
+          <input inputMode="decimal" placeholder="0" value={start} onChange={(e) => setStart(e.target.value)} disabled={state.kind === "busy"} />
+        </label>
+        <label>
+          끝(초)
+          <input inputMode="decimal" placeholder="끝까지" value={end} onChange={(e) => setEnd(e.target.value)} disabled={state.kind === "busy"} />
+        </label>
+      </div>
+      <button onClick={make} disabled={state.kind === "busy"}>
+        {state.kind === "busy" ? "슬로우 만드는 중…" : "부드러운 슬로우 만들기"}
+      </button>
+      {state.kind === "idle" && (
+        <small>GPU가 프레임 사이 장면을 그려 넣어서 끊김 없는 슬로우로 저장해요. 소리는 빼고, 원본은 그대로예요.</small>
+      )}
+      {result && (
+        <p role="status">
+          슬로우 저장: {result.outputPath.split("/").at(-1)} · {result.speed}배 · {result.durationSeconds}초 ·{" "}
+          {result.width}×{result.height} · {result.fps}fps · 보간 {result.interpolatedFrames}/{result.frames}프레임 ·{" "}
+          {megabytes(result.bytes)} · {(result.elapsedMs / 1000).toFixed(1)}초 걸림
+          {result.warnings.map((w) => (
             <small key={w}>{w}</small>
           ))}
         </p>

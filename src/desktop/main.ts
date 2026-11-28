@@ -27,6 +27,8 @@ import { WorkflowNotifications } from "./workflow-notifications";
 import { BlogExtractor } from "./blog-extractor";
 import { MediaAnalysis } from "./media-analysis";
 import { BlogLibrary } from "./blog-library";
+import { Scheduler, schedulerEnabled } from "./scheduler";
+import { AsideRunner, asideEnv, resolveAsideBin } from "./scheduler-aside";
 import {
   app,
   BrowserWindow,
@@ -73,6 +75,8 @@ import { connectAgent } from "../app/automation";
 import { AgentSession } from "../entities/agent-session";
 import { ContentLibrary, BoardMedia, ICloudDelivery, ClipUpload } from "../features/content-library";
 import { GifConverter } from "../features/gif-convert";
+import { SLOWMO_DEFAULT_SPEED } from "../shared/slowmo";
+import { SlowmoService } from "../features/slowmo";
 import { icloudStatusInput, type ICloudUploadStatus } from "../shared/icloud-delivery";
 import { EditorService, type BundleAsset, type MaterializedMedia } from "../features/reel-editing";
 import { RouteLibrary } from "./route-library";
@@ -275,6 +279,31 @@ async function awaitReady() {
   );
   const blogResults = new BlogResults(store, () => emit("blog:results-changed", null));
   const blogComments = new BlogComments(store);
+  // Built-in schedules (docs/scheduler.md). A failure to open its database never stops the app.
+  let scheduler: Scheduler | undefined;
+  if (schedulerEnabled(process.env)) {
+    try {
+      const home = os.homedir();
+      scheduler = new Scheduler({
+        root,
+        runner: new AsideRunner({
+          root,
+          asideBin: resolveAsideBin(process.env, home),
+          skillsDir: path.join(home, ".aside/u/0/skills/user"),
+          reelsCli: path.join(home, ".local/bin/reels"),
+          env: asideEnv(process.env, home),
+          comments: blogComments,
+          logs,
+        }),
+        notify: (notice) => {
+          if (Notification.isSupported()) new Notification({ title: notice.title, body: notice.body, silent: true }).show();
+        },
+      });
+    } catch (error) {
+      console.warn("[scheduler] unavailable:", error instanceof Error ? error.message : error);
+    }
+  }
+  const schedulerRuns = () => scheduler?.running() ?? 0;
   const blogExtractor = new BlogExtractor({
     store,
     viewerAssets: path.join(app.getAppPath(), "dist-electron/blog-restore-viewer"),
@@ -324,6 +353,15 @@ async function awaitReady() {
     try { return await gifConverter.convert(input); }
     finally { activeOperations--; }
   };
+  const slowmo = new SlowmoService(
+    path.join(
+      app.isPackaged
+        ? path.join(process.resourcesPath, "editor-runtime")
+        : path.join(app.getAppPath(), "native/editor-engine/.build/runtime"),
+      "bin/reels-slowmo",
+    ),
+    logs,
+  );
   const createClipBundle = async (input: unknown) => {
     agentSession.assertWritable();
     activeOperations++;
@@ -507,7 +545,7 @@ async function awaitReady() {
       : dialog.showMessageBoxSync(options);
   };
   const workBusy = () =>
-    activeOperations > 0 || shutdown.busy || editorService.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
+    activeOperations > 0 || shutdown.busy || editorService.busy || slowmo.busy || cardNews.busy || icloudDelivery.busy || instagramInsights.busy;
   const confirmAbortJobs = () =>
     messageBox({
       type: "warning",
@@ -572,7 +610,7 @@ async function awaitReady() {
       });
       return;
     }
-    if (workflowHost.runningJobs() > 0 && !confirmed && !confirmAbortJobs()) {
+    if ((workflowHost.runningJobs() > 0 || schedulerRuns() > 0) && !confirmed && !confirmAbortJobs()) {
       cancelCloseAttempt();
       return;
     }
@@ -593,8 +631,10 @@ async function awaitReady() {
     boardMedia.dispose();
     void shutdown.run(
       () =>
-        editorService
-          .dispose()
+        // A running schedule stops first (process group, then its Aside session) and is recorded as interrupted.
+        Promise.resolve(scheduler?.dispose())
+          .catch((error) => console.error("Scheduler close failed:", error))
+          .then(() => editorService.dispose())
           .then(() => canonicalEditor.dispose())
           .then(() =>
             workflowHost
@@ -939,7 +979,7 @@ async function awaitReady() {
     return terminalSetting();
   });
   handle("terminal-setting:relaunch", () => {
-    if (workBusy() || workflowHost.runningJobs() > 0)
+    if (workBusy() || workflowHost.runningJobs() > 0 || schedulerRuns() > 0)
       throw new Error("진행 중인 작업이 끝난 뒤 다시 시작해주세요.");
     app.relaunch();
     app.quit();
@@ -1109,6 +1149,28 @@ async function awaitReady() {
     // The save panel already confirmed replacing an existing file.
     return convertGif({ sourcePath: checked.path, outputPath, overwrite: true });
   });
+  handle("contentMedia:slowmo", async (id: string, file: string, options: unknown) => {
+    if (fixture) throw new Error("UNSUPPORTED: 데모 화면에서는 슬로우 영상을 만들 수 없어요.");
+    const checked = await contentLibrary.resolveMedia(id, file);
+    if (!checked.info.isFile()) throw new Error("SLOWMO_SOURCE: 영상 파일을 선택해주세요.");
+    const settings = (options && typeof options === "object" ? options : {}) as { speed?: unknown; start?: unknown; end?: unknown };
+    const finiteNumber = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+    const speed = finiteNumber(settings.speed) ?? SLOWMO_DEFAULT_SPEED;
+    const parsed = path.parse(checked.path);
+    const chosen = await dialog.showSaveDialog(window, {
+      title: "슬로우 영상 저장",
+      defaultPath: path.join(parsed.dir, `${parsed.name}-slow${Math.round(speed * 100)}.mov`),
+      filters: [{ name: "동영상", extensions: ["mov", "mp4"] }],
+    });
+    if (chosen.canceled || !chosen.filePath) return null;
+    const outputPath = /\.(mov|mp4)$/i.test(chosen.filePath) ? chosen.filePath : `${chosen.filePath}.mov`;
+    // The save panel already confirmed replacing an existing file.
+    const job = await slowmo.start({
+      sourcePath: checked.path, outputPath, overwrite: true, speed,
+      start: finiteNumber(settings.start), end: finiteNumber(settings.end),
+    });
+    return slowmo.wait(job.id);
+  });
   handle("revealResource", async (id: unknown, resource: unknown) => {
     if (typeof id !== "string" || typeof resource !== "string")
       throw new Error("Invalid resource request");
@@ -1226,7 +1288,7 @@ async function awaitReady() {
         event.preventDefault();
         return;
       }
-      if (workflowHost.runningJobs() > 0) {
+      if (workflowHost.runningJobs() > 0 || schedulerRuns() > 0) {
         event.preventDefault();
         if (confirmAbortJobs()) {
           jobAbortConfirmed = true;
@@ -1302,6 +1364,10 @@ async function awaitReady() {
     };
     void checkBookings();
   }
+  // Catch-up after the app was closed or the Mac slept: tick at start, on resume/unlock and every minute.
+  scheduler?.start();
+  powerMonitor.on("resume", () => void scheduler?.wake());
+  powerMonitor.on("unlock-screen", () => void scheduler?.wake());
   app.on("second-instance", showWindow);
   if (!fixture) {
     const agent = await connectAgent(root, {
@@ -1311,6 +1377,7 @@ async function awaitReady() {
       instagramInsights: { get: input => instagramInsights.get(input), refresh: refreshInstagramInsights, setTopics: input => instagramInsights.setTopics(input) },
       clipUpload: { create: createClipBundle },
       gif: { convert: convertGif },
+      slowmo,
       icloud: icloudDelivery,
       editor: editorService,
       session: agentSession,
@@ -1328,6 +1395,12 @@ async function awaitReady() {
         unlink: (id) => blogResults.remove(id),
       },
       blogComments,
+      scheduler: scheduler && {
+        get: (input) => scheduler!.getSchedules(input),
+        set: (input) => scheduler!.setSchedule(input),
+        runNow: (input) => scheduler!.runNow(input),
+        runs: (input) => scheduler!.runs(input),
+      },
       preview: async (project, time, kind) => {
         const artifact = await editorService.previewArtifact(
           project,

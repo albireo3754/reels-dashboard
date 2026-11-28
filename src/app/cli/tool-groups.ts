@@ -8,7 +8,7 @@ import type { ToolName } from "../../features/agent-tools";
  */
 export const toolGroups = {
   editor: "Editing projects in the app: state, read, open, import and patch.",
-  render: "Preview frames, renders and the cover signature they use.",
+  render: "Preview frames, renders, slow-motion copies and the cover signature they use.",
   content:
     "Production dashboard entries, linked edits and publication records.",
   photos: "Read-only Photos search, index and inspect; import copies a video.",
@@ -20,6 +20,7 @@ export const toolGroups = {
   planning: "Calendar and Linear snapshots, weekly goals, posting queue (blog and video).",
   edits: "Edits app automation through Dashboard main and its native AX helper.",
   insights: "Private Instagram account insights and topic labels.",
+  scheduler: "Built-in schedules: list, set, run now and run history.",
 } as const;
 export type ToolGroup = keyof typeof toolGroups;
 export const toolGroupIds = Object.keys(toolGroups) as ToolGroup[];
@@ -43,6 +44,9 @@ export const toolGroupOf = {
   reels_start_render: "render",
   reels_get_render_job: "render",
   reels_cancel_render: "render",
+  reels_start_slowmo: "render",
+  reels_get_slowmo_job: "render",
+  reels_cancel_slowmo: "render",
   reels_get_cover_preferences: "render",
   reels_set_cover_preferences: "render",
 
@@ -111,4 +115,9 @@ export const toolGroupOf = {
   reels_get_planning: "planning",
   reels_sync_planning: "planning",
   reels_get_weekly_goals: "planning",
+
+  reels_get_schedules: "scheduler",
+  reels_set_schedule: "scheduler",
+  reels_run_schedule_now: "scheduler",
+  reels_get_schedule_runs: "scheduler",
 } as const satisfies Record<ToolName, ToolGroup>;

@@ -180,6 +180,38 @@ test("invalid YAML topology, duplicate keys, aliases, unknown fields and escaped
   }
 });
 
+test("a revision may run ahead through an unsubmitted form but never back to a submitted one", () => {
+  const memory = {
+    id: "memory",
+    title: "Your experience",
+    kind: "input",
+    instruction: "Answer based on your actual memory",
+    formFile: "experience-form.json",
+    completion: ["User submits explicit responses"],
+  };
+  // write → check (revise → write) → memory → complete: the form comes after the review,
+  // so revising the draft cannot revisit a submitted form.
+  const ahead = definition();
+  ahead.steps[1].on = { pass: "memory", revise: "write" } as any;
+  (ahead.steps as any[]).push({ ...memory, on: { done: "$complete" } });
+  assert.equal(workflowDefinitionSchema.safeParse(ahead).success, true);
+  // memory → write → check (revise → write): the form comes first, but the revision
+  // only reaches write and check, so it never returns to the form.
+  const behind = definition();
+  (behind as any).entry = "memory";
+  (behind.steps as any[]).unshift({ ...memory, on: { done: "write" } });
+  const parsed = workflowDefinitionSchema.safeParse(behind);
+  assert.equal(parsed.success, true);
+  // write → memory → check (revise → write): the review follows the submitted form and
+  // its revision would reach the form again, so it is rejected.
+  const back = definition();
+  back.steps[0].on = { done: "memory" } as any;
+  (back.steps as any[]).splice(1, 0, { ...memory, on: { done: "check" } });
+  const rejected = workflowDefinitionSchema.safeParse(back);
+  assert.equal(rejected.success, false);
+  assert.match(JSON.stringify(rejected.error!.issues), /cannot revisit a submitted input form/);
+});
+
 test("DSL input step uses the real shared form; normal submit cannot invent answers", async () => {
   const f = await fixture();
   const runtime = await WorkflowRuntime.open(path.join(f.root, "db"));
@@ -275,4 +307,71 @@ test("declared transition/revision budgets stop loops and a completed one-step r
     await runtime.close();
     await rm(f.root, { recursive: true, force: true });
   }
+});
+
+test("a review step with its own maxRevisions spends only its own budget", async () => {
+  const f = await fixture();
+  const runtime = await WorkflowRuntime.open(path.join(f.root, "db"));
+  try {
+    // write → check (own budget 2) → final (run-wide budget, maxRevisions 1 in the input).
+    const d: any = definition();
+    d.steps[1].maxRevisions = 2;
+    d.steps[1].on = { pass: "final", revise: "write" };
+    d.steps.push({
+      ...structuredClone(d.steps[1]),
+      id: "final",
+      title: "Final",
+      maxRevisions: undefined,
+      outputs: ["final-{attempt}.md"],
+      on: { pass: "$complete", revise: "write" },
+    });
+    delete d.steps[2].maxRevisions;
+    await writeFile(path.join(f.root, "workflow.yaml"), stringify(d));
+    let run = await runtime.create({ ...f.input, skipCompleted: false });
+    run = await submit(runtime, run, "done");
+    // Two revisions of check exceed the run-wide 1 but stay within check's own 2.
+    run = await submit(runtime, run, "revise");
+    run = await submit(runtime, run, "done");
+    run = await submit(runtime, run, "revise");
+    assert.equal(run.status, "waiting");
+    assert.equal(run.revisions, 2);
+    run = await submit(runtime, run, "done");
+    run = await submit(runtime, run, "pass");
+    assert.equal(run.stepId, "final");
+    // final shares the run-wide budget, which check's revisions did not use.
+    run = await submit(runtime, run, "revise");
+    assert.equal(run.status, "waiting");
+    run = await submit(runtime, run, "done");
+    run = await submit(runtime, run, "pass");
+    assert.equal(run.stepId, "final");
+    run = await submit(runtime, run, "revise");
+    assert.equal(run.status, "blocked");
+    assert.equal(run.blockedReason, "수정 루프 한도를 초과했어요.");
+    // A third check revision is over its own budget; restart reopens the held review so
+    // it can pass once the findings are fixed.
+    const second = await runtime.create({ ...f.input, skipCompleted: false });
+    let r = await submit(runtime, second, "done");
+    for (let i = 0; i < 2; i++) {
+      r = await submit(runtime, r, "revise");
+      r = await submit(runtime, r, "done");
+    }
+    r = await submit(runtime, r, "revise");
+    assert.equal(r.status, "blocked");
+    assert.match(r.blockedReason!, /check 단계의 수정 루프 한도\(2회\)/);
+    r = await runtime.restart({ runId: r.runId });
+    assert.equal(r.stepId, "check");
+    r = await submit(runtime, r, "pass");
+    assert.equal(r.stepId, "final");
+  } finally {
+    await runtime.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("only review steps declare maxRevisions", () => {
+  const d: any = definition();
+  d.steps[0].maxRevisions = 2;
+  const parsed = workflowDefinitionSchema.safeParse(d);
+  assert.equal(parsed.success, false);
+  assert.match(JSON.stringify(parsed.error!.issues), /only review steps declare maxRevisions/);
 });

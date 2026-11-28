@@ -424,6 +424,17 @@ pre-existing Swift AppCommandRouterTests baseline hash mismatch; that file is
 unchanged from HEAD. No installed app restart/replacement, real iCloud mutation,
 packaging or Naver upload was performed.
 
+## Built-in schedules — 2026-11-25
+
+The desktop app owns a small scheduler (cron trigger, aside action). Tools, all handled by the running app:
+
+- `reels_get_schedules {id?}`: definitions with `nextRunAt`, catch-up cursor, `startedToday`, `lastRun`, `activeRuns` and `fileError` for an invalid hand edit of `schedules.json`.
+- `reels_set_schedule {id, name?, enabled?, trigger?, misfire?, limits?, action?}`: create or change one schedule. A new id needs `action.skill`; defaults are `10 18 * * *` Asia/Seoul, catch-up 300 min, timeout 45 min, 1 run per day. `enabled:false` pauses (no delete tool), `enabled:true` resumes and clears `pausedReason`. A changed trigger restarts catch-up at now. The aside executable is not an input.
+- `reels_run_schedule_now {id}`: queue one manual run and tick now; returns `runId`. `ALREADY_RUNNING` while one runs, `DAILY_LIMIT` when the day's runs are used (manual runs count).
+- `reels_get_schedule_runs {id?, status?, limit?}`: run history with trigger, status, reason, Aside session id, exit code, result summary and run folder.
+
+Only the latest missed time runs, within the catch-up window; exit code 0 alone is never success. See [built-in scheduler](scheduler.md).
+
 ## Silent looping GIF — 2026-11-12
 
 `reels_convert_gif {sourcePath, outputPath, start?, end?, crop?, width?, fps?, dither?, maxBytes?, overwrite?}`
@@ -434,6 +445,15 @@ rotation applied, HDR/HLG tone-mapped to SDR on VideoToolbox (CPU fallback). It 
 Over 20 MB it warns (Naver's limit is unverified); `maxBytes` lowers fps, then width. The source is
 never changed, an existing output needs `overwrite: true`, and the GIF is not registered to a project.
 The board media viewer has the same action as **무음 GIF 만들기**. See [GIF conversion](gif-convert.md).
+
+## GPU slow motion — 2026-11-27
+
+`reels_start_slowmo {sourcePath, outputPath(.mov|.mp4), start?, end?, speed?, fps?, overwrite?}` returns a job;
+poll `reels_get_slowmo_job {jobId}` until `succeeded`, `failed` or `cancelled`; `reels_cancel_slowmo {jobId}` stops it.
+In-between frames come from Apple Vision optical flow warped and blended in Metal, so a 30 fps clip at 0.5x
+stays smooth. Defaults: speed 0.5, source fps rounded; up to 60 s of source and 600 s of result. SDR is H.264,
+HDR stays HDR as HEVC Main10; audio is removed; the source is never changed and the copy is not registered to
+a project. The board media viewer has the same action as **부드러운 슬로우 만들기**. See [GPU slow motion](slowmo.md).
 `crop {x, y, width, height}` (0-1 fractions of the displayed, rotated frame; drop the top 15% =
 `{"x":0,"y":0.15,"width":1,"height":0.85}`) keeps part of the frame on the VideoToolbox route; width,
 fps and `maxBytes` apply to the cropped area and the result returns `crop` with source `pixels` (or `null`).

@@ -153,8 +153,11 @@ test("background Electron and CLI share a process lock, refresh the open view, a
     const page = await app.firstWindow();
     await app.evaluate(() => {
       (globalThis as any).instagramTestCalls = 0;
-      globalThis.fetch = async () => {
-        (globalThis as any).instagramTestCalls++;
+      // Count Instagram/Graph API requests only; other app reads (the workflow list) are not this test's concern.
+      globalThis.fetch = async (input: any) => {
+        const url = String(input?.url ?? input);
+        if (/(^|\.)(instagram|facebook)\.com\//.test(new URL(url, "http://local").host + "/"))
+          (globalThis as any).instagramTestCalls++;
         throw new Error("Unexpected app API call");
       };
     });

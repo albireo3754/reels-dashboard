@@ -702,3 +702,181 @@ test("a built-in blog prepare with an unreadable scene preview is rejected befor
     await f.runtime.close();
   }
 });
+
+// Blog v3: the full blog pipeline on a long draft, with only experience and content
+// corrections moved after it: long draft → image/text review → layout → recall form →
+// union merge ↔ prune → final image/text review → final layout → visual review.
+test("the built-in blog-v3 run reviews and lays out the long draft before recall, then runs the finishing steps again", async () => {
+  const f = await fixture();
+  try {
+    const snapshot = builtinDefinition("blog-v3");
+    assert.deepEqual(
+      snapshot.definition.steps.map((s) => [s.id, s.kind, s.on]),
+      [
+        ["prepare", "task", { done: "long_draft" }],
+        ["long_draft", "task", { done: "image_review" }],
+        ["image_review", "review", { pass: "text_review", revise: "long_draft" }],
+        ["text_review", "review", { pass: "layout", revise: "long_draft" }],
+        ["layout", "task", { done: "recall_prep" }],
+        ["recall_prep", "task", { done: "recall" }],
+        ["recall", "input", { done: "merge" }],
+        ["merge", "task", { done: "prune" }],
+        ["prune", "review", { pass: "final_image_review", revise: "merge" }],
+        ["final_image_review", "review", { pass: "final_text_review", revise: "merge" }],
+        ["final_text_review", "review", { pass: "final_layout", revise: "merge" }],
+        ["final_layout", "task", { done: "visual_review" }],
+        ["visual_review", "review", { pass: "$complete", revise: "final_layout" }],
+      ],
+    );
+    for (const step of snapshot.definition.steps.filter((s) => s.kind === "review"))
+      assert.ok(step.outputs.every((o) => o.includes("{attempt}")), step.id);
+    // Six reviews each carry their own revise budget instead of sharing the run-wide one.
+    assert.deepEqual(
+      snapshot.definition.steps.filter((s) => s.kind === "review").map((s) => [s.id, s.maxRevisions]),
+      [["image_review", 3], ["text_review", 3], ["prune", 6], ["final_image_review", 3], ["final_text_review", 3], ["visual_review", 4]],
+    );
+    // v3 reuses the blog review and layout contracts word for word.
+    const blog = builtinDefinition("blog").definition.steps;
+    const v3 = snapshot.definition.steps;
+    const instruction = (steps: typeof v3, id: string) => steps.find((s) => s.id === id)!.instruction;
+    // The shared part of each blog step: everything before its step-specific tail.
+    const shared = (id: string, tail?: string) => {
+      const text = instruction(blog, id);
+      return tail ? text.slice(0, text.indexOf(tail)).trimEnd() : text;
+    };
+    for (const [from, tail, targets] of [
+      ["image_review", "공개용 사본은 layout에서", ["image_review", "final_image_review"]],
+      ["text_review", undefined, ["text_review", "final_text_review"]],
+      ["layout", undefined, ["layout", "final_layout"]],
+      ["visual_review", "대상 파일은 고치지 않는다", ["visual_review"]],
+    ] as const) {
+      const part = shared(from, tail);
+      assert.ok(part.length > 100, from);
+      for (const to of targets) assert.ok(instruction(v3, to).includes(part), `${from} → ${to}`);
+    }
+    assert.match(instruction(v3, "visual_review"), /360~430px/);
+    const submit = (run: WorkflowRun, outcome: "done" | "pass" | "revise") =>
+      f.runtime.submit({
+        runId: run.runId,
+        taskId: run.task!.taskId,
+        outcome,
+        summary: "synthetic",
+        evidence: run.task!.step!.outputs,
+      });
+    const report = async (run: WorkflowRun) => {
+      for (const file of run.task!.step!.outputs) await f.put(file, `${run.stepId} report`);
+    };
+    let run: WorkflowRun = await f.runtime.create({
+      ...f.input,
+      builtinDefinition: "blog-v3",
+      skipCompleted: false,
+      maxRevisions: 5,
+    });
+    assert.equal(run.definition!.file, "builtin:blog-v3");
+    assert.equal(run.stepId, "prepare");
+    // Prepare asks nothing: the only output is the scene list.
+    assert.deepEqual(run.task!.step!.outputs, ["evidence/media-scenes.json"]);
+    await f.put("media/s1.png", "png-1");
+    await f.put("media/s2.png", "png-2");
+    await f.put("evidence/media-scenes.json", twoScenes);
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "long_draft");
+    // The long draft is the article itself, with every scene decided.
+    assert.deepEqual(run.task!.step!.outputs, ["article.markup.md", "story-layout.md", "evidence/story-media-plan.json"]);
+    await f.put("article.markup.md", "long draft [추정]");
+    await f.put("story-layout.md", "layout notes");
+    await f.put("evidence/story-media-plan.json", planFor(["s1"]));
+    await assert.rejects(submit(run, "done"), /MEDIA_PLAN_COVERAGE/);
+    await f.put("evidence/story-media-plan.json", planFor(["s1", "s2"]));
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "image_review");
+    await report(run);
+    run = await submit(run, "pass");
+    assert.equal(run.stepId, "text_review");
+    // Style and emphasis findings go back to the long draft, before any form exists.
+    await report(run);
+    run = await submit(run, "revise");
+    assert.equal(run.stepId, "long_draft");
+    await f.put("article.markup.md", "polished long draft [추정]");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "image_review");
+    await report(run);
+    run = await submit(run, "pass");
+    await report(run);
+    run = await submit(run, "pass");
+    assert.equal(run.stepId, "layout");
+    await mkdir(path.join(f.workspace, "publishing"));
+    await report(run);
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "recall_prep");
+    assert.deepEqual(run.task!.step!.outputs, ["drafts/long.markup.md", "recall-form.json"]);
+    await mkdir(path.join(f.workspace, "drafts"));
+    await f.put("drafts/long.markup.md", "polished long draft [추정]");
+    await f.put("recall-form.json", {
+      ...syntheticForm,
+      questions: [
+        { id: "sec-1", section: "S1", prompt: "Remember", help: "polished long draft [추정]", required: false, images: [{ path: "media/s1.png", caption: "s1" }] },
+      ],
+    });
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "recall");
+    run = await f.runtime.saveExperience({
+      runId: run.runId,
+      taskId: run.task!.taskId,
+      expectedRevision: run.experience!.revision,
+      answers: [{ questionId: "sec-1", status: "answered", text: "what I remember" }],
+      submit: true,
+    });
+    run = await f.runtime.get({ runId: run.runId });
+    assert.equal(run.stepId, "merge");
+    await f.put("article.markup.md", "merged");
+    await f.put("reviews/merge-log.md", "merge log");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    // Each prune pass writes a fresh report ({attempt} is the run's record sequence).
+    const firstPrune = run.task!.step!.outputs[0];
+    assert.match(firstPrune, /^reviews\/prune-\d+\.md$/);
+    await f.put(firstPrune, "cut these branches");
+    run = await submit(run, "revise");
+    assert.equal(run.stepId, "merge");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    const secondPrune = run.task!.step!.outputs[0];
+    assert.notEqual(secondPrune, firstPrune);
+    await f.put(secondPrune, "only the trunk is left");
+    run = await submit(run, "pass");
+    // The merged text and photos get the image and text reviews again.
+    assert.equal(run.stepId, "final_image_review");
+    assert.match(run.task!.step!.outputs[0], /^reviews\/final-image-review-\d+\.md$/);
+    await report(run);
+    run = await submit(run, "pass");
+    assert.equal(run.stepId, "final_text_review");
+    await report(run);
+    run = await submit(run, "revise");
+    assert.equal(run.stepId, "merge");
+    await f.put("article.markup.md", "merged and restyled");
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "prune");
+    await report(run);
+    run = await submit(run, "pass");
+    await report(run);
+    run = await submit(run, "pass");
+    await report(run);
+    run = await submit(run, "pass");
+    assert.equal(run.stepId, "final_layout");
+    await report(run);
+    run = await submit(run, "done");
+    assert.equal(run.stepId, "visual_review");
+    await report(run);
+    run = await submit(run, "revise");
+    assert.equal(run.stepId, "final_layout");
+    run = await submit(run, "done");
+    await report(run);
+    run = await submit(run, "pass");
+    assert.equal(run.status, "ready");
+    // The form was opened once: no revision reached recall again.
+    assert.equal(run.history.filter((h) => h.stepId === "recall").length, 1);
+  } finally {
+    await f.runtime.close();
+  }
+});

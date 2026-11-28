@@ -42,11 +42,12 @@ export const definitionPath = z.union([relativeFile, sharedDefinitionFile]);
  * kinds, outputs) and public instructions live in the source; local guides add
  * private documents, instructions and skills per step.
  */
-export const builtinDefinitionNames = ["blog"] as const;
+export const builtinDefinitionNames = ["blog", "blog-v3"] as const;
 export const builtinDefinitionName = z.enum(builtinDefinitionNames);
 export type BuiltinDefinitionName = z.infer<typeof builtinDefinitionName>;
 export const builtinDefinitionLabels: Record<BuiltinDefinitionName, string> = {
   blog: "블로그 · 촬영분에서 미리보기까지",
+  "blog-v3": "블로그 v3 · 긴 초안 전 공정 → 기억 되살리기 → 머지·가지치기 → 마무리 공정",
 };
 /** Exactly one of `definitionFile` and `builtinDefinition`; checked when read. */
 export const definitionLocationInput = z.strictObject({
@@ -76,6 +77,12 @@ const stepSchema = z.strictObject({
   outputs: z.array(relativeFile).max(100).default([]),
   completion: z.array(z.string().trim().min(1).max(2000)).min(1).max(20),
   formFile: relativeFile.optional(),
+  /**
+   * Review steps only: this step's own revise budget. Its revisions count against this
+   * number instead of the run-wide `maxRevisions`, so a definition with many reviews
+   * does not let early reviews spend the budget of later ones.
+   */
+  maxRevisions: z.number().int().min(1).max(10).optional(),
   on: z.strictObject({
     done: z.string().optional(),
     pass: z.string().optional(),
@@ -107,6 +114,8 @@ export const workflowDefinitionSchema = z
         fail(
           `${step.id}: task/input requires done; review requires pass and revise`,
         );
+      if (step.maxRevisions !== undefined && step.kind !== "review")
+        fail(`${step.id}: only review steps declare maxRevisions`);
       if ((step.kind === "input") !== !!step.formFile)
         fail(`${step.id}: only input steps require formFile`);
       if (step.kind === "input" && step.outputs.length)
@@ -143,10 +152,15 @@ export const workflowDefinitionSchema = z
       for (const [outcome, target] of Object.entries(step.on)) {
         if (outcome !== "revise" && reachable(target, false).has(step.id))
           fail("Cycles require a review revise edge");
+        // A revision may pass through an input step only when that form cannot have been
+        // submitted before this review, i.e. the review is not reachable from it. Reviews
+        // ahead of the form (blog-v3 image/text review before recall) may loop back.
         if (
           outcome === "revise" &&
-          [...reachable(target, true)].some((key) =>
-            definition.steps.some((s) => s.id === key && s.kind === "input"),
+          [...reachable(target, true)].some(
+            (key) =>
+              definition.steps.some((s) => s.id === key && s.kind === "input") &&
+              reachable(key, true).has(step.id),
           )
         )
           fail("Revision paths cannot revisit a submitted input form");

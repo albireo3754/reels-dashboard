@@ -24,7 +24,9 @@ async function readCredential(){
   return {url,token};
  }
  const account=process.argv[2];if(!account)throw new Error('A Keychain account is required');
- const credential=JSON.parse(execFileSync(path.join(repo,'artifacts/mobile-bridge/keychain'),['read',account],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+ // Release folders share one helper binary (its Keychain access is granted to that file): REELS_BRIDGE_KEYCHAIN_HELPER.
+ const helper=process.env.REELS_BRIDGE_KEYCHAIN_HELPER??path.join(repo,'artifacts/mobile-bridge/keychain');
+ const credential=JSON.parse(execFileSync(helper,['read',account],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
  if(new URL(credential.url).protocol!=='https:')throw new Error('HTTPS required');
  return credential;
 }
@@ -50,10 +52,14 @@ const jobs=createMediaJobPoller({
 });
 function stop(){shutdown.abort();void jobs.stop();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
-let summary={syncedAt:null,contentCount:null,assetCount:null};
-try{const saved=JSON.parse(await readFile(path.join(root,'status.json'),'utf8'));summary={syncedAt:saved.syncedAt,contentCount:saved.contentCount,assetCount:saved.assetCount};}catch{}
+// The code revision and the last snapshot the site accepted let the live installer confirm the new bridge.
+let codeRevision=null;try{codeRevision=execFileSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}catch{}
+// localRevision: the snapshot this process last built or reused; acceptedRevision: the last one the site
+// confirmed holding; projectedAt: when this process last built one from the running app (null = cache only).
+let summary={syncedAt:null,contentCount:null,assetCount:null,localRevision:null,acceptedRevision:null,projectedAt:null};
+try{const saved=JSON.parse(await readFile(path.join(root,'status.json'),'utf8'));summary={syncedAt:saved.syncedAt,contentCount:saved.contentCount,assetCount:saved.assetCount,localRevision:null,acceptedRevision:null,projectedAt:null};}catch{}
 async function reportStatus(connected){
- const status={siteUrl:origin.origin,connected,checkedAt:new Date().toISOString(),...summary};
+ const status={siteUrl:origin.origin,connected,checkedAt:new Date().toISOString(),...summary,codeRevision,pid:process.pid};
  const temp=path.join(root,'status.json.tmp');
  await writeFile(temp,JSON.stringify(status),{mode:0o600});await rename(temp,path.join(root,'status.json'));
 }
@@ -80,12 +86,13 @@ async function instructionLoop(){
 }
 async function mcp(name){if(!client){const next=new Client({name:'reels-mobile-bridge',version:'1'});await next.connect(new StreamableHTTPClientTransport(mcpUrl));client=next;}const r=await client.callTool({name,arguments:{}},{timeout:20000});if(r.isError)throw new Error('Local app unavailable');return r.structuredContent;}
 async function refresh(){
- try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const weeklyGoals=await mcp('reels_get_weekly_goals');const progress=await readMonitor(state.dashboard,path.dirname(root),weeklyGoals);const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{...progress,countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;
+ try{log('Reading local metadata.');await mcp('reels_get_app_state');const state=await mcp('reels_list_projects');log(`Projecting ${state.dashboard.projects.length} entries.`);const weeklyGoals=await mcp('reels_get_weekly_goals');const progress=await readMonitor(state.dashboard,path.dirname(root),weeklyGoals);const projection=await projectSnapshot(state.dashboard,'로컬 Mac',{...progress,countFolders:false,knownCounts:Object.fromEntries((snapshot?.assets??[]).filter(a=>a.isDirectory).map(a=>[a.objectKey,a.itemCount]))});log('Metadata projection ready.');objects=projection.objects;snapshot=projection.snapshot;summary.localRevision=snapshot.sourceRevision;summary.projectedAt=new Date().toISOString();
  const temp=path.join(root,'registry.json.tmp');await writeFile(temp,JSON.stringify({objects:objects.exportRegistry(),snapshot}),{mode:0o600});await rename(temp,registry);
  }catch{log('Local app is unavailable; preserving last registered metadata.');}
- if(snapshot){const remote=await (await heartbeat()).json();if(!shutdown.signal.aborted)jobs.updateHeartbeat(remote);if(remote.sourceRevision!==snapshot.sourceRevision){const result=await (await request('/api/bridge/snapshot',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)})).json();log(`Synced ${result.contents} content entries and ${result.assets} resource records.`);}}
+ if(snapshot){summary.localRevision=snapshot.sourceRevision;const remote=await (await heartbeat()).json();if(!shutdown.signal.aborted)jobs.updateHeartbeat(remote);if(remote.sourceRevision!==snapshot.sourceRevision){const result=await (await request('/api/bridge/snapshot',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)})).json();log(`Synced ${result.contents} content entries and ${result.assets} resource records.`);}
+  summary.acceptedRevision=snapshot.sourceRevision;}
  const remote=await (await request('/api/briefing')).json();
- summary={syncedAt:remote.syncedAt??null,contentCount:remote.contents.length,assetCount:remote.assets.length};
+ summary={...summary,syncedAt:remote.syncedAt??null,contentCount:remote.contents.length,assetCount:remote.assets.length};
  await reportStatus(true);
 }
 async function pollOriginal(){

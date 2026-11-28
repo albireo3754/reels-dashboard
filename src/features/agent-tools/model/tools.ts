@@ -3,6 +3,7 @@ import { selectionQuery, selectionExecute, selectionUpdate } from "../../../shar
 import { editsTools } from "../../../shared/edits";
 import { clipUploadInput, coverPreferencesSchema } from "../../../shared/clip-upload";
 import { gifConvertInput } from "../../../shared/gif-convert";
+import { slowmoJobInput, slowmoStartInput } from "../../../shared/slowmo";
 import { planningUpdateSchema } from "../../../shared/planning";
 import { instagramTopicsInput } from "../../../shared/instagram-insights";
 import {inputFormTools} from "../../../shared/input-form-tools";
@@ -24,6 +25,7 @@ import {
 import { getSourceBoardSchema, setSourceBoardSchema } from "../../../shared/source-board";
 import { decidePitchSchema, setPitchesSchema } from "../../../shared/topic-pitch";
 import { settingsPatchSchema } from "../../../entities/agent-session";
+import { getScheduleRunsInput, getSchedulesInput, runScheduleNowInput, setScheduleInput } from "../../../shared/scheduler";
 
 /** Operating rules shared by the MCP server and the `reels` CLI. */
 export const agentGuidance =
@@ -82,6 +84,18 @@ export const toolDefinitions = {
   reels_convert_gif: {
     description: "Convert a video file into a silent, endlessly looping GIF for blog motion clips. Default: whole length, width 480, 15 fps, bayer dither; start/end select a range (max 60 s). crop {x,y,width,height} keeps part of the displayed (rotated) frame as 0-1 fractions, e.g. drop the top 15% = {x:0, y:0.15, width:1, height:0.85}; width/fps/maxBytes apply to the cropped area and cropping stays on the VideoToolbox route. Removes audio and all metadata (including location), applies display rotation and tone-maps HDR/HLG to SDR. VideoToolbox (GPU) decode/rotate/tone-map/scale with CPU fallback; palette and GIF encoding on CPU. Returns outputPath, bytes, width, height, fps, frames, duration, elapsedMs, accel, crop (with source pixels) and warnings. Over 20 MB warns (Naver limit unverified); maxBytes lowers fps then width automatically. Source is never changed; existing outputs need overwrite. Not registered to any project.",
     input: gifConvertInput, readOnly: false,
+  },
+  reels_start_slowmo: {
+    description: "Make a smooth slow-motion copy of a video file: GPU optical-flow frame interpolation (Apple Vision flow + Metal warp/blend) draws the in-between frames so a 30 fps clip slowed to 0.5x stays smooth instead of repeating frames. Default speed 0.5, output fps = source rate rounded (at most 60); start/end pick the source range (max 60 s of source, 600 s of result). Hardware encoding only: SDR -> H.264, HDR (HLG/PQ) stays HDR as HEVC Main10 (Dolby Vision metadata is not kept). Display rotation is kept; audio is removed. Returns a job ID at once; poll reels_get_slowmo_job until succeeded/failed/cancelled (result has outputPath, bytes, frames, interpolatedFrames, elapsedMs, warnings). Fast motion across the frame, objects crossing each other and scene cuts can show warping; check the result. Source is never changed; existing outputs need overwrite. Not registered to any project.",
+    input: slowmoStartInput, readOnly: false,
+  },
+  reels_get_slowmo_job: {
+    description: "Read a slow-motion job: state, percent, result or error. A running job is not completion. Jobs are kept in memory until the app quits.",
+    input: slowmoJobInput, readOnly: true,
+  },
+  reels_cancel_slowmo: {
+    description: "Cancel a slow-motion job and wait for the native process to stop. The partial output is removed; the source is untouched.",
+    input: slowmoJobInput, readOnly: false,
   },
   reels_set_project_outbound: {
     description: "Bind one persistent iCloud outbound directory to a project using get_content's revision. Repeated deliveries reuse this directory. Existing linked files can be adopted; unrelated files are not managed. A different directory is rejected once bound.",
@@ -173,6 +187,26 @@ export const toolDefinitions = {
     description: "Delete one recorded comment by id with updatedAt revision protection. Does not touch the comment on Naver.",
     input: blogCommentDelete,
     readOnly: false,
+  },
+  reels_get_schedules: {
+    description: "Read built-in schedules of the desktop app (definition, next run time, catch-up cursor, runs started today, last run and pending/running runs). Read-only; the app must be running.",
+    input: getSchedulesInput,
+    readOnly: true,
+  },
+  reels_set_schedule: {
+    description: "Create or change one built-in schedule by id: name, enabled (false pauses, true resumes and clears pausedReason), cron trigger, catch-up window, limits and the aside action (skill, hostProfile, model, params). A new id needs action.skill; other fields default to 10 18 * * * Asia/Seoul, catch-up 300 min, timeout 45 min, 1 run per day. A changed trigger restarts catch-up from now. There is no delete; pause instead. The aside executable is never configurable.",
+    input: setScheduleInput,
+    readOnly: false,
+  },
+  reels_run_schedule_now: {
+    description: "Queue one manual run of a schedule and tick the scheduler now. It counts toward the daily limit (DAILY_LIMIT when today's runs are used up) and is rejected with ALREADY_RUNNING while one runs. Returns runId; poll reels_get_schedule_runs for the verdict. An aside run acts on the browser profile signed in to the site; never retry an uncertain start.",
+    input: runScheduleNowInput,
+    readOnly: false,
+  },
+  reels_get_schedule_runs: {
+    description: "Read schedule run history, newest first: trigger (cron/catchup/manual), status (pending/running/ok/partial/failed/blocked/missed/skipped/interrupted), reason code, Aside session id, exit code, the parsed result summary and the run folder with handoff.md and stdout.log. Read-only.",
+    input: getScheduleRunsInput,
+    readOnly: true,
   },
   reels_merge_projects: {
     description: "Merge explicit source dashboard cards into one target production project. Preserves files and edit bindings, creates a full pre-merge backup, and rejects stale revisions. Target title, stage, date and sharing win; differing publication URLs are rejected.",

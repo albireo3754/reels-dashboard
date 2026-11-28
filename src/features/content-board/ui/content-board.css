@@ -1,11 +1,13 @@
-/* Blog markup names the SmartEditor fonts; map them to local fonts (also used inside the blog preview's shadow root). */
+/* Blog markup names the SmartEditor fonts; map them to local fonts (also used inside the blog preview's shadow root).
+ * No local("NanumGothic"): it is a macOS on-demand font, and looking it up froze the renderer until the test
+ * timed out on a GitHub macOS runner (bisected 2026-11-25). Missing non-system names such as NanumBarunpen are fine. */
 @font-face {
   font-family: se-nanumbareunhipi;
   src: local("NanumBarunpen"), local("NanumBarunPen"), local("AppleSDGothicNeo-Regular");
 }
 @font-face {
   font-family: se-nanumgothic;
-  src: local("NanumGothic"), local("AppleSDGothicNeo-Regular");
+  src: local("AppleSDGothicNeo-Regular");
 }
 /*
  * 보드 카드의 미디어 영역(포스터·썸네일 줄·진행 막대)과 미디어 탐색 다이얼로그.
@@ -457,4 +459,18 @@
   display: block;
   margin-top: var(--space-1);
   color: var(--color-warning-text);
+}
+.board-slowmo-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.board-slowmo-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+}
+.board-slowmo-options input {
+  width: 5.5em;
 }

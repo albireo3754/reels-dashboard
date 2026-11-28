@@ -18,7 +18,7 @@ For app-backed operations:
 ## Discover
 
 - `reels tools`: every tool with its command, read-only flag, summary and `group`, plus the domain groups.
-- `reels tools --group <id>`: only one group, such as `editor`, `render`, `content`, `photos`, `delivery`, `forms`, `analysis`, `blog` or `planning`.
+- `reels tools --group <id>`: only one group, such as `editor`, `render`, `content`, `photos`, `delivery`, `forms`, `analysis`, `blog`, `planning` or `scheduler`.
 - `reels tools <name>`: the input schema, generated flags, options and an example. Read it before calling a tool for the first time.
 - `reels <command> --help` or `reels help <command>`: usage text. `reels --version` prints the CLI version.
 
@@ -94,6 +94,10 @@ On `INSTAGRAM_AUTH`, ask Codex to help renew the Instagram read token through th
 ## After-work autopilot
 
 `reels autopilot status|inbox|tick|today|run --manual <key>|resolve|pause|resume|refresh-linear [--dry-run]|connect-linear|disconnect-linear` reads the Linear copy and Dashboard queue without the app: at most 3 automatic reservations, nothing starts while 3 or more items wait for review, manual runs are unlimited, `today` shows the one item to look at, `inbox` lists every review item with what holds it, where it closes and what a local `resolve` would leave (read-only, `data.text` is a short phone summary). `reels autopilot tick --dry-run` changes nothing. `refresh-linear` reads Linear without a model through a Keychain API key (service `reels-dashboard-linear`); `connect-linear` runs only in a terminal and never takes the key as an argument, so do not ask the user to paste it. See `docs/autopilot.md`.
+
+## Built-in schedules
+
+`reels get-schedules` shows the app's schedules with `nextRunAt`, the last run and active runs; `reels get-schedule-runs --id <id>` lists runs with status (`ok`, `partial`, `failed`, `blocked`, `missed`, `skipped`, `interrupted`) and a reason code. `reels set-schedule --input '<json>'` creates or changes one (pause with `"enabled":false`; there is no delete). `reels run-schedule-now --id <id>` starts one manual run: it uses up the day's run (`DAILY_LIMIT` afterwards) and may act on a signed-in browser profile through Aside, so run it only when the user asked. Never retry an uncertain start; read `get-schedule-runs` instead. See `docs/scheduler.md`.
 
 ## More
 
