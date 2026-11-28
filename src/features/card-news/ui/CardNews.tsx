@@ -1,4 +1,5 @@
 import { errorMessage } from "../../../shared/lib/errors";
+import { PreviewImage } from "../../../shared/ui/PreviewImage";
 import { useEffect, useRef, useState } from "react";
 import {
   templateContent,
@@ -78,9 +79,11 @@ function VideoBackground({
 export function CardNews({
   api,
   active,
+  requestedEdit,
 }: {
   api?: CardNewsBridge;
   active: boolean;
+  requestedEdit?: { id: string };
 }) {
   const [plan, setPlan] = useState<CardPlan>(newCardPlan);
   const [assets, setAssets] = useState<Record<string, CardAsset>>({});
@@ -95,6 +98,7 @@ export function CardNews({
   const [playing, setPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [align, setAlign] = useState(false);
+  const lastRequestedEdit = useRef<typeof requestedEdit>(undefined);
   const audio = useRef<HTMLAudioElement>(null);
   const segments = timeline(plan.cards);
   const total = segments.at(-1)!.end;
@@ -139,6 +143,26 @@ export function CardNews({
     setRecent(await api.list());
     return next;
   }
+  function openSaved(id: string) {
+    if (!api) return;
+    return run(async () => {
+      if (dirty) await save();
+      const loaded = await api.load(id);
+      stop();
+      setPlan(loaded.plan);
+      setAssets(Object.fromEntries(loaded.assets.map(a => [a.id, a])));
+      setFrames([]);
+      setSelected(0);
+      setJob(null);
+      setCursor(0);
+      setDirty(false);
+    });
+  }
+  useEffect(() => {
+    if (!requestedEdit || lastRequestedEdit.current === requestedEdit || disabled || !active) return;
+    lastRequestedEdit.current = requestedEdit;
+    if (plan.id !== requestedEdit.id) void openSaved(requestedEdit.id);
+  }, [requestedEdit, disabled, active]);
   useEffect(() => {
     if (active && api)
       void api
@@ -316,22 +340,7 @@ export function CardNews({
           disabled={disabled || !api}
           value=""
           onChange={(e) => {
-            const value = e.target.value;
-            if (value)
-              void run(async () => {
-                if (dirty) await save();
-                const loaded = await api!.load(value);
-                stop();
-                setPlan(loaded.plan);
-                setAssets(
-                  Object.fromEntries(loaded.assets.map((a) => [a.id, a])),
-                );
-                setFrames([]);
-                setSelected(0);
-                setJob(null);
-                setCursor(0);
-                setDirty(false);
-              });
+            if (e.target.value) void openSaved(e.target.value);
           }}
         >
           <option value="">저장된 구성 열기</option>
@@ -405,7 +414,7 @@ export function CardNews({
                 />
               )}
             {frames[current] ? (
-              <img
+              <PreviewImage
                 src={frames[current]}
                 alt={`${current + 1}번 카드 미리보기`}
               />

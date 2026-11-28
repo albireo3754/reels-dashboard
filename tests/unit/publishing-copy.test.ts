@@ -37,3 +37,10 @@ test('text-only changes alter sync revision even with identical size, mtime and 
   assert.equal(missing.snapshot.contents[0].publishingCopy,null);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('a local caption draft is optional and excludes neighbouring editorial and comment blocks',()=>{
+ const note='---\ncontent_id: example\n---\n### 캡션 — 초안 v2\neditor note\n```text\n풍경🫶🏻\n\n#여행\n```\n### 댓글 1 — 안내\n```text\n댓글\n```';
+ assert.equal(parsePublishingCopy(note,'content:example',{localCaptionDrafts:true}).sections[0].text,'풍경🫶🏻\n\n#여행');
+ assert.deepEqual(parsePublishingCopy(note,'content:example').sections,[]);
+ assert.deepEqual(parsePublishingCopy(note+'\n### 캡션 — 대안\n```text\n다른 글\n```','content:example',{localCaptionDrafts:true}).sections,[]);
+});

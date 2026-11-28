@@ -54,7 +54,7 @@ async function hasWeights(dir: string) {
     ((await available(path.join(dir, "weights.safetensors"))) || (await available(path.join(dir, "weights.npz"))));
 }
 
-async function localRuntime() {
+export async function localRuntime() {
   const home = homedir();
   const snapshots = path.join(home, ".cache", "huggingface", "hub", "models--mlx-community--whisper-large-v3-turbo", "snapshots");
   const modelCandidates = process.env.REELS_LOCAL_STT_MODEL ? [process.env.REELS_LOCAL_STT_MODEL] :
@@ -80,6 +80,15 @@ async function localRuntime() {
   return { python, model };
 }
 
+export async function runLocalWhisper(python: string, model: string, script: string, args: string[]) {
+  if (!process.getuid) throw new Error("Mac 사용자 세션이 필요해요.");
+  return exec("/bin/launchctl", ["asuser", String(process.getuid()), python, "-c", script, model, ...args], {
+    env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ""}`,
+      HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1", HF_HUB_DISABLE_TELEMETRY: "1", PYTHONNOUSERSITE: "1" },
+    timeout: 45 * 60_000, maxBuffer: 512 * 1024,
+  });
+}
+
 /** Explicitly requested macOS-local transcription; never uses provider APIs or downloads models. */
 export async function transcribeLocalCallRecordings(inputs: Input[], outputDir: string): Promise<Result[]> {
   if (process.platform !== "darwin" || !process.getuid) throw new Error("로컬 통화 전사는 Mac에서만 실행돼요.");
@@ -99,11 +108,7 @@ export async function transcribeLocalCallRecordings(inputs: Input[], outputDir: 
     const textPath = path.join(outputDir, `${outputStem}.txt`);
     const subtitlePath = path.join(outputDir, `${outputStem}.srt`);
     try {
-      await exec("/bin/launchctl", ["asuser", String(process.getuid()), python, "-c", worker, model, outputDir, sourcePath, outputStem], {
-        env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ""}`,
-          HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1", HF_HUB_DISABLE_TELEMETRY: "1", PYTHONNOUSERSITE: "1" },
-        timeout: 45 * 60_000, maxBuffer: 512 * 1024,
-      });
+      await runLocalWhisper(python, model, worker, [outputDir, sourcePath, outputStem]);
       if (!(await stat(textPath)).size || !(await stat(subtitlePath)).size) throw new Error("empty output");
     } catch (err) {
       if ((err as { code?: number }).code === 3) throw new Error("녹음에서 전사할 음성을 찾지 못했어요.");

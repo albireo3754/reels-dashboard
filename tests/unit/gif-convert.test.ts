@@ -126,10 +126,15 @@ test("converter validates paths before running anything", async () => {
   }
 });
 
+let fixtureBytes: Buffer | undefined;
 async function fixture(directory: string) {
   const ffmpeg = path.join(runtime, "bin/ffmpeg");
   const plain = path.join(directory, "plain.mov");
   const source = path.join(directory, "회전 HLG.mov");
+  if (fixtureBytes) {
+    await writeFile(source, fixtureBytes);
+    return source;
+  }
   // Synthetic 10-bit HLG HEVC with audio, a 90° display matrix and a location tag.
   await execute(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=2",
     "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx265",
@@ -138,6 +143,7 @@ async function fixture(directory: string) {
     "-tag:v", "hvc1", "-c:a", "aac", "-shortest", plain]);
   await execute(ffmpeg, ["-y", "-v", "error", "-display_rotation:v:0", "90", "-i", plain, "-map", "0", "-c", "copy",
     "-metadata", "location=+37.5665+126.9780/", source]);
+  fixtureBytes = await readFile(source);
   return source;
 }
 
@@ -268,8 +274,10 @@ test("real conversion crops a rotated HLG clip on the GPU route and the CPU fall
   try {
     const source = await fixture(directory);
     const before = await readFile(source);
-    const whole = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "whole.gif") });
-    const gpu = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "gpu.gif"), crop: topCrop });
+    // The geometry assertions compare the first frame; the size-budget case below needs the full clip.
+    const sample = { sourcePath: source, end: 0.2 };
+    const whole = await new GifConverter(runtime).convert({ ...sample, outputPath: path.join(directory, "whole.gif") });
+    const gpu = await new GifConverter(runtime).convert({ ...sample, outputPath: path.join(directory, "gpu.gif"), crop: topCrop });
     assert.equal(gpu.accel, "videotoolbox");
     assert.deepEqual(gpu.warnings, []);
     assert.equal(gpu.hdrToSDR, true);
@@ -287,13 +295,13 @@ test("real conversion crops a rotated HLG clip on the GPU route and the CPU fall
     const exec = promisify(execFile);
     const cpu = await new GifConverter(runtime, undefined, (executable, args) =>
       args.includes("videotoolbox") ? Promise.reject(Object.assign(new Error("vt"), { stderr: "VT unavailable" })) : exec(executable, args),
-    ).convert({ sourcePath: source, outputPath: path.join(directory, "cpu.gif"), crop: topCrop });
+    ).convert({ ...sample, outputPath: path.join(directory, "cpu.gif"), crop: topCrop });
     assert.equal(cpu.accel, "cpu");
     assert.deepEqual([cpu.width, cpu.height, cpu.crop], [gpu.width, gpu.height, gpu.crop]);
     assert.ok(meanDiff(await firstFrame(cpu.outputPath), cropped) < 12, "CPU fallback keeps the same area");
 
     // Width and maxBytes act on the cropped area.
-    const small = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "small.gif"), crop: { x: 0.25, y: 0.25, width: 0.75, height: 0.5 }, width: 120 });
+    const small = await new GifConverter(runtime).convert({ ...sample, outputPath: path.join(directory, "small.gif"), crop: { x: 0.25, y: 0.25, width: 0.75, height: 0.5 }, width: 120 });
     assert.deepEqual([small.accel, small.width, small.height], ["videotoolbox", 120, 142]);
     assert.deepEqual(small.crop!.pixels, { x: 45, y: 80, width: 135, height: 160 });
     const fitted = await new GifConverter(runtime).convert({ sourcePath: source, outputPath: path.join(directory, "fit.gif"), crop: topCrop, fps: 30, maxBytes: 256 * 1024 });

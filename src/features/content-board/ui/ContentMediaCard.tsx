@@ -10,8 +10,10 @@ import type {
   ContentMediaItem,
   ContentMediaPage,
 } from "../../../shared/content-media";
+import { mediaKind, resourceLabels } from "../../../shared/content-media";
+import { PreviewImage } from "../../../shared/ui/PreviewImage";
+import type { EditRef } from "../../../shared/production-project";
 import type { SlowmoResult } from "../../../shared/slowmo";
-import { resourceLabels } from "../../../shared/content-media";
 import {
   openingVideoStatus,
   playbackCopyStatus,
@@ -232,7 +234,8 @@ function Thumbnail({
       live = false;
     };
   }, [bridge, projectId, item.path, item.available, item.kind]);
-  if (url) return <img src={url} alt={`${item.label} 썸네일`} loading="lazy" />;
+  if (url) return <PreviewImage src={url} alt={`${item.label} 썸네일`} loading="lazy"
+    fallback={<span className="board-thumbnail-placeholder">미리보기 없음</span>} />;
   if (item.available && item.kind === "folder")
     return (
       <span className="board-thumbnail-placeholder folder" aria-hidden="true">
@@ -252,16 +255,45 @@ function Thumbnail({
     </span>
   );
 }
-function MediaExplorer({
+async function reelPreview(
+  project: Project,
+  media: NonNullable<DashboardBridge["contentMedia"]>,
+  first: ContentMediaPage,
+  isOpen: () => boolean,
+) {
+  const preferred = project.stage === "editing" ? "draft" : "final";
+  const matches = (item: ContentMediaItem) =>
+    item.available && item.kind === "video" && (item.role === "draft" || item.role === "final");
+  const candidates = first.items.filter(matches);
+  let offset = first.nextOffset;
+  while (isOpen() && offset !== null && !candidates.some(item => item.role === preferred)) {
+    const hasLaterOutput = project.resources?.slice(offset).some(r =>
+      mediaKind(r.path) === "video" && (
+        r.role === preferred || (!candidates.length && (r.role === "draft" || r.role === "final"))
+      ),
+    );
+    if (!hasLaterOutput) break;
+    const next = await media.list(project.id, undefined, offset);
+    candidates.push(...next.items.filter(matches));
+    offset = next.nextOffset;
+  }
+  return candidates.find(item => item.role === preferred) ?? candidates[0];
+}
+
+type SavedEdit = Awaited<ReturnType<NonNullable<DashboardBridge["projects"]>["listEdits"]>>[number];
+
+export function MediaExplorer({
   project,
   bridge,
   initial,
   onClose,
+  onOpenEdit,
 }: {
   project: Project;
   bridge: DashboardBridge;
   onClose: () => void;
   initial?: ContentMediaItem;
+  onOpenEdit?: (edit: EditRef) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [folders, setFolders] = useState<ContentMediaItem[]>([]);
@@ -271,6 +303,9 @@ function MediaExplorer({
   const [error, setError] = useState("");
   const [role, setRole] = useState("all");
   const [retry, setRetry] = useState(0);
+  const [edits, setEdits] = useState<SavedEdit[]>([]);
+  const [editError, setEditError] = useState("");
+  const reelWork = !!onOpenEdit;
   const folder = folders.at(-1)?.path;
   useEffect(() => {
     dialog.current?.showModal();
@@ -281,16 +316,31 @@ function MediaExplorer({
     };
   }, []);
   useEffect(() => {
+    if (!reelWork || !bridge.projects) return;
+    let live = true;
+    void bridge.projects.listEdits().then((value) => {
+      if (live) setEdits(value.filter(e => e.ownerId === project.id));
+    }).catch((error) => {
+      if (live) setEditError(errorText(error));
+    });
+    return () => { live = false; };
+  }, [bridge, project.id, reelWork]);
+  useEffect(() => {
     let live = true;
     setLoading(true);
     setError("");
     setPage(undefined);
     setSelected(folder ? undefined : initial);
     setRole("all");
-    bridge
-      .contentMedia!.list(project.id, folder)
-      .then((value) => {
-        if (live) setPage(value);
+    const media = bridge.contentMedia!;
+    media.list(project.id, folder)
+      .then(async (value) => {
+        if (!live) return;
+        setPage(value);
+        if (reelWork && !folder) {
+          const preview = await reelPreview(project, media, value, () => live);
+          if (live) setSelected(preview);
+        }
       })
       .catch((e) => {
         if (live) setError(errorText(e));
@@ -301,7 +351,7 @@ function MediaExplorer({
     return () => {
       live = false;
     };
-  }, [bridge, project.id, folder, retry]);
+  }, [bridge, project.id, folder, retry, reelWork]);
   async function more() {
     if (!page || page.nextOffset === null || loading) return;
     setLoading(true);
@@ -323,7 +373,7 @@ function MediaExplorer({
     <dialog
       ref={dialog}
       className="board-media-dialog"
-      aria-label={`${project.title} 자료와 진행사항`}
+      aria-label={`${project.title} ${reelWork ? "릴스 작업" : "자료와 진행사항"}`}
       onCancel={onClose}
       onClose={onClose}
       onClick={(e) => {
@@ -368,9 +418,24 @@ function MediaExplorer({
             />
           ) : (
             <div className="board-player-empty">
-              <p>목록에서 영상·사진·문서를 선택해주세요.</p>
+              <p>{reelWork && !folder
+                ? loading ? "편집 영상을 찾고 있어요." : "재생할 시안이나 완성본이 연결되지 않았어요."
+                : "목록에서 영상·사진·문서를 선택해주세요."}</p>
             </div>
           )}
+          {onOpenEdit && edits.length > 0 && (
+            <details className="board-reel-edits" open={!selected}>
+              <summary>저장된 편집 구성 {edits.length}개</summary>
+              <ul>{edits.map(edit => (
+                <li key={`${edit.kind}:${edit.id}`}>
+                  <button type="button" className="small" onClick={() => onOpenEdit(edit)}>
+                    {edit.title} {edit.kind === "video" ? "영상 편집" : "카드뉴스 편집"}
+                  </button>
+                </li>
+              ))}</ul>
+            </details>
+          )}
+          {editError && <p role="alert">편집 구성을 불러오지 못했어요. {editError}</p>}
         </section>
         <section className="board-file-browser" aria-label="미디어 목록">
           <nav aria-label="자료 폴더 위치">
@@ -555,7 +620,7 @@ function MediaPlayer({
                 : openingVideoStatus}
           </p>
         ) : item.kind === "image" ? (
-          <img src={url} alt={item.label} />
+          <PreviewImage src={url} alt={item.label} onError={() => playbackFailed("사진을 읽지 못했어요.")} />
         ) : item.kind === "video" ? (
           <video
             key={url}

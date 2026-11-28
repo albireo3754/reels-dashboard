@@ -112,6 +112,7 @@ test('blog projects open isolated editors, reuse tabs and retain connections aft
     await main.screenshot({path:testInfo.outputPath('blog-projects.png')});
     const windows=await windowCount(app);
     const first=await openBlogEditor(app,main,'first',card('first'));
+    await expect(first.getByRole('button',{name:'발행하기',exact:true})).toBeVisible();
     await expect(first.getByText('✓ 저장 완료',{exact:true})).toBeVisible();
     await main.getByRole('tab',{name:'프로젝트',exact:true}).click();
     await card('first').getByRole('button',{name:'프로젝트 열기',exact:true}).click();

@@ -1,6 +1,6 @@
 // Export only copy blocks from a registered canonical content document.
 // Research notes, other Markdown sections and local paths stay on the Mac.
-export function parsePublishingCopy(markdown, contentId) {
+export function parsePublishingCopy(markdown, contentId, { localCaptionDrafts = false } = {}) {
  const source=markdown.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
  const front=/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(source);
  if(!front)return null;
@@ -17,9 +17,13 @@ export function parsePublishingCopy(markdown, contentId) {
    }else lines.push(line);
    continue;
   }
-  const title=/^##\s+(.+?)\s*$/.exec(line)?.[1];
+  // Local Edits drafts also use a nested caption heading with an editorial suffix.
+  // Keep the hosted snapshot's existing export contract unchanged.
+  const localTitle=localCaptionDrafts && /^#{1,6}\s+(.+?)\s*$/.exec(line)?.[1];
+  const title=localTitle || /^##\s+(.+?)\s*$/.exec(line)?.[1];
   if(title){
-   const match=/^(캡션|댓글|대댓글)(?:\s+(\d+))?$/.exec(title);
+   const name=localCaptionDrafts && /^캡션\s+[—–-]\s+/.test(title)?'캡션':title;
+   const match=/^(캡션|댓글|대댓글)(?:\s+(\d+))?$/.exec(name);
    heading=match?{id:match[1]==='캡션'?'caption':`${match[1]==='댓글'?'comment':'reply'}-${match[2]??'1'}`,kind:match[1]==='캡션'?'caption':match[1]==='댓글'?'comment':'reply',label:title,parentId:match[1]==='대댓글'?`comment-${match[2]??'1'}`:null}:null;
   }
   const start=/^(`{3,}|~{3,})([^\s]*)\s*$/.exec(line);

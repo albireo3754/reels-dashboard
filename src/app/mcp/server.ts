@@ -11,6 +11,7 @@ export function createMcpServer(
     { instructions: agentGuidance },
   );
   for (const [name, definition] of Object.entries(toolDefinitions)) {
+    if ("cliOnly" in definition && definition.cliOnly) continue;
     server.registerTool(
       name,
       {

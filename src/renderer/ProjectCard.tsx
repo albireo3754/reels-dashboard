@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
+import { EpisodeTranscription } from "./EpisodeTranscription";
+import { isYoutubeEpisode } from "../shared/episode-transcription";
 import { ClipUploadControls } from "./ClipUploadControls";
+import { EditsFinalShare } from "./EditsFinalShare";
+import { canShareInstagramFromEdits } from "../shared/edits-final-share";
 import type {
   DashboardBridge,
   LocalResource,
@@ -137,9 +141,14 @@ export function ProjectCard({
           </ul>
         )}
         <StageProgress project={project} />
+        {!readOnly && bridge.editsFinalShare && canShareInstagramFromEdits(project) && (
+          <EditsFinalShare project={project} bridge={bridge.editsFinalShare} disabled={busy} />
+        )}
         <p className="project-next">
           {project.nextAction || "다음 할 일을 정해보세요."}
         </p>
+        {!readOnly && bridge.episodeTranscription && isYoutubeEpisode(project) &&
+          <EpisodeTranscription project={project} bridge={bridge.episodeTranscription} />}
         {onTerminal && (
           <button type="button" className="small" onClick={onTerminal} disabled={busy}>
             프로젝트 터미널

@@ -24,6 +24,15 @@ if(parent!==window){
  document.documentElement.style.overflow='hidden';
  document.documentElement.style.scrollbarGutter='auto';
 }
+function showMissingPhoto(img){
+ if(!img.closest('article')||img.hidden)return;
+ img.hidden=true;
+ const label=document.createElement('span');label.className='ce-missing-photo';label.dataset.reviewUi='missing-photo';
+ label.textContent=img.alt?img.alt+' · 사진을 볼 수 없어요':'사진을 볼 수 없어요';
+ img.after(label);
+}
+document.addEventListener('error',e=>{if(e.target instanceof HTMLImageElement)showMissingPhoto(e.target);},true);
+for(const img of document.querySelectorAll('article img'))if(img.complete&&!img.naturalWidth)showMissingPhoto(img);
 let selected, savedRange;
 // Transient AI ghost text (review-only; see the keyboard suggestion section below).
 let ghost=null,ghostEvidence=null;

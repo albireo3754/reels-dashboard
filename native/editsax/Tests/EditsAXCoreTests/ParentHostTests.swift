@@ -106,7 +106,7 @@ import Testing
         _ = try rejected(host)
     }
 
-    @Test(arguments: ["status", "press"])
+    @Test(arguments: ["status", "press", "final-share-preview", "final-share-caption", "final-share-confirm", "final-share-recheck"])
     func rejectedParentNeverConstructsTheAXBackend(operation: String) async throws {
         var host = packaged(); host.parentExecutable = "/bin/zsh"
         var backendConstructions = 0

@@ -1,0 +1,11 @@
+.preview-image-placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: 40px;
+  background: var(--color-surface-sunken, #f2f2f2);
+  color: var(--color-text-muted, #666);
+  font-size: var(--text-xs, 0.75rem);
+  text-align: center;
+}

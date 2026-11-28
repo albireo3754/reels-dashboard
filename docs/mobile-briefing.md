@@ -16,6 +16,10 @@
 
 공용 화면의 진입점은 `packages/briefing/ui.ts`, 데이터 계약은 `packages/briefing/model.ts`예요. 모바일의 원격 조회·재연결·인증 만료는 `features/briefing-sync`에서 관리하고, 페이지는 선택 상태와 화면 조립을 담당해요.
 
+### 주간 게시 목록과 앞으로의 예약
+
+브리지는 실행 중인 대시보드의 `reels_get_weekly_goals`가 반환한 `weeklyGoalsView` 결과에서 이번 주와 다음 주의 채널별 게시·예약 목록을 보내고, 3주차는 같은 `weekGoals`로 계산한다. 주간 목록은 제목·날짜·상태와 프로젝트 ID만 보낸다. 첫 화면의 공개 예약 목록은 같은 대시보드 예약 대기열의 `booked`와 `beyond`를 시각순으로 보낸다. 주간 게시 기록에는 지난 날짜가 보일 수 있으며, 앞으로의 예약에는 대기열에 남은 항목만 보인다. 사이트는 스냅샷의 목록 순서를 유지한다. 예약 목록 필드가 없는 이전 스냅샷을 열면 다음 동기화를 기다린다는 안내를 표시한다.
+
 ### 빌드와 배포
 
 두 앱은 각자의 lockfile과 React 런타임을 사용해요. 새 체크아웃에서는 루트에서 `npm ci`, 사이트에서 `npm --prefix apps/mobile-briefing run install:ci`로 의존성을 설치해요.

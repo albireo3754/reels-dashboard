@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { InputFormRecord } from "../../../shared/input-forms";
 import type { ExperienceAnswer } from "../../../shared/experience";
 import { workflowCall } from "../../../shared/workflow-client";
+import { PreviewImage } from "../../../shared/ui/PreviewImage";
 
 function QuestionImage({
   formId,
@@ -19,6 +20,8 @@ function QuestionImage({
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
+    setSrc("");
+    setError("");
     void workflowCall("form-media", {
       formId,
       questionId,
@@ -37,7 +40,7 @@ function QuestionImage({
   return (
     <figure>
       {src ? (
-        <img src={src} alt={caption} />
+        <PreviewImage src={src} alt={caption} />
       ) : (
         <p>{error || "사진을 불러오고 있어요."}</p>
       )}

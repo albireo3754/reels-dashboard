@@ -54,3 +54,27 @@ test("mobile queue follows the desktop: a finished blog run is suggested as 완�
  assert.equal(after.inProduction, 0);
  assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort(), "no new fields for the strict site schema");
 });
+
+test("briefing displays dashboard weekly posts and upcoming reservations without exposing URLs", () => {
+ const checkAt = new Date("2026-11-20T00:00:00Z");
+ const expected = weeklyGoalsView(planning, dashboard.projects, checkAt);
+ const {monitor} = make(checkAt);
+ for (const [i, channel] of expected.thisWeek.channels.entries()) {
+   assert.deepEqual(monitor.thisWeek.channels[i].posts, channel.posts.map(({projectId,title,day,status}) => ({projectId,title,day,status})));
+ }
+ assert.ok(monitor.thisWeek.channels.some(c => c.posts.some(p => p.projectId === "scheduled")));
+ assert.ok(!monitor.reservations.some(p => p.projectId === "scheduled"));
+ assert.ok(make().monitor.reservations.some(p => p.projectId === "scheduled"));
+ assert.equal(monitor.thirdWeek.from, expected.nextWeek.to);
+});
+
+test("the running app owns calendar-only and beyond-horizon bookings shown in the briefing", () => {
+ const projectId = "calendar-" + "x".repeat(200);
+ const calendarUrl = "https://calendar.google.com/calendar/event?eid=private";
+ const event = { id: "event", projectId, title: "캘린더 예약", channel: "youtube" as const, start: "2026-12-20T15:00:00+09:00", url: calendarUrl, cancelled: false };
+ const livePlanning = { ...planning, calendar: { url: calendarUrl, syncedAt: now.toISOString(), window: {from: "2026-11-15", to: "2026-12-31"}, events: [event, {...event, id: "cancelled", projectId: "cancelled", cancelled: true}] } };
+ const live = weeklyGoalsView(livePlanning, dashboard.projects, now);
+ const { monitor } = mobileMonitor(dashboard, planning, emptyAutopilotState(), defaultAutopilotConfig(), now, {isAlive: () => false}, {}, live);
+ assert.deepEqual(monitor.reservations.map(r => r.projectId), ["scheduled", projectId]);
+ assert.ok(!JSON.stringify(monitor).includes(calendarUrl));
+});

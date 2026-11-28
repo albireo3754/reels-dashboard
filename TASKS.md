@@ -1,5 +1,11 @@
 # Reels Dashboard 진행 상태
 
+## 블로그 예약 확인 `예약 시각 +10분`·게시 웹훅 — 2026-11-28
+
+- [x] 하루 1회 배치를 예약별 확인으로 교체(+10·20·40분, 이후 매시간, 24시간까지, 시작·깨우기 즉시 확인), 보류 이유 저장, 원고의 `[글자](URL)` 줄 비교 수정, 서명 웹훅 대기열 추가. [동작·설정](docs/blog-workspace.md#지난-네이버-예약의-공개-확인).
+- [x] 합성 응답 단위 검사·타입·FSD 통과. 실제 네이버 조회·웹훅 전송 없음.
+- [ ] 설치 앱 반영, `blog-publish-webhook.json` 작성(수신 루틴 재개 확인 뒤), 실제 예약 글로 확인. 미커밋.
+
 ## autopilot 리뷰 대기 목록 `inbox` — 2026-11-20
 
 - [x] `reels autopilot inbox`(읽기 전용): 리뷰 대기 전체를 `buildQueue().review` 순서로, 항목마다 원천별 기여(`sources[]`)·닫는 위치·메모리 `resolve` 예측(`afterLocalResolve`)·`needs_user` 근거·요약(`needToFree` 등)과 휴대폰용 `data.text`. 잠금·파일 쓰기·Linear API·모델·Keychain 호출 없음. merge·buildQueue·admission·rank·fingerprint·dispatch 동작은 그대로이고, `today`의 항목 문구를 같은 helper로 옮기며 예약이 있는 항목의 완료 기준이 "resolve만으로 닫힘"으로 읽히지 않게 고쳤다.

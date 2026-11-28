@@ -44,3 +44,7 @@ After explicit user consent, the packaged helper reported `authorized`. The empt
 The corrected app passed the complete packaged **8/8** suite (no skipped or flaky tests). A subsequent stricter one-preview check passed **1/1**, rejecting `analysis-failed`, `sample-generation-failed` and `partial-evidence` warnings and confirming successful JPEG decoding. TypeScript unit tests now total **9 passed**. Private aggregate reports and temporary image evidence are excluded from Git; the test profiles and manual authorization helper were cleaned up. No personal originals were copied, moved or deleted.
 
 Final source CI: [run 40518829999](https://github.com/albireo3754/reels-dashboard/actions/runs/40518829999) passed for `0f5c446866fe8a9fc451c65fa80144127bc3f3e5` in 3m22s. Authorized local evidence and source-publication checks are complete; actual destructive personal-photo operations and a particular hosted Sites deployment remain explicitly outside this milestone.
+
+## Unit suite cost on 2026-11-22
+
+On the same Mac with two test workers, `npm test` selected 898 tests in both runs. Before the change it took 46.94 s elapsed and 81.90 s of CPU across the command and its children. The repeat run with the module cache populated took 33.08 s elapsed and 64.01 s of CPU. These are single local runs. Both skipped the same six optional cases. The earlier run also failed one hash assertion when the system Perl tool rejected its locale. The updated test uses the known digest and passed. The five optional CLI bundle tests passed separately against a fresh build.

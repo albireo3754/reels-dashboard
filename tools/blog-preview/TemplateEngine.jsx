@@ -1,9 +1,14 @@
 import React,{useState} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {PreviewImage} from '../../src/shared/ui/PreviewImage';
 import {collectSlots,componentType,cssToReact,demoText,makeInstance,missingSlots,validateProject} from './template-model.mjs';
 
 export function TextRun({node,values,example}){return <>{values[node.id]??(node.blank?node.sample:example?demoText(node):'')}</>}
-export function ImageSlot({node,values}){const src=values[node.id],style={...cssToReact(node.css),objectFit:node.css?.['object-fit']==='contain'?'contain':'cover'};return src?<img style={style} src={src} alt="새 글 사진"/>:<span style={{...style,display:style.display==='none'?'none':'inline-flex',alignItems:'center',justifyContent:'center',background:'#eeeae3',color:'#8a8175',fontSize:14,outline:'1px solid #d6cfc5',minHeight:style.height==='0px'?0:90}}>사진 자리</span>}
+export function ImageSlot({node,values}){
+ const src=values[node.id],style={...cssToReact(node.css),objectFit:node.css?.['object-fit']==='contain'?'contain':'cover'};
+ const fallback=<span style={{...style,display:style.display==='none'?'none':'inline-flex',alignItems:'center',justifyContent:'center',background:'#eeeae3',color:'#8a8175',fontSize:14,outline:'1px solid #d6cfc5',minHeight:style.height==='0px'?0:90}}>{src?'사진을 볼 수 없어요':'사진 자리'}</span>;
+ return <PreviewImage style={style} src={src} alt="새 글 사진" fallback={fallback}/>;
+}
 function Ornament({value}){let text=value.content;if(text==='""'||text==="''")text='';else text=text.replace(/^['"]|['"]$/g,'');return <span aria-hidden="true" style={cssToReact(value.css)}>{text}</span>}
 export function StyledNode({node,values,flow,example}){
  if(node.type==='text-slot')return <TextRun node={node} values={values} example={example}/>;

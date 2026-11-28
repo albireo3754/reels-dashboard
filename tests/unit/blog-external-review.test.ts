@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {markupFixture} from "../fixtures/markup-editor";
 import {MarkupStore} from "../../src/app/blog-editor/markup-store";
-import {prepareExternalReview,importExternalReview,reviewStatus} from "../../src/app/blog-editor/external-review";
+import {activeReviewRequests,prepareExternalReview,importExternalReview,reviewStatus} from "../../src/app/blog-editor/external-review";
 
 const review=(requestId:string,visual="unverified")=>({requestId,reviews:[{
   bundleId:"B1",verdict:"needs-work",summary:"The second line ends flatly after the photo.",
@@ -69,4 +69,25 @@ test("external executor: prepare -> validated import into the editor review file
       await rm(out+"-3",{recursive:true,force:true});
     }finally{await rm(out,{recursive:true,force:true});}
   }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test("active requests only reads the registered queue, including a custom location", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "blog-request-scope-"));
+  try {
+    const config = { ...await markupFixture(root), requests: path.join(root, "custom queue") };
+    const pending = "00000000-0000-4000-8000-000000000001.json";
+    const completed = "00000000-0000-4000-8000-000000000002.json";
+    const decoy = path.join(root, "editor-requests");
+    await mkdir(decoy);
+    await writeFile(path.join(decoy, pending), JSON.stringify({ status: "running" }));
+    assert.deepEqual(await activeReviewRequests(config), { directory: config.requests, active: [] });
+    await mkdir(config.requests);
+    await writeFile(path.join(config.requests, pending), JSON.stringify({ status: "pending" }));
+    await writeFile(path.join(config.requests, completed), JSON.stringify({ status: "completed" }));
+    assert.deepEqual((await activeReviewRequests(config)).active, [pending]);
+    await writeFile(path.join(config.requests, pending), "{");
+    await assert.rejects(activeReviewRequests(config), SyntaxError);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

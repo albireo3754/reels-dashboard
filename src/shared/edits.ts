@@ -311,7 +311,11 @@ export type EditsNativeOperation =
   | "menu"
   | "key"
   | "drag"
-  | "screenshot";
+  | "screenshot"
+  | "final-share-preview"
+  | "final-share-caption"
+  | "final-share-confirm"
+  | "final-share-recheck";
 export interface EditsNativePort {
   invoke(
     operation: EditsNativeOperation,

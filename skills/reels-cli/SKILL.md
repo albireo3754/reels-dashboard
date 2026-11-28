@@ -1,6 +1,6 @@
 ---
 name: reels-cli
-description: Operate a running Reels Dashboard app from a shell with the `reels` CLI - read and edit editing projects, preview frames, start and follow renders, manage content entries and copy registered media. Use only when a task needs Reels Dashboard app operations from a shell. Not for authoring or resuming YAML workflows (use skills/reels-workflow); does not launch the app, publish or upload.
+description: Operate a running Reels Dashboard app from a shell with the `reels` CLI - edit projects, preview frames, follow renders, manage content entries, copy media, or open a Herdr blog publication task. Use skills/reels-workflow to author and resume YAML workflows.
 ---
 
 # Reels CLI
@@ -80,6 +80,10 @@ reels get-render-job --job-id <id> --wait    # attach later
 ## Local media copy
 
 `reels prepare-media --list` shows content projects and their registered media; `reels prepare-media --help` explains copying them into a new folder. It works without the app.
+
+## Blog publishing
+
+With explicit authorization for the selected post, `reels publish-blog --project-id <card> --mode now` opens a Herdr task for the saved manuscript. For a booking, use `--mode scheduled --scheduled-at <YYYY-MM-DDTHH:MM:SS+09:00>`. Herdr delegates Naver browser steps to Aside. Check the returned terminal for the verified outcome. An already overdue booking is checked for publication, and an unavailable time is left for review in Herdr.
 
 ## Instagram collection without the app
 

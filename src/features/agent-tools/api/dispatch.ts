@@ -1,5 +1,6 @@
 import { findPhotos } from "../../../shared/photos-find";
 import type { EditsBridge, EditsToolName } from "../../../shared/edits";
+import type { BlogPublishCliInput, BlogPublishLaunch } from "../../../shared/blog-publication";
 import type { BlogCommentCreateInput, BlogCommentDeleteInput, BlogCommentListInput, BlogCommentUpdateInput } from "../../../shared/blog-comments";
 import {inputFormTools} from "../../../shared/input-form-tools";
 import type { MergeProjectsInput, LinkEditInput } from "../../../shared/production-project";
@@ -58,6 +59,7 @@ export interface AgentPorts {
   forms?: import("../../../shared/workflow").WorkflowBridge;
   inputForms?: {open(input:unknown):Promise<unknown>};
   blog?: {
+    publish?(input: BlogPublishCliInput): Promise<BlogPublishLaunch>;
     extract(input: unknown): Promise<unknown>;
     results(): Promise<unknown>;
     link(directory: string): Promise<unknown>;
@@ -190,6 +192,11 @@ export function createAgentDispatch(ports: AgentPorts) {
       case "reels_open_input_form":
         if(!ports.inputForms)throw new Error("UNSUPPORTED");
         return ports.inputForms.open(input);
+      case "reels_publish_blog": {
+        const blog = port("blog");
+        if (!blog.publish) throw new Error("UNSUPPORTED");
+        return blog.publish(input);
+      }
       case "reels_extract_blog_reference":
         return port("blog").extract(input);
       case "reels_list_blog_references":

@@ -11,6 +11,9 @@ const content=(id,state,stage='review',priority=1)=>({id,title:`검증 ${id}`,da
 const candidate={projectId:'pending',title:'검증 pending',status:'draft',ready:true};
 const week={from:'2026-11-15',to:'2026-11-22',totals:{target:8,done:2,remaining:6},channels:[['blog','블로그',2],['naver-clip','클립',3],['instagram','릴스',2],['youtube','쇼츠',1]].map(([channel,label,target])=>({channel,label,target,published:channel==='naver-clip'?1:0,scheduled:channel==='naver-clip'?1:0,remaining:channel==='naver-clip'?1:target,candidates:channel==='naver-clip'?[candidate]:[]}))};
 const monitor={generatedAt:at,thisWeek:week,nextWeek:{...week,from:'2026-11-22',to:'2026-11-29'},queue:{until:'2026-12-01',channels:[{channel:'naver-clip',label:'클립',cap:6,booked:1,open:5,full:false,inProduction:1,rows:[{projectId:'scheduled',title:'검증 scheduled',day:'2026-11-19',status:'scheduled'},{projectId:'pending',title:'검증 pending',day:'2026-11-20',status:'suggested'}]}]},autopilot:{enabled:false,paused:false,notice:'Linear 사본이 오래됐어요 — 자동 실행 멈춤',status:'리뷰 대기 2 · 진행 중 1 · 점유 3/3 · 자동 슬롯 0',today:{title:'검증 pending',target:'project:pending',why:['채널 남음'],decision:'남은 채널: 네이버클립 임시저장',doneWhen:'네이버클립 게시 상태를 확인',outcome:null,changeCount:0}}};
+monitor.thirdWeek = {...week, from:'2026-11-29', to:'2026-12-06', channels:week.channels.map(c => ({...c,published:0,scheduled:0,remaining:c.target,candidates:[]}))};
+monitor.thisWeek.channels[1].posts = [{projectId:'pending', title:'대시보드 게시 목록의 제목', day:'2026-11-16', status:'published'}];
+monitor.reservations = [{projectId:'scheduled', title:'대시보드 예약 목록의 제목', day:'2026-11-19', channel:'naver-clip', at:'2026-11-19T12:00:00+09:00'}];
 const fixture={sourceId:'primary-mac',sourceLabel:'로컬 검증',sourceRevision:'monitor-qa-'+Date.now(),sourceUpdatedAt:at,contents:[content('pending','channel_pending','published',1),content('review','review','review',2),content('scheduled','scheduled','review',3),content('done','complete','done',4),{...content('operation','in_progress','editing',5),kind:'operation',publications:[]}],assets:[],monitor};
 async function api(route,options={}){return fetch(origin+route,{...options,headers});}
 const unauth=await fetch(origin+'/api/briefing');assert.equal(unauth.status,401);
@@ -25,7 +28,9 @@ try{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/');
   await page.getByRole('heading',{name:'이번 주 목표',exact:true}).waitFor();await page.getByRole('heading',{name:'퇴근 후 오늘 볼 1개',exact:true}).waitFor();
   const reservations = page.getByRole('region', {name: '공개 예약 1건'});
-  await reservations.getByRole('button', {name: '검증 scheduled'}).click();
+  assert.ok(await page.getByRole('list',{name:'클립 게시·예약'}).getByRole('button',{name:'대시보드 게시 목록의 제목'}).isVisible());
+  assert.equal(await reservations.getByText('검증 scheduled').count(),0);
+  await reservations.getByRole('button', {name: '대시보드 예약 목록의 제목'}).click();
   await page.getByRole('dialog', {name: '검증 scheduled', exact: true}).waitFor();
   await page.getByRole('button', {name: '상세 닫기'}).click();
   assert.ok(await page.getByText('남은 채널: 네이버클립 임시저장',{exact:true}).isVisible());

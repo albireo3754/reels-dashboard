@@ -22,6 +22,9 @@ Latest integrated implementation and validation: [2026-10-31 release record](doc
 
 ## Features
 
+- Desktop **쇼츠** 탭에서 Mac 메모에 동기화된 통화 녹음을 자동으로 가져오고 제작 현황을 확인한다. [녹음 쇼츠 파이프라인](pipelines/call-shorts/README.md).
+- Desktop 대시보드에서 음성 전사와 전사본 기반 회의록을 작성한다. OpenAI·Claude API 크레딧 잔액은 왼쪽 사이드바 하단에 표시한다. [사용법과 지출 보호 조건](docs/meeting-notes.md).
+
 - Desktop **Instagram 인사이트** connects an owner-verified read token file, collects private metric history manually or through a one-shot headless CLI (Codex scheduling is not yet registered) and compares reach-based reaction/save/share rates by weekday, time and topic. Recent reels and date exclusions stay explicit; credentials and insights never enter shared snapshots. See [Instagram integration](docs/instagram-insights.md).
 
 - A private **캘린더** tab shows this/next week's posting goal, completed publications, imported Google Calendar events and Linear issue links. Providers own edits; calendar connector sessions import bounded snapshots without app OAuth. The model-free Linear reader also renews its private copy overnight, outside automatic work hours (see [autopilot](docs/autopilot.md#linear-자동-갱신-모델-호출-0)). See [calendar integration](docs/publication-calendar.md).
@@ -115,6 +118,8 @@ npm run package:mac
 Output: `release/mac-arm64/Reels Dashboard.app` on Apple Silicon. The outer Electron package remains unsigned; its PhotosIndex helper uses Developer ID signing. This is a local build, not a notarized public distribution.
 
 ## Verification
+
+For a focused change, pass the affected unit test files directly, e.g. `npm test -- tests/unit/blog-external-review.test.ts`. With no arguments, `npm test` runs the full unit suite. Both modes run up to two test files at once. Set `REELS_TEST_WORKERS=1` for a busy machine. Unit tests share compiled module bytecode across workers and runs. TypeScript also caches repeat checks. Both caches live under `node_modules/.cache/`.
 
 ```sh
 npm run verify:spec
